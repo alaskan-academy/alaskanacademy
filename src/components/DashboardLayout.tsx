@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
-import { GlobalFilters } from '@/components/GlobalFilters';
+import GlobalFilters from '@/components/GlobalFilters';
 
 export function DashboardLayout({ children, title }: { children: ReactNode; title: string }) {
   return (
