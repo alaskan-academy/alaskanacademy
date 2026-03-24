@@ -136,11 +136,12 @@ export default function OverviewPage() {
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
     const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr);
 
-    // Lucro sem custo fixo (para card)
+    // Lucro operacional (sem custo fixo)
     const lucro = fatBruto - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
-    // Lucro com custo fixo (para margem)
+    // Lucro com custo fixo
     const lucroCC = lucro - custoFixo;
-    const margemPct = fatBruto > 0 ? (lucroCC / fatBruto) * 100 : 0;
+    // Margem % = operacional (SEM custo fixo)
+    const margemPct = fatBruto > 0 ? (lucro / fatBruto) * 100 : 0;
     const roas = investimento > 0 ? fatBruto / investimento : 0;
 
     const vendasRows = r4.data || [];
