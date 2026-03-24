@@ -2,15 +2,15 @@ import { useEffect, useState } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
+import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
 
-// Limpa utm_campaign removendo |ID e ::TOKEN
-function cleanCampaign(s: string | null): string {
-  if (!s) return "organico";
-  return s.split("::")[0].split("|")[0].trim();
+// Limpa utm_campaign
+function cleanUtm(s: string | null): string {
+  if (!s) return "";
+  return s.split("::")[0].split("|")[0].trim().toLowerCase();
 }
 
 function periodoAnterior(start?: string, end?: string) {
@@ -23,8 +23,9 @@ function periodoAnterior(start?: string, end?: string) {
   };
 }
 
+// Calcula métricas do funil dado linhas de meta e vendas
 function calcFunnel(metaRows: any[], vendas: any[], obsRows: any[], upsells: any[]) {
-  const agg = metaRows.reduce(
+  const m = metaRows.reduce(
     (a: any, r: any) => {
       a.impressoes += Number(r.impressoes || 0);
       a.cliques += Number(r.cliques || 0);
@@ -51,13 +52,13 @@ function calcFunnel(metaRows: any[], vendas: any[], obsRows: any[], upsells: any
   const totalVendas = vendas.length;
   const fatReal = vendas.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0);
   const fatPrincipal = vendas.reduce((s: number, v: any) => s + Number(v.valor_oferta_principal || 0), 0);
-  const inv = agg.investimento || 0;
-  const vis = agg.visualizacoes_pagina;
-  const ic = agg.initiate_checkout;
-  const clk = agg.cliques;
+  const inv = m.investimento;
+  const vis = m.visualizacoes_pagina;
+  const ic = m.initiate_checkout;
+  const clk = m.cliques;
 
   return {
-    ...agg,
+    ...m,
     totalVendas,
     fatReal,
     fatPrincipal,
@@ -75,13 +76,14 @@ function calcFunnel(metaRows: any[], vendas: any[], obsRows: any[], upsells: any
   };
 }
 
+// Componente de exibição do funil
 function FunnelDisplay({ data, title, compare }: { data: any; title?: string; compare?: any }) {
   if (!data) return <div className="text-center text-muted-foreground py-8">Sem dados</div>;
 
   const steps = [
     { label: "Impressões", value: data.impressoes, color: "hsl(239,84%,67%)" },
     { label: "Cliques", value: data.cliques, color: "hsl(239,84%,60%)" },
-    { label: "Vis. de Página", value: data.visualizacoes_pagina, color: "hsl(239,84%,53%)" },
+    { label: "Vis. de Pág.", value: data.visualizacoes_pagina, color: "hsl(239,84%,53%)" },
     { label: "ICs", value: data.initiate_checkout, color: "hsl(239,84%,46%)" },
     { label: "Vendas", value: data.totalVendas, color: "hsl(160,60%,45%)" },
   ];
@@ -89,45 +91,53 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
   const totalBreakdown = data.fatReal || 1;
 
   const Var = ({ cur, prev }: { cur: number; prev?: number }) => {
-    if (!prev || !compare) return null;
-    const v = ((cur - prev) / (prev || 1)) * 100;
+    if (prev === undefined || !compare) return null;
+    const v = prev > 0 ? ((cur - prev) / prev) * 100 : 0;
     return (
-      <span className={cn("text-xs ml-1", v >= 0 ? "text-success" : "text-destructive")}>
+      <span className={cn("text-xs ml-1", v >= 0 ? "text-green-400" : "text-red-400")}>
         {v >= 0 ? "▲" : "▼"}
         {Math.abs(v).toFixed(1)}%
       </span>
     );
   };
 
+  const kpis = [
+    { label: "Investimento", key: "investimento", fmt: formatCurrency, color: "" },
+    { label: "Faturamento", key: "fatReal", fmt: formatCurrency, color: "" },
+    {
+      label: "Resultado",
+      key: "resultado",
+      fmt: formatCurrency,
+      color: data.resultado >= 0 ? "text-green-400" : "text-red-400",
+    },
+    {
+      label: "ROAS",
+      key: "roas",
+      fmt: (v: number) => `${v.toFixed(2)}x`,
+      color: data.roas >= 3 ? "text-green-400" : data.roas >= 1 ? "text-yellow-400" : "text-red-400",
+    },
+    { label: "Vendas", key: "totalVendas", fmt: (v: number) => String(Math.round(v)), color: "" },
+    { label: "CPA", key: "cpa", fmt: formatCurrency, color: "" },
+    { label: "CPV", key: "cpv", fmt: formatCurrency, color: "" },
+    { label: "AOV", key: "aov", fmt: formatCurrency, color: "" },
+  ];
+
+  const taxas = [
+    { label: "Taxa Conexão", key: "taxa_carregamento" },
+    { label: "Taxa IC", key: "taxa_vis_ic" },
+    { label: "Conv. Checkout", key: "taxa_ic_vendas" },
+    { label: "Vis→Vendas", key: "taxa_vis_vendas" },
+  ];
+
   return (
     <div className="space-y-5">
-      {title && <h3 className="text-sm font-semibold text-primary">{title}</h3>}
+      {title && <h3 className="text-sm font-semibold text-primary border-b border-border pb-2">{title}</h3>}
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Investimento", key: "investimento", fmt: formatCurrency, color: "" },
-          { label: "Faturamento", key: "fatReal", fmt: formatCurrency, color: "" },
-          {
-            label: "Resultado",
-            key: "resultado",
-            fmt: formatCurrency,
-            color: data.resultado >= 0 ? "text-success" : "text-destructive",
-          },
-          {
-            label: "ROAS",
-            key: "roas",
-            fmt: (v: number) => `${v.toFixed(2)}x`,
-            color: data.roas >= 3 ? "text-success" : data.roas >= 1 ? "text-warning" : "text-destructive",
-          },
-          { label: "Vendas", key: "totalVendas", fmt: formatNumber, color: "" },
-          { label: "CPA", key: "cpa", fmt: formatCurrency, color: "" },
-          { label: "CPV", key: "cpv", fmt: formatCurrency, color: "" },
-          { label: "AOV", key: "aov", fmt: formatCurrency, color: "" },
-        ].map((k) => (
+        {kpis.map((k) => (
           <div key={k.label} className="bg-card border border-border rounded-lg p-3">
             <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
-            <div className={cn("text-lg font-bold", k.color || "text-foreground")}>
+            <div className={cn("text-base font-bold", k.color || "text-foreground")}>
               {k.fmt(Number(data[k.key] || 0))}
               <Var cur={Number(data[k.key] || 0)} prev={compare ? Number(compare[k.key] || 0) : undefined} />
             </div>
@@ -136,22 +146,22 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Funil */}
+        {/* Funil visual */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h4 className="text-xs font-medium text-muted-foreground mb-4">Funil de Conversão</h4>
           <div className="space-y-2">
             {steps.map((step, i) => {
               const w = Math.max((step.value / maxV) * 100, 3);
               const prev = steps[i - 1];
-              const taxa = prev && prev.value > 0 ? ((step.value / prev.value) * 100).toFixed(1) : null;
+              const taxa = prev?.value > 0 ? ((step.value / prev.value) * 100).toFixed(1) : null;
               return (
                 <div key={step.label}>
                   {taxa && <div className="text-xs text-muted-foreground text-center mb-1">↓ {taxa}%</div>}
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground w-28 text-right shrink-0">{step.label}</span>
+                    <span className="text-xs text-muted-foreground w-24 text-right shrink-0">{step.label}</span>
                     <div className="flex-1">
                       <div
-                        className="h-8 rounded-md flex items-center px-2"
+                        className="h-8 rounded-md flex items-center px-2 transition-all"
                         style={{ width: `${w}%`, backgroundColor: step.color }}
                       >
                         <span className="text-xs font-semibold text-white">{formatNumber(step.value)}</span>
@@ -181,8 +191,8 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
               <div key={i} className="flex justify-between py-1 border-b border-border/50">
                 <div>
                   <span className="text-foreground">{ob.nome_ob}</span>
-                  <span className="text-xs px-1 rounded bg-primary/20 text-primary ml-1">
-                    {formatPercent(ob.taxa_conversao_pct || 0)}
+                  <span className="ml-1 text-xs px-1 rounded bg-primary/20 text-primary">
+                    {ob.taxa_conversao_pct?.toFixed(1)}%
                   </span>
                 </div>
                 <div className="text-right">
@@ -197,8 +207,8 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
               <div key={i} className="flex justify-between py-1 border-b border-border/50">
                 <div>
                   <span className="text-foreground">{up.nome_upsell}</span>
-                  <span className="text-xs px-1 rounded bg-yellow-500/20 text-yellow-400 ml-1">
-                    {formatPercent(up.taxa_conversao_pct || 0)}
+                  <span className="ml-1 text-xs px-1 rounded bg-yellow-500/20 text-yellow-400">
+                    {up.taxa_conversao_pct?.toFixed(1)}%
                   </span>
                 </div>
                 <div className="text-right">
@@ -219,12 +229,7 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
 
       {/* Taxas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Taxa Conexão", key: "taxa_carregamento" },
-          { label: "Taxa IC", key: "taxa_vis_ic" },
-          { label: "Conv. Checkout", key: "taxa_ic_vendas" },
-          { label: "Vis→Vendas", key: "taxa_vis_vendas" },
-        ].map((k) => (
+        {taxas.map((k) => (
           <div key={k.label} className="bg-secondary/50 rounded-lg p-3">
             <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
             <div className="text-sm font-semibold text-foreground">
@@ -240,16 +245,16 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
 
 export default function FunnelPage() {
   const { startDateStr, endDateStr, product } = useFilters();
-  const [allFunil, setAllFunil] = useState<any[]>([]);
+  const [allMeta, setAllMeta] = useState<any[]>([]);
+  const [allMetaAnt, setAllMetaAnt] = useState<any[]>([]);
   const [allVendas, setAllVendas] = useState<any[]>([]);
   const [allVendasAnt, setAllVendasAnt] = useState<any[]>([]);
-  const [allFunilAnt, setAllFunilAnt] = useState<any[]>([]);
   const [obsData, setObsData] = useState<any[]>([]);
   const [upsellData, setUpsellData] = useState<any[]>([]);
   const [campanhas, setCampanhas] = useState<string[]>([]);
   const [selectedCamps, setSelectedCamps] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showPeriodoAnt, setShowPeriodoAnt] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
@@ -257,73 +262,84 @@ export default function FunnelPage() {
       const pf = product !== "todos" ? product : null;
       const ant = periodoAnterior(startDateStr, endDateStr);
 
-      let q1 = supabase.from("vw_funil").select("*");
-      if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) q1 = q1.eq("produto", pf);
+      // Meta atual
+      let qMeta = supabase
+        .from("metricas_meta")
+        .select(
+          "campanha_nome,campanha_id,nivel,produto,data,impressoes,cliques,visualizacoes_pagina,initiate_checkout,investimento,video_plays,video_3s,video_75pct,compras_meta,faturamento_atribuido",
+        )
+        .eq("nivel", "campanha");
+      if (startDateStr && endDateStr) qMeta = qMeta.gte("data", startDateStr).lte("data", endDateStr);
+      if (pf) qMeta = qMeta.eq("produto", pf);
 
-      let q2 = supabase
+      // Vendas atuais
+      let qV = supabase
         .from("vendas")
-        .select("valor_total,valor_oferta_principal,utm_campaign")
+        .select("valor_total,valor_oferta_principal,utm_campaign,produto")
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
-      if (startDateStr && endDateStr) q2 = q2.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
-      if (pf) q2 = q2.eq("produto", pf);
+      if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (pf) qV = qV.eq("produto", pf);
 
-      let q3 = supabase.from("vw_conversao_obs").select("*");
-      if (pf) q3 = q3.eq("produto", pf);
-
-      let q4 = supabase.from("vw_conversao_upsell").select("*");
-      if (pf) q4 = q4.eq("produto", pf);
-
-      let q5 = supabase.from("metricas_meta").select("campanha_nome").eq("nivel", "campanha");
-      if (startDateStr && endDateStr) q5 = q5.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) q5 = q5.eq("produto", pf);
+      // OBs e Upsells
+      let qO = supabase.from("vw_conversao_obs").select("*");
+      if (pf) qO = qO.eq("produto", pf);
+      let qU = supabase.from("vw_conversao_upsell").select("*");
+      if (pf) qU = qU.eq("produto", pf);
 
       // Período anterior
-      let q1a = supabase.from("vw_funil").select("*");
-      let q2a = supabase
+      let qMetaAnt = supabase
+        .from("metricas_meta")
+        .select(
+          "campanha_nome,impressoes,cliques,visualizacoes_pagina,initiate_checkout,investimento,video_plays,video_3s,video_75pct",
+        )
+        .eq("nivel", "campanha");
+      let qVAnt = supabase
         .from("vendas")
         .select("valor_total,valor_oferta_principal,utm_campaign")
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (ant) {
-        q1a = q1a.gte("data", ant.start).lte("data", ant.end);
-        q2a = q2a.gte("data_venda", ant.start).lte("data_venda", ant.end);
+        qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
+        qVAnt = qVAnt.gte("data_venda", ant.start).lte("data_venda", ant.end);
       }
       if (pf) {
-        q1a = q1a.eq("produto", pf);
-        q2a = q2a.eq("produto", pf);
+        qMetaAnt = qMetaAnt.eq("produto", pf);
+        qVAnt = qVAnt.eq("produto", pf);
       }
 
-      const [r1, r2, r3, r4, r5, r1a, r2a] = await Promise.all([q1, q2, q3, q4, q5, q1a, q2a]);
+      const [rMeta, rV, rO, rU, rMetaAnt, rVAnt] = await Promise.all([qMeta, qV, qO, qU, qMetaAnt, qVAnt]);
 
-      setAllFunil(r1.data || []);
-      setAllVendas(r2.data || []);
-      setObsData((r3.data || []).filter((r: any) => r.total_convertidos > 0));
-      setUpsellData((r4.data || []).filter((r: any) => r.total_upsells > 0));
-      setAllFunilAnt(r1a.data || []);
-      setAllVendasAnt(r2a.data || []);
+      setAllMeta(rMeta.data || []);
+      setAllVendas(rV.data || []);
+      setObsData((rO.data || []).filter((r: any) => r.total_convertidos > 0));
+      setUpsellData((rU.data || []).filter((r: any) => r.total_upsells > 0));
+      setAllMetaAnt(rMetaAnt.data || []);
+      setAllVendasAnt(rVAnt.data || []);
 
-      const camps = [...new Set((r5.data || []).map((r: any) => r.campanha_nome).filter(Boolean))].sort() as string[];
+      // Lista de campanhas únicas do Meta (com dados reais)
+      const camps = [
+        ...new Set((rMeta.data || []).map((r: any) => r.campanha_nome).filter(Boolean)),
+      ].sort() as string[];
       setCampanhas(camps);
       setLoading(false);
     };
     load();
   }, [startDateStr, endDateStr, product]);
 
-  const funnelGeral = calcFunnel(allFunil, allVendas, obsData, upsellData);
-  const funnelGeralAnt = calcFunnel(allFunilAnt, allVendasAnt, obsData, upsellData);
+  // Funil geral
+  const funnelGeral = calcFunnel(allMeta, allVendas, obsData, upsellData);
+  const funnelGeralAnt = calcFunnel(allMetaAnt, allVendasAnt, obsData, upsellData);
 
-  // Filtrar vendas por campanha (utm_campaign limpo)
-  const vendasPorCamp = (camp: string) =>
-    allVendas.filter((v) => cleanCampaign(v.utm_campaign) === cleanCampaign(camp));
-
-  const funnelPorCamp = selectedCamps.map((camp) => ({
-    camp,
-    data: calcFunnel(allFunil, vendasPorCamp(camp), obsData, upsellData),
-  }));
+  // Funil por campanha: filtra Meta por campanha_nome E vendas por utm_campaign limpo
+  const funnelPorCamp = selectedCamps.map((camp) => {
+    const metaCamp = allMeta.filter((r) => r.campanha_nome === camp);
+    const cleanCamp = cleanUtm(camp);
+    const vendasCamp = allVendas.filter((v) => cleanUtm(v.utm_campaign) === cleanCamp);
+    return { camp, meta: metaCamp, vendas: vendasCamp, data: calcFunnel(metaCamp, vendasCamp, obsData, upsellData) };
+  });
 
   const toggleCamp = (c: string) =>
     setSelectedCamps((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -355,12 +371,12 @@ export default function FunnelPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* ── Funil Geral ─────────────────────────────────── */}
+        {/* ── Geral ───────────────────────────────────────── */}
         <TabsContent value="geral">
-          {/* Toggle comparação período anterior */}
           {antInfo && (
             <div className="flex items-center gap-3 mb-4">
               <button
+                type="button"
                 onClick={() => setShowPeriodoAnt((v) => !v)}
                 className={cn(
                   "px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors",
@@ -369,23 +385,18 @@ export default function FunnelPage() {
                     : "bg-secondary border-border text-muted-foreground hover:text-foreground",
                 )}
               >
-                {showPeriodoAnt ? "✓ " : ""}Comparar com período anterior
+                {showPeriodoAnt ? "✓ " : ""}Comparar com período anterior ({antInfo.dias}d atrás)
               </button>
-              {showPeriodoAnt && antInfo && (
-                <span className="text-xs text-muted-foreground">
-                  ({antInfo.start} → {antInfo.end})
-                </span>
-              )}
             </div>
           )}
 
           {showPeriodoAnt ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
               <div className="bg-card border border-border rounded-lg p-5">
                 <FunnelDisplay data={funnelGeral} title="Período Atual" compare={funnelGeralAnt} />
               </div>
               <div className="bg-card border border-border rounded-lg p-5">
-                <FunnelDisplay data={funnelGeralAnt} title={`Período Anterior (${antInfo?.dias}d atrás)`} />
+                <FunnelDisplay data={funnelGeralAnt} title={`Período Anterior (${antInfo?.start} → ${antInfo?.end})`} />
               </div>
             </div>
           ) : funnelGeral ? (
@@ -397,8 +408,8 @@ export default function FunnelPage() {
 
         {/* ── Por Campanha / A/B ───────────────────────────── */}
         <TabsContent value="campanha">
-          <div className="bg-card border border-border rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-medium text-foreground mb-3">
+          <div className="bg-card border border-border rounded-lg p-4 mb-5">
+            <h3 className="text-sm font-medium text-foreground mb-2">
               Selecione campanhas
               <span className="text-xs text-muted-foreground ml-2">({selectedCamps.length} selecionada(s))</span>
             </h3>
@@ -406,6 +417,7 @@ export default function FunnelPage() {
               {campanhas.map((c) => (
                 <button
                   key={c}
+                  type="button"
                   onClick={() => toggleCamp(c)}
                   className={cn(
                     "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors",
@@ -417,35 +429,46 @@ export default function FunnelPage() {
                   {c}
                 </button>
               ))}
-              {campanhas.length === 0 && <span className="text-xs text-muted-foreground">Nenhuma campanha</span>}
+              {campanhas.length === 0 && (
+                <span className="text-xs text-muted-foreground">Nenhuma campanha disponível</span>
+              )}
             </div>
             {selectedCamps.length > 0 && (
-              <button onClick={() => setSelectedCamps([])} className="text-xs text-primary hover:underline mt-2 block">
+              <button
+                type="button"
+                onClick={() => setSelectedCamps([])}
+                className="text-xs text-primary hover:underline mt-2 block"
+              >
                 Limpar seleção
               </button>
             )}
           </div>
 
           {selectedCamps.length === 0 && (
-            <div className="text-center text-muted-foreground py-12">
-              Selecione campanhas acima para visualizar os funis
+            <div className="text-center text-muted-foreground py-12">Selecione campanhas acima para visualizar</div>
+          )}
+
+          {selectedCamps.length === 1 && (
+            <div className="bg-card border border-border rounded-lg p-5">
+              <FunnelDisplay data={funnelPorCamp[0]?.data} title={funnelPorCamp[0]?.camp} />
             </div>
           )}
 
-          {selectedCamps.length === 1 && <FunnelDisplay data={funnelPorCamp[0]?.data} title={funnelPorCamp[0]?.camp} />}
-
           {selectedCamps.length >= 2 && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {/* Tabela comparativa */}
               <div className="bg-card border border-border rounded-lg overflow-hidden">
                 <div className="px-5 py-3 border-b border-border">
                   <h3 className="text-sm font-medium text-foreground">Comparação entre campanhas</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Meta: dados de investimento/tráfego por campanha · Receita: vendas atribuídas por UTM
+                  </p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">
-                        <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase">Métrica</th>
+                        <th className="px-4 py-3 text-left text-xs text-muted-foreground uppercase w-40">Métrica</th>
                         {funnelPorCamp.map(({ camp }) => (
                           <th key={camp} className="px-4 py-3 text-left text-xs text-primary uppercase">
                             {camp}
@@ -455,24 +478,38 @@ export default function FunnelPage() {
                     </thead>
                     <tbody>
                       {[
-                        { label: "Receita", key: "fatReal", fmt: formatCurrency },
-                        { label: "Vendas", key: "totalVendas", fmt: formatNumber },
                         { label: "Investimento", key: "investimento", fmt: formatCurrency },
+                        { label: "Faturamento", key: "fatReal", fmt: formatCurrency },
+                        { label: "Resultado", key: "resultado", fmt: formatCurrency },
+                        { label: "Vendas (UTM)", key: "totalVendas", fmt: (v: number) => String(Math.round(v)) },
                         { label: "ROAS", key: "roas", fmt: (v: number) => `${v.toFixed(2)}x` },
                         { label: "CPA", key: "cpa", fmt: formatCurrency },
                         { label: "Ticket Médio", key: "aov", fmt: formatCurrency },
-                        { label: "Taxa Vis→IC", key: "taxa_vis_ic", fmt: (v: number) => `${v.toFixed(1)}%` },
-                        { label: "Taxa IC→Venda", key: "taxa_ic_vendas", fmt: (v: number) => `${v.toFixed(1)}%` },
-                        { label: "Taxa Vis→Venda", key: "taxa_vis_vendas", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Impressões", key: "impressoes", fmt: formatNumber },
+                        { label: "Cliques", key: "cliques", fmt: formatNumber },
+                        { label: "Vis. de Página", key: "visualizacoes_pagina", fmt: formatNumber },
+                        { label: "ICs", key: "initiate_checkout", fmt: formatNumber },
                         { label: "Taxa Conexão", key: "taxa_carregamento", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Taxa IC", key: "taxa_vis_ic", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Conv. Checkout", key: "taxa_ic_vendas", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Vis→Vendas", key: "taxa_vis_vendas", fmt: (v: number) => `${v.toFixed(1)}%` },
                       ].map((row) => (
                         <tr key={row.label} className="border-b border-border/50 hover:bg-secondary/50">
-                          <td className="px-4 py-2 text-muted-foreground text-xs">{row.label}</td>
-                          {funnelPorCamp.map(({ camp, data }) => (
-                            <td key={camp} className="px-4 py-2 text-foreground font-medium">
-                              {data ? row.fmt(Number(data[row.key] || 0)) : "-"}
-                            </td>
-                          ))}
+                          <td className="px-4 py-2 text-muted-foreground text-xs font-medium">{row.label}</td>
+                          {funnelPorCamp.map(({ camp, data }) => {
+                            const val = data ? Number(data[row.key] || 0) : 0;
+                            // Highlight maior valor
+                            const vals = funnelPorCamp.map(({ data: d }) => (d ? Number(d[row.key] || 0) : 0));
+                            const isBest = val > 0 && val === Math.max(...vals);
+                            return (
+                              <td
+                                key={camp}
+                                className={cn("px-4 py-2 font-medium", isBest ? "text-green-400" : "text-foreground")}
+                              >
+                                {data ? row.fmt(val) : "-"}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -480,8 +517,8 @@ export default function FunnelPage() {
                 </div>
               </div>
 
-              {/* Funis individuais */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Funis lado a lado */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 {funnelPorCamp.map(({ camp, data }) => (
                   <div key={camp} className="bg-card border border-border rounded-lg p-5">
                     <FunnelDisplay data={data} title={camp} />
