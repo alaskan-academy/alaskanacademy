@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useFilters } from "@/contexts/FilterContext";
 import { subDays, format } from "date-fns";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PRODUCTS = [
@@ -16,6 +16,7 @@ const fmt = (d: Date) => format(d, "yyyy-MM-dd");
 export default function GlobalFilters() {
   const { datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr, product, setProduct } = useFilters();
   const [showPicker, setShowPicker] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [cs, setCs] = useState("");
   const [ce, setCe] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -52,6 +53,7 @@ export default function GlobalFilters() {
     if (cs && ce && cs <= ce) {
       setCustomRange(new Date(cs + "T00:00:00"), new Date(ce + "T00:00:00"));
       setShowPicker(false);
+      setShowMobileFilters(false);
     }
   };
 
@@ -63,20 +65,22 @@ export default function GlobalFilters() {
   const btns = [
     { key: "all", label: "Todos" },
     { key: "today", label: "Hoje" },
-    { key: "7d", label: "7 dias" },
-    { key: "30d", label: "30 dias" },
+    { key: "7d", label: "7d" },
+    { key: "30d", label: "30d" },
     { key: "custom", label: customLabel },
   ];
 
-  return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 relative">
+  const activeLabel = btns.find(b => b.key === datePreset)?.label || "Filtros";
+
+  const filterContent = (
+    <>
+      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 relative flex-wrap">
         {btns.map((b) => (
           <button
             key={b.key}
             onClick={() => handleQuick(b.key)}
             className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1",
+              "px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 whitespace-nowrap",
               datePreset === b.key
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -91,7 +95,7 @@ export default function GlobalFilters() {
           <div
             ref={pickerRef}
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-11 left-0 z-50 bg-card border border-border rounded-xl shadow-xl p-4 w-60"
+            className="absolute top-11 right-0 md:left-0 z-50 bg-card border border-border rounded-xl shadow-xl p-4 w-60"
           >
             <p className="text-xs font-semibold text-foreground mb-3">Período personalizado</p>
             <div className="space-y-2">
@@ -134,13 +138,13 @@ export default function GlobalFilters() {
         )}
       </div>
 
-      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
+      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 flex-wrap">
         {PRODUCTS.map((p) => (
           <button
             key={p.value}
-            onClick={() => setProduct(p.value)}
+            onClick={() => { setProduct(p.value); setShowMobileFilters(false); }}
             className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+              "px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
               product === p.value
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
@@ -150,6 +154,35 @@ export default function GlobalFilters() {
           </button>
         ))}
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop filters inline */}
+      <div className="hidden md:flex items-center gap-3">
+        {filterContent}
+      </div>
+
+      {/* Mobile: compact trigger button */}
+      <div className="md:hidden relative">
+        <button
+          onClick={() => setShowMobileFilters(o => !o)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-muted-foreground"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          {activeLabel}
+        </button>
+
+        {showMobileFilters && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setShowMobileFilters(false)} />
+            <div className="absolute top-10 right-0 z-40 bg-card border border-border rounded-xl shadow-xl p-3 flex flex-col gap-2 min-w-[280px]">
+              {filterContent}
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
