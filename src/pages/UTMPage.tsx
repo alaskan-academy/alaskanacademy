@@ -56,16 +56,14 @@ export default function UTMPage() {
       let q1 = supabase.from("vw_vendas_por_utm").select("*");
       if (pf) q1 = q1.eq("produto", pf);
 
-      let q2 = supabase.from("vw_vendas_por_placement").select("*");
-      if (pf) q2 = q2.eq("produto", pf);
+      const r1 = await q1;
+      const utmRows = r1.data || [];
+      setAllUtm(utmRows);
 
-      const [r1, r2] = await Promise.all([q1, q2]);
-      setAllUtm(r1.data || []);
-
-      // Agregar placement
+      // Agregar placement via utm_term
       const plMap: Record<string, any> = {};
-      (r2.data || []).forEach((r: any) => {
-        const k = r.placement;
+      utmRows.forEach((r: any) => {
+        const k = r.utm_term || "(vazio)";
         if (!plMap[k]) plMap[k] = { placement: k, vendas_aprovadas: 0, faturamento: 0 };
         plMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
         plMap[k].faturamento += Number(r.faturamento || 0);
