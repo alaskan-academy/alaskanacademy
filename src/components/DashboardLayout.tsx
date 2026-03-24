@@ -1,12 +1,15 @@
 import { ReactNode } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
+import { useSidebarState } from '@/contexts/SidebarContext';
 
 export function DashboardLayout({ children, title }: { children: ReactNode; title: string }) {
+  const { collapsed } = useSidebarState();
+
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
-      <div className="pl-56 transition-all duration-300">
+      <div className={`${collapsed ? 'pl-16' : 'pl-56'} transition-all duration-300`}>
         <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border px-6 py-4">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-semibold text-foreground">{title}</h1>
