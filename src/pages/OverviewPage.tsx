@@ -65,6 +65,7 @@ export default function OverviewPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const pf = product !== "todos" ? product : null;
+    const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
     // Faturamento
     let q1 = supabase.from("vw_faturamento_liquido").select("*");
@@ -84,7 +85,7 @@ export default function OverviewPage() {
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (startDateStr && endDateStr) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+    if (startDateStr && endDateEnd) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (pf) q4 = q4.eq("produto", pf);
 
     // Vendas pendentes + canceladas + expiradas (TODOS os não aprovados)
@@ -94,7 +95,7 @@ export default function OverviewPage() {
       .in("status", ["pendente", "cancelada", "expirada"])
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (startDateStr && endDateStr) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+    if (startDateStr && endDateEnd) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (pf) q5 = q5.eq("produto", pf);
 
     // Reembolsos/chargeback
@@ -116,7 +117,7 @@ export default function OverviewPage() {
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", ant.end);
+    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
     const [r1, r2, r3, r4, r5, r6, r7, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, qA1, qA2]);

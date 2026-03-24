@@ -64,6 +64,7 @@ export default function SalesPage() {
     const load = async () => {
       setLoading(true);
       const pf = product !== "todos" ? product : null;
+      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
       let qSales = supabase
         .from("vendas")
@@ -71,7 +72,7 @@ export default function SalesPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%")
         .order("data_venda", { ascending: false });
-      if (startDateStr && endDateStr) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (startDateStr && endDateEnd) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
       if (pf) qSales = qSales.eq("produto", pf);
       if (statusFilter !== "todos") qSales = qSales.eq("status", statusFilter);
 
@@ -85,7 +86,7 @@ export default function SalesPage() {
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
-      if (startDateStr && endDateStr) qP = qP.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (startDateStr && endDateEnd) qP = qP.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
       if (pf) qP = qP.eq("produto", pf);
 
       let qPay = supabase.from("vw_vendas_por_pagamento").select("*");

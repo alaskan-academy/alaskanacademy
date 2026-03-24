@@ -279,7 +279,7 @@ export default function FunnelPage() {
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
-      if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", `${endDateStr}T23:59:59`);
       if (pf) qV = qV.eq("produto", pf);
 
       // OBs e Upsells
