@@ -322,7 +322,7 @@ export default function OverviewPage() {
                 <Percent className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className={cn("text-2xl font-bold", margemBadge)}>{formatPercent(kpis.margemPct || 0)}</div>
-              <div className="text-xs text-muted-foreground mt-1">incl. custo fixo</div>
+              <div className="text-xs text-muted-foreground mt-1">margem operacional</div>
             </div>
             <KPICard
               title="Imposto Simples"
