@@ -3,13 +3,214 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+
+function calcFunnel(rows: any[], vendas: any[], obsRows: any[], upsells: any[]) {
+  if (!rows.length && !vendas.length) return null;
+  const agg = rows.reduce(
+    (acc: any, row: any) => {
+      acc.impressoes += Number(row.impressoes || 0);
+      acc.cliques += Number(row.cliques || 0);
+      acc.visualizacoes_pagina += Number(row.visualizacoes_pagina || 0);
+      acc.initiate_checkout += Number(row.initiate_checkout || 0);
+      acc.investimento += Number(row.investimento || 0);
+      acc.video_plays += Number(row.video_plays || 0);
+      acc.video_3s += Number(row.video_3s || 0);
+      acc.video_75pct += Number(row.video_75pct || 0);
+      return acc;
+    },
+    {
+      impressoes: 0,
+      cliques: 0,
+      visualizacoes_pagina: 0,
+      initiate_checkout: 0,
+      investimento: 0,
+      video_plays: 0,
+      video_3s: 0,
+      video_75pct: 0,
+    },
+  );
+
+  const totalVendas = vendas.length;
+  const fatReal = vendas.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0);
+  const fatPrincipal = vendas.reduce((s: number, v: any) => s + Number(v.valor_oferta_principal || 0), 0);
+  const inv = agg.investimento || 1;
+  const vis = agg.visualizacoes_pagina || 0;
+  const ic = agg.initiate_checkout || 0;
+  const clk = agg.cliques || 0;
+
+  return {
+    ...agg,
+    totalVendas,
+    fatReal,
+    fatPrincipal,
+    obsRows,
+    upsells,
+    resultado: fatReal - inv,
+    roas: inv > 0 ? fatReal / inv : 0,
+    cpa: totalVendas > 0 ? inv / totalVendas : 0,
+    cpv: vis > 0 ? inv / vis : 0,
+    aov: totalVendas > 0 ? fatReal / totalVendas : 0,
+    taxa_vis_vendas: vis > 0 ? (totalVendas / vis) * 100 : 0,
+    taxa_ic_vendas: ic > 0 ? (totalVendas / ic) * 100 : 0,
+    taxa_carregamento: clk > 0 ? (vis / clk) * 100 : 0,
+    taxa_vis_ic: vis > 0 ? (ic / vis) * 100 : 0,
+  };
+}
+
+function FunnelDisplay({ data, title }: { data: any; title?: string }) {
+  if (!data) return <div className="text-center text-muted-foreground py-8">Sem dados</div>;
+
+  const steps = [
+    { label: "Impressões", value: data.impressoes, color: "hsl(239,84%,67%)" },
+    { label: "Cliques", value: data.cliques, color: "hsl(239,84%,60%)" },
+    { label: "Visualizações Pág.", value: data.visualizacoes_pagina, color: "hsl(239,84%,53%)" },
+    { label: "ICs", value: data.initiate_checkout, color: "hsl(239,84%,46%)" },
+    { label: "Vendas", value: data.totalVendas, color: "hsl(160,60%,45%)" },
+  ];
+  const maxV = Math.max(...steps.map((s) => s.value), 1);
+  const totalBreakdown = data.fatReal || 1;
+
+  const metric = (label: string, value: string) => (
+    <div className="bg-secondary/50 rounded-lg p-3">
+      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className="text-sm font-semibold text-foreground">{value}</div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {title && <h3 className="text-sm font-medium text-primary">{title}</h3>}
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: "Investimento", value: formatCurrency(data.investimento), color: "" },
+          { label: "Faturamento", value: formatCurrency(data.fatReal), color: "" },
+          {
+            label: "Resultado",
+            value: formatCurrency(data.resultado),
+            color: data.resultado >= 0 ? "text-success" : "text-destructive",
+          },
+          {
+            label: "ROAS",
+            value: `${data.roas.toFixed(2)}x`,
+            color: data.roas >= 3 ? "text-success" : data.roas >= 1 ? "text-warning" : "text-destructive",
+          },
+          { label: "Vendas", value: formatNumber(data.totalVendas), color: "" },
+          { label: "CPA", value: formatCurrency(data.cpa), color: "" },
+          { label: "CPV", value: formatCurrency(data.cpv), color: "" },
+          { label: "AOV", value: formatCurrency(data.aov), color: "" },
+        ].map((k) => (
+          <div key={k.label} className="bg-card border border-border rounded-lg p-3">
+            <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
+            <div className={cn("text-lg font-bold", k.color || "text-foreground")}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Funil visual */}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <h4 className="text-xs font-medium text-muted-foreground mb-4">Funil</h4>
+          <div className="space-y-2">
+            {steps.map((step, i) => {
+              const w = Math.max((step.value / maxV) * 100, 4);
+              const prev = steps[i - 1];
+              const taxa = prev && prev.value > 0 ? ((step.value / prev.value) * 100).toFixed(1) : null;
+              return (
+                <div key={step.label}>
+                  {taxa && <div className="text-xs text-muted-foreground text-center mb-1">↓ {taxa}%</div>}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-28 text-right shrink-0">{step.label}</span>
+                    <div className="flex-1">
+                      <div
+                        className="h-8 rounded-md flex items-center px-2"
+                        style={{ width: `${w}%`, backgroundColor: step.color }}
+                      >
+                        <span className="text-xs font-semibold text-white">{formatNumber(step.value)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Breakdown */}
+        <div className="bg-card border border-border rounded-lg p-5">
+          <h4 className="text-xs font-medium text-muted-foreground mb-4">Breakdown de Vendas</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between py-1 border-b border-border/50">
+              <span className="text-foreground font-medium">Oferta principal</span>
+              <div className="text-right">
+                <div className="font-semibold text-foreground">{formatCurrency(data.fatPrincipal)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {((data.fatPrincipal / totalBreakdown) * 100).toFixed(1)}%
+                </div>
+              </div>
+            </div>
+            {(data.obsRows || []).map((ob: any, i: number) => (
+              <div key={i} className="flex justify-between py-1 border-b border-border/50">
+                <div>
+                  <span className="text-foreground">{ob.nome_ob}</span>
+                  <span className="text-xs px-1 py-0.5 rounded bg-primary/20 text-primary ml-1">
+                    {formatPercent(ob.taxa_conversao_pct || 0)}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <div className="text-foreground">{formatCurrency(ob.receita_total_ob || 0)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {(((ob.receita_total_ob || 0) / totalBreakdown) * 100).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(data.upsells || []).map((up: any, i: number) => (
+              <div key={i} className="flex justify-between py-1 border-b border-border/50">
+                <div>
+                  <span className="text-foreground">{up.nome_upsell}</span>
+                  <span className="text-xs px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400 ml-1">
+                    {formatPercent(up.taxa_conversao_pct || 0)}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <div className="text-foreground">{formatCurrency(up.receita_total || 0)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {(((up.receita_total || 0) / totalBreakdown) * 100).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-between pt-1 font-semibold">
+              <span className="text-foreground">Total</span>
+              <span className="text-foreground">{formatCurrency(data.fatReal)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Métricas */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {metric("Taxa Conexão", formatPercent(data.taxa_carregamento))}
+        {metric("Taxa IC", formatPercent(data.taxa_vis_ic))}
+        {metric("Conv. Checkout", formatPercent(data.taxa_ic_vendas))}
+        {metric("Vis→Vendas", formatPercent(data.taxa_vis_vendas))}
+      </div>
+    </div>
+  );
+}
 
 export default function FunnelPage() {
   const { startDateStr, endDateStr, product } = useFilters();
-  const [data, setData] = useState<any>(null);
-  const [obsDetail, setObsDetail] = useState<any[]>([]);
-  const [upsellDetail, setUpsellDetail] = useState<any[]>([]);
+  const [allFunil, setAllFunil] = useState<any[]>([]);
+  const [allVendas, setAllVendas] = useState<any[]>([]);
+  const [obsData, setObsData] = useState<any[]>([]);
+  const [upsellData, setUpsellData] = useState<any[]>([]);
+  const [campanhas, setCampanhas] = useState<string[]>([]);
+  const [selectedCamps, setSelectedCamps] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,109 +222,61 @@ export default function FunnelPage() {
       if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
       if (pf) q1 = q1.eq("produto", pf);
 
-      // OBs e upsells com taxa relativa ao produto
-      let q2 = supabase.from("vw_conversao_obs").select("*");
-      if (pf) q2 = q2.eq("produto", pf);
-
-      let q3 = supabase.from("vw_conversao_upsell").select("*");
-      if (pf) q3 = q3.eq("produto", pf);
-
-      let q4 = supabase
+      let q2 = supabase
         .from("vendas")
-        .select("valor_total, valor_oferta_principal, valor_obs, produto")
+        .select("valor_total, valor_oferta_principal, valor_obs, produto, utm_campaign")
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
-      if (startDateStr && endDateStr) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (startDateStr && endDateStr) q2 = q2.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (pf) q2 = q2.eq("produto", pf);
+
+      let q3 = supabase.from("vw_conversao_obs").select("*");
+      if (pf) q3 = q3.eq("produto", pf);
+
+      let q4 = supabase.from("vw_conversao_upsell").select("*");
       if (pf) q4 = q4.eq("produto", pf);
 
-      const [r1, r2, r3, r4] = await Promise.all([q1, q2, q3, q4]);
+      // Campanhas disponíveis para filtro
+      let q5 = supabase.from("metricas_meta").select("campanha_nome").eq("nivel", "campanha");
+      if (startDateStr && endDateStr) q5 = q5.gte("data", startDateStr).lte("data", endDateStr);
+      if (pf) q5 = q5.eq("produto", pf);
 
-      const rows = r1.data || [];
-      if (rows.length === 0) {
-        setData(null);
-        setLoading(false);
-        return;
-      }
+      const [r1, r2, r3, r4, r5] = await Promise.all([q1, q2, q3, q4, q5]);
 
-      const agg = rows.reduce(
-        (acc: any, row: any) => {
-          acc.impressoes += Number(row.impressoes || 0);
-          acc.cliques += Number(row.cliques || 0);
-          acc.cliques_link += Number(row.cliques_link || 0);
-          acc.visualizacoes_pagina += Number(row.visualizacoes_pagina || 0);
-          acc.initiate_checkout += Number(row.initiate_checkout || 0);
-          acc.compras_meta += Number(row.compras_meta || 0);
-          acc.investimento += Number(row.investimento || 0);
-          acc.faturamento_atribuido += Number(row.faturamento_atribuido || 0);
-          acc.video_plays += Number(row.video_plays || 0);
-          acc.video_3s += Number(row.video_3s || 0);
-          acc.video_75pct += Number(row.video_75pct || 0);
-          acc.vendas_aprovadas += Number(row.vendas_aprovadas || 0);
-          acc.faturamento_principal += Number(row.faturamento_principal || 0);
-          acc.faturamento_obs += Number(row.faturamento_obs || 0);
-          acc.faturamento_total += Number(row.faturamento_total || 0);
-          acc.obs_convertidos += Number(row.obs_convertidos || 0);
-          return acc;
-        },
-        {
-          impressoes: 0,
-          cliques: 0,
-          cliques_link: 0,
-          visualizacoes_pagina: 0,
-          initiate_checkout: 0,
-          compras_meta: 0,
-          investimento: 0,
-          faturamento_atribuido: 0,
-          video_plays: 0,
-          video_3s: 0,
-          video_75pct: 0,
-          vendas_aprovadas: 0,
-          faturamento_principal: 0,
-          faturamento_obs: 0,
-          faturamento_total: 0,
-          obs_convertidos: 0,
-        },
-      );
+      setAllFunil(r1.data || []);
+      setAllVendas(r2.data || []);
+      setObsData((r3.data || []).filter((r: any) => r.total_convertidos > 0));
+      setUpsellData((r4.data || []).filter((r: any) => r.total_upsells > 0));
 
-      const vendasReais = r4.data || [];
-      const totalVendas = vendasReais.length;
-      const fatReal = vendasReais.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0);
-      const fatPrincipal = vendasReais.reduce((s: number, v: any) => s + Number(v.valor_oferta_principal || 0), 0);
-
-      const inv = agg.investimento || 1;
-      const vis = agg.visualizacoes_pagina || 0;
-      const ic = agg.initiate_checkout || 0;
-      const clk = agg.cliques || 0;
-
-      setData({
-        ...agg,
-        totalVendas,
-        fatReal,
-        fatPrincipal,
-        resultado: fatReal - inv,
-        margem: fatReal > 0 ? ((fatReal - inv) / fatReal) * 100 : 0,
-        roas: inv > 0 ? fatReal / inv : 0,
-        cpa: totalVendas > 0 ? inv / totalVendas : 0,
-        cpv: vis > 0 ? inv / vis : 0,
-        epc: clk > 0 ? fatReal / clk : 0,
-        aov: totalVendas > 0 ? fatReal / totalVendas : 0,
-        taxa_vis_vendas: vis > 0 ? (totalVendas / vis) * 100 : 0,
-        taxa_ic_vendas: ic > 0 ? (totalVendas / ic) * 100 : 0,
-        taxa_carregamento: clk > 0 ? (vis / clk) * 100 : 0,
-        taxa_vis_ic: vis > 0 ? (ic / vis) * 100 : 0,
-        taxa_video_3s: agg.impressoes > 0 ? (agg.video_3s / agg.impressoes) * 100 : 0,
-        taxa_video_75: agg.video_plays > 0 ? (agg.video_75pct / agg.video_plays) * 100 : 0,
-        taxa_compras_v75: agg.video_75pct > 0 ? (totalVendas / agg.video_75pct) * 100 : 0,
-        epc_cpv: (clk > 0 ? fatReal / clk : 0) - (vis > 0 ? inv / vis : 0),
-      });
-
-      setObsDetail(r2.data || []);
-      setUpsellDetail(r3.data || []);
+      const camps = [...new Set((r5.data || []).map((r: any) => r.campanha_nome).filter(Boolean))].sort();
+      setCampanhas(camps as string[]);
       setLoading(false);
     };
     load();
   }, [startDateStr, endDateStr, product]);
+
+  // Funil geral
+  const funnelGeral = calcFunnel(allFunil, allVendas, obsData, upsellData);
+
+  // Funil por campanha selecionada (A/B test)
+  const funnelPorCamp = selectedCamps.map((camp) => {
+    const cleanCamp = (s: string) => s.split("|")[0].trim();
+    const metaRows = allFunil.filter((r: any) => {
+      // vw_funil não tem campanha_nome, comparar via metricas_meta
+      return true; // será filtrado via utm_campaign nas vendas
+    });
+    // Para vendas: filtrar por utm_campaign
+    const vendasCamp = allVendas.filter((v: any) => {
+      const utm = v.utm_campaign ? cleanCamp(v.utm_campaign) : "";
+      return utm === cleanCamp(camp) || v.utm_campaign === camp;
+    });
+    return { camp, data: calcFunnel(allFunil, vendasCamp, obsData, upsellData) };
+  });
+
+  const toggleCamp = (c: string) => {
+    setSelectedCamps((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  };
 
   if (loading)
     return (
@@ -131,212 +284,137 @@ export default function FunnelPage() {
         <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>
       </DashboardLayout>
     );
-  if (!data)
-    return (
-      <DashboardLayout title="Funil">
-        <div className="flex items-center justify-center h-64 text-muted-foreground">
-          Nenhum dado encontrado para o período
-        </div>
-      </DashboardLayout>
-    );
-
-  const funnelSteps = [
-    { label: "Impressões", value: data.impressoes, color: "hsl(239,84%,67%)" },
-    { label: "Cliques", value: data.cliques, color: "hsl(239,84%,60%)" },
-    { label: "Visualizações Pág.", value: data.visualizacoes_pagina, color: "hsl(239,84%,53%)" },
-    { label: "ICs (Checkout)", value: data.initiate_checkout, color: "hsl(239,84%,46%)" },
-    { label: "Vendas Aprovadas", value: data.totalVendas, color: "hsl(160,60%,45%)" },
-    { label: "OBs Convertidos", value: data.obs_convertidos, color: "hsl(160,60%,38%)" },
-  ];
-  const maxFunnel = Math.max(...funnelSteps.map((s) => s.value), 1);
-
-  // Breakdown de vendas
-  const totalBreakdown = data.fatReal || 1;
-  const obsTotal = obsDetail.reduce((s: number, o: any) => s + Number(o.receita_total_ob || 0), 0);
-  const upsellTotal = upsellDetail.reduce((s: number, u: any) => s + Number(u.receita_total || 0), 0);
-
-  const metric = (label: string, value: string, sub?: string) => (
-    <div className="bg-secondary/50 rounded-lg p-3">
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
-      <div className="text-sm font-semibold text-foreground">{value}</div>
-      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
-    </div>
-  );
 
   return (
     <DashboardLayout title="Funil">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: "Investimento", value: formatCurrency(data.investimento), color: "" },
-          { label: "Faturamento", value: formatCurrency(data.fatReal), color: "" },
-          {
-            label: "Resultado",
-            value: formatCurrency(data.resultado),
-            color: data.resultado >= 0 ? "text-success" : "text-destructive",
-          },
-          { label: "Vendas", value: formatNumber(data.totalVendas), color: "" },
-          {
-            label: "ROAS",
-            value: `${data.roas.toFixed(2)}x`,
-            color: data.roas >= 3 ? "text-success" : data.roas >= 1 ? "text-warning" : "text-destructive",
-          },
-          { label: "CPA", value: formatCurrency(data.cpa), color: "" },
-          {
-            label: "Margem",
-            value: `${data.margem.toFixed(1)}%`,
-            color: data.margem >= 30 ? "text-success" : data.margem >= 15 ? "text-warning" : "text-destructive",
-          },
-          {
-            label: "Lucro",
-            value: formatCurrency(data.resultado),
-            color: data.resultado >= 0 ? "text-success" : "text-destructive",
-          },
-        ].map((k) => (
-          <div key={k.label} className="bg-card border border-border rounded-lg p-4">
-            <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
-            <div className={cn("text-xl font-bold", k.color || "text-foreground")}>{k.value}</div>
-          </div>
-        ))}
-      </div>
+      <Tabs defaultValue="geral">
+        <TabsList className="bg-secondary border border-border mb-4">
+          <TabsTrigger
+            value="geral"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            Geral
+          </TabsTrigger>
+          <TabsTrigger
+            value="campanha"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            Por Campanha / A/B
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Funil visual */}
-        <div className="bg-card border border-border rounded-lg p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-5">Funil de Conversão</h3>
-          <div className="space-y-2">
-            {funnelSteps.map((step, i) => {
-              const width = Math.max((step.value / maxFunnel) * 100, 4);
-              const prev = funnelSteps[i - 1];
-              const taxa = prev && prev.value > 0 ? ((step.value / prev.value) * 100).toFixed(1) : null;
-              return (
-                <div key={step.label}>
-                  {taxa && <div className="text-xs text-muted-foreground text-center mb-1">↓ {taxa}%</div>}
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground w-36 text-right shrink-0">{step.label}</span>
-                    <div className="flex-1">
-                      <div
-                        className="h-9 rounded-md flex items-center px-3"
-                        style={{ width: `${width}%`, backgroundColor: step.color }}
-                      >
-                        <span className="text-xs font-semibold text-white whitespace-nowrap">
-                          {formatNumber(step.value)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* ── Funil Geral ─────────────────────────────────── */}
+        <TabsContent value="geral">
+          {funnelGeral ? (
+            <FunnelDisplay data={funnelGeral} />
+          ) : (
+            <div className="flex items-center justify-center h-64 text-muted-foreground">Sem dados para o período</div>
+          )}
+        </TabsContent>
 
-        {/* Breakdown de vendas com % */}
-        <div className="bg-card border border-border rounded-lg p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-4">Breakdown de Vendas</h3>
-          <div className="space-y-2 text-sm">
-            {/* Oferta principal */}
-            <div className="flex justify-between items-center py-2 border-b border-border/50">
-              <div>
-                <span className="text-foreground font-medium">Oferta principal</span>
-                <span className="text-xs text-muted-foreground ml-2">{data.totalVendas} vendas</span>
-              </div>
-              <div className="text-right">
-                <div className="font-semibold text-foreground">{formatCurrency(data.fatPrincipal)}</div>
-                <div className="text-xs text-muted-foreground">
-                  {((data.fatPrincipal / totalBreakdown) * 100).toFixed(1)}%
-                </div>
-              </div>
+        {/* ── Por Campanha / A/B ───────────────────────────── */}
+        <TabsContent value="campanha">
+          {/* Seletor de campanhas */}
+          <div className="bg-card border border-border rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-medium text-foreground mb-3">
+              Selecione campanhas para comparar
+              <span className="text-xs text-muted-foreground ml-2">({selectedCamps.length} selecionada(s))</span>
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {campanhas.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => toggleCamp(c)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors",
+                    selectedCamps.includes(c)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-secondary text-muted-foreground border-border hover:text-foreground",
+                  )}
+                >
+                  {c}
+                </button>
+              ))}
+              {campanhas.length === 0 && (
+                <span className="text-xs text-muted-foreground">Nenhuma campanha encontrada</span>
+              )}
             </div>
-            {/* OBs */}
-            {obsDetail.map((ob, i) => (
-              <div key={i} className="flex justify-between items-center py-2 border-b border-border/50">
-                <div>
-                  <span className="text-foreground">{ob.nome_ob}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary ml-2">
-                    {formatPercent(ob.taxa_conversao_pct || 0)}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium text-foreground">{formatCurrency(ob.receita_total_ob || 0)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {(((ob.receita_total_ob || 0) / totalBreakdown) * 100).toFixed(1)}% ·{" "}
-                    {formatNumber(ob.total_convertidos || 0)} conv.
-                  </div>
-                </div>
-              </div>
-            ))}
-            {/* Upsells */}
-            {upsellDetail.map((up, i) => (
-              <div key={i} className="flex justify-between items-center py-2 border-b border-border/50">
-                <div>
-                  <span className="text-foreground">{up.nome_upsell}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 ml-2">
-                    {formatPercent(up.taxa_conversao_pct || 0)}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium text-foreground">{formatCurrency(up.receita_total || 0)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {(((up.receita_total || 0) / totalBreakdown) * 100).toFixed(1)}% ·{" "}
-                    {formatNumber(up.total_upsells || 0)} conv.
-                  </div>
-                </div>
-              </div>
-            ))}
-            <div className="flex justify-between items-center pt-2 font-semibold border-t border-border">
-              <span className="text-foreground">Total</span>
-              <span className="text-foreground">{formatCurrency(data.fatReal)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Métricas detalhadas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card border border-border rounded-lg p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-4">Métricas de Tráfego</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {metric("Cliques", formatNumber(data.cliques))}
-            {metric("Visualizações Pág.", formatNumber(data.visualizacoes_pagina))}
-            {metric("CPV", formatCurrency(data.cpv), "custo por visitante")}
-            {metric("Taxa de Conexão", formatPercent(data.taxa_carregamento), "vis. pág / cliques")}
-            {metric("ICs", formatNumber(data.initiate_checkout))}
-            {metric(
-              "Custo por IC",
-              formatCurrency(
-                data.investimento > 0 && data.initiate_checkout > 0 ? data.investimento / data.initiate_checkout : 0,
-              ),
+            {selectedCamps.length > 0 && (
+              <button onClick={() => setSelectedCamps([])} className="text-xs text-primary hover:underline mt-2">
+                Limpar seleção
+              </button>
             )}
-            {metric("Taxa IC", formatPercent(data.taxa_vis_ic), "ICs / vis. pág")}
-            {metric("Conv. Checkout", formatPercent(data.taxa_ic_vendas), "vendas / ICs")}
           </div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-4">Métricas de Conversão</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {metric("CPA", formatCurrency(data.cpa))}
-            {metric("EPC", formatCurrency(data.epc), "receita por clique")}
-            {metric("AOV", formatCurrency(data.aov), "ticket médio")}
-            {metric("EPC - CPV", formatCurrency(data.epc_cpv))}
-            {metric("Vis→Vendas", formatPercent(data.taxa_vis_vendas), "vendas / vis. pág")}
-            {metric("IC→Vendas", formatPercent(data.taxa_ic_vendas), "conv. checkout")}
-            {metric("Vis→IC", formatPercent(data.taxa_vis_ic), "taxa de IC")}
-            {metric("Carregamento", formatPercent(data.taxa_carregamento), "vis. pág / cliques")}
-          </div>
-        </div>
-        {data.video_plays > 0 && (
-          <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Métricas de Vídeo</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {metric("Vídeos Iniciados", formatNumber(data.video_plays))}
-              {metric("Vídeos 3s", formatNumber(data.video_3s), `${data.taxa_video_3s.toFixed(1)}% das impressões`)}
-              {metric("Vídeos 75%", formatNumber(data.video_75pct), `${data.taxa_video_75.toFixed(1)}% dos iniciados`)}
-              {metric("Compras / V75%", formatPercent(data.taxa_compras_v75))}
+
+          {selectedCamps.length === 0 && (
+            <div className="text-center text-muted-foreground py-12">
+              Selecione uma ou mais campanhas acima para visualizar o funil
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {/* Comparação lado a lado */}
+          {selectedCamps.length === 1 && <FunnelDisplay data={funnelPorCamp[0]?.data} title={funnelPorCamp[0]?.camp} />}
+
+          {selectedCamps.length >= 2 && (
+            <div className="space-y-8">
+              {/* Tabela comparativa */}
+              <div className="bg-card border border-border rounded-lg overflow-hidden">
+                <div className="px-5 py-3 border-b border-border">
+                  <h3 className="text-sm font-medium text-foreground">Comparação entre campanhas</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                          Métrica
+                        </th>
+                        {funnelPorCamp.map(({ camp }) => (
+                          <th
+                            key={camp}
+                            className="px-4 py-3 text-left text-xs font-medium text-primary uppercase max-w-32 truncate"
+                          >
+                            {camp}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: "Receita", key: "fatReal", fmt: formatCurrency },
+                        { label: "Vendas", key: "totalVendas", fmt: formatNumber },
+                        { label: "Investimento", key: "investimento", fmt: formatCurrency },
+                        { label: "ROAS", key: "roas", fmt: (v: number) => `${v.toFixed(2)}x` },
+                        { label: "CPA", key: "cpa", fmt: formatCurrency },
+                        { label: "Ticket Médio", key: "aov", fmt: formatCurrency },
+                        { label: "Taxa Vis→Checkout", key: "taxa_vis_ic", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Taxa Checkout→Venda", key: "taxa_ic_vendas", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Taxa Vis→Venda", key: "taxa_vis_vendas", fmt: (v: number) => `${v.toFixed(1)}%` },
+                        { label: "Taxa Conexão", key: "taxa_carregamento", fmt: (v: number) => `${v.toFixed(1)}%` },
+                      ].map((row) => (
+                        <tr key={row.label} className="border-b border-border/50 hover:bg-secondary/50">
+                          <td className="px-4 py-2 text-muted-foreground text-xs">{row.label}</td>
+                          {funnelPorCamp.map(({ camp, data }) => (
+                            <td key={camp} className="px-4 py-2 text-foreground font-medium">
+                              {data ? row.fmt(Number(data[row.key] || 0)) : "-"}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {/* Funis individuais */}
+              {funnelPorCamp.map(({ camp, data }) => (
+                <div key={camp} className="bg-card border border-border rounded-lg p-5">
+                  <FunnelDisplay data={data} title={camp} />
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </DashboardLayout>
   );
 }
