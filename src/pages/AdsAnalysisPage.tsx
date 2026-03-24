@@ -103,6 +103,7 @@ export default function AdsAnalysisPage() {
           video_plays: Number(r.video_plays || 0),
           video_3s: Number(r.video_3s || 0),
           video_75pct: Number(r.video_75pct || 0),
+          hook_rate: 0,
           lucro: 0,
         });
       }
