@@ -72,7 +72,7 @@ export default function SalesPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%")
         .order("data_venda", { ascending: false });
-      if (startDateStr && endDateStr) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (startDateStr && endDateEnd) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
       if (pf) qSales = qSales.eq("produto", pf);
       if (statusFilter !== "todos") qSales = qSales.eq("status", statusFilter);
 
