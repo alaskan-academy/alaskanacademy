@@ -19,8 +19,8 @@ export default function MetaAdsPage() {
     const fetch = async () => {
       setLoading(true);
       let q = supabase.from('vw_metricas_meta_nivel').select('*')
-        .eq('nivel', level)
-        .gte('data', startDateStr).lte('data', endDateStr);
+        .eq('nivel', level);
+      if (startDateStr && endDateStr) q = q.gte('data', startDateStr).lte('data', endDateStr);
       if (product !== 'todos') q = q.eq('produto', product);
       q = q.order(sortCol, { ascending: sortDir === 'asc' });
 

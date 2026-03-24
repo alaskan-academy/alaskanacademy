@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Award, Settings, ChevronLeft, ChevronRight, Mountain
+  Users, Award, Settings, ChevronLeft, ChevronRight, Mountain, Link2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ const navItems = [
   { path: '/meta-ads', label: 'Meta Ads', icon: TrendingUp },
   { path: '/funil', label: 'Funil', icon: Filter },
   { path: '/vendas', label: 'Vendas', icon: ShoppingCart },
+  { path: '/utm', label: 'Análise UTM', icon: Link2 },
   { path: '/clientes', label: 'Clientes', icon: Users },
   { path: '/editores', label: 'Editores', icon: Award },
   { path: '/configuracoes', label: 'Configurações', icon: Settings },
