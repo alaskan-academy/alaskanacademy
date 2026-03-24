@@ -17,57 +17,11 @@ import {
   BadgeDollarSign,
   CreditCard,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
 import { cn } from "@/lib/utils";
-
-const COLORS = ["hsl(239,84%,67%)", "hsl(160,60%,45%)", "hsl(38,92%,50%)", "hsl(0,72%,51%)", "hsl(280,65%,60%)"];
-
-const chartTooltipStyle = {
-  contentStyle: {
-    backgroundColor: "hsl(0,0%,10%)",
-    border: "1px solid hsl(0,0%,16%)",
-    borderRadius: "8px",
-    color: "#fff",
-  },
-  labelStyle: { color: "#aaa" },
-};
-
-const paymentLabels: Record<string, string> = {
-  pix: "Pix",
-  cartao_credito: "Cartão de Crédito",
-  boleto: "Boleto",
-  desconhecido: "Desconhecido",
-};
-
-const placementLabels: Record<string, string> = {
-  feed: "Feed",
-  stories: "Stories",
-  reels: "Reels",
-  marketplace: "Marketplace",
-  search: "Search",
-  audience_network: "Audience Network",
-  messenger: "Messenger",
-  outro: "Outro",
-};
 
 export default function OverviewPage() {
   const { startDateStr, endDateStr, product } = useFilters();
   const [kpis, setKpis] = useState<any>({});
-  const [temporal, setTemporal] = useState<any[]>([]);
-  const [byPayment, setByPayment] = useState<any[]>([]);
-  const [byPlacement, setByPlacement] = useState<any[]>([]);
-  const [byProduct, setByProduct] = useState<any[]>([]);
   const [obsData, setObsData] = useState<any[]>([]);
   const [upsellData, setUpsellData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,16 +41,6 @@ export default function OverviewPage() {
       let q3 = supabase.from("vw_conversao_upsell").select("*");
       if (productFilter) q3 = q3.eq("produto", productFilter);
 
-      let q4 = supabase.from("vw_vendas_temporal").select("*");
-      if (startDateStr && endDateStr) q4 = q4.gte("data", startDateStr).lte("data", endDateStr);
-      if (productFilter) q4 = q4.eq("produto", productFilter);
-
-      let q5 = supabase.from("vw_vendas_por_pagamento").select("*");
-      if (productFilter) q5 = q5.eq("produto", productFilter);
-
-      let q6 = supabase.from("vw_vendas_por_placement").select("*");
-      if (productFilter) q6 = q6.eq("produto", productFilter);
-
       let q7 = supabase
         .from("vendas")
         .select("valor_total,produto")
@@ -115,7 +59,7 @@ export default function OverviewPage() {
       if (startDateStr && endDateStr) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
       if (productFilter) q8 = q8.eq("produto", productFilter);
 
-      const [r1, r2, r3, r4, r5, r6, r7, r8] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, q8]);
+      const [r1, r2, r3, r7, r8] = await Promise.all([q1, q2, q3, q7, q8]);
 
       const fatRows = r1.data || [];
       const fatLiquido = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_liquido || 0), 0);
@@ -173,58 +117,6 @@ export default function OverviewPage() {
         pendentesQtd: pendentes.length,
         pendentesValor,
       });
-
-      // Faturamento por dia: dataLabel = DD (ex: "23")
-      setTemporal(
-        (r4.data || []).map((r: any) => ({
-          ...r,
-          dataLabel: String(new Date(r.data + "T00:00:00").getDate()).padStart(2, "0"),
-        })),
-      );
-
-      // Pagamento: agregar por meio_pagamento (eliminar duplicatas por produto)
-      const payMap: Record<string, any> = {};
-      (r5.data || []).forEach((r: any) => {
-        const k = r.meio_pagamento;
-        if (!payMap[k])
-          payMap[k] = {
-            meio_pagamento: k,
-            aprovadas: 0,
-            faturamento: 0,
-            total_tentativas: 0,
-            canceladas: 0,
-            expiradas: 0,
-          };
-        payMap[k].aprovadas += Number(r.aprovadas || 0);
-        payMap[k].faturamento += Number(r.faturamento || 0);
-        payMap[k].total_tentativas += Number(r.total_tentativas || 0);
-        payMap[k].canceladas += Number(r.canceladas || 0);
-        payMap[k].expiradas += Number(r.expiradas || 0);
-      });
-      setByPayment(
-        Object.values(payMap).map((r: any) => ({
-          ...r,
-          taxa_aprovacao_pct: r.total_tentativas > 0 ? ((r.aprovadas / r.total_tentativas) * 100).toFixed(1) : "0.0",
-        })),
-      );
-
-      // Placement: agregar por placement
-      const plMap: Record<string, any> = {};
-      (r6.data || []).forEach((r: any) => {
-        const k = r.placement;
-        if (!plMap[k]) plMap[k] = { placement: k, vendas_aprovadas: 0, faturamento: 0 };
-        plMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
-        plMap[k].faturamento += Number(r.faturamento || 0);
-      });
-      setByPlacement(Object.values(plMap).sort((a, b) => b.faturamento - a.faturamento));
-
-      const prodMap: Record<string, number> = {};
-      (r7.data || []).forEach((v: any) => {
-        const p = v.produto || "Outros";
-        prodMap[p] = (prodMap[p] || 0) + Number(v.valor_total || 0);
-      });
-      setByProduct(Object.entries(prodMap).map(([name, value]) => ({ name, value })));
-
       setLoading(false);
     };
     fetchData();
@@ -286,7 +178,7 @@ export default function OverviewPage() {
             />
           </div>
 
-          {/* Linha 3 — Taxa Payt calculada */}
+          {/* Linha 3 */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <div className="bg-card rounded-lg border border-border p-5 transition-colors hover:border-primary/30">
               <div className="flex items-center justify-between mb-3">
@@ -365,7 +257,7 @@ export default function OverviewPage() {
           </div>
 
           {/* Tabelas de Conversão */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-card border border-border rounded-lg overflow-hidden">
               <h3 className="text-sm font-medium text-muted-foreground px-5 pt-5 mb-3">Conversão OBs</h3>
               <table className="w-full text-sm">
@@ -427,117 +319,6 @@ export default function OverviewPage() {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          {/* Gráficos */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Faturamento por Dia — colunas, eixo X = DD */}
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-4">Faturamento por Dia</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={temporal}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                  <XAxis dataKey="dataLabel" stroke="#555" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#555" tick={{ fontSize: 11 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    {...chartTooltipStyle}
-                    formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
-                    labelFormatter={(l) => `Dia ${l}`}
-                  />
-                  <Bar dataKey="faturamento" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Faturamento por Produto */}
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-4">Faturamento por Produto</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={byProduct}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {byProduct.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    {...chartTooltipStyle}
-                    formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Vendas por Pagamento — lista com taxa de aprovação */}
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por Meio de Pagamento</h3>
-              <div className="space-y-1">
-                {byPayment.map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-3 border-b border-border/50 last:border-0"
-                  >
-                    <div>
-                      <span className="text-sm font-medium text-foreground">
-                        {paymentLabels[r.meio_pagamento] || r.meio_pagamento}
-                      </span>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {formatNumber(r.aprovadas)} aprovadas · {formatNumber(r.total_tentativas)} tentativas
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-foreground">{formatCurrency(r.faturamento)}</div>
-                      <div
-                        className={cn(
-                          "text-xs font-medium",
-                          Number(r.taxa_aprovacao_pct) >= 70
-                            ? "text-green-400"
-                            : Number(r.taxa_aprovacao_pct) >= 50
-                              ? "text-yellow-400"
-                              : "text-red-400",
-                        )}
-                      >
-                        {Number(r.taxa_aprovacao_pct).toFixed(1)}% aprovação
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {byPayment.length === 0 && <div className="text-center text-muted-foreground py-8">Sem dados</div>}
-              </div>
-            </div>
-
-            {/* Vendas por Placement — lista */}
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por Placement</h3>
-              <div className="space-y-1">
-                {byPlacement.map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between py-3 border-b border-border/50 last:border-0"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                      />
-                      <span className="text-sm text-foreground">{placementLabels[r.placement] || r.placement}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-foreground">{formatCurrency(r.faturamento)}</div>
-                      <div className="text-xs text-muted-foreground">{formatNumber(r.vendas_aprovadas)} vendas</div>
-                    </div>
-                  </div>
-                ))}
-                {byPlacement.length === 0 && <div className="text-center text-muted-foreground py-8">Sem dados</div>}
-              </div>
             </div>
           </div>
         </>
