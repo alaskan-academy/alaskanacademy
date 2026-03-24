@@ -210,7 +210,7 @@ export default function OverviewPage() {
           </div>
 
           {/* Margem Detalhada */}
-          <div className="bg-card border border-border rounded-lg p-5 mb-6 max-w-md">
+          <div className="bg-card border border-border rounded-lg p-5 mb-6">
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Margem Detalhada</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
