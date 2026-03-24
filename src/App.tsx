@@ -21,6 +21,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <FilterProvider>
+        <SidebarProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<OverviewPage />} />
