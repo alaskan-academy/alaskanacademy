@@ -282,11 +282,11 @@ export default function FunnelPage() {
       if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", `${endDateStr}T23:59:59`);
       if (pf) qV = qV.eq("produto", pf);
 
-      // OBs e Upsells
-      let qO = supabase.from("vw_conversao_obs").select("*");
-      if (pf) qO = qO.eq("produto", pf);
-      let qU = supabase.from("vw_conversao_upsell").select("*");
-      if (pf) qU = qU.eq("produto", pf);
+      // OBs e Upsells vinculados às vendas (com utm_campaign)
+      let qItems = supabase
+        .from("venda_itens")
+        .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas(utm_campaign,produto,status)")
+        .eq("converteu", true);
 
       // Período anterior
       let qMetaAnt = supabase
@@ -303,19 +303,32 @@ export default function FunnelPage() {
         .not("pedido_id", "like", "LC-%");
       if (ant) {
         qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
-        qVAnt = qVAnt.gte("data_venda", ant.start).lte("data_venda", ant.end);
+        qVAnt = qVAnt.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
       }
       if (pf) {
         qMetaAnt = qMetaAnt.eq("produto", pf);
         qVAnt = qVAnt.eq("produto", pf);
       }
 
-      const [rMeta, rV, rO, rU, rMetaAnt, rVAnt] = await Promise.all([qMeta, qV, qO, qU, qMetaAnt, qVAnt]);
+      const [rMeta, rV, rItems, rMetaAnt, rVAnt] = await Promise.all([qMeta, qV, qItems, qMetaAnt, qVAnt]);
+
+      // Extrair venda_ids aprovados para filtrar itens
+      const vendaIds = new Set((rV.data || []).map((_: any, i: number) => {
+        // We don't have venda id here, we'll filter items by matching vendas join
+        return true;
+      }));
+
+      // Processar itens: filtrar apenas os de vendas aprovadas e do produto correto
+      const allItems = (rItems.data || []).filter((item: any) => {
+        const v = item.vendas;
+        if (!v || v.status !== "aprovada") return false;
+        if (pf && v.produto !== pf) return false;
+        return true;
+      });
 
       setAllMeta(rMeta.data || []);
       setAllVendas(rV.data || []);
-      setObsData((rO.data || []).filter((r: any) => r.total_convertidos > 0));
-      setUpsellData((rU.data || []).filter((r: any) => r.total_upsells > 0));
+      setAllItems(allItems);
       setAllMetaAnt(rMetaAnt.data || []);
       setAllVendasAnt(rVAnt.data || []);
 
