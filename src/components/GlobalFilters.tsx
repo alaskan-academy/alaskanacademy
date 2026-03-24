@@ -1,17 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useFilters } from "@/contexts/FilterContext";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { Calendar, ChevronDown } from "lucide-react";
+import { format, subDays } from "date-fns";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const QUICK_FILTERS = [
-  { label: "Hoje", key: "hoje" },
-  { label: "Ontem", key: "ontem" },
-  { label: "7 dias", key: "7d" },
-  { label: "30 dias", key: "30d" },
-  { label: "Custom", key: "custom" },
-] as const;
 
 const PRODUCTS = [
   { label: "Todos", value: "todos" },
@@ -24,86 +15,99 @@ export default function GlobalFilters() {
   const { startDateStr, endDateStr, product, setStartDate, setEndDate, setProduct } = useFilters();
   const [activeQuick, setActiveQuick] = useState<string>("7d");
   const [showCustom, setShowCustom] = useState(false);
-  const [customStart, setCustomStart] = useState(startDateStr || "");
-  const [customEnd, setCustomEnd] = useState(endDateStr || "");
-  const customRef = useRef<HTMLDivElement>(null);
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Fechar custom ao clicar fora
+  // Fechar picker ao clicar fora
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (customRef.current && !customRef.current.contains(e.target as Node)) {
+    const fn = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
         setShowCustom(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
   }, []);
 
-  const applyQuick = (key: string) => {
+  const apply = (key: string) => {
     const today = new Date();
+    const fmt = (d: Date) => format(d, "yyyy-MM-dd");
     if (key === "hoje") {
-      const d = format(today, "yyyy-MM-dd");
+      const d = fmt(today);
       setStartDate(d);
       setEndDate(d);
+      setActiveQuick("hoje");
+      setShowCustom(false);
     } else if (key === "ontem") {
-      const d = format(subDays(today, 1), "yyyy-MM-dd");
+      const d = fmt(subDays(today, 1));
       setStartDate(d);
       setEndDate(d);
+      setActiveQuick("ontem");
+      setShowCustom(false);
     } else if (key === "7d") {
-      setStartDate(format(subDays(today, 6), "yyyy-MM-dd"));
-      setEndDate(format(today, "yyyy-MM-dd"));
+      setStartDate(fmt(subDays(today, 6)));
+      setEndDate(fmt(today));
+      setActiveQuick("7d");
+      setShowCustom(false);
     } else if (key === "30d") {
-      setStartDate(format(subDays(today, 29), "yyyy-MM-dd"));
-      setEndDate(format(today, "yyyy-MM-dd"));
+      setStartDate(fmt(subDays(today, 29)));
+      setEndDate(fmt(today));
+      setActiveQuick("30d");
+      setShowCustom(false);
     } else if (key === "custom") {
+      // Pré-popular com período atual
+      setCustomStart(startDateStr || fmt(subDays(today, 6)));
+      setCustomEnd(endDateStr || fmt(today));
       setShowCustom(true);
-      return; // não fechar ainda
     }
-    setActiveQuick(key);
-    setShowCustom(false);
   };
 
   const applyCustom = () => {
-    if (customStart && customEnd && customStart <= customEnd) {
-      setStartDate(customStart);
-      setEndDate(customEnd);
-      setActiveQuick("custom");
-      setShowCustom(false);
-    }
+    if (!customStart || !customEnd || customStart > customEnd) return;
+    setStartDate(customStart);
+    setEndDate(customEnd);
+    setActiveQuick("custom");
+    setShowCustom(false);
   };
 
   const customLabel =
     activeQuick === "custom" && startDateStr && endDateStr
-      ? `${format(new Date(startDateStr + "T00:00:00"), "dd/MM")} – ${format(new Date(endDateStr + "T00:00:00"), "dd/MM")}`
-      : null;
+      ? `${startDateStr.slice(8)}/${startDateStr.slice(5, 7)} – ${endDateStr.slice(8)}/${endDateStr.slice(5, 7)}`
+      : "Custom";
+
+  const quickBtns = [
+    { key: "hoje", label: "Hoje" },
+    { key: "ontem", label: "Ontem" },
+    { key: "7d", label: "7 dias" },
+    { key: "30d", label: "30 dias" },
+    { key: "custom", label: customLabel },
+  ];
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      {/* Filtros rápidos de data */}
-      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 relative">
-        {QUICK_FILTERS.map((f) => (
+      {/* Datas */}
+      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 relative" ref={pickerRef}>
+        {quickBtns.map((b) => (
           <button
-            key={f.key}
-            onClick={() => applyQuick(f.key)}
+            key={b.key}
+            onClick={() => apply(b.key)}
             className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              activeQuick === f.key
+              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1",
+              activeQuick === b.key
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {f.key === "custom" && customLabel ? customLabel : f.label}
-            {f.key === "custom" && <ChevronDown className="h-3 w-3 ml-1 inline" />}
+            {b.label}
+            {b.key === "custom" && <ChevronDown className="h-3 w-3" />}
           </button>
         ))}
 
-        {/* Picker customizado */}
+        {/* Picker */}
         {showCustom && (
-          <div
-            ref={customRef}
-            className="absolute top-10 left-0 z-50 bg-card border border-border rounded-lg p-4 shadow-lg min-w-64"
-          >
-            <div className="text-xs font-medium text-muted-foreground mb-3">Período personalizado</div>
+          <div className="absolute top-11 left-0 z-50 bg-card border border-border rounded-lg p-4 shadow-xl min-w-56">
+            <p className="text-xs font-medium text-muted-foreground mb-3">Período personalizado</p>
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Data início</label>
@@ -111,7 +115,7 @@ export default function GlobalFilters() {
                   type="date"
                   value={customStart}
                   onChange={(e) => setCustomStart(e.target.value)}
-                  className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                 />
               </div>
               <div>
@@ -119,22 +123,22 @@ export default function GlobalFilters() {
                 <input
                   type="date"
                   value={customEnd}
-                  onChange={(e) => setCustomEnd(e.target.value)}
                   min={customStart}
-                  className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-1">
                 <button
                   onClick={applyCustom}
                   disabled={!customStart || !customEnd || customStart > customEnd}
-                  className="flex-1 bg-primary text-primary-foreground rounded-md py-2 text-xs font-medium disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  className="flex-1 bg-primary text-primary-foreground rounded-md py-1.5 text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
                 >
                   Aplicar
                 </button>
                 <button
                   onClick={() => setShowCustom(false)}
-                  className="flex-1 bg-secondary border border-border rounded-md py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex-1 bg-secondary border border-border rounded-md py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancelar
                 </button>
@@ -144,7 +148,7 @@ export default function GlobalFilters() {
         )}
       </div>
 
-      {/* Filtro de produto */}
+      {/* Produto */}
       <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
         {PRODUCTS.map((p) => (
           <button
