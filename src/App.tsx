@@ -6,6 +6,7 @@ import { FilterProvider } from "@/contexts/FilterContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import OverviewPage from "./pages/OverviewPage";
 import MetaAdsPage from "./pages/MetaAdsPage";
+import AdsAnalysisPage from "./pages/AdsAnalysisPage";
 import FunnelPage from "./pages/FunnelPage";
 import SalesPage from "./pages/SalesPage";
 import UTMPage from "./pages/UTMPage";
