@@ -64,6 +64,7 @@ export default function SalesPage() {
     const load = async () => {
       setLoading(true);
       const pf = product !== "todos" ? product : null;
+      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
       let qSales = supabase
         .from("vendas")
