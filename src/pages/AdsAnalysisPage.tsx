@@ -116,6 +116,7 @@ export default function AdsAnalysisPage() {
       cpc: ad.cliques > 0 ? ad.investimento / ad.cliques : 0,
       roas: ad.investimento > 0 ? ad.faturamento_atribuido / ad.investimento : 0,
       cpa: ad.compras_meta > 0 ? ad.investimento / ad.compras_meta : null,
+      hook_rate: ad.impressoes > 0 ? (ad.video_3s / ad.impressoes) * 100 : 0,
       lucro: ad.faturamento_atribuido - ad.investimento,
     }));
   }, [rawData]);
