@@ -458,7 +458,7 @@ export default function OverviewPage() {
                   </>
                 )}
                 <div className="flex justify-between font-semibold">
-                  <span className="text-foreground">Margem</span>
+                  <span className="text-foreground">Margem operacional</span>
                   <span className={margemBadge}>{formatPercent(kpis.margemPct || 0)}</span>
                 </div>
               </div>
