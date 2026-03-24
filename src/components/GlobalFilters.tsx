@@ -1,14 +1,13 @@
 import { useFilters } from '@/contexts/FilterContext';
-import { Button } from '@/components/ui/button';
 import { Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 const datePresets = [
+  { value: 'all' as const, label: 'Todos' },
   { value: 'today' as const, label: 'Hoje' },
   { value: '7d' as const, label: '7 dias' },
   { value: '30d' as const, label: '30 dias' },
@@ -28,16 +27,14 @@ export function GlobalFilters() {
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
+      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 flex-wrap">
         {datePresets.map((p) => (
           <button
             key={p.value}
             onClick={() => setDatePreset(p.value)}
             className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              datePreset === p.value
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+              'px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+              datePreset === p.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {p.label}
@@ -47,16 +44,12 @@ export function GlobalFilters() {
           <PopoverTrigger asChild>
             <button
               className={cn(
-                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1",
-                datePreset === 'custom'
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1',
+                datePreset === 'custom' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <Calendar className="h-3 w-3" />
-              {datePreset === 'custom'
-                ? `${format(startDate, 'dd/MM')} - ${format(endDate, 'dd/MM')}`
-                : 'Custom'}
+              {datePreset === 'custom' && startDate && endDate ? `${format(startDate, 'dd/MM')} - ${format(endDate, 'dd/MM')}` : 'Custom'}
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
@@ -83,10 +76,8 @@ export function GlobalFilters() {
             key={p.value}
             onClick={() => setProduct(p.value)}
             className={cn(
-              "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
-              product === p.value
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground"
+              'px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+              product === p.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {p.label}
