@@ -29,7 +29,7 @@ const statusStyles: Record<string, string> = {
 
 const COLORS = ["hsl(239,84%,67%)", "hsl(160,60%,45%)", "hsl(38,92%,50%)", "hsl(0,72%,51%)", "hsl(280,65%,60%)"];
 
-const chartTooltipStyle = {
+const chartTooltip = {
   contentStyle: {
     backgroundColor: "hsl(0,0%,10%)",
     border: "1px solid hsl(0,0%,16%)",
@@ -46,52 +46,39 @@ const paymentLabels: Record<string, string> = {
   desconhecido: "Desconhecido",
 };
 
-const placementLabels: Record<string, string> = {
-  feed: "Feed",
-  stories: "Stories",
-  reels: "Reels",
-  marketplace: "Marketplace",
-  search: "Search",
-  audience_network: "Audience Network",
-  messenger: "Messenger",
-  outro: "Outro",
-};
-
 export default function SalesPage() {
   const { startDateStr, endDateStr, product } = useFilters();
   const [salesData, setSalesData] = useState<any[]>([]);
   const [temporal, setTemporal] = useState<any[]>([]);
   const [byProduct, setByProduct] = useState<any[]>([]);
   const [paymentData, setPaymentData] = useState<any[]>([]);
-  const [placementData, setPlacementData] = useState<any[]>([]);
   const [hourlyData, setHourlyData] = useState<any[]>([]);
+  const [weekData, setWeekData] = useState<any[]>([]);
+  const [monthData, setMonthData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [saleItems, setSaleItems] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("todos");
 
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       setLoading(true);
-      const productFilter = product !== "todos" ? product : null;
+      const pf = product !== "todos" ? product : null;
 
-      // Lista de vendas
-      let q = supabase
+      let qSales = supabase
         .from("vendas")
         .select("*, clientes(nome, email, telefone)")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%")
         .order("data_venda", { ascending: false });
-      if (startDateStr && endDateStr) q = q.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
-      if (productFilter) q = q.eq("produto", productFilter);
-      if (statusFilter !== "todos") q = q.eq("status", statusFilter);
+      if (startDateStr && endDateStr) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+      if (pf) qSales = qSales.eq("produto", pf);
+      if (statusFilter !== "todos") qSales = qSales.eq("status", statusFilter);
 
-      // Temporal
       let qT = supabase.from("vw_vendas_temporal").select("*");
       if (startDateStr && endDateStr) qT = qT.gte("data", startDateStr).lte("data", endDateStr);
-      if (productFilter) qT = qT.eq("produto", productFilter);
+      if (pf) qT = qT.eq("produto", pf);
 
-      // Vendas aprovadas por produto
       let qP = supabase
         .from("vendas")
         .select("valor_total,produto")
@@ -99,25 +86,24 @@ export default function SalesPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateStr) qP = qP.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
-      if (productFilter) qP = qP.eq("produto", productFilter);
+      if (pf) qP = qP.eq("produto", pf);
 
-      // Pagamento
-      let q2 = supabase.from("vw_vendas_por_pagamento").select("*");
-      if (productFilter) q2 = q2.eq("produto", productFilter);
+      let qPay = supabase.from("vw_vendas_por_pagamento").select("*");
+      if (pf) qPay = qPay.eq("produto", pf);
 
-      // Placement
-      let q3 = supabase.from("vw_vendas_por_placement").select("*");
-      if (productFilter) q3 = q3.eq("produto", productFilter);
+      let qH = supabase.from("vw_vendas_por_horario").select("*");
+      if (pf) qH = qH.eq("produto", pf);
 
-      // Horário
-      let q4 = supabase.from("vw_vendas_por_horario").select("*");
-      if (productFilter) q4 = q4.eq("produto", productFilter);
+      let qW = supabase.from("vw_vendas_por_dia_semana").select("*");
+      if (pf) qW = qW.eq("produto", pf);
 
-      const [r1, rT, rP, r2, r3, r4] = await Promise.all([q, qT, qP, q2, q3, q4]);
+      let qM = supabase.from("vw_vendas_por_mes").select("*").order("mes_ano", { ascending: true });
+      if (pf) qM = qM.eq("produto", pf);
 
-      setSalesData(r1.data || []);
+      const [rS, rT, rP, rPay, rH, rW, rM] = await Promise.all([qSales, qT, qP, qPay, qH, qW, qM]);
 
-      // Temporal: formatar eixo X como DD
+      setSalesData(rS.data || []);
+
       setTemporal(
         (rT.data || []).map((r: any) => ({
           ...r,
@@ -125,7 +111,6 @@ export default function SalesPage() {
         })),
       );
 
-      // Por produto
       const prodMap: Record<string, number> = {};
       (rP.data || []).forEach((v: any) => {
         const p = v.produto || "Outros";
@@ -133,9 +118,9 @@ export default function SalesPage() {
       });
       setByProduct(Object.entries(prodMap).map(([name, value]) => ({ name, value })));
 
-      // Pagamento: agregar por meio (sem duplicatas por produto)
+      // Pagamento: agregar sem duplicatas por produto
       const payMap: Record<string, any> = {};
-      (r2.data || []).forEach((r: any) => {
+      (rPay.data || []).forEach((r: any) => {
         const k = r.meio_pagamento;
         if (!payMap[k])
           payMap[k] = {
@@ -159,20 +144,42 @@ export default function SalesPage() {
         })),
       );
 
-      // Placement: agregar
-      const plMap: Record<string, any> = {};
-      (r3.data || []).forEach((r: any) => {
-        const k = r.placement;
-        if (!plMap[k]) plMap[k] = { placement: k, vendas_aprovadas: 0, faturamento: 0 };
-        plMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
-        plMap[k].faturamento += Number(r.faturamento || 0);
-      });
-      setPlacementData(Object.values(plMap).sort((a, b) => b.faturamento - a.faturamento));
+      setHourlyData((rH.data || []).sort((a: any, b: any) => (a.hora || 0) - (b.hora || 0)));
 
-      setHourlyData((r4.data || []).sort((a: any, b: any) => (a.hora || 0) - (b.hora || 0)));
+      // Dia da semana: ordenar seg-dom e agregar
+      const weekOrder = [1, 2, 3, 4, 5, 6, 0];
+      const weekMap: Record<number, any> = {};
+      (rW.data || []).forEach((r: any) => {
+        const d = r.dia_semana;
+        if (!weekMap[d]) weekMap[d] = { dia_semana: d, dia_nome: r.dia_nome, vendas_aprovadas: 0, faturamento: 0 };
+        weekMap[d].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
+        weekMap[d].faturamento += Number(r.faturamento || 0);
+      });
+      setWeekData(
+        weekOrder.map(
+          (d) =>
+            weekMap[d] || {
+              dia_semana: d,
+              dia_nome: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][d],
+              vendas_aprovadas: 0,
+              faturamento: 0,
+            },
+        ),
+      );
+
+      // Mês: agregar
+      const monthMap: Record<string, any> = {};
+      (rM.data || []).forEach((r: any) => {
+        const k = r.mes_ano;
+        if (!monthMap[k]) monthMap[k] = { mes_ano: k, vendas_aprovadas: 0, faturamento: 0 };
+        monthMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
+        monthMap[k].faturamento += Number(r.faturamento || 0);
+      });
+      setMonthData(Object.values(monthMap).sort((a: any, b: any) => a.mes_ano.localeCompare(b.mes_ano)));
+
       setLoading(false);
     };
-    fetchData();
+    load();
   }, [startDateStr, endDateStr, product, statusFilter]);
 
   const openDetail = async (sale: any) => {
@@ -182,42 +189,126 @@ export default function SalesPage() {
   };
 
   const statuses = ["todos", "aprovada", "pendente", "cancelada", "reembolsada"];
-  const displayPedidoId = (sale: any) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
+  const displayId = (sale: any) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
   const peakHour = hourlyData.reduce(
     (max, r) => ((r.vendas_aprovadas || 0) > (max?.vendas_aprovadas || 0) ? r : max),
     hourlyData[0],
   );
-  const taxaBadge = (taxa: number) => (taxa > 70 ? "text-success" : taxa >= 50 ? "text-warning" : "text-destructive");
+  const taxaBadge = (t: number) => (t > 70 ? "text-success" : t >= 50 ? "text-warning" : "text-destructive");
+
+  const tabs = [
+    { value: "horario", label: "Horário" },
+    { value: "dia", label: "Dia da Sem." },
+    { value: "lista", label: "Por Data" },
+    { value: "mes", label: "Por Mês" },
+    { value: "produto", label: "Por Produto" },
+    { value: "pagamento", label: "Pagamento" },
+  ];
 
   return (
     <DashboardLayout title="Vendas">
-      <Tabs defaultValue="lista" className="space-y-4">
-        <TabsList className="bg-secondary border border-border flex-wrap h-auto gap-1">
-          {["lista", "faturamento", "produto", "pagamento", "placement", "horario"].map((tab) => (
+      <Tabs defaultValue="horario" className="space-y-4">
+        <TabsList className="bg-secondary border border-border flex-wrap h-auto gap-1 p-1">
+          {tabs.map((t) => (
             <TabsTrigger
-              key={tab}
-              value={tab}
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground capitalize"
+              key={t.value}
+              value={t.value}
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-xs"
             >
-              {tab === "lista"
-                ? "Lista"
-                : tab === "faturamento"
-                  ? "Fat. por Dia"
-                  : tab === "produto"
-                    ? "Por Produto"
-                    : tab === "pagamento"
-                      ? "Por Pagamento"
-                      : tab === "placement"
-                        ? "Por Placement"
-                        : "Por Horário"}
+              {t.label}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {/* ── Lista ──────────────────────────────────────────── */}
+        {/* ── Por Horário ─────────────────────────────────── */}
+        <TabsContent value="horario">
+          <div className="bg-card border border-border rounded-lg p-5 mb-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">
+              Vendas por Hora
+              {peakHour && <span className="text-primary ml-2">| Pico: {peakHour.hora}h</span>}
+            </h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={hourlyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
+                <XAxis dataKey="hora" stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}h`} />
+                <YAxis stroke="#555" tick={{ fontSize: 10 }} />
+                <Tooltip {...chartTooltip} />
+                <Bar dataKey="vendas_aprovadas" radius={[4, 4, 0, 0]}>
+                  {hourlyData.map((e: any, i: number) => (
+                    <Cell
+                      key={i}
+                      fill={peakHour && e.hora === peakHour.hora ? "hsl(38,92%,50%)" : "hsl(239,84%,67%)"}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <TableCard headers={["Hora", "Vendas", "Faturamento", "Taxa Aprov."]}>
+            {hourlyData.map((r: any, i: number) => (
+              <tr
+                key={i}
+                className={cn(
+                  "border-b border-border/50 hover:bg-secondary/50",
+                  peakHour && r.hora === peakHour.hora && "bg-warning/10",
+                )}
+              >
+                <td className="px-4 py-2 font-medium text-foreground">{r.hora}h</td>
+                <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
+                <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
+                <td className="px-4 py-2 text-foreground">{formatPercent(r.taxa_aprovacao_pct || 0)}</td>
+              </tr>
+            ))}
+          </TableCard>
+        </TabsContent>
+
+        {/* ── Por Dia da Semana ────────────────────────────── */}
+        <TabsContent value="dia">
+          <div className="bg-card border border-border rounded-lg p-5 mb-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Vendas por Dia da Semana</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={weekData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
+                <XAxis dataKey="dia_nome" stroke="#555" tick={{ fontSize: 10 }} />
+                <YAxis stroke="#555" tick={{ fontSize: 10 }} />
+                <Tooltip {...chartTooltip} />
+                <Bar dataKey="vendas_aprovadas" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <TableCard headers={["Dia", "Vendas", "Faturamento"]}>
+            {weekData.map((r: any, i: number) => (
+              <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
+                <td className="px-4 py-2 font-medium text-foreground">{r.dia_nome}</td>
+                <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
+                <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
+              </tr>
+            ))}
+          </TableCard>
+        </TabsContent>
+
+        {/* ── Lista / Por Data ─────────────────────────────── */}
         <TabsContent value="lista">
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
+          <div className="space-y-3">
+            {/* Gráfico por dia */}
+            <div className="bg-card border border-border rounded-lg p-5">
+              <h3 className="text-sm font-medium text-muted-foreground mb-3">Faturamento por Dia</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={temporal}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
+                  <XAxis dataKey="dataLabel" stroke="#555" tick={{ fontSize: 10 }} />
+                  <YAxis stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip
+                    {...chartTooltip}
+                    formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
+                    labelFormatter={(l) => `Dia ${l}`}
+                  />
+                  <Bar dataKey="faturamento" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Filtro status */}
+            <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 w-fit">
               {statuses.map((s) => (
                 <button
                   key={s}
@@ -233,91 +324,100 @@ export default function SalesPage() {
                 </button>
               ))}
             </div>
-          </div>
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            {loading ? (
-              <div className="p-8 text-center text-muted-foreground">Carregando...</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border">
-                      {["Pedido", "Data", "Cliente", "Produto", "Status", "Total", "Pagamento", "UTM Source"].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
-                          >
-                            {h}
-                          </th>
-                        ),
+            {/* Tabela */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              {loading ? (
+                <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        {["Pedido", "Data", "Cliente", "Produto", "Status", "Total", "Pagamento", "UTM Source"].map(
+                          (h) => (
+                            <th
+                              key={h}
+                              className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase"
+                            >
+                              {h}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {salesData.map((sale) => (
+                        <tr
+                          key={sale.id}
+                          onClick={() => openDetail(sale)}
+                          className="border-b border-border/50 hover:bg-secondary/50 cursor-pointer"
+                        >
+                          <td className="px-4 py-3 font-mono text-xs text-foreground">{displayId(sale)}</td>
+                          <td className="px-4 py-3 text-foreground whitespace-nowrap">
+                            {sale.data_venda ? format(new Date(sale.data_venda), "dd/MM/yy HH:mm") : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-foreground">{sale.clientes?.nome || "-"}</td>
+                          <td className="px-4 py-3 text-foreground capitalize">{sale.produto || "-"}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 rounded-full text-xs font-medium border",
+                                statusStyles[sale.status] || "",
+                              )}
+                            >
+                              {sale.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-foreground">
+                            {formatCurrency(sale.valor_total || 0)}
+                          </td>
+                          <td className="px-4 py-3 text-foreground capitalize">
+                            {sale.meio_pagamento?.replace("_", " ") || "-"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-foreground">{sale.utm_source || "-"}</td>
+                        </tr>
+                      ))}
+                      {salesData.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                            Nenhuma venda
+                          </td>
+                        </tr>
                       )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesData.map((sale) => (
-                      <tr
-                        key={sale.id}
-                        onClick={() => openDetail(sale)}
-                        className="border-b border-border/50 hover:bg-secondary/50 transition-colors cursor-pointer"
-                      >
-                        <td className="px-4 py-3 text-foreground font-mono text-xs">{displayPedidoId(sale)}</td>
-                        <td className="px-4 py-3 text-foreground whitespace-nowrap">
-                          {sale.data_venda ? format(new Date(sale.data_venda), "dd/MM/yy HH:mm") : "-"}
-                        </td>
-                        <td className="px-4 py-3 text-foreground">{sale.clientes?.nome || "-"}</td>
-                        <td className="px-4 py-3 text-foreground capitalize">{sale.produto || "-"}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cn(
-                              "px-2 py-0.5 rounded-full text-xs font-medium border",
-                              statusStyles[sale.status] || "",
-                            )}
-                          >
-                            {sale.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-foreground font-medium">
-                          {formatCurrency(sale.valor_total || 0)}
-                        </td>
-                        <td className="px-4 py-3 text-foreground capitalize">
-                          {sale.meio_pagamento?.replace("_", " ") || "-"}
-                        </td>
-                        <td className="px-4 py-3 text-foreground text-xs">{sale.utm_source || "-"}</td>
-                      </tr>
-                    ))}
-                    {salesData.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                          Nenhuma venda encontrada
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </TabsContent>
 
-        {/* ── Faturamento por Dia ──────────────────────────── */}
-        <TabsContent value="faturamento">
-          <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Faturamento por Dia</h3>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={temporal}>
+        {/* ── Por Mês ──────────────────────────────────────── */}
+        <TabsContent value="mes">
+          <div className="bg-card border border-border rounded-lg p-5 mb-4">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Faturamento por Mês</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={monthData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                <XAxis dataKey="dataLabel" stroke="#555" tick={{ fontSize: 11 }} />
-                <YAxis stroke="#555" tick={{ fontSize: 11 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip
-                  {...chartTooltipStyle}
-                  formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
-                  labelFormatter={(l) => `Dia ${l}`}
-                />
-                <Bar dataKey="faturamento" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
+                <XAxis dataKey="mes_ano" stroke="#555" tick={{ fontSize: 10 }} />
+                <YAxis stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                <Tooltip {...chartTooltip} formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
+                <Bar dataKey="faturamento" fill="hsl(160,60%,45%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <TableCard headers={["Mês", "Vendas", "Faturamento", "Ticket Médio"]}>
+            {monthData.map((r: any, i: number) => (
+              <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
+                <td className="px-4 py-2 font-medium text-foreground">{r.mes_ano}</td>
+                <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
+                <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
+                <td className="px-4 py-2 text-foreground">
+                  {r.vendas_aprovadas > 0 ? formatCurrency(r.faturamento / r.vendas_aprovadas) : "-"}
+                </td>
+              </tr>
+            ))}
+          </TableCard>
         </TabsContent>
 
         {/* ── Por Produto ──────────────────────────────────── */}
@@ -340,10 +440,7 @@ export default function SalesPage() {
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    {...chartTooltipStyle}
-                    formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
-                  />
+                  <Tooltip {...chartTooltip} formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 w-full max-w-xs">
@@ -361,7 +458,7 @@ export default function SalesPage() {
           </div>
         </TabsContent>
 
-        {/* ── Por Pagamento ────────────────────────────────── */}
+        {/* ── Pagamento ────────────────────────────────────── */}
         <TabsContent value="pagamento">
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
@@ -369,7 +466,7 @@ export default function SalesPage() {
                 <thead>
                   <tr className="border-b border-border">
                     {[
-                      "Meio de Pagamento",
+                      "Meio",
                       "Tentativas",
                       "Aprovadas",
                       "Canceladas",
@@ -387,15 +484,15 @@ export default function SalesPage() {
                 <tbody>
                   {paymentData.map((r: any, i: number) => (
                     <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                      <td className="px-4 py-3 text-foreground font-medium">
+                      <td className="px-4 py-3 font-medium text-foreground">
                         {paymentLabels[r.meio_pagamento] || r.meio_pagamento}
                       </td>
                       <td className="px-4 py-3 text-foreground">{formatNumber(r.total_tentativas || 0)}</td>
                       <td className="px-4 py-3 text-foreground">{formatNumber(r.aprovadas || 0)}</td>
                       <td className="px-4 py-3 text-foreground">{formatNumber(r.canceladas || 0)}</td>
                       <td className="px-4 py-3 text-foreground">{formatNumber(r.expiradas || 0)}</td>
-                      <td className="px-4 py-3 text-foreground font-medium">{formatCurrency(r.faturamento || 0)}</td>
-                      <td className={cn("px-4 py-3 font-medium", taxaBadge(Number(r.taxa_aprovacao_pct) || 0))}>
+                      <td className="px-4 py-3 font-medium text-foreground">{formatCurrency(r.faturamento || 0)}</td>
+                      <td className={cn("px-4 py-3 font-medium", taxaBadge(Number(r.taxa_aprovacao_pct)))}>
                         {Number(r.taxa_aprovacao_pct).toFixed(1)}%
                       </td>
                       <td className="px-4 py-3 text-foreground">{formatCurrency(r.ticket_medio || 0)}</td>
@@ -413,93 +510,9 @@ export default function SalesPage() {
             </div>
           </div>
         </TabsContent>
-
-        {/* ── Por Placement ────────────────────────────────── */}
-        <TabsContent value="placement">
-          <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por Placement</h3>
-            <div className="space-y-1">
-              {placementData.map((r, i) => (
-                <div key={i} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                    />
-                    <span className="text-sm text-foreground">{placementLabels[r.placement] || r.placement}</span>
-                  </div>
-                  <div className="flex items-center gap-6 text-sm">
-                    <span className="text-muted-foreground">{formatNumber(r.vendas_aprovadas)} vendas</span>
-                    <span className="font-semibold text-foreground">{formatCurrency(r.faturamento)}</span>
-                  </div>
-                </div>
-              ))}
-              {placementData.length === 0 && <div className="text-center text-muted-foreground py-8">Sem dados</div>}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* ── Por Horário ──────────────────────────────────── */}
-        <TabsContent value="horario">
-          <div className="bg-card border border-border rounded-lg p-5 mb-6">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">
-              Vendas por Hora
-              {peakHour && (
-                <span className="text-primary ml-2">
-                  | Pico: {peakHour.hora}h ({formatNumber(peakHour.vendas_aprovadas || 0)} vendas)
-                </span>
-              )}
-            </h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={hourlyData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                <XAxis dataKey="hora" stroke="#555" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}h`} />
-                <YAxis stroke="#555" tick={{ fontSize: 11 }} />
-                <Tooltip {...chartTooltipStyle} />
-                <Bar dataKey="vendas_aprovadas" radius={[4, 4, 0, 0]}>
-                  {hourlyData.map((entry: any, i: number) => (
-                    <Cell
-                      key={i}
-                      fill={peakHour && entry.hora === peakHour.hora ? "hsl(38,92%,50%)" : "hsl(239,84%,67%)"}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  {["Hora", "Vendas", "Faturamento", "Taxa Aprov."].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {hourlyData.map((r: any, i: number) => (
-                  <tr
-                    key={i}
-                    className={cn(
-                      "border-b border-border/50 hover:bg-secondary/50",
-                      peakHour && r.hora === peakHour.hora && "bg-warning/10",
-                    )}
-                  >
-                    <td className="px-4 py-3 text-foreground font-medium">{r.hora}h</td>
-                    <td className="px-4 py-3 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
-                    <td className="px-4 py-3 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
-                    <td className="px-4 py-3 text-foreground">{formatPercent(r.taxa_aprovacao_pct || 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </TabsContent>
       </Tabs>
 
-      {/* Modal de detalhe */}
+      {/* Modal */}
       <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
         <DialogContent className="max-w-lg bg-card border-border">
           <DialogHeader>
@@ -510,7 +523,7 @@ export default function SalesPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-muted-foreground">Pedido:</span>{" "}
-                  <span className="text-foreground ml-1">{displayPedidoId(selectedSale)}</span>
+                  <span className="text-foreground ml-1">{displayId(selectedSale)}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Status:</span>{" "}
@@ -573,5 +586,27 @@ export default function SalesPage() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+  );
+}
+
+// Componente auxiliar para tabelas
+function TableCard({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              {headers.map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </div>
+    </div>
   );
 }

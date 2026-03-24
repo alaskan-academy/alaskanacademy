@@ -18,6 +18,15 @@ import {
   CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { differenceInDays, parseISO } from "date-fns";
+
+// Calcula o custo fixo proporcional ao período selecionado
+function custoFixoProporcional(custoMensal: number, startDate?: string, endDate?: string): number {
+  if (!custoMensal) return 0;
+  if (!startDate || !endDate) return custoMensal; // sem filtro = mês inteiro
+  const dias = Math.max(1, differenceInDays(parseISO(endDate), parseISO(startDate)) + 1);
+  return (custoMensal / 30) * dias;
+}
 
 export default function OverviewPage() {
   const { startDateStr, endDateStr, product } = useFilters();
@@ -29,17 +38,17 @@ export default function OverviewPage() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const productFilter = product !== "todos" ? product : null;
+      const pf = product !== "todos" ? product : null;
 
       let q1 = supabase.from("vw_faturamento_liquido").select("*");
       if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
-      if (productFilter) q1 = q1.eq("produto", productFilter);
+      if (pf) q1 = q1.eq("produto", pf);
 
       let q2 = supabase.from("vw_conversao_obs").select("*");
-      if (productFilter) q2 = q2.eq("produto", productFilter);
+      if (pf) q2 = q2.eq("produto", pf);
 
       let q3 = supabase.from("vw_conversao_upsell").select("*");
-      if (productFilter) q3 = q3.eq("produto", productFilter);
+      if (pf) q3 = q3.eq("produto", pf);
 
       let q7 = supabase
         .from("vendas")
@@ -48,7 +57,7 @@ export default function OverviewPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateStr) q7 = q7.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
-      if (productFilter) q7 = q7.eq("produto", productFilter);
+      if (pf) q7 = q7.eq("produto", pf);
 
       let q8 = supabase
         .from("vendas")
@@ -57,7 +66,7 @@ export default function OverviewPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateStr) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
-      if (productFilter) q8 = q8.eq("produto", productFilter);
+      if (pf) q8 = q8.eq("produto", pf);
 
       const [r1, r2, r3, r7, r8] = await Promise.all([q1, q2, q3, q7, q8]);
 
@@ -70,11 +79,17 @@ export default function OverviewPage() {
       const impostoSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0);
       const impostoMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0);
       const investimento = fatRows.reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
-      const custoFixo = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
-      const margemPct = fatBruto > 0 ? (fatLiquido / fatBruto) * 100 : 0;
-      const roas = investimento > 0 ? fatBruto / investimento : 0;
       const simplesPct = fatRows.length > 0 ? Number(fatRows[0].simples_pct || 0) : 0;
       const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
+
+      // Custo fixo proporcional ao período
+      const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
+      const custoFixo = custoFixoProporcional(custoMensal, startDateStr, endDateStr);
+
+      // Faturamento líquido já vem da view sem custo fixo, recalcular com proporcional
+      const fatLiquidoReal = fatBruto - taxaPlat - reembolsos - impostoSimples - impostoMeta - investimento - custoFixo;
+      const margemPct = fatBruto > 0 ? (fatLiquidoReal / fatBruto) * 100 : 0;
+      const roas = investimento > 0 ? fatBruto / investimento : 0;
 
       const vendasAprovadas = r7.data?.length || 0;
       const ticketMedio = vendasAprovadas > 0 ? fatBruto / vendasAprovadas : 0;
@@ -97,7 +112,7 @@ export default function OverviewPage() {
       setUpsellData(upsellRows);
 
       setKpis({
-        fatLiquido,
+        fatLiquido: fatLiquidoReal,
         fatBruto,
         taxaPlat,
         taxaPlatPct,
@@ -106,6 +121,7 @@ export default function OverviewPage() {
         impostoMeta,
         investimento,
         custoFixo,
+        custoMensal,
         margemPct,
         roas,
         simplesPct,
@@ -123,6 +139,17 @@ export default function OverviewPage() {
   }, [startDateStr, endDateStr, product]);
 
   const margemBadge = kpis.margemPct > 30 ? "text-success" : kpis.margemPct >= 15 ? "text-warning" : "text-destructive";
+
+  // Label para o custo fixo indicando a proporção
+  const custoFixoLabel = () => {
+    if (!kpis.custoMensal) return null;
+    if (!startDateStr || !endDateStr) return "mensal";
+    const dias = Math.max(1, differenceInDays(parseISO(endDateStr), parseISO(startDateStr)) + 1);
+    if (dias === 1) return "hoje (1/30)";
+    if (dias === 7) return "7 dias (7/30)";
+    if (dias === 30) return "30 dias";
+    return `${dias} dias`;
+  };
 
   return (
     <DashboardLayout title="Visão Geral">
@@ -210,7 +237,7 @@ export default function OverviewPage() {
           </div>
 
           {/* Margem Detalhada */}
-          <div className="bg-card border border-border rounded-lg p-5 mb-6">
+          <div className="bg-card border border-border rounded-lg p-5 mb-6 max-w-md">
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Margem Detalhada</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -241,7 +268,9 @@ export default function OverviewPage() {
               </div>
               {(kpis.custoFixo || 0) > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-destructive">(-) Custo fixo</span>
+                  <span className="text-destructive">
+                    (-) Custo fixo <span className="text-xs opacity-70">({custoFixoLabel()})</span>
+                  </span>
                   <span className="text-destructive">{formatCurrency(kpis.custoFixo)}</span>
                 </div>
               )}

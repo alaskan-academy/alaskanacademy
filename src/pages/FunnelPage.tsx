@@ -13,29 +13,29 @@ export default function FunnelPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const load = async () => {
       setLoading(true);
-      const productFilter = product !== "todos" ? product : null;
+      const pf = product !== "todos" ? product : null;
 
       let q1 = supabase.from("vw_funil").select("*");
       if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
-      if (productFilter) q1 = q1.eq("produto", productFilter);
+      if (pf) q1 = q1.eq("produto", pf);
 
+      // OBs e upsells com taxa relativa ao produto
       let q2 = supabase.from("vw_conversao_obs").select("*");
-      if (productFilter) q2 = q2.eq("produto", productFilter);
+      if (pf) q2 = q2.eq("produto", pf);
 
       let q3 = supabase.from("vw_conversao_upsell").select("*");
-      if (productFilter) q3 = q3.eq("produto", productFilter);
+      if (pf) q3 = q3.eq("produto", pf);
 
-      // Vendas reais aprovadas para cruzar com dados Meta
       let q4 = supabase
         .from("vendas")
-        .select("valor_total, valor_oferta_principal, valor_obs")
+        .select("valor_total, valor_oferta_principal, valor_obs, produto")
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateStr) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
-      if (productFilter) q4 = q4.eq("produto", productFilter);
+      if (pf) q4 = q4.eq("produto", pf);
 
       const [r1, r2, r3, r4] = await Promise.all([q1, q2, q3, q4]);
 
@@ -46,7 +46,6 @@ export default function FunnelPage() {
         return;
       }
 
-      // Agregar funil
       const agg = rows.reduce(
         (acc: any, row: any) => {
           acc.impressoes += Number(row.impressoes || 0);
@@ -87,10 +86,10 @@ export default function FunnelPage() {
         },
       );
 
-      // Vendas reais
       const vendasReais = r4.data || [];
       const totalVendas = vendasReais.length;
       const fatReal = vendasReais.reduce((s: number, v: any) => s + Number(v.valor_total || 0), 0);
+      const fatPrincipal = vendasReais.reduce((s: number, v: any) => s + Number(v.valor_oferta_principal || 0), 0);
 
       const inv = agg.investimento || 1;
       const vis = agg.visualizacoes_pagina || 0;
@@ -101,7 +100,7 @@ export default function FunnelPage() {
         ...agg,
         totalVendas,
         fatReal,
-        // Métricas derivadas
+        fatPrincipal,
         resultado: fatReal - inv,
         margem: fatReal > 0 ? ((fatReal - inv) / fatReal) * 100 : 0,
         roas: inv > 0 ? fatReal / inv : 0,
@@ -109,12 +108,10 @@ export default function FunnelPage() {
         cpv: vis > 0 ? inv / vis : 0,
         epc: clk > 0 ? fatReal / clk : 0,
         aov: totalVendas > 0 ? fatReal / totalVendas : 0,
-        // Taxas
         taxa_vis_vendas: vis > 0 ? (totalVendas / vis) * 100 : 0,
         taxa_ic_vendas: ic > 0 ? (totalVendas / ic) * 100 : 0,
         taxa_carregamento: clk > 0 ? (vis / clk) * 100 : 0,
         taxa_vis_ic: vis > 0 ? (ic / vis) * 100 : 0,
-        taxa_conv_checkout: ic > 0 ? (totalVendas / ic) * 100 : 0,
         taxa_video_3s: agg.impressoes > 0 ? (agg.video_3s / agg.impressoes) * 100 : 0,
         taxa_video_75: agg.video_plays > 0 ? (agg.video_75pct / agg.video_plays) * 100 : 0,
         taxa_compras_v75: agg.video_75pct > 0 ? (totalVendas / agg.video_75pct) * 100 : 0,
@@ -125,7 +122,7 @@ export default function FunnelPage() {
       setUpsellDetail(r3.data || []);
       setLoading(false);
     };
-    fetchData();
+    load();
   }, [startDateStr, endDateStr, product]);
 
   if (loading)
@@ -134,17 +131,15 @@ export default function FunnelPage() {
         <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>
       </DashboardLayout>
     );
-
   if (!data)
     return (
       <DashboardLayout title="Funil">
         <div className="flex items-center justify-center h-64 text-muted-foreground">
-          Nenhum dado encontrado para o período selecionado
+          Nenhum dado encontrado para o período
         </div>
       </DashboardLayout>
     );
 
-  // Etapas do funil
   const funnelSteps = [
     { label: "Impressões", value: data.impressoes, color: "hsl(239,84%,67%)" },
     { label: "Cliques", value: data.cliques, color: "hsl(239,84%,60%)" },
@@ -154,6 +149,11 @@ export default function FunnelPage() {
     { label: "OBs Convertidos", value: data.obs_convertidos, color: "hsl(160,60%,38%)" },
   ];
   const maxFunnel = Math.max(...funnelSteps.map((s) => s.value), 1);
+
+  // Breakdown de vendas
+  const totalBreakdown = data.fatReal || 1;
+  const obsTotal = obsDetail.reduce((s: number, o: any) => s + Number(o.receita_total_ob || 0), 0);
+  const upsellTotal = upsellDetail.reduce((s: number, u: any) => s + Number(u.receita_total || 0), 0);
 
   const metric = (label: string, value: string, sub?: string) => (
     <div className="bg-secondary/50 rounded-lg p-3">
@@ -165,62 +165,43 @@ export default function FunnelPage() {
 
   return (
     <DashboardLayout title="Funil">
-      {/* ── KPIs principais ────────────────────────────────────── */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Investimento</div>
-          <div className="text-xl font-bold text-foreground">{formatCurrency(data.investimento)}</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Faturamento</div>
-          <div className="text-xl font-bold text-foreground">{formatCurrency(data.fatReal)}</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Resultado</div>
-          <div className={cn("text-xl font-bold", data.resultado >= 0 ? "text-success" : "text-destructive")}>
-            {formatCurrency(data.resultado)}
+        {[
+          { label: "Investimento", value: formatCurrency(data.investimento), color: "" },
+          { label: "Faturamento", value: formatCurrency(data.fatReal), color: "" },
+          {
+            label: "Resultado",
+            value: formatCurrency(data.resultado),
+            color: data.resultado >= 0 ? "text-success" : "text-destructive",
+          },
+          { label: "Vendas", value: formatNumber(data.totalVendas), color: "" },
+          {
+            label: "ROAS",
+            value: `${data.roas.toFixed(2)}x`,
+            color: data.roas >= 3 ? "text-success" : data.roas >= 1 ? "text-warning" : "text-destructive",
+          },
+          { label: "CPA", value: formatCurrency(data.cpa), color: "" },
+          {
+            label: "Margem",
+            value: `${data.margem.toFixed(1)}%`,
+            color: data.margem >= 30 ? "text-success" : data.margem >= 15 ? "text-warning" : "text-destructive",
+          },
+          {
+            label: "Lucro",
+            value: formatCurrency(data.resultado),
+            color: data.resultado >= 0 ? "text-success" : "text-destructive",
+          },
+        ].map((k) => (
+          <div key={k.label} className="bg-card border border-border rounded-lg p-4">
+            <div className="text-xs text-muted-foreground mb-1">{k.label}</div>
+            <div className={cn("text-xl font-bold", k.color || "text-foreground")}>{k.value}</div>
           </div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Vendas</div>
-          <div className="text-xl font-bold text-foreground">{formatNumber(data.totalVendas)}</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">ROAS</div>
-          <div
-            className={cn(
-              "text-xl font-bold",
-              data.roas >= 3 ? "text-success" : data.roas >= 1 ? "text-warning" : "text-destructive",
-            )}
-          >
-            {data.roas.toFixed(2)}x
-          </div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">CPA</div>
-          <div className="text-xl font-bold text-foreground">{formatCurrency(data.cpa)}</div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Margem</div>
-          <div
-            className={cn(
-              "text-xl font-bold",
-              data.margem >= 30 ? "text-success" : data.margem >= 15 ? "text-warning" : "text-destructive",
-            )}
-          >
-            {data.margem.toFixed(1)}%
-          </div>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <div className="text-xs text-muted-foreground mb-1">Lucro</div>
-          <div className={cn("text-xl font-bold", data.resultado >= 0 ? "text-success" : "text-destructive")}>
-            {formatCurrency(data.resultado)}
-          </div>
-        </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* ── Funil visual ───────────────────────────────────────── */}
+        {/* Funil visual */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-medium text-muted-foreground mb-5">Funil de Conversão</h3>
           <div className="space-y-2">
@@ -235,7 +216,7 @@ export default function FunnelPage() {
                     <span className="text-xs text-muted-foreground w-36 text-right shrink-0">{step.label}</span>
                     <div className="flex-1">
                       <div
-                        className="h-9 rounded-md flex items-center px-3 transition-all"
+                        className="h-9 rounded-md flex items-center px-3"
                         style={{ width: `${width}%`, backgroundColor: step.color }}
                       >
                         <span className="text-xs font-semibold text-white whitespace-nowrap">
@@ -250,16 +231,21 @@ export default function FunnelPage() {
           </div>
         </div>
 
-        {/* ── Breakdown de vendas ──────────────────────────────── */}
+        {/* Breakdown de vendas com % */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-medium text-muted-foreground mb-4">Breakdown de Vendas</h3>
           <div className="space-y-2 text-sm">
             {/* Oferta principal */}
             <div className="flex justify-between items-center py-2 border-b border-border/50">
-              <span className="text-foreground font-medium">Oferta principal</span>
+              <div>
+                <span className="text-foreground font-medium">Oferta principal</span>
+                <span className="text-xs text-muted-foreground ml-2">{data.totalVendas} vendas</span>
+              </div>
               <div className="text-right">
-                <div className="font-semibold text-foreground">{formatCurrency(data.faturamento_principal)}</div>
-                <div className="text-xs text-muted-foreground">{formatNumber(data.totalVendas)} vendas</div>
+                <div className="font-semibold text-foreground">{formatCurrency(data.fatPrincipal)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {((data.fatPrincipal / totalBreakdown) * 100).toFixed(1)}%
+                </div>
               </div>
             </div>
             {/* OBs */}
@@ -267,13 +253,16 @@ export default function FunnelPage() {
               <div key={i} className="flex justify-between items-center py-2 border-b border-border/50">
                 <div>
                   <span className="text-foreground">{ob.nome_ob}</span>
-                  <span className="text-xs text-muted-foreground ml-2">
-                    ({formatPercent(ob.taxa_conversao_pct || 0)})
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-primary/20 text-primary ml-2">
+                    {formatPercent(ob.taxa_conversao_pct || 0)}
                   </span>
                 </div>
                 <div className="text-right">
                   <div className="font-medium text-foreground">{formatCurrency(ob.receita_total_ob || 0)}</div>
-                  <div className="text-xs text-muted-foreground">{formatNumber(ob.total_convertidos || 0)} conv.</div>
+                  <div className="text-xs text-muted-foreground">
+                    {(((ob.receita_total_ob || 0) / totalBreakdown) * 100).toFixed(1)}% ·{" "}
+                    {formatNumber(ob.total_convertidos || 0)} conv.
+                  </div>
                 </div>
               </div>
             ))}
@@ -282,17 +271,20 @@ export default function FunnelPage() {
               <div key={i} className="flex justify-between items-center py-2 border-b border-border/50">
                 <div>
                   <span className="text-foreground">{up.nome_upsell}</span>
-                  <span className="text-xs text-muted-foreground ml-2">
-                    ({formatPercent(up.taxa_conversao_pct || 0)})
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-400 ml-2">
+                    {formatPercent(up.taxa_conversao_pct || 0)}
                   </span>
                 </div>
                 <div className="text-right">
                   <div className="font-medium text-foreground">{formatCurrency(up.receita_total || 0)}</div>
-                  <div className="text-xs text-muted-foreground">{formatNumber(up.total_upsells || 0)} conv.</div>
+                  <div className="text-xs text-muted-foreground">
+                    {(((up.receita_total || 0) / totalBreakdown) * 100).toFixed(1)}% ·{" "}
+                    {formatNumber(up.total_upsells || 0)} conv.
+                  </div>
                 </div>
               </div>
             ))}
-            <div className="flex justify-between items-center pt-2 font-semibold">
+            <div className="flex justify-between items-center pt-2 font-semibold border-t border-border">
               <span className="text-foreground">Total</span>
               <span className="text-foreground">{formatCurrency(data.fatReal)}</span>
             </div>
@@ -300,48 +292,39 @@ export default function FunnelPage() {
         </div>
       </div>
 
-      {/* ── Métricas detalhadas ─────────────────────────────────── */}
+      {/* Métricas detalhadas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Métricas de cliques/página */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-medium text-muted-foreground mb-4">Métricas de Tráfego</h3>
           <div className="grid grid-cols-2 gap-3">
-            {metric(
-              "Cliques",
-              formatNumber(data.cliques),
-              `R$ ${data.cliques > 0 ? (data.investimento / data.cliques).toFixed(2) : "0,00"} / clique`,
-            )}
-            {metric("Visualizações de Página", formatNumber(data.visualizacoes_pagina))}
-            {metric("CPV (custo por visitante)", formatCurrency(data.cpv))}
+            {metric("Cliques", formatNumber(data.cliques))}
+            {metric("Visualizações Pág.", formatNumber(data.visualizacoes_pagina))}
+            {metric("CPV", formatCurrency(data.cpv), "custo por visitante")}
             {metric("Taxa de Conexão", formatPercent(data.taxa_carregamento), "vis. pág / cliques")}
-            {metric("ICs (Finalizações Iniciadas)", formatNumber(data.initiate_checkout))}
+            {metric("ICs", formatNumber(data.initiate_checkout))}
             {metric(
               "Custo por IC",
               formatCurrency(
                 data.investimento > 0 && data.initiate_checkout > 0 ? data.investimento / data.initiate_checkout : 0,
               ),
             )}
-            {metric("Taxa IC", formatPercent(data.taxa_vis_ic), "ICs / vis. página")}
-            {metric("Conversão Checkout", formatPercent(data.taxa_conv_checkout), "vendas / ICs")}
+            {metric("Taxa IC", formatPercent(data.taxa_vis_ic), "ICs / vis. pág")}
+            {metric("Conv. Checkout", formatPercent(data.taxa_ic_vendas), "vendas / ICs")}
           </div>
         </div>
-
-        {/* Métricas de conversão/valor */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-medium text-muted-foreground mb-4">Métricas de Conversão</h3>
           <div className="grid grid-cols-2 gap-3">
-            {metric("CPA (custo por aprovação)", formatCurrency(data.cpa))}
-            {metric("EPC (receita por clique)", formatCurrency(data.epc))}
-            {metric("AOV (ticket médio)", formatCurrency(data.aov))}
+            {metric("CPA", formatCurrency(data.cpa))}
+            {metric("EPC", formatCurrency(data.epc), "receita por clique")}
+            {metric("AOV", formatCurrency(data.aov), "ticket médio")}
             {metric("EPC - CPV", formatCurrency(data.epc_cpv))}
-            {metric("Vis. → Vendas", formatPercent(data.taxa_vis_vendas), "vendas / vis. pág")}
-            {metric("IC → Vendas", formatPercent(data.taxa_ic_vendas), "conversão do checkout")}
-            {metric("Vis. → IC", formatPercent(data.taxa_vis_ic), "taxa de IC")}
-            {metric("Carregamento Pág.", formatPercent(data.taxa_carregamento), "vis. pág / cliques")}
+            {metric("Vis→Vendas", formatPercent(data.taxa_vis_vendas), "vendas / vis. pág")}
+            {metric("IC→Vendas", formatPercent(data.taxa_ic_vendas), "conv. checkout")}
+            {metric("Vis→IC", formatPercent(data.taxa_vis_ic), "taxa de IC")}
+            {metric("Carregamento", formatPercent(data.taxa_carregamento), "vis. pág / cliques")}
           </div>
         </div>
-
-        {/* Métricas de vídeo */}
         {data.video_plays > 0 && (
           <div className="bg-card border border-border rounded-lg p-5">
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Métricas de Vídeo</h3>
@@ -349,7 +332,7 @@ export default function FunnelPage() {
               {metric("Vídeos Iniciados", formatNumber(data.video_plays))}
               {metric("Vídeos 3s", formatNumber(data.video_3s), `${data.taxa_video_3s.toFixed(1)}% das impressões`)}
               {metric("Vídeos 75%", formatNumber(data.video_75pct), `${data.taxa_video_75.toFixed(1)}% dos iniciados`)}
-              {metric("Compras / Vídeo 75%", formatPercent(data.taxa_compras_v75))}
+              {metric("Compras / V75%", formatPercent(data.taxa_compras_v75))}
             </div>
           </div>
         )}
