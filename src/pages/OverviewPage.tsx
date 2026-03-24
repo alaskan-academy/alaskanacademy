@@ -248,152 +248,188 @@ export default function OverviewPage() {
         </div>
       ) : (
         <>
-          {/* Faturamento: Bruto / Líquido / Lucro */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Faturamento Bruto
-              </div>
-              <div className="text-2xl font-bold text-foreground">
-                {formatCurrency(Math.max(0, kpis.fatBruto || 0))}
-              </div>
-              <VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />
-              <div className="text-xs text-muted-foreground mt-1">
-                {formatNumber(kpis.qtdAprov || 0)} vendas aprovadas
-              </div>
-            </div>
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Faturamento Líquido
-              </div>
-              <div className="text-2xl font-bold text-foreground">
-                {formatCurrency(Math.max(0, kpis.fatLiquido || 0))}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                após taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)
-              </div>
-            </div>
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Lucro</div>
-              <div className={cn("text-2xl font-bold", (kpis.lucro || 0) >= 0 ? "text-green-400" : "text-red-400")}>
-                {formatCurrency(kpis.lucro || 0)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">pós impostos e ads (sem custo fixo)</div>
-            </div>
+          {/* ═══ 1. RECEITA ═══ */}
+          <div className="mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Receita</span>
           </div>
-
-          {/* KPIs linha 2 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-card rounded-lg border border-border p-5">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Vendas Aprovadas
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faturamento Bruto</span>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(Math.max(0, kpis.fatBruto || 0))}</div>
+              <VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />
+            </div>
+            <div className="bg-card rounded-lg border border-border p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendas Aprovadas</span>
+                <ShoppingBag className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="text-2xl font-bold text-foreground">{formatNumber(kpis.qtdAprov || 0)}</div>
               <VarBadge atual={kpis.qtdAprov} anterior={kpisAnt.qtdAprov} />
             </div>
-            <KPICard
-              title="Ticket Médio"
-              value={formatCurrency(kpis.ticketMedio || 0)}
-              icon={<Target className="h-4 w-4" />}
-            />
             <div className="bg-card rounded-lg border border-border p-5">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ROAS</div>
-              <div
-                className={cn(
-                  "text-2xl font-bold",
-                  kpis.roas >= 3 ? "text-green-400" : kpis.roas >= 1 ? "text-yellow-400" : "text-red-400",
-                )}
-              >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ticket Médio</span>
+                <Target className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.ticketMedio || 0)}</div>
+            </div>
+          </div>
+
+          {/* ═══ 2. CUSTOS DIRETOS ═══ */}
+          <div className="mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-warning/60">Custos Diretos</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-card rounded-lg border border-warning/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa Payt</span>
+                <CreditCard className="h-4 w-4 text-warning" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.taxaPlat || 0)}</div>
+              <div className="text-xs text-warning mt-1">{(kpis.taxaPlatPct || 0).toFixed(2)}%</div>
+            </div>
+            <div className="bg-card rounded-lg border border-warning/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Imposto Simples</span>
+                <Receipt className="h-4 w-4 text-warning" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.impSimples || 0)}</div>
+              <div className="text-xs text-warning mt-1">{formatPercent(kpis.simplesPct || 0)}</div>
+            </div>
+            <div className="bg-card rounded-lg border border-warning/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Imposto Meta Ads</span>
+                <BadgeDollarSign className="h-4 w-4 text-warning" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.impMeta || 0)}</div>
+              <div className="text-xs text-warning mt-1">{formatPercent(kpis.metaPct || 0)}</div>
+            </div>
+          </div>
+
+          {/* ═══ 3. TRÁFEGO ═══ */}
+          <div className="mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-info/60">Tráfego</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-card rounded-lg border border-info/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Investimento Meta</span>
+                <TrendingUp className="h-4 w-4 text-info" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.investimento || 0)}</div>
+            </div>
+            <div className="bg-card rounded-lg border border-info/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ROAS</span>
+                <BarChart3 className="h-4 w-4 text-info" />
+              </div>
+              <div className={cn("text-2xl font-bold", kpis.roas >= 3 ? "text-success" : kpis.roas >= 1 ? "text-warning" : "text-destructive")}>
                 {(kpis.roas || 0).toFixed(2)}x
               </div>
               <VarBadge atual={kpis.roas} anterior={kpisAnt.roas} />
             </div>
-            <KPICard
-              title="Investimento Meta"
-              value={formatCurrency(kpis.investimento || 0)}
-              icon={<TrendingUp className="h-4 w-4" />}
-            />
           </div>
 
-          {/* KPIs linha 3 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-            <div className="bg-card rounded-lg border border-border p-5">
+          {/* ═══ 4. FUNIL / MONETIZAÇÃO ═══ */}
+          <div className="mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/60">Funil / Monetização</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-card rounded-lg border border-primary/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Margem %</span>
-                <Percent className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa OB</span>
+                <Target className="h-4 w-4 text-primary" />
               </div>
-              <div className={cn("text-2xl font-bold", margemBadge)}>{formatPercent(kpis.margemPct || 0)}</div>
-              <div className="text-xs text-muted-foreground mt-1">margem operacional</div>
+              <div className="text-2xl font-bold text-foreground">{formatPercent(kpis.taxaOb || 0)}</div>
             </div>
-            <KPICard
-              title="Imposto Simples"
-              value={formatCurrency(kpis.impSimples || 0)}
-              icon={<Receipt className="h-4 w-4" />}
-            />
-            <KPICard
-              title="Imposto Meta Ads"
-              value={formatCurrency(kpis.impMeta || 0)}
-              icon={<BadgeDollarSign className="h-4 w-4" />}
-            />
-            <div className="bg-card rounded-lg border border-border p-5">
+            <div className="bg-card rounded-lg border border-primary/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Taxa Payt</span>
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa Upsell</span>
+                <TrendingUp className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.taxaPlat || 0)}</div>
-              <div className="text-xs text-muted-foreground mt-1">{(kpis.taxaPlatPct || 0).toFixed(2)}%</div>
+              <div className="text-2xl font-bold text-foreground">{formatPercent(kpis.taxaUp || 0)}</div>
             </div>
           </div>
 
-          {/* KPIs linha 4 — status não aprovados */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <KPICard title="Taxa OB" value={formatPercent(kpis.taxaOb || 0)} icon={<Target className="h-4 w-4" />} />
-            <KPICard
-              title="Taxa Upsell"
-              value={formatPercent(kpis.taxaUp || 0)}
-              icon={<TrendingUp className="h-4 w-4" />}
-            />
-            {/* Não aprovadas (pendentes + canceladas + expiradas) */}
-            <div className="bg-card rounded-lg border border-border p-5">
+          {/* ═══ 5. PERDAS ═══ */}
+          <div className="mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-destructive/60">Perdas</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {/* Não Aprovadas */}
+            <div className="bg-card rounded-lg border border-destructive/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Não Aprovadas</span>
-                <XCircle className="h-4 w-4 text-orange-400" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Não Aprovadas</span>
+                <XCircle className="h-4 w-4 text-destructive" />
               </div>
               <div className="text-xl font-bold text-foreground">
                 {formatCurrency((kpis.pendVal || 0) + (kpis.cancelVal || 0) + (kpis.expVal || 0))}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                <span className="text-yellow-400">{kpis.qtdPend || 0} pend</span>
-                {" · "}
-                <span className="text-red-400">{kpis.qtdCanc || 0} canc</span>
-                {" · "}
-                <span className="text-orange-400">{kpis.qtdExp || 0} exp</span>
+              <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
+                <div className="flex justify-between"><span className="text-yellow-400">Pendentes</span><span className="text-yellow-400">{kpis.qtdPend || 0} · {formatCurrency(kpis.pendVal || 0)}</span></div>
+                <div className="flex justify-between"><span className="text-red-400">Canceladas</span><span className="text-red-400">{kpis.qtdCanc || 0} · {formatCurrency(kpis.cancelVal || 0)}</span></div>
+                <div className="flex justify-between"><span className="text-orange-400">Expiradas</span><span className="text-orange-400">{kpis.qtdExp || 0} · {formatCurrency(kpis.expVal || 0)}</span></div>
               </div>
             </div>
             {/* Reembolsos */}
-            <div className="bg-card rounded-lg border border-border p-5">
+            <div className="bg-card rounded-lg border border-destructive/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Reembolsos</span>
-                <RefreshCcw className="h-4 w-4 text-red-400" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reembolsos</span>
+                <RefreshCcw className="h-4 w-4 text-destructive" />
               </div>
               <div className="text-xl font-bold text-foreground">{formatCurrency(remData.valor_reembolsos || 0)}</div>
-              <div className="text-xs text-red-400 mt-1">
+              <div className="text-xs text-destructive mt-1">
                 {remData.qtd_reembolsos || 0} · {(remData.pct_reembolsos || 0).toFixed(1)}%
               </div>
             </div>
-          </div>
-
-          {/* Chargebacks — sempre visível ao lado dos reembolsos */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-card rounded-lg border border-destructive/30 p-5">
+            {/* Chargebacks */}
+            <div className="bg-card rounded-lg border border-destructive/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-destructive uppercase">Chargebacks</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chargebacks</span>
                 <AlertCircle className="h-4 w-4 text-destructive" />
               </div>
               <div className="text-xl font-bold text-destructive">{formatCurrency(remData.valor_chargeback || 0)}</div>
               <div className="text-xs text-destructive mt-1">
                 {remData.qtd_chargeback || 0} · {(remData.pct_chargeback || 0).toFixed(1)}%
               </div>
+            </div>
+          </div>
+
+          {/* ═══ 6. RESULTADO FINAL ═══ */}
+          <div className="mb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-success/60">Resultado Final</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-card rounded-lg border-2 border-success/30 p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-success uppercase tracking-wider">Faturamento Líquido</span>
+                <DollarSign className="h-4 w-4 text-success" />
+              </div>
+              <div className="text-3xl font-bold text-foreground">{formatCurrency(Math.max(0, kpis.fatLiquido || 0))}</div>
+              <div className="text-xs text-muted-foreground mt-1">após taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)</div>
+            </div>
+            <div className="bg-card rounded-lg border-2 border-success/30 p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-success uppercase tracking-wider">Lucro</span>
+                <TrendingUp className="h-4 w-4 text-success" />
+              </div>
+              <div className={cn("text-3xl font-bold", (kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive")}>
+                {formatCurrency(kpis.lucro || 0)}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">pós impostos e ads</div>
+            </div>
+            <div className="bg-card rounded-lg border-2 border-success/30 p-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-success uppercase tracking-wider">Margem %</span>
+                <Percent className="h-4 w-4 text-success" />
+              </div>
+              <div className={cn("text-3xl font-bold", kpis.margemPct > 30 ? "text-success" : kpis.margemPct >= 15 ? "text-warning" : "text-destructive")}>
+                {formatPercent(kpis.margemPct || 0)}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">margem operacional</div>
             </div>
           </div>
 
