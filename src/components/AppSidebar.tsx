@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
   Users, Award, Settings, ChevronLeft, ChevronRight, Mountain, Link2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSidebarState } from '@/contexts/SidebarContext';
 
 const navItems = [
   { path: '/', label: 'Visão Geral', icon: LayoutDashboard },
@@ -18,7 +18,7 @@ const navItems = [
 ];
 
 export function AppSidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, toggle } = useSidebarState();
   const location = useLocation();
 
   return (
@@ -53,7 +53,7 @@ export function AppSidebar() {
       </nav>
 
       <button
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={toggle}
         className="flex items-center justify-center h-12 border-t border-sidebar-border text-muted-foreground hover:text-foreground transition-colors"
       >
         {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}

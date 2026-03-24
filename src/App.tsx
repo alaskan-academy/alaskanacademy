@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { FilterProvider } from "@/contexts/FilterContext";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 import OverviewPage from "./pages/OverviewPage";
 import MetaAdsPage from "./pages/MetaAdsPage";
 import FunnelPage from "./pages/FunnelPage";
@@ -20,6 +21,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <FilterProvider>
+        <SidebarProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<OverviewPage />} />
@@ -33,6 +35,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
+        </SidebarProvider>
       </FilterProvider>
     </TooltipProvider>
   </QueryClientProvider>
