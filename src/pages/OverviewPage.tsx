@@ -95,7 +95,7 @@ export default function OverviewPage() {
       .in("status", ["pendente", "cancelada", "expirada"])
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (startDateStr && endDateStr) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
+    if (startDateStr && endDateEnd) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (pf) q5 = q5.eq("produto", pf);
 
     // Reembolsos/chargeback
