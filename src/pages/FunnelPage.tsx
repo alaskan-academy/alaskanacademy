@@ -377,16 +377,27 @@ export default function FunnelPage() {
     load();
   }, [startDateStr, endDateStr, product]);
 
-  // Funil geral
-  const funnelGeral = calcFunnel(allMeta, allVendas, obsData, upsellData);
-  const funnelGeralAnt = calcFunnel(allMetaAnt, allVendasAnt, obsData, upsellData);
+  // Funil geral — OBs/upsells de todas as vendas do período
+  const { obs: obsGeral, ups: upsGeral } = aggregateItems(allItems);
+  const funnelGeral = calcFunnel(allMeta, allVendas, obsGeral, upsGeral);
+  const { obs: obsGeralAnt, ups: upsGeralAnt } = aggregateItems([]); // sem itens para período anterior por ora
+  const funnelGeralAnt = calcFunnel(allMetaAnt, allVendasAnt, obsGeralAnt, upsGeralAnt);
 
   // Funil por campanha: filtra Meta por campanha_nome E vendas por utm_campaign limpo
+  // OBs/upsells filtrados pelos venda_ids da campanha específica
   const funnelPorCamp = selectedCamps.map((camp) => {
     const metaCamp = allMeta.filter((r) => r.campanha_nome === camp);
     const cleanCamp = cleanUtm(camp);
     const vendasCamp = allVendas.filter((v) => cleanUtm(v.utm_campaign) === cleanCamp);
-    return { camp, meta: metaCamp, vendas: vendasCamp, data: calcFunnel(metaCamp, vendasCamp, obsData, upsellData) };
+    // Filtrar itens pelas vendas dessa campanha
+    const vendaIdsCamp = new Set(vendasCamp.map((v: any) => v.id).filter(Boolean));
+    // Se não temos venda.id, usar utm_campaign dos itens
+    const itemsCamp = allItems.filter((item: any) => {
+      const utm = item.vendas?.utm_campaign;
+      return cleanUtm(utm) === cleanCamp;
+    });
+    const { obs, ups } = aggregateItems(itemsCamp);
+    return { camp, meta: metaCamp, vendas: vendasCamp, data: calcFunnel(metaCamp, vendasCamp, obs, ups) };
   });
 
   const toggleCamp = (c: string) =>
