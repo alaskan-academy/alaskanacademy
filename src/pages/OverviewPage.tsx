@@ -117,7 +117,7 @@ export default function OverviewPage() {
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", ant.end);
+    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
     const [r1, r2, r3, r4, r5, r6, r7, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, qA1, qA2]);
