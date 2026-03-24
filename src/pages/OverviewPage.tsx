@@ -550,10 +550,12 @@ export default function OverviewPage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
             <div className="bg-card border border-border rounded-lg overflow-hidden">
               <h3 className="text-sm font-medium text-muted-foreground px-5 pt-5 mb-3">Conversão Upsells</h3>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[400px]">
                 <thead>
                   <tr className="border-b border-border">
                     {["Upsell", "Convertidos", "Receita", "Taxa"].map((h) => (
