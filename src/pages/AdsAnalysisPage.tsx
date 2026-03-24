@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, TrendingUp, DollarSign, ShoppingBag, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
-type SortKey = "compras_meta" | "roas" | "lucro" | "investimento" | "faturamento_atribuido" | "ctr" | "cpc" | "cpm";
+type SortKey = "compras_meta" | "roas" | "lucro" | "investimento" | "faturamento_atribuido" | "ctr" | "cpc" | "cpm" | "hook_rate";
 type SortDir = "asc" | "desc";
 
 interface AdRow {
@@ -30,6 +30,7 @@ interface AdRow {
   video_plays: number;
   video_3s: number;
   video_75pct: number;
+  hook_rate: number;
   lucro: number;
 }
 
@@ -102,6 +103,7 @@ export default function AdsAnalysisPage() {
           video_plays: Number(r.video_plays || 0),
           video_3s: Number(r.video_3s || 0),
           video_75pct: Number(r.video_75pct || 0),
+          hook_rate: 0,
           lucro: 0,
         });
       }
@@ -114,6 +116,7 @@ export default function AdsAnalysisPage() {
       cpc: ad.cliques > 0 ? ad.investimento / ad.cliques : 0,
       roas: ad.investimento > 0 ? ad.faturamento_atribuido / ad.investimento : 0,
       cpa: ad.compras_meta > 0 ? ad.investimento / ad.compras_meta : null,
+      hook_rate: ad.impressoes > 0 ? (ad.video_3s / ad.impressoes) * 100 : 0,
       lucro: ad.faturamento_atribuido - ad.investimento,
     }));
   }, [rawData]);
@@ -154,6 +157,7 @@ export default function AdsAnalysisPage() {
     { label: "ROAS", key: "roas", fmt: (v) => `${v.toFixed(2)}x` },
     { label: "Lucro", key: "lucro", fmt: formatCurrency },
     { label: "CTR", key: "ctr", fmt: (v) => `${v.toFixed(2)}%` },
+    { label: "Hook", key: "hook_rate", fmt: (v) => `${v.toFixed(1)}%` },
     { label: "CPC", key: "cpc", fmt: formatCurrency },
     { label: "CPM", key: "cpm", fmt: formatCurrency },
   ];
