@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, TrendingUp, DollarSign, ShoppingBag, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
-type SortKey = "compras_meta" | "roas" | "lucro" | "investimento" | "faturamento_atribuido" | "ctr" | "cpc" | "cpm";
+type SortKey = "compras_meta" | "roas" | "lucro" | "investimento" | "faturamento_atribuido" | "ctr" | "cpc" | "cpm" | "hook_rate";
 type SortDir = "asc" | "desc";
 
 interface AdRow {
