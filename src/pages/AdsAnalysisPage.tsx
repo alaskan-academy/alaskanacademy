@@ -157,6 +157,7 @@ export default function AdsAnalysisPage() {
     { label: "ROAS", key: "roas", fmt: (v) => `${v.toFixed(2)}x` },
     { label: "Lucro", key: "lucro", fmt: formatCurrency },
     { label: "CTR", key: "ctr", fmt: (v) => `${v.toFixed(2)}%` },
+    { label: "Hook", key: "hook_rate", fmt: (v) => `${v.toFixed(1)}%` },
     { label: "CPC", key: "cpc", fmt: formatCurrency },
     { label: "CPM", key: "cpm", fmt: formatCurrency },
   ];
