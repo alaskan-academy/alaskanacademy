@@ -23,6 +23,42 @@ function periodoAnterior(start?: string, end?: string) {
   };
 }
 
+// Agrupa venda_itens em formato OB/upsell, filtrando por vendas específicas
+function aggregateItems(items: any[], vendaIds?: Set<string>) {
+  const filtered = vendaIds ? items.filter((i: any) => vendaIds.has(i.venda_id)) : items;
+  const obMap = new Map<string, { nome_ob: string; total_convertidos: number; receita_total_ob: number; vendas_com_ob: Set<string> }>();
+  const upMap = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
+
+  for (const item of filtered) {
+    const tipo = item.tipo || "";
+    if (tipo.startsWith("orderbump")) {
+      const existing = obMap.get(item.code_payt) || { nome_ob: item.nome, total_convertidos: 0, receita_total_ob: 0, vendas_com_ob: new Set<string>() };
+      existing.total_convertidos += 1;
+      existing.receita_total_ob += Number(item.valor || 0);
+      existing.vendas_com_ob.add(item.venda_id);
+      obMap.set(item.code_payt, existing);
+    } else if (tipo.startsWith("upsell")) {
+      const existing = upMap.get(item.code_payt) || { nome_upsell: item.nome, total_upsells: 0, receita_total: 0 };
+      existing.total_upsells += 1;
+      existing.receita_total += Number(item.valor || 0);
+      upMap.set(item.code_payt, existing);
+    }
+  }
+
+  const totalVendasComOb = new Set(filtered.filter((i: any) => (i.tipo || "").startsWith("orderbump")).map((i: any) => i.venda_id)).size;
+  const obs = [...obMap.values()].map(o => ({
+    ...o,
+    vendas_com_ob: o.vendas_com_ob.size,
+    taxa_conversao_pct: totalVendasComOb > 0 ? (o.vendas_com_ob.size / totalVendasComOb) * 100 : 0,
+  }));
+  const ups = [...upMap.values()].map(u => ({
+    ...u,
+    taxa_conversao_pct: 0,
+  }));
+
+  return { obs, ups };
+}
+
 // Calcula métricas do funil dado linhas de meta e vendas
 function calcFunnel(metaRows: any[], vendas: any[], obsRows: any[], upsells: any[]) {
   const m = metaRows.reduce(
