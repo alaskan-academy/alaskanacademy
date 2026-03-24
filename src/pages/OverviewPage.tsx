@@ -345,39 +345,29 @@ export default function OverviewPage() {
           </div>
 
           {/* KPIs linha 4 — status não aprovados */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <KPICard title="Taxa OB" value={formatPercent(kpis.taxaOb || 0)} icon={<Target className="h-4 w-4" />} />
             <KPICard
               title="Taxa Upsell"
               value={formatPercent(kpis.taxaUp || 0)}
               icon={<TrendingUp className="h-4 w-4" />}
             />
-            {/* Pendentes */}
+            {/* Não aprovadas (pendentes + canceladas + expiradas) */}
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Pendentes</span>
-                <Clock className="h-4 w-4 text-yellow-400" />
+                <span className="text-xs font-medium text-muted-foreground uppercase">Não Aprovadas</span>
+                <XCircle className="h-4 w-4 text-orange-400" />
               </div>
-              <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.pendVal || 0)}</div>
-              <div className="text-xs text-yellow-400 mt-1">{kpis.qtdPend || 0} aguardando</div>
-            </div>
-            {/* Canceladas */}
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Canceladas</span>
-                <XCircle className="h-4 w-4 text-red-400" />
+              <div className="text-xl font-bold text-foreground">
+                {formatCurrency((kpis.pendVal || 0) + (kpis.cancelVal || 0) + (kpis.expVal || 0))}
               </div>
-              <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.cancelVal || 0)}</div>
-              <div className="text-xs text-red-400 mt-1">{kpis.qtdCanc || 0} canceladas</div>
-            </div>
-            {/* Expiradas */}
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase">Expiradas</span>
-                <AlertCircle className="h-4 w-4 text-orange-400" />
+              <div className="text-xs text-muted-foreground mt-1">
+                <span className="text-yellow-400">{kpis.qtdPend || 0} pend</span>
+                {" · "}
+                <span className="text-red-400">{kpis.qtdCanc || 0} canc</span>
+                {" · "}
+                <span className="text-orange-400">{kpis.qtdExp || 0} exp</span>
               </div>
-              <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.expVal || 0)}</div>
-              <div className="text-xs text-orange-400 mt-1">{kpis.qtdExp || 0} expiradas</div>
             </div>
             {/* Reembolsos */}
             <div className="bg-card rounded-lg border border-border p-5">
@@ -392,21 +382,19 @@ export default function OverviewPage() {
             </div>
           </div>
 
-          {/* Chargebacks — card separado se houver */}
-          {(remData.qtd_chargeback || 0) > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-card rounded-lg border border-destructive/30 p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-destructive uppercase">Chargebacks</span>
-                  <AlertCircle className="h-4 w-4 text-destructive" />
-                </div>
-                <div className="text-xl font-bold text-destructive">{formatCurrency(remData.valor_chargeback || 0)}</div>
-                <div className="text-xs text-destructive mt-1">
-                  {remData.qtd_chargeback || 0} · {(remData.pct_chargeback || 0).toFixed(1)}%
-                </div>
+          {/* Chargebacks — sempre visível ao lado dos reembolsos */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-card rounded-lg border border-destructive/30 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-destructive uppercase">Chargebacks</span>
+                <AlertCircle className="h-4 w-4 text-destructive" />
+              </div>
+              <div className="text-xl font-bold text-destructive">{formatCurrency(remData.valor_chargeback || 0)}</div>
+              <div className="text-xs text-destructive mt-1">
+                {remData.qtd_chargeback || 0} · {(remData.pct_chargeback || 0).toFixed(1)}%
               </div>
             </div>
-          )}
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Margem Detalhada */}
