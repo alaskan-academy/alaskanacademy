@@ -30,6 +30,7 @@ interface AdRow {
   video_plays: number;
   video_3s: number;
   video_75pct: number;
+  hook_rate: number;
   lucro: number;
 }
 
