@@ -249,8 +249,7 @@ export default function FunnelPage() {
   const [allMetaAnt, setAllMetaAnt] = useState<any[]>([]);
   const [allVendas, setAllVendas] = useState<any[]>([]);
   const [allVendasAnt, setAllVendasAnt] = useState<any[]>([]);
-  const [obsData, setObsData] = useState<any[]>([]);
-  const [upsellData, setUpsellData] = useState<any[]>([]);
+  const [allItems, setAllItems] = useState<any[]>([]);
   const [campanhas, setCampanhas] = useState<string[]>([]);
   const [selectedCamps, setSelectedCamps] = useState<string[]>([]);
   const [showPeriodoAnt, setShowPeriodoAnt] = useState(false);
