@@ -7,6 +7,7 @@ import OverviewPage from "./pages/OverviewPage";
 import MetaAdsPage from "./pages/MetaAdsPage";
 import FunnelPage from "./pages/FunnelPage";
 import SalesPage from "./pages/SalesPage";
+import UTMPage from "./pages/UTMPage";
 import ClientsPage from "./pages/ClientsPage";
 import EditorsPage from "./pages/EditorsPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/meta-ads" element={<MetaAdsPage />} />
             <Route path="/funil" element={<FunnelPage />} />
             <Route path="/vendas" element={<SalesPage />} />
+            <Route path="/utm" element={<UTMPage />} />
             <Route path="/clientes" element={<ClientsPage />} />
             <Route path="/editores" element={<EditorsPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
