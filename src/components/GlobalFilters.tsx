@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useFilters } from "@/contexts/FilterContext";
-import { format, subDays } from "date-fns";
+import { subDays, format } from "date-fns";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,17 +12,14 @@ const PRODUCTS = [
 ] as const;
 
 const fmt = (d: Date) => format(d, "yyyy-MM-dd");
-const today = () => new Date();
 
 export default function GlobalFilters() {
-  const { startDateStr, endDateStr, product, setStartDate, setEndDate, setProduct } = useFilters();
-  const [active, setActive] = useState<string>("7d");
+  const { datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr, product, setProduct } = useFilters();
   const [showPicker, setShowPicker] = useState(false);
   const [cs, setCs] = useState("");
   const [ce, setCe] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Fechar picker ao clicar fora
   useEffect(() => {
     if (!showPicker) return;
     const handler = (e: MouseEvent) => {
@@ -34,45 +31,38 @@ export default function GlobalFilters() {
     return () => document.removeEventListener("click", handler);
   }, [showPicker]);
 
-  const applyRange = (start: string, end: string, key: string) => {
-    setStartDate(start);
-    setEndDate(end);
-    setActive(key);
-  };
-
   const handleQuick = (key: string) => {
-    const t = today();
-    if (key === "hoje") {
-      applyRange(fmt(t), fmt(t), "hoje");
-    } else if (key === "ontem") {
-      const y = fmt(subDays(t, 1));
-      applyRange(y, y, "ontem");
+    if (key === "all") {
+      setDatePreset("all");
+    } else if (key === "today") {
+      setDatePreset("today");
     } else if (key === "7d") {
-      applyRange(fmt(subDays(t, 6)), fmt(t), "7d");
+      setDatePreset("7d");
     } else if (key === "30d") {
-      applyRange(fmt(subDays(t, 29)), fmt(t), "30d");
+      setDatePreset("30d");
     } else if (key === "custom") {
-      setCs(startDateStr || fmt(subDays(t, 6)));
-      setCe(endDateStr || fmt(t));
+      const now = new Date();
+      setCs(startDateStr || fmt(subDays(now, 6)));
+      setCe(endDateStr || fmt(now));
       setShowPicker((prev) => !prev);
     }
   };
 
   const applyCustom = () => {
     if (cs && ce && cs <= ce) {
-      applyRange(cs, ce, "custom");
+      setCustomRange(new Date(cs + "T00:00:00"), new Date(ce + "T00:00:00"));
       setShowPicker(false);
     }
   };
 
   const customLabel =
-    active === "custom" && startDateStr && endDateStr
+    datePreset === "custom" && startDateStr && endDateStr
       ? `${startDateStr.slice(8)}/${startDateStr.slice(5, 7)} – ${endDateStr.slice(8)}/${endDateStr.slice(5, 7)}`
       : "Custom";
 
   const btns = [
-    { key: "hoje", label: "Hoje" },
-    { key: "ontem", label: "Ontem" },
+    { key: "all", label: "Todos" },
+    { key: "today", label: "Hoje" },
     { key: "7d", label: "7 dias" },
     { key: "30d", label: "30 dias" },
     { key: "custom", label: customLabel },
@@ -80,7 +70,6 @@ export default function GlobalFilters() {
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
-      {/* Período */}
       <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 relative">
         {btns.map((b) => (
           <button
@@ -88,7 +77,9 @@ export default function GlobalFilters() {
             onClick={() => handleQuick(b.key)}
             className={cn(
               "px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1",
-              active === b.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              datePreset === b.key
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {b.label}
@@ -96,7 +87,6 @@ export default function GlobalFilters() {
           </button>
         ))}
 
-        {/* Date picker dropdown */}
         {showPicker && (
           <div
             ref={pickerRef}
@@ -144,7 +134,6 @@ export default function GlobalFilters() {
         )}
       </div>
 
-      {/* Produto */}
       <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
         {PRODUCTS.map((p) => (
           <button

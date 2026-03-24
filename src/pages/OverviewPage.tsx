@@ -136,11 +136,12 @@ export default function OverviewPage() {
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
     const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr);
 
-    // Lucro sem custo fixo (para card)
+    // Lucro operacional (sem custo fixo)
     const lucro = fatBruto - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
-    // Lucro com custo fixo (para margem)
+    // Lucro com custo fixo
     const lucroCC = lucro - custoFixo;
-    const margemPct = fatBruto > 0 ? (lucroCC / fatBruto) * 100 : 0;
+    // Margem % = operacional (SEM custo fixo)
+    const margemPct = fatBruto > 0 ? (lucro / fatBruto) * 100 : 0;
     const roas = investimento > 0 ? fatBruto / investimento : 0;
 
     const vendasRows = r4.data || [];
@@ -321,7 +322,7 @@ export default function OverviewPage() {
                 <Percent className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className={cn("text-2xl font-bold", margemBadge)}>{formatPercent(kpis.margemPct || 0)}</div>
-              <div className="text-xs text-muted-foreground mt-1">incl. custo fixo</div>
+              <div className="text-xs text-muted-foreground mt-1">margem operacional</div>
             </div>
             <KPICard
               title="Imposto Simples"
@@ -344,7 +345,7 @@ export default function OverviewPage() {
           </div>
 
           {/* KPIs linha 4 — status não aprovados */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
             <KPICard title="Taxa OB" value={formatPercent(kpis.taxaOb || 0)} icon={<Target className="h-4 w-4" />} />
             <KPICard
               title="Taxa Upsell"
@@ -355,35 +356,57 @@ export default function OverviewPage() {
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-muted-foreground uppercase">Pendentes</span>
-                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Clock className="h-4 w-4 text-yellow-400" />
               </div>
               <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.pendVal || 0)}</div>
-              <div className="text-xs text-yellow-400 mt-1">{kpis.qtdPend || 0} aguardando pagamento</div>
+              <div className="text-xs text-yellow-400 mt-1">{kpis.qtdPend || 0} aguardando</div>
             </div>
-            {/* Canceladas + Expiradas */}
+            {/* Canceladas */}
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-muted-foreground uppercase">Canceladas</span>
-                <XCircle className="h-4 w-4 text-muted-foreground" />
+                <XCircle className="h-4 w-4 text-red-400" />
               </div>
               <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.cancelVal || 0)}</div>
-              <div className="text-xs text-red-400 mt-1">
-                {kpis.qtdCanc || 0} canc · {kpis.qtdExp || 0} exp ({formatCurrency(kpis.expVal || 0)})
+              <div className="text-xs text-red-400 mt-1">{kpis.qtdCanc || 0} canceladas</div>
+            </div>
+            {/* Expiradas */}
+            <div className="bg-card rounded-lg border border-border p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase">Expiradas</span>
+                <AlertCircle className="h-4 w-4 text-orange-400" />
               </div>
+              <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.expVal || 0)}</div>
+              <div className="text-xs text-orange-400 mt-1">{kpis.qtdExp || 0} expiradas</div>
             </div>
             {/* Reembolsos */}
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-muted-foreground uppercase">Reembolsos</span>
-                <RefreshCcw className="h-4 w-4 text-muted-foreground" />
+                <RefreshCcw className="h-4 w-4 text-red-400" />
               </div>
               <div className="text-xl font-bold text-foreground">{formatCurrency(remData.valor_reembolsos || 0)}</div>
               <div className="text-xs text-red-400 mt-1">
-                {remData.qtd_reembolsos || 0} · {remData.pct_reembolsos || 0}%
-                {(remData.qtd_chargeback || 0) > 0 && ` | CB: ${remData.qtd_chargeback} (${remData.pct_chargeback}%)`}
+                {remData.qtd_reembolsos || 0} · {(remData.pct_reembolsos || 0).toFixed(1)}%
               </div>
             </div>
           </div>
+
+          {/* Chargebacks — card separado se houver */}
+          {(remData.qtd_chargeback || 0) > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-card rounded-lg border border-destructive/30 p-5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-destructive uppercase">Chargebacks</span>
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                </div>
+                <div className="text-xl font-bold text-destructive">{formatCurrency(remData.valor_chargeback || 0)}</div>
+                <div className="text-xs text-destructive mt-1">
+                  {remData.qtd_chargeback || 0} · {(remData.pct_chargeback || 0).toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Margem Detalhada */}
@@ -435,7 +458,7 @@ export default function OverviewPage() {
                   </>
                 )}
                 <div className="flex justify-between font-semibold">
-                  <span className="text-foreground">Margem</span>
+                  <span className="text-foreground">Margem operacional</span>
                   <span className={margemBadge}>{formatPercent(kpis.margemPct || 0)}</span>
                 </div>
               </div>
