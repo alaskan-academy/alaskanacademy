@@ -18,18 +18,20 @@ import {
   CreditCard,
   RefreshCw,
   TrendingDown,
+  AlertCircle,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
 
-function custoFixoProporcional(mensal: number, start?: string, end?: string) {
+function custoFixoProp(mensal: number, start?: string, end?: string) {
   if (!mensal) return 0;
   if (!start || !end) return mensal;
   const dias = Math.max(1, differenceInDays(parseISO(end), parseISO(start)) + 1);
   return (mensal / 30) * dias;
 }
 
-function periodoAnterior(start?: string, end?: string) {
+function periodoAnt(start?: string, end?: string) {
   if (!start || !end) return { start: undefined, end: undefined };
   const dias = Math.max(1, differenceInDays(parseISO(end), parseISO(start)) + 1);
   return {
@@ -41,12 +43,9 @@ function periodoAnterior(start?: string, end?: string) {
 const VarBadge = ({ atual, anterior }: { atual: number; anterior: number }) => {
   if (!anterior) return null;
   const v = ((atual - anterior) / anterior) * 100;
-  const pos = v >= 0;
   return (
-    <span
-      className={cn("flex items-center gap-0.5 text-xs font-medium mt-1", pos ? "text-success" : "text-destructive")}
-    >
-      {pos ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+    <span className={cn("flex items-center gap-0.5 text-xs mt-1", v >= 0 ? "text-green-400" : "text-red-400")}>
+      {v >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       {Math.abs(v).toFixed(1)}% vs anterior
     </span>
   );
@@ -59,7 +58,7 @@ export default function OverviewPage() {
   const [obsData, setObsData] = useState<any[]>([]);
   const [upsellData, setUpsellData] = useState<any[]>([]);
   const [prodData, setProdData] = useState<any[]>([]);
-  const [rembolsos, setReembolsos] = useState<any>({});
+  const [remData, setRemData] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -67,16 +66,18 @@ export default function OverviewPage() {
     setLoading(true);
     const pf = product !== "todos" ? product : null;
 
+    // Faturamento
     let q1 = supabase.from("vw_faturamento_liquido").select("*");
     if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
     if (pf) q1 = q1.eq("produto", pf);
 
+    // Conversões
     let q2 = supabase.from("vw_conversao_obs").select("*").order("taxa_conversao_pct", { ascending: false });
     if (pf) q2 = q2.eq("produto", pf);
-
     let q3 = supabase.from("vw_conversao_upsell").select("*").order("taxa_conversao_pct", { ascending: false });
     if (pf) q3 = q3.eq("produto", pf);
 
+    // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
       .select("valor_total,valor_oferta_principal,produto")
@@ -86,64 +87,76 @@ export default function OverviewPage() {
     if (startDateStr && endDateStr) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
     if (pf) q4 = q4.eq("produto", pf);
 
+    // Vendas pendentes + canceladas + expiradas (TODOS os não aprovados)
     let q5 = supabase
       .from("vendas")
-      .select("valor_total")
-      .eq("status", "pendente")
+      .select("valor_total,status")
+      .in("status", ["pendente", "cancelada", "expirada"])
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateStr) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateStr);
     if (pf) q5 = q5.eq("produto", pf);
 
+    // Reembolsos/chargeback
     const q6 = supabase.from("vw_reembolsos").select("*").single();
 
+    // Produtos
     let q7 = supabase.from("vw_vendas_por_produto_principal").select("*");
     if (pf) q7 = q7.eq("produto", pf);
 
-    const ant = periodoAnterior(startDateStr, endDateStr);
-    let qAnt = supabase.from("vw_faturamento_liquido").select("faturamento_bruto,investimento_meta");
-    if (ant.start && ant.end) qAnt = qAnt.gte("data", ant.start).lte("data", ant.end);
-    if (pf) qAnt = qAnt.eq("produto", pf);
+    // Período anterior
+    const ant = periodoAnt(startDateStr, endDateStr);
+    let qA1 = supabase.from("vw_faturamento_liquido").select("faturamento_bruto,investimento_meta");
+    if (ant.start && ant.end) qA1 = qA1.gte("data", ant.start).lte("data", ant.end);
+    if (pf) qA1 = qA1.eq("produto", pf);
 
-    let qAntV = supabase
+    let qA2 = supabase
       .from("vendas")
       .select("id")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (ant.start && ant.end) qAntV = qAntV.gte("data_venda", ant.start).lte("data_venda", ant.end);
-    if (pf) qAntV = qAntV.eq("produto", pf);
+    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", ant.end);
+    if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, r3, r4, r5, r6, r7, rAnt, rAntV] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, qAnt, qAntV]);
+    const [r1, r2, r3, r4, r5, r6, r7, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, qA1, qA2]);
 
+    // Faturamento
     const fatRows = r1.data || [];
     const fatBruto = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
     const taxaPlat = fatRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma || 0), 0);
     const taxaPlatPct = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
     const fatLiquido = fatBruto - taxaPlat;
-    const reembolsosVal = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0);
-    const impostoSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0);
-    const impostoMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0);
+    const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0);
+    const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0);
+    const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0);
     const investimento = fatRows.reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
     const simplesPct = fatRows.length > 0 ? Number(fatRows[0].simples_pct || 0) : 0;
     const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
-    const custoFixo = custoFixoProporcional(custoMensal, startDateStr, endDateStr);
+    const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr);
 
-    // Lucro = fat bruto - taxa - reembolsos - impostos - investimento (SEM custo fixo)
-    const lucro = fatBruto - taxaPlat - reembolsosVal - impostoSimples - impostoMeta - investimento;
-    // Margem detalhada inclui custo fixo
-    const lucroComCusto = lucro - custoFixo;
-    const margemPct = fatBruto > 0 ? (lucroComCusto / fatBruto) * 100 : 0;
+    // Lucro sem custo fixo (para card)
+    const lucro = fatBruto - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
+    // Lucro com custo fixo (para margem)
+    const lucroCC = lucro - custoFixo;
+    const margemPct = fatBruto > 0 ? (lucroCC / fatBruto) * 100 : 0;
     const roas = investimento > 0 ? fatBruto / investimento : 0;
 
     const vendasRows = r4.data || [];
-    const vendasAprovadas = vendasRows.length;
-    const ticketMedio = vendasAprovadas > 0 ? fatBruto / vendasAprovadas : 0;
+    const qtdAprov = vendasRows.length;
+    const ticketMedio = qtdAprov > 0 ? fatBruto / qtdAprov : 0;
 
-    const pendentes = r5.data || [];
-    const pendentesValor = pendentes.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    // Pendentes/canceladas/expiradas
+    const naoAprov = r5.data || [];
+    const pendentes = naoAprov.filter((r: any) => r.status === "pendente");
+    const canceladas = naoAprov.filter((r: any) => r.status === "cancelada");
+    const expiradas = naoAprov.filter((r: any) => r.status === "expirada");
+    const pendVal = pendentes.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    const cancelVal = canceladas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    const expVal = expiradas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
 
+    // OBs e Upsells
     const obsRows = (r2.data || []).filter((r: any) => Number(r.total_convertidos || 0) > 0);
     const taxaOb =
       obsRows.length > 0
@@ -151,25 +164,26 @@ export default function OverviewPage() {
         : 0;
     setObsData(obsRows);
 
-    const upsellRows = (r3.data || []).filter((r: any) => Number(r.total_upsells || 0) > 0);
-    const taxaUpsell =
-      upsellRows.length > 0
-        ? upsellRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsellRows.length
+    const upsRows = (r3.data || []).filter((r: any) => Number(r.total_upsells || 0) > 0);
+    const taxaUp =
+      upsRows.length > 0
+        ? upsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsRows.length
         : 0;
-    setUpsellData(upsellRows);
+    setUpsellData(upsRows);
 
-    setReembolsos(r6.data || {});
+    setRemData(r6.data || {});
     setProdData((r7.data || []).sort((a: any, b: any) => b.vendas_aprovadas - a.vendas_aprovadas));
 
     setKpis({
       fatBruto,
       fatLiquido,
       lucro,
+      lucroCC,
       taxaPlat,
       taxaPlatPct,
-      reembolsosVal,
-      impostoSimples,
-      impostoMeta,
+      reembolsosV,
+      impSimples,
+      impMeta,
       investimento,
       custoFixo,
       custoMensal,
@@ -177,23 +191,22 @@ export default function OverviewPage() {
       roas,
       simplesPct,
       metaPct,
-      vendasAprovadas,
+      qtdAprov,
       ticketMedio,
       taxaOb,
-      taxaUpsell,
-      pendentesQtd: pendentes.length,
-      pendentesValor,
-      lucroComCusto,
+      taxaUp,
+      qtdPend: pendentes.length,
+      pendVal,
+      qtdCanc: canceladas.length,
+      cancelVal,
+      qtdExp: expiradas.length,
+      expVal,
     });
 
     // Período anterior
-    const antFat = (rAnt.data || []).reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
-    const antInv = (rAnt.data || []).reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
-    setKpisAnt({
-      fatBruto: antFat,
-      vendasAprovadas: (rAntV.data || []).length,
-      roas: antInv > 0 ? antFat / antInv : 0,
-    });
+    const antFat = (rA1.data || []).reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
+    const antInv = (rA1.data || []).reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
+    setKpisAnt({ fatBruto: antFat, qtdAprov: (rA2.data || []).length, roas: antInv > 0 ? antFat / antInv : 0 });
 
     setLastUpdate(new Date());
     setLoading(false);
@@ -203,7 +216,8 @@ export default function OverviewPage() {
     fetchData();
   }, [fetchData]);
 
-  const margemBadge = kpis.margemPct > 30 ? "text-success" : kpis.margemPct >= 15 ? "text-warning" : "text-destructive";
+  const margemBadge =
+    kpis.margemPct > 30 ? "text-green-400" : kpis.margemPct >= 15 ? "text-yellow-400" : "text-red-400";
 
   const custoLabel = () => {
     if (!kpis.custoMensal) return null;
@@ -214,6 +228,7 @@ export default function OverviewPage() {
 
   return (
     <DashboardLayout title="Visão Geral">
+      {/* Botão Atualizar */}
       <div className="flex justify-end mb-4">
         <button
           onClick={fetchData}
@@ -231,7 +246,7 @@ export default function OverviewPage() {
         </div>
       ) : (
         <>
-          {/* Faturamento bruto / líquido / lucro (sem custo fixo) */}
+          {/* Faturamento: Bruto / Líquido / Lucro */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
@@ -242,7 +257,7 @@ export default function OverviewPage() {
               </div>
               <VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />
               <div className="text-xs text-muted-foreground mt-1">
-                {formatNumber(kpis.vendasAprovadas || 0)} vendas aprovadas
+                {formatNumber(kpis.qtdAprov || 0)} vendas aprovadas
               </div>
             </div>
             <div className="bg-card rounded-lg border border-border p-5">
@@ -258,10 +273,10 @@ export default function OverviewPage() {
             </div>
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Lucro</div>
-              <div className={cn("text-2xl font-bold", (kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive")}>
+              <div className={cn("text-2xl font-bold", (kpis.lucro || 0) >= 0 ? "text-green-400" : "text-red-400")}>
                 {formatCurrency(kpis.lucro || 0)}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">pós impostos e ads</div>
+              <div className="text-xs text-muted-foreground mt-1">pós impostos e ads (sem custo fixo)</div>
             </div>
           </div>
 
@@ -271,8 +286,8 @@ export default function OverviewPage() {
               <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                 Vendas Aprovadas
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatNumber(kpis.vendasAprovadas || 0)}</div>
-              <VarBadge atual={kpis.vendasAprovadas} anterior={kpisAnt.vendasAprovadas} />
+              <div className="text-2xl font-bold text-foreground">{formatNumber(kpis.qtdAprov || 0)}</div>
+              <VarBadge atual={kpis.qtdAprov} anterior={kpisAnt.qtdAprov} />
             </div>
             <KPICard
               title="Ticket Médio"
@@ -284,7 +299,7 @@ export default function OverviewPage() {
               <div
                 className={cn(
                   "text-2xl font-bold",
-                  kpis.roas >= 3 ? "text-success" : kpis.roas >= 1 ? "text-warning" : "text-destructive",
+                  kpis.roas >= 3 ? "text-green-400" : kpis.roas >= 1 ? "text-yellow-400" : "text-red-400",
                 )}
               >
                 {(kpis.roas || 0).toFixed(2)}x
@@ -302,7 +317,7 @@ export default function OverviewPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Margem %</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase">Margem %</span>
                 <Percent className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className={cn("text-2xl font-bold", margemBadge)}>{formatPercent(kpis.margemPct || 0)}</div>
@@ -310,65 +325,68 @@ export default function OverviewPage() {
             </div>
             <KPICard
               title="Imposto Simples"
-              value={formatCurrency(kpis.impostoSimples || 0)}
+              value={formatCurrency(kpis.impSimples || 0)}
               icon={<Receipt className="h-4 w-4" />}
             />
             <KPICard
               title="Imposto Meta Ads"
-              value={formatCurrency(kpis.impostoMeta || 0)}
+              value={formatCurrency(kpis.impMeta || 0)}
               icon={<BadgeDollarSign className="h-4 w-4" />}
             />
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa Payt</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase">Taxa Payt</span>
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.taxaPlat || 0)}</div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {(kpis.taxaPlatPct || 0).toFixed(2)}% do faturamento
-              </div>
+              <div className="text-xs text-muted-foreground mt-1">{(kpis.taxaPlatPct || 0).toFixed(2)}%</div>
             </div>
           </div>
 
-          {/* KPIs linha 4 */}
+          {/* KPIs linha 4 — status não aprovados */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
             <KPICard title="Taxa OB" value={formatPercent(kpis.taxaOb || 0)} icon={<Target className="h-4 w-4" />} />
             <KPICard
               title="Taxa Upsell"
-              value={formatPercent(kpis.taxaUpsell || 0)}
+              value={formatPercent(kpis.taxaUp || 0)}
               icon={<TrendingUp className="h-4 w-4" />}
             />
+            {/* Pendentes */}
             <div className="bg-card rounded-lg border border-border p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reembolsos</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase">Pendentes</span>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.pendVal || 0)}</div>
+              <div className="text-xs text-yellow-400 mt-1">{kpis.qtdPend || 0} aguardando pagamento</div>
+            </div>
+            {/* Canceladas + Expiradas */}
+            <div className="bg-card rounded-lg border border-border p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase">Canceladas</span>
+                <XCircle className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-xl font-bold text-foreground">{formatCurrency(kpis.cancelVal || 0)}</div>
+              <div className="text-xs text-red-400 mt-1">
+                {kpis.qtdCanc || 0} canc · {kpis.qtdExp || 0} exp ({formatCurrency(kpis.expVal || 0)})
+              </div>
+            </div>
+            {/* Reembolsos */}
+            <div className="bg-card rounded-lg border border-border p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase">Reembolsos</span>
                 <RefreshCcw className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="text-2xl font-bold text-foreground">
-                {formatCurrency(rembolsos.valor_reembolsos || 0)}
-              </div>
-              <div className="text-xs text-destructive mt-1">
-                {rembolsos.qtd_reembolsos || 0} · {rembolsos.pct_reembolsos || 0}%
-              </div>
-            </div>
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Chargeback</div>
-              <div className="text-2xl font-bold text-foreground">
-                {formatCurrency(rembolsos.valor_chargeback || 0)}
-              </div>
-              <div className="text-xs text-destructive mt-1">
-                {rembolsos.qtd_chargeback || 0} · {rembolsos.pct_chargeback || 0}%
+              <div className="text-xl font-bold text-foreground">{formatCurrency(remData.valor_reembolsos || 0)}</div>
+              <div className="text-xs text-red-400 mt-1">
+                {remData.qtd_reembolsos || 0} · {remData.pct_reembolsos || 0}%
+                {(remData.qtd_chargeback || 0) > 0 && ` | CB: ${remData.qtd_chargeback} (${remData.pct_chargeback}%)`}
               </div>
             </div>
-            <KPICard
-              title="Pendentes"
-              value={formatCurrency(kpis.pendentesValor || 0)}
-              subtitle={`${kpis.pendentesQtd || 0} pendentes`}
-              icon={<Clock className="h-4 w-4" />}
-            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Margem Detalhada — inclui custo fixo */}
+            {/* Margem Detalhada */}
             <div className="bg-card border border-border rounded-lg p-5">
               <h3 className="text-sm font-medium text-muted-foreground mb-4">Margem Detalhada</h3>
               <div className="space-y-2 text-sm">
@@ -377,46 +395,41 @@ export default function OverviewPage() {
                   <span className="text-foreground font-medium">{formatCurrency(Math.max(0, kpis.fatBruto || 0))}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-destructive">(-) Taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)</span>
-                  <span className="text-destructive">{formatCurrency(kpis.taxaPlat || 0)}</span>
+                  <span className="text-red-400">(-) Taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)</span>
+                  <span className="text-red-400">{formatCurrency(kpis.taxaPlat || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-destructive">(-) Reembolsos</span>
-                  <span className="text-destructive">{formatCurrency(kpis.reembolsosVal || 0)}</span>
+                  <span className="text-red-400">(-) Reembolsos</span>
+                  <span className="text-red-400">{formatCurrency(kpis.reembolsosV || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-destructive">(-) Simples ({formatPercent(kpis.simplesPct || 0)})</span>
-                  <span className="text-destructive">{formatCurrency(kpis.impostoSimples || 0)}</span>
+                  <span className="text-red-400">(-) Simples ({formatPercent(kpis.simplesPct || 0)})</span>
+                  <span className="text-red-400">{formatCurrency(kpis.impSimples || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-destructive">(-) Imp. Meta Ads ({formatPercent(kpis.metaPct || 0)})</span>
-                  <span className="text-destructive">{formatCurrency(kpis.impostoMeta || 0)}</span>
+                  <span className="text-red-400">(-) Imp. Meta ({formatPercent(kpis.metaPct || 0)})</span>
+                  <span className="text-red-400">{formatCurrency(kpis.impMeta || 0)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-destructive">(-) Investimento Meta</span>
-                  <span className="text-destructive">{formatCurrency(kpis.investimento || 0)}</span>
+                  <span className="text-red-400">(-) Investimento Meta</span>
+                  <span className="text-red-400">{formatCurrency(kpis.investimento || 0)}</span>
                 </div>
                 <div className="border-t border-border/50 pt-1 flex justify-between text-xs">
-                  <span className="text-foreground font-medium">= Lucro (sem custo fixo)</span>
-                  <span className={cn("font-medium", (kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive")}>
+                  <span className="font-medium text-foreground">= Lucro (sem custo fixo)</span>
+                  <span className={cn("font-semibold", (kpis.lucro || 0) >= 0 ? "text-green-400" : "text-red-400")}>
                     {formatCurrency(kpis.lucro || 0)}
                   </span>
                 </div>
                 {(kpis.custoFixo || 0) > 0 && (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-destructive">(-) Custo fixo ({custoLabel()})</span>
-                      <span className="text-destructive">{formatCurrency(kpis.custoFixo)}</span>
+                      <span className="text-red-400">(-) Custo fixo ({custoLabel()})</span>
+                      <span className="text-red-400">{formatCurrency(kpis.custoFixo)}</span>
                     </div>
                     <div className="border-t border-border pt-2 flex justify-between font-semibold">
                       <span className="text-foreground">(=) Lucro c/ custo fixo</span>
-                      <span
-                        className={cn(
-                          "font-bold",
-                          (kpis.lucroComCusto || 0) >= 0 ? "text-success" : "text-destructive",
-                        )}
-                      >
-                        {formatCurrency(kpis.lucroComCusto || 0)}
+                      <span className={cn((kpis.lucroCC || 0) >= 0 ? "text-green-400" : "text-red-400")}>
+                        {formatCurrency(kpis.lucroCC || 0)}
                       </span>
                     </div>
                   </>
@@ -428,7 +441,7 @@ export default function OverviewPage() {
               </div>
             </div>
 
-            {/* Vendas por Produto Principal */}
+            {/* Vendas por Produto */}
             <div className="bg-card border border-border rounded-lg p-5">
               <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por Produto Principal</h3>
               <div className="space-y-3">
@@ -482,7 +495,7 @@ export default function OverviewPage() {
                   {obsData.length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-4 py-4 text-center text-muted-foreground">
-                        Sem conversões
+                        Sem conversões no período
                       </td>
                     </tr>
                   )}
