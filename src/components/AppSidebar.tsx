@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Award, Settings, ChevronLeft, ChevronRight, Mountain, Link2
+  Users, Award, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -9,6 +9,7 @@ import { useSidebarState } from '@/contexts/SidebarContext';
 const navItems = [
   { path: '/', label: 'Visão Geral', icon: LayoutDashboard },
   { path: '/meta-ads', label: 'Meta Ads', icon: TrendingUp },
+  { path: '/analise-ads', label: 'Análise de Ads', icon: BarChart3 },
   { path: '/funil', label: 'Funil', icon: Filter },
   { path: '/vendas', label: 'Vendas', icon: ShoppingCart },
   { path: '/utm', label: 'Análise UTM', icon: Link2 },
