@@ -127,7 +127,6 @@ export default function OverviewPage() {
     const fatBruto = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
     const taxaPlat = fatRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma || 0), 0);
     const taxaPlatPct = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
-    const fatLiquido = fatBruto - taxaPlat;
     const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0);
     const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0);
     const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0);
@@ -136,6 +135,8 @@ export default function OverviewPage() {
     const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
     const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr);
+    // Faturamento líquido = bruto - taxa Payt - imposto Simples
+    const fatLiquido = fatBruto - taxaPlat - impSimples;
 
     // Lucro operacional (sem custo fixo)
     const lucro = fatBruto - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
@@ -146,7 +147,9 @@ export default function OverviewPage() {
     const roas = investimento > 0 ? fatBruto / investimento : 0;
 
     const vendasRows = r4.data || [];
-    const qtdAprov = vendasRows.length;
+    // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
+    const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
+    const qtdAprov = vendasPrincipal.length;
     const ticketMedio = qtdAprov > 0 ? fatBruto / qtdAprov : 0;
 
     // Pendentes/canceladas/expiradas
@@ -409,7 +412,7 @@ export default function OverviewPage() {
                 <DollarSign className="h-4 w-4 text-success" />
               </div>
               <div className="text-3xl font-bold text-foreground">{formatCurrency(Math.max(0, kpis.fatLiquido || 0))}</div>
-              <div className="text-xs text-muted-foreground mt-1">após taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)</div>
+              <div className="text-xs text-muted-foreground mt-1">após taxa Payt + Simples</div>
             </div>
             <div className="bg-card rounded-lg border-2 border-success/30 p-6">
               <div className="flex items-center justify-between mb-2">
