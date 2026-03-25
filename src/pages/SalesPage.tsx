@@ -24,6 +24,7 @@ const statusStyles: Record<string, string> = {
   aprovada: "bg-success/20 text-success border-success/30",
   pendente: "bg-warning/20 text-warning border-warning/30",
   cancelada: "bg-muted text-muted-foreground border-border",
+  expirada: "bg-muted text-muted-foreground border-border",
   reembolsada: "bg-destructive/20 text-destructive border-destructive/30",
 };
 
@@ -66,6 +67,7 @@ export default function SalesPage() {
       const pf = product !== "todos" ? product : null;
       const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
+      // Busca is_upsell junto com as vendas
       let qSales = supabase
         .from("vendas")
         .select("*, clientes(nome, email, telefone)")
@@ -119,7 +121,6 @@ export default function SalesPage() {
       });
       setByProduct(Object.entries(prodMap).map(([name, value]) => ({ name, value })));
 
-      // Pagamento: agregar sem duplicatas por produto
       const payMap: Record<string, any> = {};
       (rPay.data || []).forEach((r: any) => {
         const k = r.meio_pagamento;
@@ -147,7 +148,6 @@ export default function SalesPage() {
 
       setHourlyData((rH.data || []).sort((a: any, b: any) => (a.hora || 0) - (b.hora || 0)));
 
-      // Dia da semana: ordenar seg-dom e agregar
       const weekOrder = [1, 2, 3, 4, 5, 6, 0];
       const weekMap: Record<number, any> = {};
       (rW.data || []).forEach((r: any) => {
@@ -168,7 +168,6 @@ export default function SalesPage() {
         ),
       );
 
-      // Mês: agregar
       const monthMap: Record<string, any> = {};
       (rM.data || []).forEach((r: any) => {
         const k = r.mes_ano;
@@ -189,7 +188,8 @@ export default function SalesPage() {
     setSaleItems(items || []);
   };
 
-  const statuses = ["todos", "aprovada", "pendente", "cancelada", "reembolsada"];
+  // Inclui expirada nos filtros
+  const statuses = ["todos", "aprovada", "pendente", "cancelada", "expirada", "reembolsada"];
   const displayId = (sale: any) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
   const peakHour = hourlyData.reduce(
     (max, r) => ((r.vendas_aprovadas || 0) > (max?.vendas_aprovadas || 0) ? r : max),
@@ -291,7 +291,6 @@ export default function SalesPage() {
         {/* ── Lista / Por Data ─────────────────────────────── */}
         <TabsContent value="lista">
           <div className="space-y-3">
-            {/* Gráfico por dia */}
             <div className="bg-card border border-border rounded-lg p-5">
               <h3 className="text-sm font-medium text-muted-foreground mb-3">Faturamento por Dia</h3>
               <ResponsiveContainer width="100%" height={220}>
@@ -308,8 +307,9 @@ export default function SalesPage() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+
             {/* Filtro status */}
-            <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 w-fit">
+            <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 w-fit flex-wrap">
               {statuses.map((s) => (
                 <button
                   key={s}
@@ -325,7 +325,8 @@ export default function SalesPage() {
                 </button>
               ))}
             </div>
-            {/* Tabela */}
+
+            {/* Tabela com coluna Tipo */}
             <div className="bg-card border border-border rounded-lg overflow-hidden">
               {loading ? (
                 <div className="p-8 text-center text-muted-foreground">Carregando...</div>
@@ -334,16 +335,24 @@ export default function SalesPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">
-                        {["Pedido", "Data", "Cliente", "Produto", "Status", "Total", "Pagamento", "UTM Source"].map(
-                          (h) => (
-                            <th
-                              key={h}
-                              className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase"
-                            >
-                              {h}
-                            </th>
-                          ),
-                        )}
+                        {[
+                          "Pedido",
+                          "Tipo",
+                          "Data",
+                          "Cliente",
+                          "Produto",
+                          "Status",
+                          "Total",
+                          "Pagamento",
+                          "UTM Source",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase"
+                          >
+                            {h}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
@@ -354,6 +363,18 @@ export default function SalesPage() {
                           className="border-b border-border/50 hover:bg-secondary/50 cursor-pointer"
                         >
                           <td className="px-4 py-3 font-mono text-xs text-foreground">{displayId(sale)}</td>
+                          {/* Coluna Tipo: Upsell ou Normal */}
+                          <td className="px-4 py-3">
+                            {sale.is_upsell ? (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 whitespace-nowrap">
+                                Upsell
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground border border-border">
+                                Normal
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-foreground whitespace-nowrap">
                             {sale.data_venda ? format(new Date(sale.data_venda), "dd/MM/yy HH:mm") : "-"}
                           </td>
@@ -380,7 +401,7 @@ export default function SalesPage() {
                       ))}
                       {salesData.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                          <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                             Nenhuma venda
                           </td>
                         </tr>
@@ -513,7 +534,7 @@ export default function SalesPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Modal */}
+      {/* Modal detalhe */}
       <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
         <DialogContent className="max-w-lg bg-card border-border">
           <DialogHeader>
@@ -525,6 +546,18 @@ export default function SalesPage() {
                 <div>
                   <span className="text-muted-foreground">Pedido:</span>{" "}
                   <span className="text-foreground ml-1">{displayId(selectedSale)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Tipo:</span>
+                  {selectedSale.is_upsell ? (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                      Upsell
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground border border-border">
+                      Normal
+                    </span>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Status:</span>{" "}
@@ -590,10 +623,9 @@ export default function SalesPage() {
   );
 }
 
-// Componente auxiliar para tabelas
 function TableCard({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
+    <div className="bg-card border border-border overflow-hidden rounded-lg">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
