@@ -127,7 +127,6 @@ export default function OverviewPage() {
     const fatBruto = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
     const taxaPlat = fatRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma || 0), 0);
     const taxaPlatPct = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
-    const fatLiquidoPlaceholder = 0; // calculated below after impSimples
     const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0);
     const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0);
     const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0);
@@ -136,6 +135,8 @@ export default function OverviewPage() {
     const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
     const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr);
+    // Faturamento líquido = bruto - taxa Payt - imposto Simples
+    const fatLiquido = fatBruto - taxaPlat - impSimples;
 
     // Lucro operacional (sem custo fixo)
     const lucro = fatBruto - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
