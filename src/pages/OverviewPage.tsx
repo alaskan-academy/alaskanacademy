@@ -146,7 +146,9 @@ export default function OverviewPage() {
     const roas = investimento > 0 ? fatBruto / investimento : 0;
 
     const vendasRows = r4.data || [];
-    const qtdAprov = vendasRows.length;
+    // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
+    const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
+    const qtdAprov = vendasPrincipal.length;
     const ticketMedio = qtdAprov > 0 ? fatBruto / qtdAprov : 0;
 
     // Pendentes/canceladas/expiradas
