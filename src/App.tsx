@@ -19,27 +19,27 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <FilterProvider>
-        <SidebarProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<OverviewPage />} />
-            <Route path="/meta-ads" element={<MetaAdsPage />} />
-            <Route path="/analise-ads" element={<AdsAnalysisPage />} />
-            <Route path="/funil" element={<FunnelPage />} />
-            <Route path="/vendas" element={<SalesPage />} />
-            <Route path="/utm" element={<UTMPage />} />
-            <Route path="/clientes" element={<ClientsPage />} />
-            <Route path="/editores" element={<EditorsPage />} />
-            <Route path="/configuracoes" element={<SettingsPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-        </SidebarProvider>
-      </FilterProvider>
-    </TooltipProvider>
+    <FilterProvider>
+      <SidebarProvider>
+        <TooltipProvider>
+          <Toaster />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<OverviewPage />} />
+              <Route path="/meta-ads" element={<MetaAdsPage />} />
+              <Route path="/analise-ads" element={<AdsAnalysisPage />} />
+              <Route path="/funil" element={<FunnelPage />} />
+              <Route path="/vendas" element={<SalesPage />} />
+              <Route path="/utm" element={<UTMPage />} />
+              <Route path="/clientes" element={<ClientsPage />} />
+              <Route path="/editores" element={<EditorsPage />} />
+              <Route path="/configuracoes" element={<SettingsPage />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </SidebarProvider>
+    </FilterProvider>
   </QueryClientProvider>
 );
 
