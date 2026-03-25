@@ -25,7 +25,7 @@ export const useFilters = () => {
 };
 
 export const FilterProvider = ({ children }: { children: ReactNode }) => {
-  const [datePreset, setDatePresetState] = useState<DatePreset>('all');
+  const [datePreset, setDatePresetState] = useState<DatePreset>('today');
   const [product, setProduct] = useState<ProductFilter>('todos');
   const [customStart, setCustomStart] = useState<Date>(subDays(new Date(), 30));
   const [customEnd, setCustomEnd] = useState<Date>(new Date());
