@@ -105,6 +105,17 @@ export default function OverviewPage() {
     let q7 = supabase.from("vw_vendas_por_produto_principal").select("*");
     if (pf) q7 = q7.eq("produto", pf);
 
+    // Vendas backend (sem tráfego pago = utm_source é null)
+    let q8 = supabase
+      .from("vendas")
+      .select("valor_total,produto")
+      .eq("status", "aprovada")
+      .is("utm_source", null)
+      .not("pedido_id", "like", "TEST%")
+      .not("pedido_id", "like", "LC-%");
+    if (startDateStr && endDateEnd) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (pf) q8 = q8.eq("produto", pf);
+
     // Período anterior
     const ant = periodoAnt(startDateStr, endDateStr);
     let qA1 = supabase.from("vw_faturamento_liquido").select("faturamento_bruto,investimento_meta");
@@ -120,7 +131,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, r3, r4, r5, r6, r7, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, qA1, qA2]);
+    const [r1, r2, r3, r4, r5, r6, r7, r8, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, q8, qA1, qA2]);
 
     // Faturamento
     const fatRows = r1.data || [];
