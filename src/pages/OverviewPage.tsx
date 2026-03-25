@@ -103,9 +103,7 @@ export default function OverviewPage() {
     // Reembolsos/chargeback
     const q6 = supabase.from("vw_reembolsos").select("*").single();
 
-    // Produtos
-    let q7 = supabase.from("vw_vendas_por_produto_principal").select("*");
-    if (pf) q7 = q7.eq("produto", pf);
+    // Produtos — será calculado a partir de vendasRows (q4)
 
     // Vendas backend (sem tráfego pago = utm_source é null)
     let q8 = supabase
