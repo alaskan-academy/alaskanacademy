@@ -364,20 +364,30 @@ export default function OverviewPage() {
           <div className="mb-1">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/60">Funil / Monetização</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-card rounded-lg border border-primary/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa OB</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Bumps</span>
                 <Target className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatPercent(kpis.taxaOb || 0)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.receitaOb || 0)}</div>
+              <div className="text-xs text-primary mt-1">Taxa: {formatPercent(kpis.taxaOb || 0)}</div>
             </div>
             <div className="bg-card rounded-lg border border-primary/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa Upsell</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Upsells</span>
                 <TrendingUp className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatPercent(kpis.taxaUp || 0)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.receitaUp || 0)}</div>
+              <div className="text-xs text-primary mt-1">Taxa: {formatPercent(kpis.taxaUp || 0)}</div>
+            </div>
+            <div className="bg-card rounded-lg border border-primary/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendas Backend</span>
+                <ShoppingBag className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.valBackend || 0)}</div>
+              <div className="text-xs text-primary mt-1">{formatNumber(kpis.qtdBackend || 0)} vendas · {formatPercent(kpis.pctBackend || 0)}</div>
             </div>
           </div>
 
