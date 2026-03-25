@@ -422,7 +422,7 @@ export default function OverviewPage() {
               <div className={cn("text-3xl font-bold", (kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive")}>
                 {formatCurrency(kpis.lucro || 0)}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">pós impostos e ads</div>
+              <div className="text-xs text-muted-foreground mt-1">pós taxas, impostos e ads</div>
             </div>
             <div className="bg-card rounded-lg border-2 border-success/30 p-6">
               <div className="flex items-center justify-between mb-2">
