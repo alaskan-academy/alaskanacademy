@@ -105,6 +105,17 @@ export default function OverviewPage() {
     let q7 = supabase.from("vw_vendas_por_produto_principal").select("*");
     if (pf) q7 = q7.eq("produto", pf);
 
+    // Vendas backend (sem tráfego pago = utm_source é null)
+    let q8 = supabase
+      .from("vendas")
+      .select("valor_total,produto")
+      .eq("status", "aprovada")
+      .is("utm_source", null)
+      .not("pedido_id", "like", "TEST%")
+      .not("pedido_id", "like", "LC-%");
+    if (startDateStr && endDateEnd) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (pf) q8 = q8.eq("produto", pf);
+
     // Período anterior
     const ant = periodoAnt(startDateStr, endDateStr);
     let qA1 = supabase.from("vw_faturamento_liquido").select("faturamento_bruto,investimento_meta");
@@ -120,7 +131,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, r3, r4, r5, r6, r7, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, qA1, qA2]);
+    const [r1, r2, r3, r4, r5, r6, r7, r8, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, q8, qA1, qA2]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -167,6 +178,7 @@ export default function OverviewPage() {
       obsRows.length > 0
         ? obsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / obsRows.length
         : 0;
+    const receitaOb = obsRows.reduce((s: number, r: any) => s + Number(r.receita_total_ob || 0), 0);
     setObsData(obsRows);
 
     const upsRows = (r3.data || []).filter((r: any) => Number(r.total_upsells || 0) > 0);
@@ -174,7 +186,14 @@ export default function OverviewPage() {
       upsRows.length > 0
         ? upsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsRows.length
         : 0;
+    const receitaUp = upsRows.reduce((s: number, r: any) => s + Number(r.receita_total || 0), 0);
     setUpsellData(upsRows);
+
+    // Vendas backend (sem tráfego pago)
+    const backendRows = r8.data || [];
+    const qtdBackend = backendRows.length;
+    const valBackend = backendRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
 
     setRemData(r6.data || {});
     setProdData((r7.data || []).sort((a: any, b: any) => b.vendas_aprovadas - a.vendas_aprovadas));
@@ -200,6 +219,11 @@ export default function OverviewPage() {
       ticketMedio,
       taxaOb,
       taxaUp,
+      receitaOb,
+      receitaUp,
+      qtdBackend,
+      valBackend,
+      pctBackend,
       qtdPend: pendentes.length,
       pendVal,
       qtdCanc: canceladas.length,
@@ -340,20 +364,30 @@ export default function OverviewPage() {
           <div className="mb-1">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/60">Funil / Monetização</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-card rounded-lg border border-primary/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa OB</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Bumps</span>
                 <Target className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatPercent(kpis.taxaOb || 0)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.receitaOb || 0)}</div>
+              <div className="text-xs text-primary mt-1">Taxa: {formatPercent(kpis.taxaOb || 0)}</div>
             </div>
             <div className="bg-card rounded-lg border border-primary/20 p-5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa Upsell</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Upsells</span>
                 <TrendingUp className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-2xl font-bold text-foreground">{formatPercent(kpis.taxaUp || 0)}</div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.receitaUp || 0)}</div>
+              <div className="text-xs text-primary mt-1">Taxa: {formatPercent(kpis.taxaUp || 0)}</div>
+            </div>
+            <div className="bg-card rounded-lg border border-primary/20 p-5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendas Backend</span>
+                <ShoppingBag className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.valBackend || 0)}</div>
+              <div className="text-xs text-primary mt-1">{formatNumber(kpis.qtdBackend || 0)} vendas · {formatPercent(kpis.pctBackend || 0)}</div>
             </div>
           </div>
 
