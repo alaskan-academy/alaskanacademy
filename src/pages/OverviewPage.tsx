@@ -178,6 +178,7 @@ export default function OverviewPage() {
       obsRows.length > 0
         ? obsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / obsRows.length
         : 0;
+    const receitaOb = obsRows.reduce((s: number, r: any) => s + Number(r.receita_total_ob || 0), 0);
     setObsData(obsRows);
 
     const upsRows = (r3.data || []).filter((r: any) => Number(r.total_upsells || 0) > 0);
@@ -185,7 +186,14 @@ export default function OverviewPage() {
       upsRows.length > 0
         ? upsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsRows.length
         : 0;
+    const receitaUp = upsRows.reduce((s: number, r: any) => s + Number(r.receita_total || 0), 0);
     setUpsellData(upsRows);
+
+    // Vendas backend (sem tráfego pago)
+    const backendRows = r8.data || [];
+    const qtdBackend = backendRows.length;
+    const valBackend = backendRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
 
     setRemData(r6.data || {});
     setProdData((r7.data || []).sort((a: any, b: any) => b.vendas_aprovadas - a.vendas_aprovadas));
@@ -211,6 +219,11 @@ export default function OverviewPage() {
       ticketMedio,
       taxaOb,
       taxaUp,
+      receitaOb,
+      receitaUp,
+      qtdBackend,
+      valBackend,
+      pctBackend,
       qtdPend: pendentes.length,
       pendVal,
       qtdCanc: canceladas.length,
