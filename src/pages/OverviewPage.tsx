@@ -412,7 +412,7 @@ export default function OverviewPage() {
                 <DollarSign className="h-4 w-4 text-success" />
               </div>
               <div className="text-3xl font-bold text-foreground">{formatCurrency(Math.max(0, kpis.fatLiquido || 0))}</div>
-              <div className="text-xs text-muted-foreground mt-1">após taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)</div>
+              <div className="text-xs text-muted-foreground mt-1">após taxa Payt + Simples</div>
             </div>
             <div className="bg-card rounded-lg border-2 border-success/30 p-6">
               <div className="flex items-center justify-between mb-2">
