@@ -103,9 +103,7 @@ export default function OverviewPage() {
     // Reembolsos/chargeback
     const q6 = supabase.from("vw_reembolsos").select("*").single();
 
-    // Produtos
-    let q7 = supabase.from("vw_vendas_por_produto_principal").select("*");
-    if (pf) q7 = q7.eq("produto", pf);
+    // Produtos — será calculado a partir de vendasRows (q4)
 
     // Vendas backend (sem tráfego pago = utm_source é null)
     let q8 = supabase
@@ -133,7 +131,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, r3, r4, r5, r6, r7, r8, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q7, q8, qA1, qA2]);
+    const [r1, r2, r3, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q8, qA1, qA2]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -219,7 +217,21 @@ export default function OverviewPage() {
     const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
 
     setRemData(r6.data || {});
-    setProdData((r7.data || []).sort((a: any, b: any) => b.vendas_aprovadas - a.vendas_aprovadas));
+    // Compute prodData from vendasRows (already filtered by date/product)
+    const prodMap = new Map<string, { produto: string; vendas_aprovadas: number; faturamento_principal: number; faturamento_total: number }>();
+    for (const v of vendasPrincipal) {
+      const p = v.produto || "outros";
+      const existing = prodMap.get(p) || { produto: p, vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
+      existing.vendas_aprovadas += 1;
+      existing.faturamento_principal += Number(v.valor_oferta_principal || 0);
+      existing.faturamento_total += Number(v.valor_total || 0);
+      prodMap.set(p, existing);
+    }
+    const computedProdData = [...prodMap.values()].map(p => ({
+      ...p,
+      ticket_medio: p.vendas_aprovadas > 0 ? p.faturamento_total / p.vendas_aprovadas : 0,
+    }));
+    setProdData(computedProdData.sort((a, b) => b.vendas_aprovadas - a.vendas_aprovadas));
 
     setKpis({
       fatBruto,
