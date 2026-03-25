@@ -217,7 +217,21 @@ export default function OverviewPage() {
     const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
 
     setRemData(r6.data || {});
-    setProdData((r7.data || []).sort((a: any, b: any) => b.vendas_aprovadas - a.vendas_aprovadas));
+    // Compute prodData from vendasRows (already filtered by date/product)
+    const prodMap = new Map<string, { produto: string; vendas_aprovadas: number; faturamento_principal: number; faturamento_total: number }>();
+    for (const v of vendasPrincipal) {
+      const p = v.produto || "outros";
+      const existing = prodMap.get(p) || { produto: p, vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
+      existing.vendas_aprovadas += 1;
+      existing.faturamento_principal += Number(v.valor_oferta_principal || 0);
+      existing.faturamento_total += Number(v.valor_total || 0);
+      prodMap.set(p, existing);
+    }
+    const computedProdData = [...prodMap.values()].map(p => ({
+      ...p,
+      ticket_medio: p.vendas_aprovadas > 0 ? p.faturamento_total / p.vendas_aprovadas : 0,
+    }));
+    setProdData(computedProdData.sort((a, b) => b.vendas_aprovadas - a.vendas_aprovadas));
 
     setKpis({
       fatBruto,
