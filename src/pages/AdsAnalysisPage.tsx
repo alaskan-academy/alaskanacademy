@@ -50,13 +50,13 @@ export default function AdsAnalysisPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
       let q = supabase
         .from("vw_metricas_meta_nivel")
         .select("*")
         .eq("nivel", "ad");
       if (startDateStr && endDateStr) q = q.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) q = q.eq("produto", pf);
+      if (funilId) q = q.eq("funil_id", funilId);
 
       const { data } = await q;
       setRawData(data || []);

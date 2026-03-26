@@ -294,7 +294,7 @@ export default function FunnelPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
       const ant = periodoAnterior(startDateStr, endDateStr);
 
       // Meta atual
@@ -305,7 +305,7 @@ export default function FunnelPage() {
         )
         .eq("nivel", "campanha");
       if (startDateStr && endDateStr) qMeta = qMeta.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) qMeta = qMeta.eq("produto", pf);
+      if (funilId) qMeta = qMeta.eq("funil_id", funilId);
 
       // Vendas atuais
       let qV = supabase
@@ -315,7 +315,7 @@ export default function FunnelPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", `${endDateStr}T23:59:59`);
-      if (pf) qV = qV.eq("produto", pf);
+      if (funilId) qV = qV.eq("funil_id", funilId);
 
       // OBs e Upsells vinculados às vendas (com utm_campaign)
       let qItems = supabase

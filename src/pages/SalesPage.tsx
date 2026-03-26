@@ -64,7 +64,7 @@ export default function SalesPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
       const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
       // Busca is_upsell junto com as vendas
@@ -75,12 +75,12 @@ export default function SalesPage() {
         .not("pedido_id", "like", "LC-%")
         .order("data_venda", { ascending: false });
       if (startDateStr && endDateEnd) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-      if (pf) qSales = qSales.eq("produto", pf);
+      if (funilId) qSales = qSales.eq("funil_id", funilId);
       if (statusFilter !== "todos") qSales = qSales.eq("status", statusFilter);
 
       let qT = supabase.from("vw_vendas_temporal").select("*");
       if (startDateStr && endDateStr) qT = qT.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) qT = qT.eq("produto", pf);
+      if (funilId) qT = qT.eq("funil_id", funilId);
 
       let qP = supabase
         .from("vendas")
@@ -89,19 +89,19 @@ export default function SalesPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateEnd) qP = qP.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-      if (pf) qP = qP.eq("produto", pf);
+      if (funilId) qP = qP.eq("funil_id", funilId);
 
       let qPay = supabase.from("vw_vendas_por_pagamento").select("*");
-      if (pf) qPay = qPay.eq("produto", pf);
+      if (funilId) qPay = qPay.eq("funil_id", funilId);
 
       let qH = supabase.from("vw_vendas_por_horario").select("*");
-      if (pf) qH = qH.eq("produto", pf);
+      if (funilId) qH = qH.eq("funil_id", funilId);
 
       let qW = supabase.from("vw_vendas_por_dia_semana").select("*");
-      if (pf) qW = qW.eq("produto", pf);
+      if (funilId) qW = qW.eq("funil_id", funilId);
 
       let qM = supabase.from("vw_vendas_por_mes").select("*").order("mes_ano", { ascending: true });
-      if (pf) qM = qM.eq("produto", pf);
+      if (funilId) qM = qM.eq("funil_id", funilId);
 
       const [rS, rT, rP, rPay, rH, rW, rM] = await Promise.all([qSales, qT, qP, qPay, qH, qW, qM]);
 

@@ -69,7 +69,7 @@ export default function OverviewPage() {
     // Faturamento
     let q1 = supabase.from("vw_faturamento_liquido").select("*");
     if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
-    if (pf) q1 = q1.eq("produto", pf);
+    if (funilId) q1 = q1.eq("funil_id", funilId);
 
     // OBs (via venda_itens com join para filtrar por data)
     let q2 = supabase
@@ -90,7 +90,7 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-    if (pf) qUp = qUp.eq("produto", pf);
+    if (funilId) qUp = qUp.eq("funil_id", funilId);
 
     const qOfertasUp = supabase.from("ofertas").select("nome").eq("tipo", "upsell");
 
@@ -102,7 +102,7 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-    if (pf) q4 = q4.eq("produto", pf);
+    if (funilId) q4 = q4.eq("funil_id", funilId);
 
     // Vendas pendentes + canceladas + expiradas (TODOS os não aprovados)
     let q5 = supabase
@@ -112,7 +112,7 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-    if (pf) q5 = q5.eq("produto", pf);
+    if (funilId) q5 = q5.eq("funil_id", funilId);
 
     // Reembolsos/chargeback
     const q6 = supabase.from("vw_reembolsos").select("*").single();
@@ -128,13 +128,13 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-    if (pf) q8 = q8.eq("produto", pf);
+    if (funilId) q8 = q8.eq("funil_id", funilId);
 
     // Período anterior
     const ant = periodoAnt(startDateStr, endDateStr);
     let qA1 = supabase.from("vw_faturamento_liquido").select("faturamento_bruto,investimento_meta");
     if (ant.start && ant.end) qA1 = qA1.gte("data", ant.start).lte("data", ant.end);
-    if (pf) qA1 = qA1.eq("produto", pf);
+    if (funilId) qA1 = qA1.eq("funil_id", funilId);
 
     let qA2 = supabase
       .from("vendas")
@@ -143,7 +143,7 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
-    if (pf) qA2 = qA2.eq("produto", pf);
+    if (funilId) qA2 = qA2.eq("funil_id", funilId);
 
     const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rOfertasUp] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qOfertasUp]);
 
