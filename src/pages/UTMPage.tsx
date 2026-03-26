@@ -77,7 +77,7 @@ const cleanUtmValue = (value: string | null | undefined, level: UTMLevel) => {
     return base;
   }
 
-  if (level === "utm_placement" || level === "utm_term") {
+  if (level === "utm_placement") {
     return cleanPlacementValue(base);
   }
 
