@@ -143,7 +143,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rUpsellOffers] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qUpsellOffers]);
+    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -204,18 +204,13 @@ export default function OverviewPage() {
     const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
     setObsData(obsRows);
 
-    // Upsells: vendas separadas com is_upsell = true
-    const upsellOfferMap = new Map((rUpsellOffers.data || []).map((o: any) => [o.code_payt, o.nome]));
+    // Upsells: vendas separadas com is_upsell = true (nome vem do payload_webhook->product->name)
     const upVendas = rUp.data || [];
-    // Agrupar por pedido_id (cada upsell é uma venda separada com seu próprio pedido_id)
-    // Mas como não temos code_payt na venda, agrupamos por valor_oferta_principal + produto para identificar
-    // Na verdade, cada venda de upsell tem valor_oferta_principal que corresponde ao preço do upsell
-    // Vamos agrupar por nome usando o payload ou simplesmente listar
     const upGrouped = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
     for (const v of upVendas) {
-      // Chave: produto + valor para agrupar upsells similares
-      const key = `${v.produto}_${v.valor_oferta_principal}`;
-      const ex = upGrouped.get(key) || { nome_upsell: `Upsell ${v.produto} (R$ ${Number(v.valor_oferta_principal).toFixed(2)})`, total_upsells: 0, receita_total: 0 };
+      const nome = (v as any).name || `Upsell ${v.produto}`;
+      const key = nome;
+      const ex = upGrouped.get(key) || { nome_upsell: nome, total_upsells: 0, receita_total: 0 };
       ex.total_upsells += 1;
       ex.receita_total += Number(v.valor_total || 0);
       upGrouped.set(key, ex);
