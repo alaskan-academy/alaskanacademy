@@ -32,7 +32,7 @@ const placementInfo: Record<string, { label: string; network: string; color: str
 };
 
 const sourceColors: Record<string, string> = {
-  facebook: "hsl(214,89%,52%)",
+  "meta ads": "hsl(214,89%,52%)",
   instagram: "hsl(329,86%,56%)",
   google: "hsl(4,90%,58%)",
   organico: "hsl(160,60%,45%)",
@@ -71,7 +71,7 @@ const cleanUtmValue = (value: string | null | undefined, level: UTMLevel) => {
 
   if (level === "utm_source") {
     if (lower.includes("instagram") || /^ig[a-z0-9]+$/i.test(base)) return "instagram";
-    if (lower.includes("facebook") || /^fb[a-z0-9]+$/i.test(base)) return "facebook";
+    if (lower.includes("facebook") || /^fb[a-z0-9]+$/i.test(base)) return "meta ads";
     if (lower.includes("google") || /^g[a-z0-9]{6,}$/i.test(base)) return "google";
     if (lower.includes("organ")) return "organico";
     return base;
@@ -108,9 +108,10 @@ export default function UTMPage() {
 
       let q1 = supabase
         .from("vendas")
-        .select("utm_source,utm_medium,utm_campaign,utm_content,utm_term,produto,status,valor_total,data_venda,pedido_id")
+        .select("utm_source,utm_medium,utm_campaign,utm_content,utm_term,produto,status,valor_total,valor_oferta_principal,data_venda,pedido_id,is_upsell")
         .not("pedido_id", "like", "TEST%")
-        .not("pedido_id", "like", "LC-%");
+        .not("pedido_id", "like", "LC-%")
+        .neq("is_upsell", true);
 
       if (startDateStr) q1 = q1.gte("data_venda", startDateStr);
       if (endDateStr) q1 = q1.lte("data_venda", `${endDateStr}T23:59:59`);
