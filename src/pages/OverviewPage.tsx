@@ -82,6 +82,7 @@ export default function OverviewPage() {
     if (pf) q2 = q2.eq("vendas.produto", pf);
 
     // Upsells (são vendas separadas com is_upsell = true)
+    // + buscar nomes reais de upsells da tabela ofertas para filtrar
     let qUp = supabase
       .from("vendas")
       .select("id,pedido_id,produto,valor_total,valor_oferta_principal,data_venda,payload_webhook->product->name")
@@ -91,6 +92,8 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (pf) qUp = qUp.eq("produto", pf);
+
+    const qOfertasUp = supabase.from("ofertas").select("nome").eq("tipo", "upsell");
 
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
