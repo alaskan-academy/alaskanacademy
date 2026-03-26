@@ -52,12 +52,56 @@ export default function UTMPage() {
       setLoading(true);
       const pf = product !== "todos" ? product : null;
 
-      // Buscar tudo de uma vez
-      let q1 = supabase.from("vw_vendas_por_utm").select("*");
+      // Buscar vendas individuais com filtro de data
+      let q1 = supabase
+        .from("vendas")
+        .select("utm_source,utm_medium,utm_campaign,utm_content,utm_term,produto,status,valor_total,data_venda")
+        .not("pedido_id", "like", "TEST%")
+        .not("pedido_id", "like", "LC-%");
+
+      if (startDateStr) q1 = q1.gte("data_venda", startDateStr);
+      if (endDateStr) q1 = q1.lte("data_venda", `${endDateStr}T23:59:59`);
       if (pf) q1 = q1.eq("produto", pf);
 
       const r1 = await q1;
-      const utmRows = r1.data || [];
+      const rawVendas = r1.data || [];
+
+      // Agregar por combinação UTM completa
+      const utmMap: Record<string, any> = {};
+      rawVendas.forEach((v: any) => {
+        const key = [v.utm_source || "(vazio)", v.utm_medium || "(vazio)", v.utm_campaign || "(vazio)", v.utm_content || "(vazio)", v.utm_term || "(vazio)"].join("|||");
+        if (!utmMap[key]) {
+          utmMap[key] = {
+            utm_source: v.utm_source || "(vazio)",
+            utm_medium: v.utm_medium || "(vazio)",
+            utm_campaign: v.utm_campaign || "(vazio)",
+            utm_content: v.utm_content || "(vazio)",
+            utm_term: v.utm_term || "(vazio)",
+            produto: v.produto,
+            vendas_aprovadas: 0,
+            vendas_pendentes: 0,
+            vendas_canceladas: 0,
+            faturamento: 0,
+          };
+        }
+        if (v.status === "aprovada") {
+          utmMap[key].vendas_aprovadas += 1;
+          utmMap[key].faturamento += Number(v.valor_total || 0);
+        } else if (v.status === "pendente") {
+          utmMap[key].vendas_pendentes += 1;
+        } else if (v.status === "cancelada") {
+          utmMap[key].vendas_canceladas += 1;
+        }
+      });
+
+      const utmRows = Object.values(utmMap).map((r: any) => {
+        const total = r.vendas_aprovadas + r.vendas_pendentes + r.vendas_canceladas;
+        return {
+          ...r,
+          taxa_aprovacao_pct: total > 0 ? (r.vendas_aprovadas / total) * 100 : 0,
+          ticket_medio: r.vendas_aprovadas > 0 ? r.faturamento / r.vendas_aprovadas : 0,
+        };
+      });
       setAllUtm(utmRows);
 
       // Agregar placement via utm_term
@@ -72,7 +116,7 @@ export default function UTMPage() {
       setLoading(false);
     };
     load();
-  }, [product]);
+  }, [product, startDateStr, endDateStr]);
 
   // Recalcular tabela UTM quando nível/filtros mudam
   useEffect(() => {
