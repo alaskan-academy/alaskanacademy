@@ -9,6 +9,8 @@ const PRODUCTS = [
   { label: "Velas", value: "velas" },
   { label: "Saponaria", value: "saponaria" },
   { label: "Cosméticos", value: "cosmeticos" },
+  { label: "Hormonal", value: "hormonal" },
+  { label: "Velaroma", value: "velaroma" },
 ] as const;
 
 const fmt = (d: Date) => format(d, "yyyy-MM-dd");
@@ -70,7 +72,7 @@ export default function GlobalFilters() {
     { key: "custom", label: customLabel },
   ];
 
-  const activeLabel = btns.find(b => b.key === datePreset)?.label || "Filtros";
+  const activeLabel = btns.find((b) => b.key === datePreset)?.label || "Filtros";
 
   const filterContent = (
     <>
@@ -142,7 +144,10 @@ export default function GlobalFilters() {
         {PRODUCTS.map((p) => (
           <button
             key={p.value}
-            onClick={() => { setProduct(p.value); setShowMobileFilters(false); }}
+            onClick={() => {
+              setProduct(p.value);
+              setShowMobileFilters(false);
+            }}
             className={cn(
               "px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
               product === p.value
@@ -160,14 +165,12 @@ export default function GlobalFilters() {
   return (
     <>
       {/* Desktop filters inline */}
-      <div className="hidden md:flex items-center gap-3">
-        {filterContent}
-      </div>
+      <div className="hidden md:flex items-center gap-3">{filterContent}</div>
 
       {/* Mobile: compact trigger button */}
       <div className="md:hidden relative">
         <button
-          onClick={() => setShowMobileFilters(o => !o)}
+          onClick={() => setShowMobileFilters((o) => !o)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-muted-foreground"
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
