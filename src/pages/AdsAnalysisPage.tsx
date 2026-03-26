@@ -63,7 +63,7 @@ export default function AdsAnalysisPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   // Agregar por ad_id (pode ter múltiplos dias)
   const ads: AdRow[] = useMemo(() => {

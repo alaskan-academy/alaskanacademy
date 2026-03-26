@@ -74,7 +74,7 @@ export default function MetaAdsPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   // Agregar rows de um nível, filtrando pelo parent se necessário
   const aggregate = (nivel: Nivel, parentIds?: Set<string>) => {

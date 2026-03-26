@@ -175,7 +175,7 @@ export default function UTMPage() {
       setLoading(false);
     };
     load();
-  }, [product, startDateStr, endDateStr]);
+  }, [funilId, startDateStr, endDateStr]);
 
   useEffect(() => {
     let rows = allUtm;

@@ -375,7 +375,7 @@ export default function FunnelPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   // Funil geral — OBs/upsells de todas as vendas do período
   const { obs: obsGeral, ups: upsGeral } = aggregateItems(allItems);
