@@ -72,7 +72,7 @@ export default function OverviewPage() {
     if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
     if (pf) q1 = q1.eq("produto", pf);
 
-    // OBs e Upsells (via venda_itens com join para filtrar por data)
+    // OBs (via venda_itens com join para filtrar por data)
     let q2 = supabase
       .from("venda_itens")
       .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas!inner(data_venda,produto,status)")
@@ -81,8 +81,19 @@ export default function OverviewPage() {
     if (startDateStr && endDateEnd) q2 = q2.gte("vendas.data_venda", startDateStr).lte("vendas.data_venda", endDateEnd);
     if (pf) q2 = q2.eq("vendas.produto", pf);
 
-    // Buscar code_payts que são upsell na tabela ofertas
-    const qUpsellCodes = supabase.from("ofertas").select("code_payt").eq("tipo", "upsell");
+    // Upsells (são vendas separadas com is_upsell = true)
+    let qUp = supabase
+      .from("vendas")
+      .select("id,pedido_id,produto,valor_total,valor_oferta_principal,data_venda")
+      .eq("status", "aprovada")
+      .eq("is_upsell", true)
+      .not("pedido_id", "like", "TEST%")
+      .not("pedido_id", "like", "LC-%");
+    if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (pf) qUp = qUp.eq("produto", pf);
+
+    // Buscar nomes dos upsells na tabela ofertas
+    const qUpsellOffers = supabase.from("ofertas").select("code_payt,nome").eq("tipo", "upsell");
 
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
