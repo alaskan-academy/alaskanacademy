@@ -180,7 +180,7 @@ export default function SalesPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product, statusFilter]);
+  }, [startDateStr, endDateStr, funilId, statusFilter]);
 
   const openDetail = async (sale: any) => {
     setSelectedSale(sale);
