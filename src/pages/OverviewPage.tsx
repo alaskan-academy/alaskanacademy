@@ -72,11 +72,11 @@ export default function OverviewPage() {
     if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
     if (pf) q1 = q1.eq("produto", pf);
 
-    // OBs e Upsells (via venda_itens com join em vendas para filtro de data/produto)
-    const q2 = supabase
-      .from("venda_itens")
-      .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas(data_venda,produto,status)")
-      .eq("converteu", true);
+    // OBs (view corrigida)
+    let q2 = supabase.from("vw_conversao_obs").select("*").order("taxa_conversao_pct", { ascending: false });
+    if (pf) q2 = q2.eq("produto", pf);
+
+    // Upsells (view corrigida)
     let q3 = supabase.from("vw_conversao_upsell").select("*").order("taxa_conversao_pct", { ascending: false });
     if (pf) q3 = q3.eq("produto", pf);
 
@@ -172,41 +172,19 @@ export default function OverviewPage() {
     const cancelVal = canceladas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
     const expVal = expiradas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
 
-    // OBs: filtrar venda_itens por data/produto e agrupar
-    const allItems = (r2.data || []).filter((item: any) => {
-      const v = item.vendas;
-      if (!v || v.status !== "aprovada") return false;
-      if (pf && v.produto !== pf) return false;
-      if (startDateStr && endDateStr) {
-        const dv = (v.data_venda || "").slice(0, 10);
-        if (dv < startDateStr || dv > endDateStr) return false;
-      }
-      return true;
-    });
-    const obItems = allItems.filter((i: any) => (i.tipo || "").startsWith("orderbump"));
-    const obMap = new Map<string, { nome_ob: string; total_convertidos: number; receita_total_ob: number; vendas_com_ob: Set<string> }>();
-    for (const item of obItems) {
-      const existing = obMap.get(item.code_payt) || { nome_ob: item.nome, total_convertidos: 0, receita_total_ob: 0, vendas_com_ob: new Set<string>() };
-      existing.total_convertidos += 1;
-      existing.receita_total_ob += Number(item.valor || 0);
-      existing.vendas_com_ob.add(item.venda_id);
-      obMap.set(item.code_payt, existing);
-    }
-    const obsRows = [...obMap.values()].map(o => ({
-      ...o,
-      vendas_com_ob: o.vendas_com_ob.size,
-      taxa_conversao_pct: qtdAprov > 0 ? (o.vendas_com_ob.size / qtdAprov) * 100 : 0,
-    }));
-    const receitaOb = obsRows.reduce((s, r) => s + r.receita_total_ob, 0);
-    const vendasComOb = new Set(obItems.map((i: any) => i.venda_id)).size;
-    const taxaOb = qtdAprov > 0 ? (vendasComOb / qtdAprov) * 100 : 0;
+    // OBs: direto da view
+    const obsRows = (r2.data || []).filter((r: any) => Number(r.total_convertidos || 0) > 0);
+    const receitaOb = obsRows.reduce((s: number, r: any) => s + Number(r.receita_total_ob || 0), 0);
+    const taxaOb = obsRows.length > 0
+      ? obsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / obsRows.length
+      : 0;
     setObsData(obsRows);
 
+    // Upsells: direto da view
     const upsRows = (r3.data || []).filter((r: any) => Number(r.total_upsells || 0) > 0);
-    const taxaUp =
-      upsRows.length > 0
-        ? upsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsRows.length
-        : 0;
+    const taxaUp = upsRows.length > 0
+      ? upsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsRows.length
+      : 0;
     const receitaUp = upsRows.reduce((s: number, r: any) => s + Number(r.receita_total || 0), 0);
     setUpsellData(upsRows);
 
@@ -597,7 +575,7 @@ export default function OverviewPage() {
               <table className="w-full text-sm min-w-[400px]">
                 <thead>
                   <tr className="border-b border-border">
-                    {["OB", "Convertidos", "Receita", "Taxa"].map((h) => (
+                    {["OB", "Tipo", "Convertidos", "Receita", "Taxa"].map((h) => (
                       <th key={h} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">
                         {h}
                       </th>
@@ -605,17 +583,23 @@ export default function OverviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {obsData.map((r, i) => (
-                    <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                      <td className="px-4 py-2 text-foreground">{r.nome_ob}</td>
-                      <td className="px-4 py-2 text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatPercent(r.taxa_conversao_pct || 0)}</td>
-                    </tr>
-                  ))}
+                  {obsData.map((r, i) => {
+                    const tipoBadge = (r.tipo_ob || "").replace("orderbump_", "OB").toUpperCase();
+                    return (
+                      <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
+                        <td className="px-4 py-2 text-foreground">{r.nome_ob}</td>
+                        <td className="px-4 py-2">
+                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-primary/10 text-primary">{tipoBadge}</span>
+                        </td>
+                        <td className="px-4 py-2 text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
+                        <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
+                        <td className="px-4 py-2 text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })}
                   {obsData.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-4 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-4 text-center text-muted-foreground">
                         Sem conversões no período
                       </td>
                     </tr>
@@ -643,7 +627,7 @@ export default function OverviewPage() {
                       <td className="px-4 py-2 text-foreground">{r.nome_upsell}</td>
                       <td className="px-4 py-2 text-foreground">{formatNumber(r.total_upsells || 0)}</td>
                       <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatPercent(r.taxa_conversao_pct || 0)}</td>
+                      <td className="px-4 py-2 text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
                     </tr>
                   ))}
                   {upsellData.length === 0 && (
