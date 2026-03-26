@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 
-type DatePreset = 'all' | 'today' | '7d' | '30d' | 'custom';
+type DatePreset = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
 type ProductFilter = 'todos' | 'velas' | 'saponaria' | 'cosmeticos' | 'hormonal' | 'velaroma';
 
 interface FilterContextType {
@@ -37,6 +37,10 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
         return { start: null, end: null };
       case 'today':
         return { start: startOfDay(now), end: endOfDay(now) };
+      case 'yesterday': {
+        const y = subDays(now, 1);
+        return { start: startOfDay(y), end: endOfDay(y) };
+      }
       case '7d':
         return { start: startOfDay(subDays(now, 7)), end: endOfDay(now) };
       case '30d':

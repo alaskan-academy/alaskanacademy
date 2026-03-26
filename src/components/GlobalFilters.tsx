@@ -35,19 +35,14 @@ export default function GlobalFilters() {
   }, [showPicker]);
 
   const handleQuick = (key: string) => {
-    if (key === "all") {
-      setDatePreset("all");
-    } else if (key === "today") {
-      setDatePreset("today");
-    } else if (key === "7d") {
-      setDatePreset("7d");
-    } else if (key === "30d") {
-      setDatePreset("30d");
-    } else if (key === "custom") {
+    if (key === "custom") {
       const now = new Date();
       setCs(startDateStr || fmt(subDays(now, 6)));
       setCe(endDateStr || fmt(now));
       setShowPicker((prev) => !prev);
+    } else {
+      setDatePreset(key as any);
+      setShowPicker(false);
     }
   };
 
@@ -67,6 +62,7 @@ export default function GlobalFilters() {
   const btns = [
     { key: "all", label: "Todos" },
     { key: "today", label: "Hoje" },
+    { key: "yesterday", label: "Ontem" },
     { key: "7d", label: "7d" },
     { key: "30d", label: "30d" },
     { key: "custom", label: customLabel },
