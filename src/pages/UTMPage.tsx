@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 const LEVELS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_placement"] as const;
+type UTMLevel = (typeof LEVELS)[number];
+
 const LEVEL_LABELS: Record<string, string> = {
   utm_source: "Source",
   utm_medium: "Medium",
@@ -36,6 +38,58 @@ const sourceColors: Record<string, string> = {
   organico: "hsl(160,60%,45%)",
 };
 
+const normalizeText = (value: string | null | undefined) => String(value ?? "").replace(/\s+/g, " ").trim();
+
+const cleanPlacementValue = (value: string | null | undefined) => {
+  const raw = normalizeText(value);
+  if (!raw) return "(vazio)";
+
+  const base = raw
+    .split("::")[0]
+    .split("|")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+  if (base.includes("stories")) return "stories";
+  if (base.includes("reels")) return "reels";
+  if (base.includes("marketplace")) return "marketplace";
+  if (base.includes("audience_network")) return "audience_network";
+  if (base.includes("messenger")) return "messenger";
+  if (base.includes("search")) return "search";
+  if (base.includes("feed")) return "feed";
+
+  return base || "(vazio)";
+};
+
+const cleanUtmValue = (value: string | null | undefined, level: UTMLevel) => {
+  const raw = normalizeText(value);
+  if (!raw) return "(vazio)";
+
+  const base = raw.split("::")[0].split("|")[0].trim();
+  const lower = base.toLowerCase();
+
+  if (level === "utm_source") {
+    if (lower.includes("instagram") || /^ig[a-z0-9]+$/i.test(base)) return "instagram";
+    if (lower.includes("facebook") || /^fb[a-z0-9]+$/i.test(base)) return "facebook";
+    if (lower.includes("google") || /^g[a-z0-9]{6,}$/i.test(base)) return "google";
+    if (lower.includes("organ")) return "organico";
+    return base;
+  }
+
+  if (level === "utm_placement") {
+    return cleanPlacementValue(base);
+  }
+
+  return base;
+};
+
+const displayUtmValue = (value: string, level: UTMLevel) => {
+  if (value === "(vazio)") return value;
+  if (level === "utm_placement") return placementInfo[value]?.label || value.replace(/_/g, " ");
+  return value.replace(/_/g, " ");
+};
+
 export default function UTMPage() {
   const { startDateStr, endDateStr, product } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
@@ -52,10 +106,9 @@ export default function UTMPage() {
       setLoading(true);
       const pf = product !== "todos" ? product : null;
 
-      // Buscar vendas individuais com filtro de data
       let q1 = supabase
         .from("vendas")
-        .select("utm_source,utm_medium,utm_campaign,utm_content,utm_term,produto,status,valor_total,data_venda")
+        .select("utm_source,utm_medium,utm_campaign,utm_content,utm_term,produto,status,valor_total,data_venda,pedido_id")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
 
@@ -66,17 +119,23 @@ export default function UTMPage() {
       const r1 = await q1;
       const rawVendas = r1.data || [];
 
-      // Agregar por combinação UTM completa
       const utmMap: Record<string, any> = {};
       rawVendas.forEach((v: any) => {
-        const key = [v.utm_source || "(vazio)", v.utm_medium || "(vazio)", v.utm_campaign || "(vazio)", v.utm_content || "(vazio)", v.utm_term || "(vazio)"].join("|||");
+        const utmSource = cleanUtmValue(v.utm_source, "utm_source");
+        const utmMedium = cleanUtmValue(v.utm_medium, "utm_medium");
+        const utmCampaign = cleanUtmValue(v.utm_campaign, "utm_campaign");
+        const utmContent = cleanUtmValue(v.utm_content, "utm_content");
+        const utmPlacement = cleanUtmValue(v.utm_term, "utm_placement");
+
+        const key = [utmSource, utmMedium, utmCampaign, utmContent, utmPlacement].join("|||");
         if (!utmMap[key]) {
           utmMap[key] = {
-            utm_source: v.utm_source || "(vazio)",
-            utm_medium: v.utm_medium || "(vazio)",
-            utm_campaign: v.utm_campaign || "(vazio)",
-            utm_content: v.utm_content || "(vazio)",
-            utm_term: v.utm_term || "(vazio)",
+            utm_source: utmSource,
+            utm_medium: utmMedium,
+            utm_campaign: utmCampaign,
+            utm_content: utmContent,
+            utm_term: utmPlacement,
+            utm_placement: utmPlacement,
             produto: v.produto,
             vendas_aprovadas: 0,
             vendas_pendentes: 0,
@@ -89,7 +148,7 @@ export default function UTMPage() {
           utmMap[key].faturamento += Number(v.valor_total || 0);
         } else if (v.status === "pendente") {
           utmMap[key].vendas_pendentes += 1;
-        } else if (v.status === "cancelada") {
+        } else if (v.status === "cancelada" || v.status === "expirada") {
           utmMap[key].vendas_canceladas += 1;
         }
       });
@@ -104,10 +163,9 @@ export default function UTMPage() {
       });
       setAllUtm(utmRows);
 
-      // Agregar placement via utm_term
       const plMap: Record<string, any> = {};
       utmRows.forEach((r: any) => {
-        const k = r.utm_term || "(vazio)";
+        const k = r.utm_placement || "(vazio)";
         if (!plMap[k]) plMap[k] = { placement: k, vendas_aprovadas: 0, faturamento: 0 };
         plMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
         plMap[k].faturamento += Number(r.faturamento || 0);
@@ -118,16 +176,13 @@ export default function UTMPage() {
     load();
   }, [product, startDateStr, endDateStr]);
 
-  // Recalcular tabela UTM quando nível/filtros mudam
   useEffect(() => {
     let rows = allUtm;
 
-    // Aplicar filtros do drill-down
     Object.entries(filters).forEach(([key, value]) => {
       rows = rows.filter((r: any) => (r[key] || "(vazio)") === value);
     });
 
-    // Agrupar pelo nível atual
     const grouped: Record<string, any> = {};
     rows.forEach((r: any) => {
       const key = r[currentLevel] || "(vazio)";
@@ -141,6 +196,7 @@ export default function UTMPage() {
     const table = Object.entries(grouped)
       .map(([name, v]: any) => ({
         name,
+        displayName: displayUtmValue(name, currentLevel),
         vendas_aprovadas: v.vendas_aprovadas,
         faturamento: v.faturamento,
         taxa_aprovacao_pct: v.count > 0 ? v.taxa_sum / v.count : 0,
@@ -181,15 +237,14 @@ export default function UTMPage() {
 
   const breadcrumbs = LEVELS.slice(0, levelIndex).map((level) => ({
     label: LEVEL_LABELS[level],
-    value: filters[level],
+    value: displayUtmValue(filters[level], level),
   }));
 
-  // Source aggregation para aba Source
   const sourceRows = (() => {
     const map: Record<string, any> = {};
     allUtm.forEach((r: any) => {
       const k = r.utm_source || "organico";
-      if (!map[k]) map[k] = { source: k, vendas_aprovadas: 0, faturamento: 0 };
+      if (!map[k]) map[k] = { source: k, displaySource: displayUtmValue(k, "utm_source"), vendas_aprovadas: 0, faturamento: 0 };
       map[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
       map[k].faturamento += Number(r.faturamento || 0);
     });
