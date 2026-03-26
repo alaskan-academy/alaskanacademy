@@ -207,8 +207,14 @@ export default function OverviewPage() {
     const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
     setObsData(obsRows);
 
-    // Upsells: vendas separadas com is_upsell = true (nome vem do payload_webhook->product->name)
-    const upVendas = rUp.data || [];
+    // Upsells: vendas separadas com is_upsell = true, filtradas pelos nomes cadastrados em ofertas
+    const upsellNamesSet = new Set((rOfertasUp.data || []).map((o: any) => o.nome));
+    const allUpVendas = rUp.data || [];
+    // Só considerar como upsell se o nome do produto estiver na tabela ofertas como tipo=upsell
+    const upVendas = allUpVendas.filter((v: any) => {
+      const nome = (v as any).name || "";
+      return upsellNamesSet.has(nome);
+    });
     const upGrouped = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
     for (const v of upVendas) {
       const nome = (v as any).name || `Upsell ${v.produto}`;
