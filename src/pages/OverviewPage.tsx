@@ -72,13 +72,14 @@ export default function OverviewPage() {
     if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
     if (pf) q1 = q1.eq("produto", pf);
 
-    // OBs (view corrigida)
-    let q2 = supabase.from("vw_conversao_obs").select("*").order("taxa_conversao_pct", { ascending: false });
-    if (pf) q2 = q2.eq("produto", pf);
-
-    // Upsells (view corrigida)
-    let q3 = supabase.from("vw_conversao_upsell").select("*").order("taxa_conversao_pct", { ascending: false });
-    if (pf) q3 = q3.eq("produto", pf);
+    // OBs e Upsells (via venda_itens com join para filtrar por data)
+    let q2 = supabase
+      .from("venda_itens")
+      .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas!inner(data_venda,produto,status)")
+      .eq("converteu", true)
+      .eq("vendas.status", "aprovada");
+    if (startDateStr && endDateEnd) q2 = q2.gte("vendas.data_venda", startDateStr).lte("vendas.data_venda", endDateEnd);
+    if (pf) q2 = q2.eq("vendas.produto", pf);
 
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
