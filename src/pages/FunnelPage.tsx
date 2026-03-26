@@ -280,7 +280,7 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
 }
 
 export default function FunnelPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [allMeta, setAllMeta] = useState<any[]>([]);
   const [allMetaAnt, setAllMetaAnt] = useState<any[]>([]);
   const [allVendas, setAllVendas] = useState<any[]>([]);
@@ -294,7 +294,7 @@ export default function FunnelPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
       const ant = periodoAnterior(startDateStr, endDateStr);
 
       // Meta atual
@@ -305,7 +305,7 @@ export default function FunnelPage() {
         )
         .eq("nivel", "campanha");
       if (startDateStr && endDateStr) qMeta = qMeta.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) qMeta = qMeta.eq("produto", pf);
+      if (funilId) qMeta = qMeta.eq("funil_id", funilId);
 
       // Vendas atuais
       let qV = supabase
@@ -315,7 +315,7 @@ export default function FunnelPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", `${endDateStr}T23:59:59`);
-      if (pf) qV = qV.eq("produto", pf);
+      if (funilId) qV = qV.eq("funil_id", funilId);
 
       // OBs e Upsells vinculados às vendas (com utm_campaign)
       let qItems = supabase
@@ -340,9 +340,9 @@ export default function FunnelPage() {
         qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
         qVAnt = qVAnt.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
       }
-      if (pf) {
-        qMetaAnt = qMetaAnt.eq("produto", pf);
-        qVAnt = qVAnt.eq("produto", pf);
+      if (funilId) {
+        qMetaAnt = qMetaAnt.eq("funil_id", funilId);
+        qVAnt = qVAnt.eq("funil_id", funilId);
       }
 
       const [rMeta, rV, rItems, rMetaAnt, rVAnt] = await Promise.all([qMeta, qV, qItems, qMetaAnt, qVAnt]);
@@ -357,7 +357,7 @@ export default function FunnelPage() {
       const allItems = (rItems.data || []).filter((item: any) => {
         const v = item.vendas;
         if (!v || v.status !== "aprovada") return false;
-        if (pf && v.produto !== pf) return false;
+        return true;
         return true;
       });
 
@@ -375,7 +375,7 @@ export default function FunnelPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   // Funil geral — OBs/upsells de todas as vendas do período
   const { obs: obsGeral, ups: upsGeral } = aggregateItems(allItems);

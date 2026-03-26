@@ -40,7 +40,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 }
 
 export default function AdsAnalysisPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("compras_meta");
@@ -50,20 +50,20 @@ export default function AdsAnalysisPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
       let q = supabase
         .from("vw_metricas_meta_nivel")
         .select("*")
         .eq("nivel", "ad");
       if (startDateStr && endDateStr) q = q.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) q = q.eq("produto", pf);
+      if (funilId) q = q.eq("funil_id", funilId);
 
       const { data } = await q;
       setRawData(data || []);
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   // Agregar por ad_id (pode ter múltiplos dias)
   const ads: AdRow[] = useMemo(() => {

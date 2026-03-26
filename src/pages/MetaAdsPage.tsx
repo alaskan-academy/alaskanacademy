@@ -53,7 +53,7 @@ function margemColor(v: number) {
 }
 
 export default function MetaAdsPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [allRows, setAllRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortCol, setSortCol] = useState("investimento");
@@ -65,16 +65,16 @@ export default function MetaAdsPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
       let q = supabase.from("vw_metricas_meta_nivel").select("*");
       if (startDateStr && endDateStr) q = q.gte("data", startDateStr).lte("data", endDateStr);
-      if (pf) q = q.eq("produto", pf);
+      if (funilId) q = q.eq("funil_id", funilId);
       const { data } = await q;
       setAllRows(data || []);
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   // Agregar rows de um nível, filtrando pelo parent se necessário
   const aggregate = (nivel: Nivel, parentIds?: Set<string>) => {

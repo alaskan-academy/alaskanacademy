@@ -91,7 +91,7 @@ const displayUtmValue = (value: string, level: UTMLevel) => {
 };
 
 export default function UTMPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [utmData, setUtmData] = useState<any[]>([]);
@@ -104,7 +104,7 @@ export default function UTMPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const pf = product !== "todos" ? product : null;
+      
 
       let q1 = supabase
         .from("vendas")
@@ -115,7 +115,7 @@ export default function UTMPage() {
 
       if (startDateStr) q1 = q1.gte("data_venda", startDateStr);
       if (endDateStr) q1 = q1.lte("data_venda", `${endDateStr}T23:59:59`);
-      if (pf) q1 = q1.eq("produto", pf);
+      if (funilId) q1 = q1.eq("funil_id", funilId);
 
       const r1 = await q1;
       const rawVendas = r1.data || [];
@@ -175,7 +175,7 @@ export default function UTMPage() {
       setLoading(false);
     };
     load();
-  }, [product, startDateStr, endDateStr]);
+  }, [funilId, startDateStr, endDateStr]);
 
   useEffect(() => {
     let rows = allUtm;
