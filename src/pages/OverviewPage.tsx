@@ -132,7 +132,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, r3, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, q3, q4, q5, q6, q8, qA1, qA2]);
+    const [r1, r2, _unused, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, Promise.resolve({ data: [] }), q4, q5, q6, q8, qA1, qA2]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -173,20 +173,46 @@ export default function OverviewPage() {
     const cancelVal = canceladas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
     const expVal = expiradas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
 
-    // OBs: direto da view
-    const obsRows = (r2.data || []).filter((r: any) => Number(r.total_convertidos || 0) > 0);
-    const receitaOb = obsRows.reduce((s: number, r: any) => s + Number(r.receita_total_ob || 0), 0);
-    const taxaOb = obsRows.length > 0
-      ? obsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / obsRows.length
-      : 0;
+    // OBs e Upsells: agrupar venda_itens filtrados por data
+    const allItems = r2.data || [];
+    const obItems = allItems.filter((i: any) => (i.tipo || "").startsWith("orderbump"));
+    const upItems = allItems.filter((i: any) => (i.tipo || "") === "upsell");
+
+    // Agrupar OBs por code_payt
+    const obMap = new Map<string, { nome_ob: string; tipo_ob: string; total_convertidos: number; receita_total_ob: number; vendas_com_ob: Set<string> }>();
+    for (const item of obItems) {
+      const ex = obMap.get(item.code_payt) || { nome_ob: item.nome, tipo_ob: item.tipo, total_convertidos: 0, receita_total_ob: 0, vendas_com_ob: new Set<string>() };
+      ex.total_convertidos += 1;
+      ex.receita_total_ob += Number(item.valor || 0);
+      ex.vendas_com_ob.add(item.venda_id);
+      obMap.set(item.code_payt, ex);
+    }
+    const obsRows = [...obMap.values()].map(o => ({
+      ...o,
+      vendas_com_ob: o.vendas_com_ob.size,
+      taxa_conversao_pct: qtdAprov > 0 ? (o.vendas_com_ob.size / qtdAprov) * 100 : 0,
+    })).sort((a, b) => b.taxa_conversao_pct - a.taxa_conversao_pct);
+    const receitaOb = obsRows.reduce((s, r) => s + r.receita_total_ob, 0);
+    const allObVendas = new Set(obItems.map((i: any) => i.venda_id)).size;
+    const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
     setObsData(obsRows);
 
-    // Upsells: direto da view
-    const upsRows = (r3.data || []).filter((r: any) => Number(r.total_upsells || 0) > 0);
+    // Agrupar Upsells por code_payt
+    const upMap = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
+    for (const item of upItems) {
+      const ex = upMap.get(item.code_payt) || { nome_upsell: item.nome, total_upsells: 0, receita_total: 0 };
+      ex.total_upsells += 1;
+      ex.receita_total += Number(item.valor || 0);
+      upMap.set(item.code_payt, ex);
+    }
+    const upsRows = [...upMap.values()].map(u => ({
+      ...u,
+      taxa_conversao_pct: qtdAprov > 0 ? (u.total_upsells / qtdAprov) * 100 : 0,
+    })).sort((a, b) => b.taxa_conversao_pct - a.taxa_conversao_pct);
+    const receitaUp = upsRows.reduce((s, r) => s + r.receita_total, 0);
     const taxaUp = upsRows.length > 0
-      ? upsRows.reduce((s: number, r: any) => s + Number(r.taxa_conversao_pct || 0), 0) / upsRows.length
+      ? upsRows.reduce((s, r) => s + r.taxa_conversao_pct, 0) / upsRows.length
       : 0;
-    const receitaUp = upsRows.reduce((s: number, r: any) => s + Number(r.receita_total || 0), 0);
     setUpsellData(upsRows);
 
     // Vendas backend (sem tráfego pago)
