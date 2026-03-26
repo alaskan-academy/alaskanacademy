@@ -1,8 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useFilters } from "@/contexts/FilterContext";
 import { subDays, format } from "date-fns";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { CalendarIcon, ChevronDown, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
 
 const PRODUCTS = [
   { label: "Todos", value: "todos" },
@@ -13,175 +16,162 @@ const PRODUCTS = [
   { label: "Velaroma", value: "velaroma" },
 ] as const;
 
-const fmt = (d: Date) => format(d, "yyyy-MM-dd");
+const DATE_OPTIONS = [
+  { key: "all", label: "Todos" },
+  { key: "today", label: "Hoje" },
+  { key: "yesterday", label: "Ontem" },
+  { key: "7d", label: "7 dias" },
+  { key: "30d", label: "30 dias" },
+] as const;
 
 export default function GlobalFilters() {
   const { datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr, product, setProduct } = useFilters();
-  const [showPicker, setShowPicker] = useState(false);
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [cs, setCs] = useState("");
-  const [ce, setCe] = useState("");
-  const pickerRef = useRef<HTMLDivElement>(null);
+  const [dateOpen, setDateOpen] = useState(false);
+  const [prodOpen, setProdOpen] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customStart, setCustomStart] = useState<Date | undefined>();
+  const [customEnd, setCustomEnd] = useState<Date | undefined>();
 
-  useEffect(() => {
-    if (!showPicker) return;
-    const handler = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setShowPicker(false);
-      }
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [showPicker]);
+  const handleDateSelect = (key: string) => {
+    setDatePreset(key as any);
+    setCustomMode(false);
+    setDateOpen(false);
+  };
 
-  const handleQuick = (key: string) => {
-    if (key === "custom") {
-      const now = new Date();
-      setCs(startDateStr || fmt(subDays(now, 6)));
-      setCe(endDateStr || fmt(now));
-      setShowPicker((prev) => !prev);
-    } else {
-      setDatePreset(key as any);
-      setShowPicker(false);
+  const handleCustomStart = (d: Date | undefined) => {
+    setCustomStart(d);
+    if (d && customEnd && d <= customEnd) {
+      setCustomRange(d, customEnd);
+      setDateOpen(false);
+      setCustomMode(false);
     }
   };
 
-  const applyCustom = () => {
-    if (cs && ce && cs <= ce) {
-      setCustomRange(new Date(cs + "T00:00:00"), new Date(ce + "T00:00:00"));
-      setShowPicker(false);
-      setShowMobileFilters(false);
+  const handleCustomEnd = (d: Date | undefined) => {
+    setCustomEnd(d);
+    if (customStart && d && customStart <= d) {
+      setCustomRange(customStart, d);
+      setDateOpen(false);
+      setCustomMode(false);
     }
   };
 
-  const customLabel =
+  const dateLabelMap: Record<string, string> = {
+    all: "Todos",
+    today: "Hoje",
+    yesterday: "Ontem",
+    "7d": "7 dias",
+    "30d": "30 dias",
+  };
+
+  const dateLabel =
     datePreset === "custom" && startDateStr && endDateStr
       ? `${startDateStr.slice(8)}/${startDateStr.slice(5, 7)} – ${endDateStr.slice(8)}/${endDateStr.slice(5, 7)}`
-      : "Custom";
+      : dateLabelMap[datePreset] || "Período";
 
-  const btns = [
-    { key: "all", label: "Todos" },
-    { key: "today", label: "Hoje" },
-    { key: "yesterday", label: "Ontem" },
-    { key: "7d", label: "7d" },
-    { key: "30d", label: "30d" },
-    { key: "custom", label: customLabel },
-  ];
-
-  const activeLabel = btns.find((b) => b.key === datePreset)?.label || "Filtros";
-
-  const filterContent = (
-    <>
-      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 relative flex-wrap">
-        {btns.map((b) => (
-          <button
-            key={b.key}
-            onClick={() => handleQuick(b.key)}
-            className={cn(
-              "px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 whitespace-nowrap",
-              datePreset === b.key
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {b.label}
-            {b.key === "custom" && <ChevronDown className="h-3 w-3" />}
-          </button>
-        ))}
-
-        {showPicker && (
-          <div
-            ref={pickerRef}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-11 right-0 md:left-0 z-50 bg-card border border-border rounded-xl shadow-xl p-4 w-60"
-          >
-            <p className="text-xs font-semibold text-foreground mb-3">Período personalizado</p>
-            <div className="space-y-2">
-              <div>
-                <label className="text-xs text-muted-foreground">Início</label>
-                <input
-                  type="date"
-                  value={cs}
-                  onChange={(e) => setCs(e.target.value)}
-                  className="w-full mt-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Fim</label>
-                <input
-                  type="date"
-                  value={ce}
-                  min={cs}
-                  onChange={(e) => setCe(e.target.value)}
-                  className="w-full mt-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button
-                  onClick={applyCustom}
-                  disabled={!cs || !ce || cs > ce}
-                  className="flex-1 bg-primary text-primary-foreground rounded-lg py-2 text-xs font-semibold disabled:opacity-40"
-                >
-                  Aplicar
-                </button>
-                <button
-                  onClick={() => setShowPicker(false)}
-                  className="flex-1 bg-secondary border border-border rounded-lg py-2 text-xs text-muted-foreground"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 flex-wrap">
-        {PRODUCTS.map((p) => (
-          <button
-            key={p.value}
-            onClick={() => {
-              setProduct(p.value);
-              setShowMobileFilters(false);
-            }}
-            className={cn(
-              "px-2.5 md:px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
-              product === p.value
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-    </>
-  );
+  const productLabel = PRODUCTS.find((p) => p.value === product)?.label || "Produto";
 
   return (
-    <>
-      {/* Desktop filters inline */}
-      <div className="hidden md:flex items-center gap-3">{filterContent}</div>
-
-      {/* Mobile: compact trigger button */}
-      <div className="md:hidden relative">
-        <button
-          onClick={() => setShowMobileFilters((o) => !o)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-xs font-medium text-muted-foreground"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {activeLabel}
-        </button>
-
-        {showMobileFilters && (
-          <>
-            <div className="fixed inset-0 z-30" onClick={() => setShowMobileFilters(false)} />
-            <div className="absolute top-10 right-0 z-40 bg-card border border-border rounded-xl shadow-xl p-3 flex flex-col gap-2 min-w-[280px]">
-              {filterContent}
+    <div className="flex items-center gap-2">
+      {/* Date dropdown */}
+      <Popover open={dateOpen} onOpenChange={(o) => { setDateOpen(o); if (!o) setCustomMode(false); }}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium">
+            <CalendarIcon className="h-3.5 w-3.5" />
+            {dateLabel}
+            <ChevronDown className="h-3 w-3 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="end">
+          {!customMode ? (
+            <div className="flex flex-col py-1 min-w-[140px]">
+              {DATE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => handleDateSelect(opt.key)}
+                  className={cn(
+                    "px-3 py-2 text-left text-sm hover:bg-accent transition-colors",
+                    datePreset === opt.key && "bg-accent font-semibold text-accent-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+              <div className="border-t border-border my-1" />
+              <button
+                onClick={() => {
+                  setCustomMode(true);
+                  setCustomStart(startDateStr ? new Date(startDateStr) : subDays(new Date(), 6));
+                  setCustomEnd(endDateStr ? new Date(endDateStr) : new Date());
+                }}
+                className={cn(
+                  "px-3 py-2 text-left text-sm hover:bg-accent transition-colors flex items-center gap-2",
+                  datePreset === "custom" && "bg-accent font-semibold text-accent-foreground"
+                )}
+              >
+                <CalendarIcon className="h-3.5 w-3.5" />
+                Personalizado
+              </button>
             </div>
-          </>
-        )}
-      </div>
-    </>
+          ) : (
+            <div className="p-3 space-y-3">
+              <p className="text-xs font-semibold text-foreground">Selecione o período</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Início</p>
+                  <Calendar
+                    mode="single"
+                    selected={customStart}
+                    onSelect={handleCustomStart}
+                    disabled={(date) => date > new Date()}
+                    className={cn("p-2 pointer-events-auto rounded-md border border-border")}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Fim</p>
+                  <Calendar
+                    mode="single"
+                    selected={customEnd}
+                    onSelect={handleCustomEnd}
+                    disabled={(date) => date > new Date() || (customStart ? date < customStart : false)}
+                    className={cn("p-2 pointer-events-auto rounded-md border border-border")}
+                  />
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => setCustomMode(false)}>
+                ← Voltar
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+
+      {/* Product dropdown */}
+      <Popover open={prodOpen} onOpenChange={setProdOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium">
+            <Package className="h-3.5 w-3.5" />
+            {productLabel}
+            <ChevronDown className="h-3 w-3 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 min-w-[140px]" align="end">
+          <div className="flex flex-col py-1">
+            {PRODUCTS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => { setProduct(p.value); setProdOpen(false); }}
+                className={cn(
+                  "px-3 py-2 text-left text-sm hover:bg-accent transition-colors",
+                  product === p.value && "bg-accent font-semibold text-accent-foreground"
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }
