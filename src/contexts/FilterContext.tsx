@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 
 type DatePreset = 'all' | 'today' | '7d' | '30d' | 'custom';
-type ProductFilter = 'todos' | 'velas' | 'saponaria' | 'cosmeticos';
+type ProductFilter = 'todos' | 'velas' | 'saponaria' | 'cosmeticos' | 'hormonal' | 'velaroma';
 
 interface FilterContextType {
   datePreset: DatePreset;
