@@ -146,7 +146,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, _unused, r4, r5, r6, r8, rA1, rA2, rUpsellCodes] = await Promise.all([q1, q2, Promise.resolve({ data: [] }), q4, q5, q6, q8, qA1, qA2, qUpsellCodes]);
+    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rUpsellOffers] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qUpsellOffers]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -187,15 +187,10 @@ export default function OverviewPage() {
     const cancelVal = canceladas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
     const expVal = expiradas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
 
-    // Classificar itens usando tabela ofertas (tipo real) em vez do campo tipo da venda_itens
-    const upsellCodeSet = new Set((rUpsellCodes.data || []).map((r: any) => r.code_payt));
+    // OBs: todos os venda_itens convertidos (já filtrados por data/produto/aprovada)
     const allItems = r2.data || [];
-    const obItems = allItems.filter((i: any) => !upsellCodeSet.has(i.code_payt));
-    const upItems = allItems.filter((i: any) => upsellCodeSet.has(i.code_payt));
-
-    // Agrupar OBs por code_payt
     const obMap = new Map<string, { nome_ob: string; tipo_ob: string; total_convertidos: number; receita_total_ob: number; vendas_com_ob: Set<string> }>();
-    for (const item of obItems) {
+    for (const item of allItems) {
       const ex = obMap.get(item.code_payt) || { nome_ob: item.nome, tipo_ob: item.tipo, total_convertidos: 0, receita_total_ob: 0, vendas_com_ob: new Set<string>() };
       ex.total_convertidos += 1;
       ex.receita_total_ob += Number(item.valor || 0);
@@ -208,27 +203,30 @@ export default function OverviewPage() {
       taxa_conversao_pct: qtdAprov > 0 ? (o.vendas_com_ob.size / qtdAprov) * 100 : 0,
     })).sort((a, b) => b.taxa_conversao_pct - a.taxa_conversao_pct);
     const receitaOb = obsRows.reduce((s, r) => s + r.receita_total_ob, 0);
-    const allObVendas = new Set(obItems.map((i: any) => i.venda_id)).size;
+    const allObVendas = new Set(allItems.map((i: any) => i.venda_id)).size;
     const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
     setObsData(obsRows);
 
-    // Agrupar Upsells por code_payt
-    const upMap = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
-    for (const item of upItems) {
-      const ex = upMap.get(item.code_payt) || { nome_upsell: item.nome, total_upsells: 0, receita_total: 0 };
+    // Upsells: vendas separadas com is_upsell = true
+    const upsellOfferMap = new Map((rUpsellOffers.data || []).map((o: any) => [o.code_payt, o.nome]));
+    const upVendas = rUp.data || [];
+    // Agrupar por pedido_id (cada upsell é uma venda separada com seu próprio pedido_id)
+    // Mas como não temos code_payt na venda, agrupamos por valor_oferta_principal + produto para identificar
+    // Na verdade, cada venda de upsell tem valor_oferta_principal que corresponde ao preço do upsell
+    // Vamos agrupar por nome usando o payload ou simplesmente listar
+    const upGrouped = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
+    for (const v of upVendas) {
+      // Chave: produto + valor para agrupar upsells similares
+      const key = `${v.produto}_${v.valor_oferta_principal}`;
+      const ex = upGrouped.get(key) || { nome_upsell: `Upsell ${v.produto} (R$ ${Number(v.valor_oferta_principal).toFixed(2)})`, total_upsells: 0, receita_total: 0 };
       ex.total_upsells += 1;
-      ex.receita_total += Number(item.valor || 0);
-      upMap.set(item.code_payt, ex);
+      ex.receita_total += Number(v.valor_total || 0);
+      upGrouped.set(key, ex);
     }
-    const upsRows = [...upMap.values()].map(u => ({
-      ...u,
-      taxa_conversao_pct: qtdAprov > 0 ? (u.total_upsells / qtdAprov) * 100 : 0,
-    })).sort((a, b) => b.taxa_conversao_pct - a.taxa_conversao_pct);
+    const upsRows = [...upGrouped.values()].sort((a, b) => b.total_upsells - a.total_upsells);
     const receitaUp = upsRows.reduce((s, r) => s + r.receita_total, 0);
-    const taxaUp = upsRows.length > 0
-      ? upsRows.reduce((s, r) => s + r.taxa_conversao_pct, 0) / upsRows.length
-      : 0;
-    setUpsellData(upsRows);
+    const taxaUp = qtdAprov > 0 ? (upVendas.length / qtdAprov) * 100 : 0;
+    setUpsellData(upsRows.map(u => ({ ...u, taxa_conversao_pct: qtdAprov > 0 ? (u.total_upsells / qtdAprov) * 100 : 0 })));
 
     // Vendas backend (sem tráfego pago)
     const backendRows = r8.data || [];
