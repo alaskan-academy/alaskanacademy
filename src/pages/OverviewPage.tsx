@@ -81,6 +81,9 @@ export default function OverviewPage() {
     if (startDateStr && endDateEnd) q2 = q2.gte("vendas.data_venda", startDateStr).lte("vendas.data_venda", endDateEnd);
     if (pf) q2 = q2.eq("vendas.produto", pf);
 
+    // Buscar code_payts que são upsell na tabela ofertas
+    const qUpsellCodes = supabase.from("ofertas").select("code_payt").eq("tipo", "upsell");
+
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
@@ -132,7 +135,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, _unused, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, Promise.resolve({ data: [] }), q4, q5, q6, q8, qA1, qA2]);
+    const [r1, r2, _unused, r4, r5, r6, r8, rA1, rA2, rUpsellCodes] = await Promise.all([q1, q2, Promise.resolve({ data: [] }), q4, q5, q6, q8, qA1, qA2, qUpsellCodes]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -173,10 +176,11 @@ export default function OverviewPage() {
     const cancelVal = canceladas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
     const expVal = expiradas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
 
-    // OBs e Upsells: agrupar venda_itens filtrados por data
+    // Classificar itens usando tabela ofertas (tipo real) em vez do campo tipo da venda_itens
+    const upsellCodeSet = new Set((rUpsellCodes.data || []).map((r: any) => r.code_payt));
     const allItems = r2.data || [];
-    const obItems = allItems.filter((i: any) => (i.tipo || "").startsWith("orderbump"));
-    const upItems = allItems.filter((i: any) => (i.tipo || "") === "upsell");
+    const obItems = allItems.filter((i: any) => !upsellCodeSet.has(i.code_payt));
+    const upItems = allItems.filter((i: any) => upsellCodeSet.has(i.code_payt));
 
     // Agrupar OBs por code_payt
     const obMap = new Map<string, { nome_ob: string; tipo_ob: string; total_convertidos: number; receita_total_ob: number; vendas_com_ob: Set<string> }>();
