@@ -627,7 +627,7 @@ export default function OverviewPage() {
                       <td className="px-4 py-2 text-foreground">{r.nome_upsell}</td>
                       <td className="px-4 py-2 text-foreground">{formatNumber(r.total_upsells || 0)}</td>
                       <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatPercent(r.taxa_conversao_pct || 0)}</td>
+                      <td className="px-4 py-2 text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
                     </tr>
                   ))}
                   {upsellData.length === 0 && (
