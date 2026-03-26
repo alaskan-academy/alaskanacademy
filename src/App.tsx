@@ -6,7 +6,6 @@ import { SidebarProvider } from "@/contexts/SidebarContext";
 import { FilterProvider } from "@/contexts/FilterContext";
 import OverviewPage from "./pages/OverviewPage";
 import MetaAdsPage from "./pages/MetaAdsPage";
-import AdsAnalysisPage from "./pages/AdsAnalysisPage";
 import FunnelPage from "./pages/FunnelPage";
 import SalesPage from "./pages/SalesPage";
 import UTMPage from "./pages/UTMPage";
@@ -27,7 +26,6 @@ const App = () => (
             <Routes>
               <Route path="/" element={<OverviewPage />} />
               <Route path="/meta-ads" element={<MetaAdsPage />} />
-              <Route path="/analise-ads" element={<AdsAnalysisPage />} />
               <Route path="/funil" element={<FunnelPage />} />
               <Route path="/vendas" element={<SalesPage />} />
               <Route path="/utm" element={<UTMPage />} />
