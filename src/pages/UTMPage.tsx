@@ -146,7 +146,7 @@ export default function UTMPage() {
         }
         if (v.status === "aprovada") {
           utmMap[key].vendas_aprovadas += 1;
-          utmMap[key].faturamento += Number(v.valor_total || 0);
+          utmMap[key].faturamento += Number(v.valor_oferta_principal || 0);
         } else if (v.status === "pendente") {
           utmMap[key].vendas_pendentes += 1;
         } else if (v.status === "cancelada" || v.status === "expirada") {
