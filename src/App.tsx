@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { FilterProvider } from "@/contexts/FilterContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import OverviewPage from "./pages/OverviewPage";
 import MetaAdsPage from "./pages/MetaAdsPage";
@@ -19,27 +18,25 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <FilterProvider>
-      <SidebarProvider>
-        <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<OverviewPage />} />
-              <Route path="/meta-ads" element={<MetaAdsPage />} />
-              <Route path="/analise-ads" element={<AdsAnalysisPage />} />
-              <Route path="/funil" element={<FunnelPage />} />
-              <Route path="/vendas" element={<SalesPage />} />
-              <Route path="/utm" element={<UTMPage />} />
-              <Route path="/clientes" element={<ClientsPage />} />
-              <Route path="/editores" element={<EditorsPage />} />
-              <Route path="/configuracoes" element={<SettingsPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </SidebarProvider>
-    </FilterProvider>
+    <SidebarProvider>
+      <TooltipProvider>
+        <Toaster />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/meta-ads" element={<MetaAdsPage />} />
+            <Route path="/analise-ads" element={<AdsAnalysisPage />} />
+            <Route path="/funil" element={<FunnelPage />} />
+            <Route path="/vendas" element={<SalesPage />} />
+            <Route path="/utm" element={<UTMPage />} />
+            <Route path="/clientes" element={<ClientsPage />} />
+            <Route path="/editores" element={<EditorsPage />} />
+            <Route path="/configuracoes" element={<SettingsPage />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </SidebarProvider>
   </QueryClientProvider>
 );
 
