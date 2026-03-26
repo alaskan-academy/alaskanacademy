@@ -82,6 +82,7 @@ export default function OverviewPage() {
     if (pf) q2 = q2.eq("vendas.produto", pf);
 
     // Upsells (são vendas separadas com is_upsell = true)
+    // + buscar nomes reais de upsells da tabela ofertas para filtrar
     let qUp = supabase
       .from("vendas")
       .select("id,pedido_id,produto,valor_total,valor_oferta_principal,data_venda,payload_webhook->product->name")
@@ -91,6 +92,8 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (pf) qUp = qUp.eq("produto", pf);
+
+    const qOfertasUp = supabase.from("ofertas").select("nome").eq("tipo", "upsell");
 
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
@@ -143,7 +146,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
     if (pf) qA2 = qA2.eq("produto", pf);
 
-    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2]);
+    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rOfertasUp] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qOfertasUp]);
 
     // Faturamento
     const fatRows = r1.data || [];
@@ -204,8 +207,14 @@ export default function OverviewPage() {
     const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
     setObsData(obsRows);
 
-    // Upsells: vendas separadas com is_upsell = true (nome vem do payload_webhook->product->name)
-    const upVendas = rUp.data || [];
+    // Upsells: vendas separadas com is_upsell = true, filtradas pelos nomes cadastrados em ofertas
+    const upsellNamesSet = new Set((rOfertasUp.data || []).map((o: any) => o.nome));
+    const allUpVendas = rUp.data || [];
+    // Só considerar como upsell se o nome do produto estiver na tabela ofertas como tipo=upsell
+    const upVendas = allUpVendas.filter((v: any) => {
+      const nome = (v as any).name || "";
+      return upsellNamesSet.has(nome);
+    });
     const upGrouped = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
     for (const v of upVendas) {
       const nome = (v as any).name || `Upsell ${v.produto}`;
