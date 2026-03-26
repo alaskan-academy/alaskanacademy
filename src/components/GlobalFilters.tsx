@@ -1,20 +1,11 @@
 import { useState } from "react";
 import { useFilters } from "@/contexts/FilterContext";
-import { subDays, format } from "date-fns";
-import { CalendarIcon, ChevronDown, Package } from "lucide-react";
+import { subDays } from "date-fns";
+import { CalendarIcon, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-
-const PRODUCTS = [
-  { label: "Todos", value: "todos" },
-  { label: "Velas", value: "velas" },
-  { label: "Saponaria", value: "saponaria" },
-  { label: "Cosméticos", value: "cosmeticos" },
-  { label: "Hormonal", value: "hormonal" },
-  { label: "Velaroma", value: "velaroma" },
-] as const;
 
 const DATE_OPTIONS = [
   { key: "all", label: "Todos" },
@@ -25,9 +16,8 @@ const DATE_OPTIONS = [
 ] as const;
 
 export default function GlobalFilters() {
-  const { datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr, product, setProduct } = useFilters();
+  const { datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr } = useFilters();
   const [dateOpen, setDateOpen] = useState(false);
-  const [prodOpen, setProdOpen] = useState(false);
   const [customMode, setCustomMode] = useState(false);
   const [customStart, setCustomStart] = useState<Date | undefined>();
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
@@ -69,11 +59,8 @@ export default function GlobalFilters() {
       ? `${startDateStr.slice(8)}/${startDateStr.slice(5, 7)} – ${endDateStr.slice(8)}/${endDateStr.slice(5, 7)}`
       : dateLabelMap[datePreset] || "Período";
 
-  const productLabel = PRODUCTS.find((p) => p.value === product)?.label || "Produto";
-
   return (
     <div className="flex items-center gap-2">
-      {/* Date dropdown */}
       <Popover open={dateOpen} onOpenChange={(o) => { setDateOpen(o); if (!o) setCustomMode(false); }}>
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium">
@@ -143,33 +130,6 @@ export default function GlobalFilters() {
               </Button>
             </div>
           )}
-        </PopoverContent>
-      </Popover>
-
-      {/* Product dropdown */}
-      <Popover open={prodOpen} onOpenChange={setProdOpen}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium">
-            <Package className="h-3.5 w-3.5" />
-            {productLabel}
-            <ChevronDown className="h-3 w-3 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 min-w-[140px]" align="end">
-          <div className="flex flex-col py-1">
-            {PRODUCTS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => { setProduct(p.value); setProdOpen(false); }}
-                className={cn(
-                  "px-3 py-2 text-left text-sm hover:bg-accent transition-colors",
-                  product === p.value && "bg-accent font-semibold text-accent-foreground"
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
         </PopoverContent>
       </Popover>
     </div>

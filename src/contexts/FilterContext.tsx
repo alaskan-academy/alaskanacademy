@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
-type ProductFilter = 'todos' | 'velas' | 'saponaria' | 'cosmeticos' | 'hormonal' | 'velaroma';
 
 interface FilterContextType {
   datePreset: DatePreset;
@@ -10,10 +9,10 @@ interface FilterContextType {
   startDate: Date | null;
   endDate: Date | null;
   setCustomRange: (start: Date, end: Date) => void;
-  product: ProductFilter;
-  setProduct: (p: ProductFilter) => void;
   startDateStr: string | null;
   endDateStr: string | null;
+  funilId: string | null;
+  setFunilId: (id: string | null) => void;
 }
 
 const FilterContext = createContext<FilterContextType | null>(null);
@@ -26,9 +25,9 @@ export const useFilters = () => {
 
 export const FilterProvider = ({ children }: { children: ReactNode }) => {
   const [datePreset, setDatePresetState] = useState<DatePreset>('today');
-  const [product, setProduct] = useState<ProductFilter>('todos');
   const [customStart, setCustomStart] = useState<Date>(subDays(new Date(), 30));
   const [customEnd, setCustomEnd] = useState<Date>(new Date());
+  const [funilId, setFunilId] = useState<string | null>(null);
 
   const getDates = (): { start: Date | null; end: Date | null } => {
     const now = new Date();
@@ -67,10 +66,10 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
         startDate: start,
         endDate: end,
         setCustomRange,
-        product,
-        setProduct,
         startDateStr: start ? format(start, 'yyyy-MM-dd') : null,
         endDateStr: end ? format(end, 'yyyy-MM-dd') : null,
+        funilId,
+        setFunilId,
       }}
     >
       {children}
