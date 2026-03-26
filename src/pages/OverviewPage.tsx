@@ -84,16 +84,13 @@ export default function OverviewPage() {
     // Upsells (são vendas separadas com is_upsell = true)
     let qUp = supabase
       .from("vendas")
-      .select("id,pedido_id,produto,valor_total,valor_oferta_principal,data_venda")
+      .select("id,pedido_id,produto,valor_total,valor_oferta_principal,data_venda,payload_webhook->product->name")
       .eq("status", "aprovada")
       .eq("is_upsell", true)
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (pf) qUp = qUp.eq("produto", pf);
-
-    // Buscar nomes dos upsells na tabela ofertas
-    const qUpsellOffers = supabase.from("ofertas").select("code_payt,nome").eq("tipo", "upsell");
 
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
