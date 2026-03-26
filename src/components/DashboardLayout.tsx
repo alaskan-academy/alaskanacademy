@@ -2,11 +2,14 @@ import { ReactNode } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
 import { useSidebarState } from '@/contexts/SidebarContext';
+import { useFilters } from '@/contexts/FilterContext';
 import { Menu } from 'lucide-react';
 
 export function DashboardLayout({ children, title }: { children: ReactNode; title: string }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
+  const { funilId } = useFilters();
 
+  // Find selected funnel name for header context
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
