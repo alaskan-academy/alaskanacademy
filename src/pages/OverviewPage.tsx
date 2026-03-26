@@ -64,7 +64,6 @@ export default function OverviewPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const pf = product !== "todos" ? product : null;
     const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
     // Faturamento
@@ -293,7 +292,7 @@ export default function OverviewPage() {
 
     setLastUpdate(new Date());
     setLoading(false);
-  }, [startDateStr, endDateStr, product]);
+  }, [startDateStr, endDateStr, funilId]);
 
   useEffect(() => {
     fetchData();
