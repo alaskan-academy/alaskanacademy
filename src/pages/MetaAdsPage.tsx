@@ -53,7 +53,7 @@ function margemColor(v: number) {
 }
 
 export default function MetaAdsPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [allRows, setAllRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortCol, setSortCol] = useState("investimento");

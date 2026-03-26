@@ -91,7 +91,7 @@ const displayUtmValue = (value: string, level: UTMLevel) => {
 };
 
 export default function UTMPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [utmData, setUtmData] = useState<any[]>([]);

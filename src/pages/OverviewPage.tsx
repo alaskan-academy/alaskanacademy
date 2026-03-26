@@ -52,7 +52,7 @@ const VarBadge = ({ atual, anterior }: { atual: number; anterior: number }) => {
 };
 
 export default function OverviewPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [kpis, setKpis] = useState<any>({});
   const [kpisAnt, setKpisAnt] = useState<any>({});
   const [obsData, setObsData] = useState<any[]>([]);

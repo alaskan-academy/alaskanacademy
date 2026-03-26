@@ -280,7 +280,7 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
 }
 
 export default function FunnelPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [allMeta, setAllMeta] = useState<any[]>([]);
   const [allMetaAnt, setAllMetaAnt] = useState<any[]>([]);
   const [allVendas, setAllVendas] = useState<any[]>([]);

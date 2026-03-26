@@ -48,7 +48,7 @@ const paymentLabels: Record<string, string> = {
 };
 
 export default function SalesPage() {
-  const { startDateStr, endDateStr, product } = useFilters();
+  const { startDateStr, endDateStr, funilId } = useFilters();
   const [salesData, setSalesData] = useState<any[]>([]);
   const [temporal, setTemporal] = useState<any[]>([]);
   const [byProduct, setByProduct] = useState<any[]>([]);
