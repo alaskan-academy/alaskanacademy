@@ -575,7 +575,7 @@ export default function OverviewPage() {
               <table className="w-full text-sm min-w-[400px]">
                 <thead>
                   <tr className="border-b border-border">
-                    {["OB", "Convertidos", "Receita", "Taxa"].map((h) => (
+                    {["OB", "Tipo", "Convertidos", "Receita", "Taxa"].map((h) => (
                       <th key={h} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">
                         {h}
                       </th>
@@ -583,17 +583,23 @@ export default function OverviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {obsData.map((r, i) => (
-                    <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                      <td className="px-4 py-2 text-foreground">{r.nome_ob}</td>
-                      <td className="px-4 py-2 text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatPercent(r.taxa_conversao_pct || 0)}</td>
-                    </tr>
-                  ))}
+                  {obsData.map((r, i) => {
+                    const tipoBadge = (r.tipo_ob || "").replace("orderbump_", "OB").toUpperCase();
+                    return (
+                      <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
+                        <td className="px-4 py-2 text-foreground">{r.nome_ob}</td>
+                        <td className="px-4 py-2">
+                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-primary/10 text-primary">{tipoBadge}</span>
+                        </td>
+                        <td className="px-4 py-2 text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
+                        <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
+                        <td className="px-4 py-2 text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })}
                   {obsData.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-4 py-4 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-4 text-center text-muted-foreground">
                         Sem conversões no período
                       </td>
                     </tr>
