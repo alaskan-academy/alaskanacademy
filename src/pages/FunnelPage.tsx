@@ -340,9 +340,9 @@ export default function FunnelPage() {
         qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
         qVAnt = qVAnt.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
       }
-      if (pf) {
-        qMetaAnt = qMetaAnt.eq("produto", pf);
-        qVAnt = qVAnt.eq("produto", pf);
+      if (funilId) {
+        qMetaAnt = qMetaAnt.eq("funil_id", funilId);
+        qVAnt = qVAnt.eq("funil_id", funilId);
       }
 
       const [rMeta, rV, rItems, rMetaAnt, rVAnt] = await Promise.all([qMeta, qV, qItems, qMetaAnt, qVAnt]);
@@ -357,7 +357,7 @@ export default function FunnelPage() {
       const allItems = (rItems.data || []).filter((item: any) => {
         const v = item.vendas;
         if (!v || v.status !== "aprovada") return false;
-        if (pf && v.produto !== pf) return false;
+        return true;
         return true;
       });
 

@@ -78,7 +78,7 @@ export default function OverviewPage() {
       .eq("converteu", true)
       .eq("vendas.status", "aprovada");
     if (startDateStr && endDateEnd) q2 = q2.gte("vendas.data_venda", startDateStr).lte("vendas.data_venda", endDateEnd);
-    if (pf) q2 = q2.eq("vendas.produto", pf);
+    if (funilId) q2 = q2.eq("vendas.funil_id", funilId);
 
     // Upsells (são vendas separadas com is_upsell = true)
     // + buscar nomes reais de upsells da tabela ofertas para filtrar
