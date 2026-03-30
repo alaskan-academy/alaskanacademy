@@ -3,23 +3,40 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { Search } from 'lucide-react';
+import { useFilters } from '@/contexts/FilterContext';
 
 export default function ClientsPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const { funilId } = useFilters();
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      let q = supabase.from('vw_clientes_listagem').select('*').order('total_gasto', { ascending: false });
-      if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
-      const { data: result } = await q;
-      setData(result || []);
+      let result: any[] = [];
+
+      if (funilId) {
+        // Get client IDs that have sales in this funnel
+        const { data: vendas } = await supabase.from('vendas').select('cliente_id').eq('funil_id', funilId);
+        const clienteIds = [...new Set((vendas || []).map((v: any) => v.cliente_id).filter(Boolean))];
+        if (clienteIds.length === 0) { setData([]); setLoading(false); return; }
+        let q = supabase.from('vw_clientes_listagem').select('*').in('id', clienteIds).order('total_gasto', { ascending: false });
+        if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
+        const { data: rows } = await q;
+        result = rows || [];
+      } else {
+        let q = supabase.from('vw_clientes_listagem').select('*').order('total_gasto', { ascending: false });
+        if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
+        const { data: rows } = await q;
+        result = rows || [];
+      }
+
+      setData(result);
       setLoading(false);
     };
     fetchData();
-  }, [search]);
+  }, [search, funilId]);
 
   const columns = [
     { key: 'nome', label: 'Nome' },

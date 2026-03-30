@@ -1,23 +1,13 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2,
-  Plus, Globe, Copy, Check, ChevronDown
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
 import { useFilters } from '@/contexts/FilterContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 
 interface Funil {
@@ -59,14 +49,6 @@ export function AppSidebar() {
   const [funis, setFunis] = useState<Funil[]>([]);
   const [loadingFunis, setLoadingFunis] = useState(true);
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createProduto, setCreateProduto] = useState('');
-  const [createPaytKey, setCreatePaytKey] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createdUrl, setCreatedUrl] = useState('');
-  const [copied, setCopied] = useState(false);
-
   // Track which dashboard is expanded — null means "Geral"
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -96,24 +78,6 @@ export function AppSidebar() {
     onNav?.();
   };
 
-  const handleCreate = async () => {
-    if (!createName || !createProduto) return;
-    setCreating(true);
-    const { data, error } = await supabase.from('funis').insert({
-      nome: createName, produto: createProduto, payt_key: createPaytKey || null, ativo: true,
-    }).select('id').single();
-    setCreating(false);
-    if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
-    setCreatedUrl(`${WEBHOOK_BASE}${data.id}`);
-    loadFunis();
-    toast({ title: 'Dashboard criado!' });
-  };
-
-  const resetCreate = () => {
-    setCreateOpen(false); setCreateName(''); setCreateProduto(''); setCreatePaytKey(''); setCreatedUrl(''); setCopied(false);
-  };
-
-  const copyUrl = () => { navigator.clipboard.writeText(createdUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
   const showLabels = isMobile || !collapsed;
 
@@ -225,80 +189,14 @@ export function AppSidebar() {
             ))
           )}
 
-          {/* Create button */}
-          <button
-            onClick={() => setCreateOpen(true)}
-            className={cn(
-              "flex items-center gap-2 w-full rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors mt-1",
-              showLabels ? "px-3 py-2" : "justify-center py-2 px-1"
-            )}
-            title="Criar Dashboard"
-          >
-            <Plus className={cn(showLabels ? "h-3.5 w-3.5" : "h-4 w-4")} />
-            {showLabels && <span>Criar Dashboard</span>}
-          </button>
         </div>
       </div>
     </>
   );
 
-  const CreateModal = () => (
-    <Dialog open={createOpen} onOpenChange={(o) => { if (!o) resetCreate(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{createdUrl ? 'Dashboard criado!' : 'Criar Dashboard'}</DialogTitle>
-          <DialogDescription>
-            {createdUrl ? 'Copie a URL abaixo e cole nas configurações da Payt.' : 'Preencha os dados do novo funil.'}
-          </DialogDescription>
-        </DialogHeader>
-        {!createdUrl ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input placeholder="Ex: Velas Perfeitas" value={createName} onChange={(e) => setCreateName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Produto</Label>
-              <Select value={createProduto} onValueChange={setCreateProduto}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="velas">Velas</SelectItem>
-                  <SelectItem value="saponaria">Saponaria</SelectItem>
-                  <SelectItem value="cosmeticos">Cosméticos</SelectItem>
-                  <SelectItem value="hormonal">Hormonal</SelectItem>
-                  <SelectItem value="velaroma">Velaroma</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Integration Key da Payt</Label>
-              <Input placeholder="Cole a integration_key" value={createPaytKey} onChange={(e) => setCreatePaytKey(e.target.value)} />
-            </div>
-            <DialogFooter>
-              <Button onClick={handleCreate} disabled={creating || !createName || !createProduto}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Criar
-              </Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{createdUrl}</div>
-            <Button onClick={copyUrl} className="w-full gap-2">
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied ? 'Copiado!' : 'Copiar URL'}
-            </Button>
-            <Button variant="outline" className="w-full" onClick={resetCreate}>Fechar</Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-
   if (isMobile) {
     return (
       <>
-        <CreateModal />
         {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setMobileOpen(false)} />}
         <aside className={cn(
           "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-transform duration-300 w-64",
@@ -321,7 +219,7 @@ export function AppSidebar() {
 
   return (
     <>
-      <CreateModal />
+      
       <aside className={cn(
         "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-300",
         collapsed ? "w-16" : "w-56"
