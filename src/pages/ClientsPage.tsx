@@ -3,23 +3,39 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { Search } from 'lucide-react';
+import { useFilters } from '@/contexts/FilterContext';
 
 export default function ClientsPage() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const { funilId } = useFilters();
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      let q = supabase.from('vw_clientes_listagem').select('*').order('total_gasto', { ascending: false });
-      if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
-      const { data: result } = await q;
-      setData(result || []);
+      let result: any[] = [];
+
+      if (funilId) {
+        // Filter clients who have at least one sale in this funnel
+        const { data: rows } = await supabase.rpc('get_clientes_por_funil', { p_funil_id: funilId });
+        result = rows || [];
+        if (search) {
+          const s = search.toLowerCase();
+          result = result.filter((r: any) => r.nome?.toLowerCase().includes(s) || r.email?.toLowerCase().includes(s));
+        }
+      } else {
+        let q = supabase.from('vw_clientes_listagem').select('*').order('total_gasto', { ascending: false });
+        if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
+        const { data: rows } = await q;
+        result = rows || [];
+      }
+
+      setData(result);
       setLoading(false);
     };
     fetchData();
-  }, [search]);
+  }, [search, funilId]);
 
   const columns = [
     { key: 'nome', label: 'Nome' },

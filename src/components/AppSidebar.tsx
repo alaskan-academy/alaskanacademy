@@ -225,18 +225,6 @@ export function AppSidebar() {
             ))
           )}
 
-          {/* Create button */}
-          <button
-            onClick={() => setCreateOpen(true)}
-            className={cn(
-              "flex items-center gap-2 w-full rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors mt-1",
-              showLabels ? "px-3 py-2" : "justify-center py-2 px-1"
-            )}
-            title="Criar Dashboard"
-          >
-            <Plus className={cn(showLabels ? "h-3.5 w-3.5" : "h-4 w-4")} />
-            {showLabels && <span>Criar Dashboard</span>}
-          </button>
         </div>
       </div>
     </>
