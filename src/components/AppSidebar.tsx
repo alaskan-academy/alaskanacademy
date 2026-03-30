@@ -1,23 +1,13 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2,
-  Plus, Globe, Copy, Check, ChevronDown
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
 import { useFilters } from '@/contexts/FilterContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 
 interface Funil {

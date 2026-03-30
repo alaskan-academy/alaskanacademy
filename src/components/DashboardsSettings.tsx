@@ -73,7 +73,7 @@ export default function DashboardsSettings() {
 
   const resetForm = () => {
     setFormNome('');
-    setFormProduto('velas');
+    setFormProduto('');
     setFormPaytKey('');
     setFormAtivo(true);
   };
