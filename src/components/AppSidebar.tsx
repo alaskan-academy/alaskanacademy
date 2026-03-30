@@ -207,7 +207,6 @@ export function AppSidebar() {
   if (isMobile) {
     return (
       <>
-        <CreateModal />
         {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setMobileOpen(false)} />}
         <aside className={cn(
           "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-transform duration-300 w-64",
@@ -230,7 +229,7 @@ export function AppSidebar() {
 
   return (
     <>
-      <CreateModal />
+      
       <aside className={cn(
         "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-300",
         collapsed ? "w-16" : "w-56"
