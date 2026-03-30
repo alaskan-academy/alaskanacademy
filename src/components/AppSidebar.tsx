@@ -59,14 +59,6 @@ export function AppSidebar() {
   const [funis, setFunis] = useState<Funil[]>([]);
   const [loadingFunis, setLoadingFunis] = useState(true);
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createName, setCreateName] = useState('');
-  const [createProduto, setCreateProduto] = useState('');
-  const [createPaytKey, setCreatePaytKey] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createdUrl, setCreatedUrl] = useState('');
-  const [copied, setCopied] = useState(false);
-
   // Track which dashboard is expanded — null means "Geral"
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -96,24 +88,6 @@ export function AppSidebar() {
     onNav?.();
   };
 
-  const handleCreate = async () => {
-    if (!createName || !createProduto) return;
-    setCreating(true);
-    const { data, error } = await supabase.from('funis').insert({
-      nome: createName, produto: createProduto, payt_key: createPaytKey || null, ativo: true,
-    }).select('id').single();
-    setCreating(false);
-    if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
-    setCreatedUrl(`${WEBHOOK_BASE}${data.id}`);
-    loadFunis();
-    toast({ title: 'Dashboard criado!' });
-  };
-
-  const resetCreate = () => {
-    setCreateOpen(false); setCreateName(''); setCreateProduto(''); setCreatePaytKey(''); setCreatedUrl(''); setCopied(false);
-  };
-
-  const copyUrl = () => { navigator.clipboard.writeText(createdUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
   const showLabels = isMobile || !collapsed;
 
@@ -228,59 +202,6 @@ export function AppSidebar() {
         </div>
       </div>
     </>
-  );
-
-  const CreateModal = () => (
-    <Dialog open={createOpen} onOpenChange={(o) => { if (!o) resetCreate(); }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{createdUrl ? 'Dashboard criado!' : 'Criar Dashboard'}</DialogTitle>
-          <DialogDescription>
-            {createdUrl ? 'Copie a URL abaixo e cole nas configurações da Payt.' : 'Preencha os dados do novo funil.'}
-          </DialogDescription>
-        </DialogHeader>
-        {!createdUrl ? (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input placeholder="Ex: Velas Perfeitas" value={createName} onChange={(e) => setCreateName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Produto</Label>
-              <Select value={createProduto} onValueChange={setCreateProduto}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="velas">Velas</SelectItem>
-                  <SelectItem value="saponaria">Saponaria</SelectItem>
-                  <SelectItem value="cosmeticos">Cosméticos</SelectItem>
-                  <SelectItem value="hormonal">Hormonal</SelectItem>
-                  <SelectItem value="velaroma">Velaroma</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Integration Key da Payt</Label>
-              <Input placeholder="Cole a integration_key" value={createPaytKey} onChange={(e) => setCreatePaytKey(e.target.value)} />
-            </div>
-            <DialogFooter>
-              <Button onClick={handleCreate} disabled={creating || !createName || !createProduto}>
-                {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Criar
-              </Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="bg-muted rounded-lg p-3 text-xs font-mono break-all">{createdUrl}</div>
-            <Button onClick={copyUrl} className="w-full gap-2">
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied ? 'Copiado!' : 'Copiar URL'}
-            </Button>
-            <Button variant="outline" className="w-full" onClick={resetCreate}>Fechar</Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 
   if (isMobile) {

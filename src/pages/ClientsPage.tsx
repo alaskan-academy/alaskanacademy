@@ -17,13 +17,14 @@ export default function ClientsPage() {
       let result: any[] = [];
 
       if (funilId) {
-        // Filter clients who have at least one sale in this funnel
-        const { data: rows } = await supabase.rpc('get_clientes_por_funil', { p_funil_id: funilId });
+        // Get client IDs that have sales in this funnel
+        const { data: vendas } = await supabase.from('vendas').select('cliente_id').eq('funil_id', funilId);
+        const clienteIds = [...new Set((vendas || []).map((v: any) => v.cliente_id).filter(Boolean))];
+        if (clienteIds.length === 0) { setData([]); setLoading(false); return; }
+        let q = supabase.from('vw_clientes_listagem').select('*').in('id', clienteIds).order('total_gasto', { ascending: false });
+        if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
+        const { data: rows } = await q;
         result = rows || [];
-        if (search) {
-          const s = search.toLowerCase();
-          result = result.filter((r: any) => r.nome?.toLowerCase().includes(s) || r.email?.toLowerCase().includes(s));
-        }
       } else {
         let q = supabase.from('vw_clientes_listagem').select('*').order('total_gasto', { ascending: false });
         if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
