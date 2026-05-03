@@ -17,6 +17,7 @@ type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'mu
 
 const CHAVE_CRIATIVOS = 'criativos_escalados';
 const CHAVE_VSL = 'vsl_escaladas';
+const CHAVE_RESPONSAVEIS = 'editores_responsaveis';
 
 export function AvaliacoesTab() {
   const confirm = useConfirm();
@@ -35,6 +36,7 @@ export function AvaliacoesTab() {
       editor_id: '', mes_referencia: '', data_lancamento: '', avaliador: '', perfil: '',
       bonus_total_override: '',
       feedback: '',
+      responsaveis_ids: [] as string[],
       respostas: {} as Record<string, string | string[] | number>,
     };
   }
@@ -64,6 +66,10 @@ export function AvaliacoesTab() {
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
   const multiplicador = cargoSel ? Number(cargoSel.multiplicador) : 1;
+  const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
+  const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
+  const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 
   const { bonusBase, folgasAuto } = useMemo(() => {
     let total = 0;
@@ -95,6 +101,13 @@ export function AvaliacoesTab() {
 
   const bonusEstimado = bonusBase;
   const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
+  const bonusResponsaveis = useMemo(() => {
+    if (!isHeadOuLider || !mesReferenciaPayload || form.responsaveis_ids.length === 0) return 0;
+    return items
+      .filter(item => item.mes_referencia === mesReferenciaPayload && form.responsaveis_ids.includes(item.editor_id))
+      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * 0.2, 0);
+  }, [form.responsaveis_ids, isHeadOuLider, items, mesReferenciaPayload]);
+  const bonusTotalCalculado = Math.round((bonusComMultiplicador + bonusResponsaveis) * 100) / 100;
 
   const openNew = () => { setEditingId(null); setForm(blankForm()); setOpen(true); };
 
@@ -122,6 +135,14 @@ export function AvaliacoesTab() {
     if (a.criativos_escalados != null && respostas[CHAVE_CRIATIVOS] == null) respostas[CHAVE_CRIATIVOS] = Number(a.criativos_escalados);
     if (a.vsl_escaladas != null && respostas[CHAVE_VSL] == null) respostas[CHAVE_VSL] = Number(a.vsl_escaladas);
 
+    const responsaveisIds = Array.isArray(snap[CHAVE_RESPONSAVEIS]?.editor_ids)
+      ? snap[CHAVE_RESPONSAVEIS].editor_ids.filter((id: unknown) => typeof id === 'string')
+      : [];
+    const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
+    const cargoMultiplicador = Number(cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1);
+    const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * cargoMultiplicador * 100) / 100;
+    const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
+
     setEditingId(a.id);
     setForm({
       editor_id: a.editor_id || '',
@@ -129,9 +150,10 @@ export function AvaliacoesTab() {
       data_lancamento: a.data_lancamento ? String(a.data_lancamento).slice(0, 10) : '',
       avaliador: a.avaliador || '',
       perfil: a.perfil || '',
-      bonus_total_override: a.bonus_total != null && a.bonus_estimado != null && Number(a.bonus_total) !== Math.round(Number(a.bonus_estimado) * (cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1) * 100) / 100
+      bonus_total_override: a.bonus_total != null && Number(a.bonus_total) !== bonusTotalCalculadoItem
         ? String(a.bonus_total) : '',
       feedback: a.feedback || '',
+      responsaveis_ids: responsaveisIds,
       respostas,
     });
     setOpen(true);
@@ -155,9 +177,18 @@ export function AvaliacoesTab() {
       }
     }
 
+    if (isHeadOuLider && form.responsaveis_ids.length > 0) {
+      respostasSnapshot[CHAVE_RESPONSAVEIS] = {
+        tipo: 'leaders',
+        editor_ids: form.responsaveis_ids,
+        bonus_lideranca: Math.round(bonusResponsaveis * 100) / 100,
+        percentual: 0.2,
+      };
+    }
+
     const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
       ? Number(form.bonus_total_override)
-      : bonusComMultiplicador;
+      : bonusTotalCalculado;
 
     // Mantém colunas legadas se os critérios existirem
     const critCriativos = criterios.find(c => c.chave === CHAVE_CRIATIVOS);
@@ -169,7 +200,7 @@ export function AvaliacoesTab() {
 
     const payload: any = {
       editor_id: form.editor_id,
-      mes_referencia: form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null,
+      mes_referencia: mesReferenciaPayload,
       data_lancamento: form.data_lancamento || null,
       avaliador: form.avaliador || null,
       perfil: form.perfil || null,
@@ -250,7 +281,7 @@ export function AvaliacoesTab() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Editor</Label>
-                <Select value={form.editor_id} onValueChange={v => setForm({ ...form, editor_id: v })}>
+                <Select value={form.editor_id} onValueChange={v => setForm({ ...form, editor_id: v, responsaveis_ids: [] })}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>{editores.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent>
                 </Select>
@@ -260,6 +291,31 @@ export function AvaliacoesTab() {
               <div><Label>Avaliador(a)</Label><Input value={form.avaliador} onChange={e => setForm({ ...form, avaliador: e.target.value })} /></div>
               <div><Label>Perfil</Label><Input value={form.perfil} onChange={e => setForm({ ...form, perfil: e.target.value })} placeholder="Misto / Estático / Dinâmico" /></div>
             </div>
+
+            {isHeadOuLider && (
+              <div className="space-y-2 border-b border-border/40 pb-3">
+                <Label className="text-sm">Editores sob responsabilidade</Label>
+                <div className="space-y-1.5">
+                  {responsaveisDisponiveis.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Nenhum editor disponível para vincular.</div>
+                  ) : responsaveisDisponiveis.map(op => {
+                    const checked = form.responsaveis_ids.includes(op.id);
+                    return (
+                      <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
+                        <Checkbox checked={checked} onCheckedChange={(v) => {
+                          const next = v
+                            ? [...form.responsaveis_ids, op.id]
+                            : form.responsaveis_ids.filter((id: string) => id !== op.id);
+                          setForm({ ...form, responsaveis_ids: next });
+                        }} />
+                        <span>{op.nome}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">A líder/head recebe 20% da comissão total destes editores no mês selecionado.</p>
+              </div>
+            )}
 
             {criterios.length === 0 && (
               <div className="p-4 text-sm text-muted-foreground bg-secondary/30 rounded">
@@ -314,7 +370,7 @@ export function AvaliacoesTab() {
             ))}
 
             <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-xs text-muted-foreground">Bônus base</Label>
                   <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
@@ -324,6 +380,10 @@ export function AvaliacoesTab() {
                   <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
                 </div>
                 <div>
+                  <Label className="text-xs text-muted-foreground">Comissão liderança</Label>
+                  <div className="text-lg font-medium">{formatCurrency(bonusResponsaveis)}</div>
+                </div>
+                <div>
                   <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
                   <div className="text-lg font-medium">{folgasAuto}</div>
                 </div>
@@ -331,11 +391,11 @@ export function AvaliacoesTab() {
               <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
                 <div>
                   <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
-                  <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusComMultiplicador)}</div>
+                  <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusTotalCalculado)}</div>
                 </div>
                 <div>
                   <Label>Override do bônus total (opcional)</Label>
-                  <Input type="number" placeholder={String(bonusComMultiplicador)}
+                  <Input type="number" placeholder={String(bonusTotalCalculado)}
                     value={form.bonus_total_override}
                     onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
                 </div>
