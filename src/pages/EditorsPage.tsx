@@ -79,7 +79,7 @@ export default function EditorsPage() {
     setEditingId(r.id);
     setForm({
       id: r.id,
-      data: r.data ? String(r.data).slice(0, 10) : '',
+      mes_referencia: r.mes_referencia ? String(r.mes_referencia).slice(0, 7) : '',
       empresa: r.empresa || '',
       oferta: r.oferta || '',
       editor_id: r.editor_id || '',
