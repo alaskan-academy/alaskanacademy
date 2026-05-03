@@ -13,7 +13,14 @@ import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; opcoes: Opcao[] };
+type Categoria = 'individual' | 'grupo' | 'meta';
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[] };
+
+const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
+  { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
+  { value: 'grupo', label: 'Avaliação em grupo', description: 'Critérios avaliados a partir do desempenho do time.' },
+  { value: 'meta', label: 'Meta da empresa', description: 'Metas coletivas/empresariais que impactam todos.' },
+];
 
 const CHAVE_CRIATIVOS = 'criativos_escalados';
 const CHAVE_VSL = 'vsl_escaladas';
