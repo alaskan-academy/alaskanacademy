@@ -30,7 +30,7 @@ export function AvaliacoesTab() {
 
   function blankForm() {
     return {
-      editor_id: '', mes_referencia: '', avaliador: '', perfil: '',
+      editor_id: '', mes_referencia: '', data_lancamento: '', avaliador: '', perfil: '',
       bonus_total_override: '',
       feedback: '',
       respostas: {} as Record<string, string | string[] | number>,
