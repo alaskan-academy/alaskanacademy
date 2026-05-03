@@ -17,6 +17,7 @@ type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'mu
 
 const CHAVE_CRIATIVOS = 'criativos_escalados';
 const CHAVE_VSL = 'vsl_escaladas';
+const CHAVE_RESPONSAVEIS = 'editores_responsaveis';
 
 export function AvaliacoesTab() {
   const confirm = useConfirm();
