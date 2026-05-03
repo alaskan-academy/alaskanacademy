@@ -16,6 +16,7 @@ type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'mu
 
 export function AvaliacoesTab() {
   const [editores, setEditores] = useState<any[]>([]);
+  const [cargos, setCargos] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [filterEditor, setFilterEditor] = useState<string>('all');
@@ -27,22 +28,24 @@ export function AvaliacoesTab() {
     return {
       editor_id: '', mes_referencia: '', avaliador: '', perfil: '',
       criativos_escalados: 0, vsl_escaladas: 0,
-      bonus_total: 0, folgas: 0,
-      feedback: '', resumo_ai: '', sugestao_ai: '',
+      bonus_total_override: '', // se vazio, usa cálculo automático
+      feedback: '',
       respostas: {} as Record<string, string | string[] | number>,
     };
   }
 
   const load = async () => {
     setLoading(true);
-    const [e, a, c, o] = await Promise.all([
-      supabase.from('editores').select('id, nome').order('nome'),
+    const [e, a, c, o, cg] = await Promise.all([
+      supabase.from('editores').select('id, nome, cargo_id').order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
       supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('cargos').select('*'),
     ]);
     setEditores(e.data || []);
     setItems(a.data || []);
+    setCargos(cg.data || []);
     const opts = o.data || [];
     setCriterios((c.data || []).map((cr: any) => ({ ...cr, opcoes: opts.filter((x: any) => x.criterio_id === cr.id) })));
     setLoading(false);
@@ -50,27 +53,48 @@ export function AvaliacoesTab() {
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
+  const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const filtered = filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor);
 
-  // Cálculo automático do bônus
-  const bonusEstimado = useMemo(() => {
+  // Cargo do editor selecionado e multiplicador
+  const editorSel = editores.find(e => e.id === form.editor_id);
+  const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
+  const multiplicador = cargoSel ? Number(cargoSel.multiplicador) : 1;
+
+  // Cálculo automático do bônus base
+  const { bonusBase, folgasAuto } = useMemo(() => {
     let total = 0;
+    let folgas = 0;
+    const folgaRe = /\((\d+(?:[.,]\d+)?)\s*folgas?\)/i;
     for (const cr of criterios) {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
-        const op = cr.opcoes.find(o => o.id === r); if (op) total += Number(op.valor);
+        const op = cr.opcoes.find(o => o.id === r);
+        if (op) {
+          total += Number(op.valor);
+          const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+        }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
-        for (const id of r) { const op = cr.opcoes.find(o => o.id === id); if (op) total += Number(op.valor); }
+        for (const id of r) {
+          const op = cr.opcoes.find(o => o.id === id);
+          if (op) {
+            total += Number(op.valor);
+            const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+          }
+        }
       } else if (cr.tipo === 'number') {
         const unit = Number(cr.opcoes[0]?.valor || 0);
         total += Number(r || 0) * unit;
       }
     }
-    // bônus por criativos escalados (R$50 por unidade) e VSL (R$ por unidade) — fallback fixo
     total += Number(form.criativos_escalados || 0) * 50;
     total += Number(form.vsl_escaladas || 0) * 100;
-    return total;
+    return { bonusBase: total, folgasAuto: folgas };
   }, [form, criterios]);
+
+  const bonusEstimado = bonusBase;
+  const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
+
 
   const openNew = () => { setForm(blankForm()); setOpen(true); };
 
@@ -93,6 +117,10 @@ export function AvaliacoesTab() {
       }
     }
 
+    const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
+      ? Number(form.bonus_total_override)
+      : bonusComMultiplicador;
+
     const payload: any = {
       editor_id: form.editor_id,
       mes_referencia: form.mes_referencia,
@@ -103,11 +131,9 @@ export function AvaliacoesTab() {
       vsl_escaladas: Number(form.vsl_escaladas || 0),
       bonus_vsl: Number(form.vsl_escaladas || 0) * 100,
       bonus_estimado: bonusEstimado,
-      bonus_total: Number(form.bonus_total || bonusEstimado),
-      folgas: Number(form.folgas || 0),
+      bonus_total: bonusFinal,
+      folgas: folgasAuto,
       feedback: form.feedback || null,
-      resumo_ai: form.resumo_ai || null,
-      sugestao_ai: form.sugestao_ai || null,
       respostas: respostasSnapshot,
     };
     const { error } = await supabase.from('avaliacoes_mensais').insert(payload);
@@ -115,6 +141,7 @@ export function AvaliacoesTab() {
     toast({ title: 'Avaliação salva' });
     setOpen(false); setForm(blankForm()); load();
   };
+
 
   const remove = async (id: string) => {
     if (!confirm('Excluir avaliação?')) return;
@@ -245,27 +272,37 @@ export function AvaliacoesTab() {
               <div><Label>VSL escaladas</Label><Input type="number" value={form.vsl_escaladas} onChange={e => setForm({ ...form, vsl_escaladas: e.target.value })} /><span className="text-xs text-muted-foreground">R$ 100 por unidade</span></div>
             </div>
 
-            <div className="bg-secondary/40 border border-border rounded-lg p-4 grid grid-cols-2 gap-4 items-end">
-              <div>
-                <Label className="text-xs text-muted-foreground">Bônus estimado (calculado)</Label>
-                <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusEstimado)}</div>
+            <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Bônus base</Label>
+                  <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Multiplicador {cargoSel ? `(${cargoSel.nome})` : ''}</Label>
+                  <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
+                  <div className="text-lg font-medium">{folgasAuto}</div>
+                </div>
               </div>
-              <div>
-                <Label>Bônus total a pagar (R$)</Label>
-                <Input type="number" value={form.bonus_total || bonusEstimado} onChange={e => setForm({ ...form, bonus_total: e.target.value })} />
-                <p className="text-xs text-muted-foreground mt-1">Aplique multiplicador de cargo aqui se necessário.</p>
+              <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
+                  <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusComMultiplicador)}</div>
+                </div>
+                <div>
+                  <Label>Override do bônus total (opcional)</Label>
+                  <Input type="number" placeholder={String(bonusComMultiplicador)}
+                    value={form.bonus_total_override}
+                    onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
+                </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Folgas</Label><Input type="number" step="0.5" value={form.folgas} onChange={e => setForm({ ...form, folgas: e.target.value })} /></div>
             </div>
 
             <div><Label>Feedback</Label><Textarea rows={3} value={form.feedback} onChange={e => setForm({ ...form, feedback: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Resumo (AI)</Label><Textarea rows={2} value={form.resumo_ai} onChange={e => setForm({ ...form, resumo_ai: e.target.value })} /></div>
-              <div><Label>Sugestão de desenvolvimento (AI)</Label><Textarea rows={2} value={form.sugestao_ai} onChange={e => setForm({ ...form, sugestao_ai: e.target.value })} /></div>
-            </div>
+
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
