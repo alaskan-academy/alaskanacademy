@@ -173,7 +173,7 @@ export default function EditorsPage() {
                     <tbody>
                       {rows.map(r => (
                         <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(r)}>
-                          <td className="px-3 py-2">{r.data}</td>
+                          <td className="px-3 py-2">{r.mes_referencia ? String(r.mes_referencia).slice(0, 7) : '—'}</td>
                           <td className="px-3 py-2">{r.empresa}</td>
                           <td className="px-3 py-2">{r.oferta}</td>
                           <td className="px-3 py-2">{editorMap[r.editor_id] || '—'}</td>
