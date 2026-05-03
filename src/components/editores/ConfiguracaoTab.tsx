@@ -179,6 +179,15 @@ export function ConfiguracaoTab() {
             <div><Label>Chave (única)</Label><Input value={critForm.chave} onChange={e => setCritForm({ ...critForm, chave: e.target.value })} placeholder="ex: responsabilidade" /></div>
             <div><Label>Label</Label><Input value={critForm.label} onChange={e => setCritForm({ ...critForm, label: e.target.value })} /></div>
             <div>
+              <Label>Categoria</Label>
+              <Select value={critForm.categoria} onValueChange={v => setCritForm({ ...critForm, categoria: v as Categoria })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label>Tipo</Label>
               <Select value={critForm.tipo} onValueChange={v => setCritForm({ ...critForm, tipo: v as any })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
