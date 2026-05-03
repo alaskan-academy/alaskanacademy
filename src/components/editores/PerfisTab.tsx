@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
 import { Plus, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 
@@ -15,6 +16,7 @@ type Cargo = { id: string; nome: string; multiplicador: number; cor: string | nu
 type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null };
 
 export function PerfisTab() {
+  const confirm = useConfirm();
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [editores, setEditores] = useState<Editor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,7 @@ export function PerfisTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Excluir este editor?')) return;
+    if (!(await confirm({ title: 'Excluir editor?', description: 'O editor e seus vínculos serão removidos permanentemente.' }))) return;
     const { error } = await supabase.from('editores').delete().eq('id', id);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     if (selected?.id === id) setSelected(null);

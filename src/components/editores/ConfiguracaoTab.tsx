@@ -7,12 +7,14 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
 type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean };
 
 export function ConfiguracaoTab() {
+  const confirm = useConfirm();
   const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [opcoes, setOpcoes] = useState<Opcao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ export function ConfiguracaoTab() {
     setOpenCrit(false); load();
   };
   const removeCrit = async (id: string) => {
-    if (!confirm('Excluir critério e todas as suas opções?')) return;
+    if (!(await confirm({ title: 'Excluir critério?', description: 'O critério e todas as suas opções serão removidos.' }))) return;
     await supabase.from('criterios_avaliacao').delete().eq('id', id); load();
   };
   const toggleCritAtivo = async (c: Criterio) => {
@@ -82,7 +84,7 @@ export function ConfiguracaoTab() {
     setOpenOpt(false); load();
   };
   const removeOpt = async (id: string) => {
-    if (!confirm('Excluir opção?')) return;
+    if (!(await confirm({ title: 'Excluir opção?', description: 'Esta opção será removida permanentemente.' }))) return;
     await supabase.from('criterio_opcoes').delete().eq('id', id); load();
   };
   const toggleOptAtivo = async (o: Opcao) => {

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 
@@ -18,6 +19,7 @@ const CHAVE_CRIATIVOS = 'criativos_escalados';
 const CHAVE_VSL = 'vsl_escaladas';
 
 export function AvaliacoesTab() {
+  const confirm = useConfirm();
   const [editores, setEditores] = useState<any[]>([]);
   const [cargos, setCargos] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -190,7 +192,7 @@ export function AvaliacoesTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Excluir avaliação?')) return;
+    if (!(await confirm({ title: 'Excluir avaliação?', description: 'Esta avaliação será removida permanentemente.' }))) return;
     await supabase.from('avaliacoes_mensais').delete().eq('id', id); load();
   };
 

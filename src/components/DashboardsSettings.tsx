@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { Plus, Copy, Check, Pencil, Trash2, Link2, Settings2 } from 'lucide-react';
 
@@ -122,7 +123,7 @@ export default function DashboardsSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este dashboard?')) return;
+    if (!(await confirm({ title: 'Excluir dashboard?', description: 'O dashboard e suas configurações serão removidos permanentemente.' }))) return;
     const { error } = await supabase.from('funis').delete().eq('id', id);
     if (error) {
       toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
