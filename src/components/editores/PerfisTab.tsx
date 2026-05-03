@@ -175,16 +175,14 @@ function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged }:
   onEdit: () => void; onDelete: () => void; onChanged: () => void;
 }) {
   const [promocoes, setPromocoes] = useState<any[]>([]);
-  const [comissoes, setComissoes] = useState<any[]>([]);
-  const [folgas, setFolgas] = useState<any[]>([]);
+  const [avaliacoes, setAvaliacoes] = useState<any[]>([]);
 
   const load = async () => {
-    const [p, c, f] = await Promise.all([
+    const [p, a] = await Promise.all([
       supabase.from('editor_promocoes').select('*').eq('editor_id', editor.id).order('data', { ascending: false }),
-      supabase.from('editor_comissoes').select('*').eq('editor_id', editor.id).order('mes_referencia', { ascending: false }),
-      supabase.from('editor_folgas').select('*').eq('editor_id', editor.id).order('data', { ascending: false }),
+      supabase.from('avaliacoes_mensais').select('*').eq('editor_id', editor.id).order('mes_referencia', { ascending: false }),
     ]);
-    setPromocoes(p.data || []); setComissoes(c.data || []); setFolgas(f.data || []);
+    setPromocoes(p.data || []); setAvaliacoes(a.data || []);
   };
   useEffect(() => { load(); }, [editor.id]);
 
