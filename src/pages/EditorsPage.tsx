@@ -3,17 +3,17 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useFilters } from '@/contexts/FilterContext';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/formatters';
-import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
+import { PerfisTab } from '@/components/editores/PerfisTab';
+import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
+import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
 
 export default function EditorsPage() {
   const { startDateStr, endDateStr } = useFilters();
   const [ranking, setRanking] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Avaliação form
   const [editors, setEditors] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     editor_id: '', ad_id_meta: '', nota: 3, status_criativo: 'testando', observacao: ''
@@ -36,12 +36,10 @@ export default function EditorsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.from('avaliacoes_criativos').insert({
-      ...formData,
-      nota: Number(formData.nota),
+      ...formData, nota: Number(formData.nota),
     });
-    if (error) {
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    } else {
+    if (error) toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    else {
       toast({ title: 'Avaliação salva com sucesso!' });
       setFormData({ editor_id: '', ad_id_meta: '', nota: 3, status_criativo: 'testando', observacao: '' });
     }
@@ -57,13 +55,22 @@ export default function EditorsPage() {
     { key: 'investimento_total', label: 'Investimento', format: formatCurrency },
   ];
 
+  const tabCls = "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground";
+
   return (
     <DashboardLayout title="Performance de Editores">
-      <Tabs defaultValue="ranking" className="space-y-4">
-        <TabsList className="bg-secondary border border-border">
-          <TabsTrigger value="ranking" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Ranking</TabsTrigger>
-          <TabsTrigger value="avaliacao" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Avaliação</TabsTrigger>
+      <Tabs defaultValue="perfis" className="space-y-4">
+        <TabsList className="bg-secondary border border-border flex-wrap h-auto">
+          <TabsTrigger value="perfis" className={tabCls}>Perfis</TabsTrigger>
+          <TabsTrigger value="avaliacoes" className={tabCls}>Avaliações</TabsTrigger>
+          <TabsTrigger value="desempenho" className={tabCls}>Desempenho</TabsTrigger>
+          <TabsTrigger value="ranking" className={tabCls}>Ranking Meta</TabsTrigger>
+          <TabsTrigger value="avaliacao" className={tabCls}>Avaliar criativo</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="perfis"><PerfisTab /></TabsContent>
+        <TabsContent value="avaliacoes"><AvaliacoesTab /></TabsContent>
+        <TabsContent value="desempenho"><DesempenhoTab /></TabsContent>
 
         <TabsContent value="ranking">
           <div className="bg-card border border-border rounded-lg overflow-hidden">
