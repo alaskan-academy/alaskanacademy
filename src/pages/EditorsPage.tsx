@@ -13,6 +13,8 @@ import { PerfisTab } from '@/components/editores/PerfisTab';
 import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
 import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
 import { ConfiguracaoTab } from '@/components/editores/ConfiguracaoTab';
+import { EmpresasOfertasTab } from '@/components/editores/EmpresasOfertasTab';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Row = {
   id: string;
