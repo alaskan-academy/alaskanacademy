@@ -28,7 +28,7 @@ export function ConfiguracaoTab() {
 
   const [openCrit, setOpenCrit] = useState(false);
   const [editingCrit, setEditingCrit] = useState<Criterio | null>(null);
-  const [critForm, setCritForm] = useState({ chave: '', label: '', tipo: 'single' as 'single'|'multi'|'number', ordem: 0, ativo: true });
+  const [critForm, setCritForm] = useState({ chave: '', label: '', tipo: 'single' as 'single'|'multi'|'number', ordem: 0, ativo: true, categoria: 'individual' as Categoria });
 
   const [openOpt, setOpenOpt] = useState(false);
   const [editingOpt, setEditingOpt] = useState<Opcao | null>(null);
