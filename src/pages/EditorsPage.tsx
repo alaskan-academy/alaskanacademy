@@ -9,6 +9,7 @@ import { toast } from '@/hooks/use-toast';
 import { PerfisTab } from '@/components/editores/PerfisTab';
 import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
 import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
+import { ConfiguracaoTab } from '@/components/editores/ConfiguracaoTab';
 
 export default function EditorsPage() {
   const { startDateStr, endDateStr } = useFilters();
@@ -66,7 +67,9 @@ export default function EditorsPage() {
           <TabsTrigger value="desempenho" className={tabCls}>Desempenho</TabsTrigger>
           <TabsTrigger value="ranking" className={tabCls}>Ranking Meta</TabsTrigger>
           <TabsTrigger value="avaliacao" className={tabCls}>Avaliar criativo</TabsTrigger>
+          <TabsTrigger value="config" className={tabCls}>Configuração</TabsTrigger>
         </TabsList>
+        <TabsContent value="config"><ConfiguracaoTab /></TabsContent>
 
         <TabsContent value="perfis"><PerfisTab /></TabsContent>
         <TabsContent value="avaliacoes"><AvaliacoesTab /></TabsContent>
