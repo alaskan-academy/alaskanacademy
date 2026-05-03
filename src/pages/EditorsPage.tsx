@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 type Row = {
   id: string;
-  data: string;
+  mes_referencia: string;
   empresa: string;
   oferta: string;
   editor_id: string;
@@ -28,7 +28,7 @@ type Row = {
 
 const blank = () => ({
   id: '' as string,
-  data: '',
+  mes_referencia: '',
   empresa: '',
   oferta: '',
   editor_id: '',
@@ -51,7 +51,7 @@ export default function EditorsPage() {
     setLoading(true);
     const [e, r, emp, of] = await Promise.all([
       supabase.from('editores').select('id, nome').order('nome'),
-      supabase.from('avaliacoes_criativos').select('*').order('data', { ascending: false }),
+      supabase.from('avaliacoes_criativos').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('empresas').select('*').eq('ativo', true).order('nome'),
       supabase.from('ofertas_editores').select('*').eq('ativo', true).order('nome'),
     ]);
