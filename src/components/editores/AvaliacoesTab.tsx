@@ -217,8 +217,6 @@ export function AvaliacoesTab() {
               <thead><tr className="border-b border-border text-xs text-muted-foreground uppercase">
                 <th className="text-left px-3 py-2">Mês</th>
                 <th className="text-left px-3 py-2">Editor</th>
-                <th className="text-left px-3 py-2">Avaliador</th>
-                <th className="text-left px-3 py-2">Bônus estimado</th>
                 <th className="text-left px-3 py-2">Bônus total</th>
                 <th className="text-left px-3 py-2">Folgas</th>
                 <th className="px-3 py-2"></th>
@@ -228,8 +226,6 @@ export function AvaliacoesTab() {
                   <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(a)}>
                     <td className="px-3 py-2">{a.mes_referencia}</td>
                     <td className="px-3 py-2">{editorMap[a.editor_id] || '—'}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{a.avaliador || '—'}</td>
-                    <td className="px-3 py-2">{formatCurrency(Number(a.bonus_estimado || 0))}</td>
                     <td className="px-3 py-2 font-medium">{formatCurrency(Number(a.bonus_total || 0))}</td>
                     <td className="px-3 py-2">{a.folgas || 0}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
@@ -238,7 +234,7 @@ export function AvaliacoesTab() {
                     </td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Nenhuma avaliação</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">Nenhuma avaliação</td></tr>}
               </tbody>
             </table>
           </div>
