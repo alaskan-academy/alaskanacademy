@@ -199,7 +199,7 @@ export default function EditorsPage() {
               <DialogContent>
                 <DialogHeader><DialogTitle>{editingId ? 'Editar registro' : 'Novo registro'}</DialogTitle></DialogHeader>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Data</Label><Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></div>
+                  <div><Label>Mês de análise</Label><Input type="month" value={form.mes_referencia} onChange={e => setForm({ ...form, mes_referencia: e.target.value })} /></div>
                   <div>
                     <Label>Editor responsável</Label>
                     <select value={form.editor_id} onChange={e => setForm({ ...form, editor_id: e.target.value })}
