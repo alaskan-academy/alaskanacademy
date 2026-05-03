@@ -45,6 +45,7 @@ const prodBadge: Record<string, string> = {
 const SUPABASE_URL = 'https://prtkfwwqpcziexgipoqk.supabase.co';
 
 export default function DashboardsSettings() {
+  const confirm = useConfirm();
   const [funis, setFunis] = useState<Funil[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
