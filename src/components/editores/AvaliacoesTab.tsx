@@ -167,7 +167,8 @@ export function AvaliacoesTab() {
 
     const payload: any = {
       editor_id: form.editor_id,
-      mes_referencia: form.mes_referencia,
+      mes_referencia: form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null,
+      data_lancamento: form.data_lancamento || null,
       avaliador: form.avaliador || null,
       perfil: form.perfil || null,
       criativos_escalados: qtdCriativos,
