@@ -109,46 +109,61 @@ export function ConfiguracaoTab() {
       </div>
 
       {loading ? <div className="p-6 text-center text-muted-foreground">Carregando...</div> : (
-        <div className="space-y-3">
-          {criterios.map(c => {
-            const opts = opcoes.filter(o => o.criterio_id === c.id).sort((a,b) => a.ordem - b.ordem);
+        <div className="space-y-6">
+          {CATEGORIAS.map(cat => {
+            const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
             return (
-              <div key={c.id} className="bg-card border border-border rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{c.label}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{c.tipo}</span>
-                        <span className="text-xs text-muted-foreground">#{c.chave}</span>
-                      </div>
-                    </div>
+              <div key={cat.value} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                  <div>
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-primary">{cat.label}</h4>
+                    <p className="text-xs text-muted-foreground">{cat.description}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={c.ativo} onCheckedChange={() => toggleCritAtivo(c)} />
-                    <Button size="sm" variant="ghost" onClick={() => openEditCrit(c)}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
+                  <span className="text-xs text-muted-foreground">{critsCat.length} critério(s)</span>
                 </div>
+                {critsCat.length === 0 && <div className="px-4 py-3 text-xs text-muted-foreground bg-card border border-dashed border-border rounded-lg">Nenhum critério nesta categoria</div>}
+                {critsCat.map(c => {
+                  const opts = opcoes.filter(o => o.criterio_id === c.id).sort((a,b) => a.ordem - b.ordem);
+                  return (
+                    <div key={c.id} className="bg-card border border-border rounded-lg overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{c.label}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{c.tipo}</span>
+                              <span className="text-xs text-muted-foreground">#{c.chave}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch checked={c.ativo} onCheckedChange={() => toggleCritAtivo(c)} />
+                          <Button size="sm" variant="ghost" onClick={() => openEditCrit(c)}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
 
-                <div className="divide-y divide-border/60">
-                  {opts.length === 0 && <div className="px-4 py-3 text-xs text-muted-foreground">Nenhuma opção</div>}
-                  {opts.map(o => (
-                    <div key={o.id} className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
-                      <div className="min-w-0 truncate">{o.label}</div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
-                        <Switch checked={o.ativo} onCheckedChange={() => toggleOptAtivo(o)} />
-                        <Button size="sm" variant="ghost" onClick={() => openEditOpt(o)}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => removeOpt(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <div className="divide-y divide-border/60">
+                        {opts.length === 0 && <div className="px-4 py-3 text-xs text-muted-foreground">Nenhuma opção</div>}
+                        {opts.map(o => (
+                          <div key={o.id} className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
+                            <div className="min-w-0 truncate">{o.label}</div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
+                              <Switch checked={o.ativo} onCheckedChange={() => toggleOptAtivo(o)} />
+                              <Button size="sm" variant="ghost" onClick={() => openEditOpt(o)}><Pencil className="h-3.5 w-3.5" /></Button>
+                              <Button size="sm" variant="ghost" onClick={() => removeOpt(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="px-4 py-2 bg-secondary/30">
+                        <Button size="sm" variant="outline" onClick={() => openNewOpt(c.id)}><Plus className="h-3.5 w-3.5" /> Nova opção</Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-                <div className="px-4 py-2 bg-secondary/30">
-                  <Button size="sm" variant="outline" onClick={() => openNewOpt(c.id)}><Plus className="h-3.5 w-3.5" /> Nova opção</Button>
-                </div>
+                  );
+                })}
               </div>
             );
           })}
