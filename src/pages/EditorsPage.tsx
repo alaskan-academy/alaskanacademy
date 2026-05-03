@@ -133,7 +133,16 @@ export default function EditorsPage() {
         <TabsContent value="perfis"><PerfisTab /></TabsContent>
         <TabsContent value="avaliacoes"><AvaliacoesTab /></TabsContent>
         <TabsContent value="desempenho"><DesempenhoTab /></TabsContent>
-        <TabsContent value="config"><ConfiguracaoTab /></TabsContent>
+        <TabsContent value="config">
+          <Tabs defaultValue="criterios" className="space-y-4">
+            <TabsList className="bg-secondary border border-border">
+              <TabsTrigger value="criterios" className={tabCls}>Critérios</TabsTrigger>
+              <TabsTrigger value="empresas" className={tabCls}>Empresas e ofertas</TabsTrigger>
+            </TabsList>
+            <TabsContent value="criterios"><ConfiguracaoTab /></TabsContent>
+            <TabsContent value="empresas"><EmpresasOfertasTab /></TabsContent>
+          </Tabs>
+        </TabsContent>
 
         <TabsContent value="avaliacao">
           <div className="space-y-4">
