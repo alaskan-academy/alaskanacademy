@@ -90,11 +90,11 @@ export default function EditorsPage() {
   };
 
   const save = async () => {
-    if (!form.data || !form.editor_id || !form.empresa || !form.oferta) {
-      return toast({ title: 'Preencha data, empresa, oferta e editor', variant: 'destructive' });
+    if (!form.mes_referencia || !form.editor_id || !form.empresa || !form.oferta) {
+      return toast({ title: 'Preencha mês, empresa, oferta e editor', variant: 'destructive' });
     }
     const payload = {
-      data: form.data,
+      mes_referencia: `${form.mes_referencia.slice(0, 7)}-01`,
       empresa: form.empresa,
       oferta: form.oferta,
       editor_id: form.editor_id,
