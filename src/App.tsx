@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { FilterProvider } from "@/contexts/FilterContext";
+import { ConfirmProvider } from "@/hooks/use-confirm";
 import OverviewPage from "./pages/OverviewPage";
 import MetaAdsPage from "./pages/MetaAdsPage";
 import FunnelPage from "./pages/FunnelPage";
@@ -21,20 +22,22 @@ const App = () => (
     <FilterProvider>
       <SidebarProvider>
         <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<OverviewPage />} />
-              <Route path="/meta-ads" element={<MetaAdsPage />} />
-              <Route path="/funil" element={<FunnelPage />} />
-              <Route path="/vendas" element={<SalesPage />} />
-              <Route path="/utm" element={<UTMPage />} />
-              <Route path="/clientes" element={<ClientsPage />} />
-              <Route path="/editores" element={<EditorsPage />} />
-              <Route path="/configuracoes" element={<SettingsPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
+          <ConfirmProvider>
+            <Toaster />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<OverviewPage />} />
+                <Route path="/meta-ads" element={<MetaAdsPage />} />
+                <Route path="/funil" element={<FunnelPage />} />
+                <Route path="/vendas" element={<SalesPage />} />
+                <Route path="/utm" element={<UTMPage />} />
+                <Route path="/clientes" element={<ClientsPage />} />
+                <Route path="/editores" element={<EditorsPage />} />
+                <Route path="/configuracoes" element={<SettingsPage />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </ConfirmProvider>
         </TooltipProvider>
       </SidebarProvider>
     </FilterProvider>

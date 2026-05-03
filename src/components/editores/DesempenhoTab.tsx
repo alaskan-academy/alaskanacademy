@@ -6,10 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { formatNumber, formatPercent } from '@/lib/formatters';
 import { Plus, Trash2 } from 'lucide-react';
 
 export function DesempenhoTab() {
+  const confirm = useConfirm();
   const [editores, setEditores] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +97,7 @@ export function DesempenhoTab() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm('Excluir registro?')) return;
+    if (!(await confirm({ title: 'Excluir registro?', description: 'Este registro de desempenho será removido permanentemente.' }))) return;
     await supabase.from('desempenho_ads').delete().eq('id', id); load();
   };
 
