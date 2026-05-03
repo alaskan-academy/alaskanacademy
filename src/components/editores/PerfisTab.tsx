@@ -277,92 +277,70 @@ function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload }: any) 
   );
 }
 
-function HistoricoComissoes({ editorId, items, reload }: any) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ mes_referencia: '', valor: '', observacao: '' });
-  const save = async () => {
-    if (!form.mes_referencia || !form.valor) return;
-    const { error } = await supabase.from('editor_comissoes').insert({
-      editor_id: editorId, mes_referencia: form.mes_referencia, valor: Number(form.valor), observacao: form.observacao || null,
-    });
-    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    setOpen(false); setForm({ mes_referencia: '', valor: '', observacao: '' }); reload();
-  };
-  const total = items.reduce((s: number, i: any) => s + Number(i.valor || 0), 0);
+function HistoricoComissoes({ items }: any) {
+  const rows = [...items].sort((a: any, b: any) => (a.mes_referencia < b.mes_referencia ? 1 : -1));
+  const totalEstimado = rows.reduce((s: number, i: any) => s + Number(i.bonus_estimado || 0), 0);
+  const totalFinal = rows.reduce((s: number, i: any) => s + Number(i.bonus_total || 0), 0);
   return (
-    <Section title="Histórico de comissões" extra={<span className="text-xs text-muted-foreground">Total: {formatCurrency(total)}</span>} onAdd={() => setOpen(true)}>
-      {items.length === 0 ? <Empty /> : (
+    <Section title="Histórico de comissões" extra={<span className="text-xs text-muted-foreground">Calculado das avaliações</span>}>
+      {rows.length === 0 ? <Empty /> : (
         <table className="w-full text-sm">
           <thead><tr className="text-xs text-muted-foreground border-b border-border">
-            <th className="text-left py-2 px-3">Mês</th><th className="text-left py-2 px-3">Valor</th><th className="text-left py-2 px-3">Observação</th>
+            <th className="text-left py-2 px-3">Mês</th>
+            <th className="text-left py-2 px-3">Bônus estimado</th>
+            <th className="text-left py-2 px-3">Bônus total</th>
+            <th className="text-left py-2 px-3">Avaliador</th>
           </tr></thead>
           <tbody>
-            {items.map((p: any) => (
+            {rows.map((p: any) => (
               <tr key={p.id} className="border-b border-border/50">
                 <td className="py-2 px-3">{p.mes_referencia}</td>
-                <td className="py-2 px-3">{formatCurrency(Number(p.valor))}</td>
-                <td className="py-2 px-3 text-muted-foreground">{p.observacao || '—'}</td>
+                <td className="py-2 px-3">{formatCurrency(Number(p.bonus_estimado || 0))}</td>
+                <td className="py-2 px-3 font-medium">{formatCurrency(Number(p.bonus_total || 0))}</td>
+                <td className="py-2 px-3 text-muted-foreground">{p.avaliador || '—'}</td>
               </tr>
             ))}
+            <tr className="bg-secondary/40 font-medium">
+              <td className="py-2 px-3">Total</td>
+              <td className="py-2 px-3">{formatCurrency(totalEstimado)}</td>
+              <td className="py-2 px-3 text-primary">{formatCurrency(totalFinal)}</td>
+              <td className="py-2 px-3"></td>
+            </tr>
           </tbody>
         </table>
       )}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nova comissão</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Mês de referência</Label><Input type="date" value={form.mes_referencia} onChange={e => setForm({ ...form, mes_referencia: e.target.value })} /></div>
-            <div><Label>Valor (R$)</Label><Input type="number" step="0.01" value={form.valor} onChange={e => setForm({ ...form, valor: e.target.value })} /></div>
-            <div><Label>Observação</Label><Textarea value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save}>Salvar</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Section>
   );
 }
 
-function HistoricoFolgas({ editorId, items, reload }: any) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ data: '', quantidade: '1', motivo: '' });
-  const save = async () => {
-    if (!form.data) return;
-    const { error } = await supabase.from('editor_folgas').insert({
-      editor_id: editorId, data: form.data, quantidade: Number(form.quantidade), motivo: form.motivo || null,
-    });
-    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    setOpen(false); setForm({ data: '', quantidade: '1', motivo: '' }); reload();
-  };
-  const total = items.reduce((s: number, i: any) => s + Number(i.quantidade || 0), 0);
+function HistoricoFolgas({ items }: any) {
+  const rows = [...items].sort((a: any, b: any) => (a.mes_referencia < b.mes_referencia ? 1 : -1));
+  const total = rows.reduce((s: number, i: any) => s + Number(i.folgas || 0), 0);
   return (
-    <Section title="Folgas" extra={<span className="text-xs text-muted-foreground">Total: {total}</span>} onAdd={() => setOpen(true)}>
-      {items.length === 0 ? <Empty /> : (
+    <Section title="Folgas" extra={<span className="text-xs text-muted-foreground">Calculado das avaliações</span>}>
+      {rows.length === 0 ? <Empty /> : (
         <table className="w-full text-sm">
           <thead><tr className="text-xs text-muted-foreground border-b border-border">
-            <th className="text-left py-2 px-3">Data</th><th className="text-left py-2 px-3">Qtd</th><th className="text-left py-2 px-3">Motivo</th>
+            <th className="text-left py-2 px-3">Mês</th>
+            <th className="text-left py-2 px-3">Folgas</th>
+            <th className="text-left py-2 px-3">Avaliador</th>
           </tr></thead>
           <tbody>
-            {items.map((p: any) => (
+            {rows.map((p: any) => (
               <tr key={p.id} className="border-b border-border/50">
-                <td className="py-2 px-3">{p.data}</td>
-                <td className="py-2 px-3">{p.quantidade}</td>
-                <td className="py-2 px-3 text-muted-foreground">{p.motivo || '—'}</td>
+                <td className="py-2 px-3">{p.mes_referencia}</td>
+                <td className="py-2 px-3">{Number(p.folgas || 0)}</td>
+                <td className="py-2 px-3 text-muted-foreground">{p.avaliador || '—'}</td>
               </tr>
             ))}
+            <tr className="bg-secondary/40 font-medium">
+              <td className="py-2 px-3">Total</td>
+              <td className="py-2 px-3 text-primary">{total}</td>
+              <td className="py-2 px-3"></td>
+            </tr>
           </tbody>
         </table>
       )}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nova folga</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label>Data</Label><Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></div>
-            <div><Label>Quantidade</Label><Input type="number" step="0.5" value={form.quantidade} onChange={e => setForm({ ...form, quantidade: e.target.value })} /></div>
-            <div><Label>Motivo</Label><Textarea value={form.motivo} onChange={e => setForm({ ...form, motivo: e.target.value })} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save}>Salvar</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Section>
   );
 }
