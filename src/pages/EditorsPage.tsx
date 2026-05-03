@@ -160,7 +160,7 @@ export default function EditorsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-xs text-muted-foreground uppercase">
-                        <th className="text-left px-3 py-2">Data</th>
+                        <th className="text-left px-3 py-2">Mês de análise</th>
                         <th className="text-left px-3 py-2">Empresa</th>
                         <th className="text-left px-3 py-2">Oferta</th>
                         <th className="text-left px-3 py-2">Editor responsável</th>
