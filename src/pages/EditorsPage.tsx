@@ -39,6 +39,8 @@ const blank = () => ({
 export default function EditorsPage() {
   const confirm = useConfirm();
   const [editors, setEditors] = useState<any[]>([]);
+  const [empresas, setEmpresas] = useState<any[]>([]);
+  const [ofertas, setOfertas] = useState<any[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -47,17 +49,27 @@ export default function EditorsPage() {
 
   const load = async () => {
     setLoading(true);
-    const [e, r] = await Promise.all([
+    const [e, r, emp, of] = await Promise.all([
       supabase.from('editores').select('id, nome').order('nome'),
       supabase.from('avaliacoes_criativos').select('*').order('data', { ascending: false }),
+      supabase.from('empresas').select('*').eq('ativo', true).order('nome'),
+      supabase.from('ofertas_editores').select('*').eq('ativo', true).order('nome'),
     ]);
     setEditors(e.data || []);
     setRows((r.data as any) || []);
+    setEmpresas(emp.data || []);
+    setOfertas(of.data || []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editors.map(x => [x.id, x.nome]));
+  const ofertasFiltradas = form.empresa
+    ? ofertas.filter(o => {
+        const emp = empresas.find(e => e.nome === form.empresa);
+        return !emp || !o.empresa_id || o.empresa_id === emp.id;
+      })
+    : ofertas;
 
   const taxa = (testados: number, validados: number) =>
     testados > 0 ? Math.round((validados / testados) * 100) : 0;
