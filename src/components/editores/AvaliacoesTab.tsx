@@ -36,6 +36,7 @@ export function AvaliacoesTab() {
       editor_id: '', mes_referencia: '', data_lancamento: '', avaliador: '', perfil: '',
       bonus_total_override: '',
       feedback: '',
+      responsaveis_ids: [] as string[],
       respostas: {} as Record<string, string | string[] | number>,
     };
   }
