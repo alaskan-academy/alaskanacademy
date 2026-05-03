@@ -199,8 +199,24 @@ export default function EditorsPage() {
                       {editors.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
                     </select>
                   </div>
-                  <div><Label>Empresa</Label><Input value={form.empresa} onChange={e => setForm({ ...form, empresa: e.target.value })} placeholder="Ex: Alaskan Academy" /></div>
-                  <div><Label>Oferta</Label><Input value={form.oferta} onChange={e => setForm({ ...form, oferta: e.target.value })} placeholder="Ex: Velas Perfeitas" /></div>
+                  <div>
+                    <Label>Empresa</Label>
+                    <Select value={form.empresa} onValueChange={v => setForm({ ...form, empresa: v, oferta: '' })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {empresas.map(e => <SelectItem key={e.id} value={e.nome}>{e.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Oferta</Label>
+                    <Select value={form.oferta} onValueChange={v => setForm({ ...form, oferta: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {ofertasFiltradas.map(o => <SelectItem key={o.id} value={o.nome}>{o.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div><Label>Ads testados</Label><Input type="number" min={0} value={form.ads_testados} onChange={e => setForm({ ...form, ads_testados: Number(e.target.value) })} /></div>
                   <div><Label>Ads validados</Label><Input type="number" min={0} value={form.ads_validados} onChange={e => setForm({ ...form, ads_validados: Number(e.target.value) })} /></div>
                   <div className="col-span-2">
