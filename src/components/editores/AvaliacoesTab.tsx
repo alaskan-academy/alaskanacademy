@@ -101,6 +101,13 @@ export function AvaliacoesTab() {
 
   const bonusEstimado = bonusBase;
   const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
+  const bonusResponsaveis = useMemo(() => {
+    if (!isHeadOuLider || !mesReferenciaPayload || form.responsaveis_ids.length === 0) return 0;
+    return items
+      .filter(item => item.mes_referencia === mesReferenciaPayload && form.responsaveis_ids.includes(item.editor_id))
+      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * 0.2, 0);
+  }, [form.responsaveis_ids, isHeadOuLider, items, mesReferenciaPayload]);
+  const bonusTotalCalculado = Math.round((bonusComMultiplicador + bonusResponsaveis) * 100) / 100;
 
   const openNew = () => { setEditingId(null); setForm(blankForm()); setOpen(true); };
 
