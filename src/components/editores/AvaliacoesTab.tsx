@@ -177,9 +177,18 @@ export function AvaliacoesTab() {
       }
     }
 
+    if (isHeadOuLider && form.responsaveis_ids.length > 0) {
+      respostasSnapshot[CHAVE_RESPONSAVEIS] = {
+        tipo: 'leaders',
+        editor_ids: form.responsaveis_ids,
+        bonus_lideranca: Math.round(bonusResponsaveis * 100) / 100,
+        percentual: 0.2,
+      };
+    }
+
     const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
       ? Number(form.bonus_total_override)
-      : bonusComMultiplicador;
+      : bonusTotalCalculado;
 
     // Mantém colunas legadas se os critérios existirem
     const critCriativos = criterios.find(c => c.chave === CHAVE_CRIATIVOS);
@@ -191,7 +200,7 @@ export function AvaliacoesTab() {
 
     const payload: any = {
       editor_id: form.editor_id,
-      mes_referencia: form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null,
+      mes_referencia: mesReferenciaPayload,
       data_lancamento: form.data_lancamento || null,
       avaliador: form.avaliador || null,
       perfil: form.perfil || null,
