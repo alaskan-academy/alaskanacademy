@@ -123,7 +123,8 @@ export function AvaliacoesTab() {
     setEditingId(a.id);
     setForm({
       editor_id: a.editor_id || '',
-      mes_referencia: a.mes_referencia || '',
+      mes_referencia: a.mes_referencia ? String(a.mes_referencia).slice(0, 7) : '',
+      data_lancamento: a.data_lancamento ? String(a.data_lancamento).slice(0, 10) : '',
       avaliador: a.avaliador || '',
       perfil: a.perfil || '',
       bonus_total_override: a.bonus_total != null && a.bonus_estimado != null && Number(a.bonus_total) !== Math.round(Number(a.bonus_estimado) * (cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1) * 100) / 100
