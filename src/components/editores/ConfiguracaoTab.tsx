@@ -46,12 +46,12 @@ export function ConfiguracaoTab() {
 
   const openNewCrit = () => {
     setEditingCrit(null);
-    setCritForm({ chave: '', label: '', tipo: 'single', ordem: criterios.length + 1, ativo: true });
+    setCritForm({ chave: '', label: '', tipo: 'single', ordem: criterios.length + 1, ativo: true, categoria: 'individual' });
     setOpenCrit(true);
   };
   const openEditCrit = (c: Criterio) => {
     setEditingCrit(c);
-    setCritForm({ chave: c.chave, label: c.label, tipo: c.tipo, ordem: c.ordem, ativo: c.ativo });
+    setCritForm({ chave: c.chave, label: c.label, tipo: c.tipo, ordem: c.ordem, ativo: c.ativo, categoria: c.categoria || 'individual' });
     setOpenCrit(true);
   };
   const saveCrit = async () => {
