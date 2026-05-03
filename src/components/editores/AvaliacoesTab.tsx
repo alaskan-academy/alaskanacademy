@@ -13,7 +13,14 @@ import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; opcoes: Opcao[] };
+type Categoria = 'individual' | 'grupo' | 'meta';
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[] };
+
+const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
+  { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
+  { value: 'grupo', label: 'Avaliação em grupo', description: 'Critérios avaliados a partir do desempenho do time.' },
+  { value: 'meta', label: 'Meta da empresa', description: 'Metas coletivas/empresariais que impactam todos.' },
+];
 
 const CHAVE_CRIATIVOS = 'criativos_escalados';
 const CHAVE_VSL = 'vsl_escaladas';
@@ -323,51 +330,63 @@ export function AvaliacoesTab() {
               </div>
             )}
 
-            {criterios.map(cr => (
-              <div key={cr.id} className="space-y-2 border-b border-border/40 pb-3">
-                <Label className="text-sm">{cr.label}</Label>
-                {cr.tipo === 'single' && (
-                  <Select
-                    value={(form.respostas[cr.chave] as string) || ''}
-                    onValueChange={v => setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: v } })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Selecione uma opção" /></SelectTrigger>
-                    <SelectContent>
-                      {cr.opcoes.map(op => (
-                        <SelectItem key={op.id} value={op.id}>
-                          {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {cr.tipo === 'multi' && (
-                  <div className="space-y-1.5">
-                    {cr.opcoes.map(op => {
-                      const arr = (form.respostas[cr.chave] as string[]) || [];
-                      const checked = arr.includes(op.id);
-                      return (
-                        <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
-                          <Checkbox checked={checked} onCheckedChange={(v) => {
-                            const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
-                            setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
-                          }} />
-                          <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
-                        </label>
-                      );
-                    })}
+            {CATEGORIAS.map(cat => {
+              const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
+              if (critsCat.length === 0) return null;
+              return (
+                <div key={cat.value} className="space-y-3 rounded-lg border border-border bg-secondary/20 p-4">
+                  <div className="border-b border-border pb-2">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-primary">{cat.label}</h4>
+                    <p className="text-xs text-muted-foreground">{cat.description}</p>
                   </div>
-                )}
-                {cr.tipo === 'number' && (
-                  <div className="flex items-center gap-2">
-                    <Input type="number" min={0} className="w-32"
-                      value={(form.respostas[cr.chave] as number) || 0}
-                      onChange={e => setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: Number(e.target.value) } })} />
-                    <span className="text-xs text-muted-foreground">× R$ {Number(cr.opcoes[0]?.valor || 0)} cada</span>
-                  </div>
-                )}
-              </div>
-            ))}
+                  {critsCat.map(cr => (
+                    <div key={cr.id} className="space-y-2 border-b border-border/40 pb-3 last:border-b-0 last:pb-0">
+                      <Label className="text-sm">{cr.label}</Label>
+                      {cr.tipo === 'single' && (
+                        <Select
+                          value={(form.respostas[cr.chave] as string) || ''}
+                          onValueChange={v => setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: v } })}
+                        >
+                          <SelectTrigger><SelectValue placeholder="Selecione uma opção" /></SelectTrigger>
+                          <SelectContent>
+                            {cr.opcoes.map(op => (
+                              <SelectItem key={op.id} value={op.id}>
+                                {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {cr.tipo === 'multi' && (
+                        <div className="space-y-1.5">
+                          {cr.opcoes.map(op => {
+                            const arr = (form.respostas[cr.chave] as string[]) || [];
+                            const checked = arr.includes(op.id);
+                            return (
+                              <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
+                                <Checkbox checked={checked} onCheckedChange={(v) => {
+                                  const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
+                                  setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
+                                }} />
+                                <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {cr.tipo === 'number' && (
+                        <div className="flex items-center gap-2">
+                          <Input type="number" min={0} className="w-32"
+                            value={(form.respostas[cr.chave] as number) || 0}
+                            onChange={e => setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: Number(e.target.value) } })} />
+                          <span className="text-xs text-muted-foreground">× R$ {Number(cr.opcoes[0]?.valor || 0)} cada</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
 
              <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

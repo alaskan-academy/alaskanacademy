@@ -10,8 +10,15 @@ import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
 
+type Categoria = 'individual' | 'grupo' | 'meta';
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria };
+
+const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
+  { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
+  { value: 'grupo', label: 'Avaliação em grupo', description: 'Critérios avaliados a partir do desempenho do time.' },
+  { value: 'meta', label: 'Meta da empresa', description: 'Metas coletivas/empresariais que impactam todos.' },
+];
 
 export function ConfiguracaoTab() {
   const confirm = useConfirm();
@@ -21,7 +28,7 @@ export function ConfiguracaoTab() {
 
   const [openCrit, setOpenCrit] = useState(false);
   const [editingCrit, setEditingCrit] = useState<Criterio | null>(null);
-  const [critForm, setCritForm] = useState({ chave: '', label: '', tipo: 'single' as 'single'|'multi'|'number', ordem: 0, ativo: true });
+  const [critForm, setCritForm] = useState({ chave: '', label: '', tipo: 'single' as 'single'|'multi'|'number', ordem: 0, ativo: true, categoria: 'individual' as Categoria });
 
   const [openOpt, setOpenOpt] = useState(false);
   const [editingOpt, setEditingOpt] = useState<Opcao | null>(null);
@@ -39,12 +46,12 @@ export function ConfiguracaoTab() {
 
   const openNewCrit = () => {
     setEditingCrit(null);
-    setCritForm({ chave: '', label: '', tipo: 'single', ordem: criterios.length + 1, ativo: true });
+    setCritForm({ chave: '', label: '', tipo: 'single', ordem: criterios.length + 1, ativo: true, categoria: 'individual' });
     setOpenCrit(true);
   };
   const openEditCrit = (c: Criterio) => {
     setEditingCrit(c);
-    setCritForm({ chave: c.chave, label: c.label, tipo: c.tipo, ordem: c.ordem, ativo: c.ativo });
+    setCritForm({ chave: c.chave, label: c.label, tipo: c.tipo, ordem: c.ordem, ativo: c.ativo, categoria: c.categoria || 'individual' });
     setOpenCrit(true);
   };
   const saveCrit = async () => {
@@ -102,46 +109,61 @@ export function ConfiguracaoTab() {
       </div>
 
       {loading ? <div className="p-6 text-center text-muted-foreground">Carregando...</div> : (
-        <div className="space-y-3">
-          {criterios.map(c => {
-            const opts = opcoes.filter(o => o.criterio_id === c.id).sort((a,b) => a.ordem - b.ordem);
+        <div className="space-y-6">
+          {CATEGORIAS.map(cat => {
+            const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
             return (
-              <div key={c.id} className="bg-card border border-border rounded-lg overflow-hidden">
-                <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{c.label}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{c.tipo}</span>
-                        <span className="text-xs text-muted-foreground">#{c.chave}</span>
-                      </div>
-                    </div>
+              <div key={cat.value} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
+                  <div>
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-primary">{cat.label}</h4>
+                    <p className="text-xs text-muted-foreground">{cat.description}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={c.ativo} onCheckedChange={() => toggleCritAtivo(c)} />
-                    <Button size="sm" variant="ghost" onClick={() => openEditCrit(c)}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
+                  <span className="text-xs text-muted-foreground">{critsCat.length} critério(s)</span>
                 </div>
+                {critsCat.length === 0 && <div className="px-4 py-3 text-xs text-muted-foreground bg-card border border-dashed border-border rounded-lg">Nenhum critério nesta categoria</div>}
+                {critsCat.map(c => {
+                  const opts = opcoes.filter(o => o.criterio_id === c.id).sort((a,b) => a.ordem - b.ordem);
+                  return (
+                    <div key={c.id} className="bg-card border border-border rounded-lg overflow-hidden">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{c.label}</span>
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{c.tipo}</span>
+                              <span className="text-xs text-muted-foreground">#{c.chave}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch checked={c.ativo} onCheckedChange={() => toggleCritAtivo(c)} />
+                          <Button size="sm" variant="ghost" onClick={() => openEditCrit(c)}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
 
-                <div className="divide-y divide-border/60">
-                  {opts.length === 0 && <div className="px-4 py-3 text-xs text-muted-foreground">Nenhuma opção</div>}
-                  {opts.map(o => (
-                    <div key={o.id} className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
-                      <div className="min-w-0 truncate">{o.label}</div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
-                        <Switch checked={o.ativo} onCheckedChange={() => toggleOptAtivo(o)} />
-                        <Button size="sm" variant="ghost" onClick={() => openEditOpt(o)}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="sm" variant="ghost" onClick={() => removeOpt(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <div className="divide-y divide-border/60">
+                        {opts.length === 0 && <div className="px-4 py-3 text-xs text-muted-foreground">Nenhuma opção</div>}
+                        {opts.map(o => (
+                          <div key={o.id} className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
+                            <div className="min-w-0 truncate">{o.label}</div>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
+                              <Switch checked={o.ativo} onCheckedChange={() => toggleOptAtivo(o)} />
+                              <Button size="sm" variant="ghost" onClick={() => openEditOpt(o)}><Pencil className="h-3.5 w-3.5" /></Button>
+                              <Button size="sm" variant="ghost" onClick={() => removeOpt(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="px-4 py-2 bg-secondary/30">
+                        <Button size="sm" variant="outline" onClick={() => openNewOpt(c.id)}><Plus className="h-3.5 w-3.5" /> Nova opção</Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-                <div className="px-4 py-2 bg-secondary/30">
-                  <Button size="sm" variant="outline" onClick={() => openNewOpt(c.id)}><Plus className="h-3.5 w-3.5" /> Nova opção</Button>
-                </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -156,6 +178,15 @@ export function ConfiguracaoTab() {
           <div className="space-y-3">
             <div><Label>Chave (única)</Label><Input value={critForm.chave} onChange={e => setCritForm({ ...critForm, chave: e.target.value })} placeholder="ex: responsabilidade" /></div>
             <div><Label>Label</Label><Input value={critForm.label} onChange={e => setCritForm({ ...critForm, label: e.target.value })} /></div>
+            <div>
+              <Label>Categoria</Label>
+              <Select value={critForm.categoria} onValueChange={v => setCritForm({ ...critForm, categoria: v as Categoria })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORIAS.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Tipo</Label>
               <Select value={critForm.tipo} onValueChange={v => setCritForm({ ...critForm, tipo: v as any })}>
