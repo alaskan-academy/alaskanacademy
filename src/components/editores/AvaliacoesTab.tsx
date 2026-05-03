@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,79 +6,119 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2 } from 'lucide-react';
 
-const FIELDS: { key: string; label: string; bonus?: string }[] = [
-  { key: 'responsabilidade', label: 'Responsabilidade e cumprimento de prazos', bonus: 'bonus_responsabilidade' },
-  { key: 'refacoes', label: 'Refações por erro técnico', bonus: 'bonus_refacoes' },
-  { key: 'aderencia_briefing', label: 'Aderência ao briefing', bonus: 'bonus_aderencia' },
-  { key: 'performance_criativos', label: 'Performance dos criativos', bonus: 'bonus_performance' },
-  { key: 'proatividade', label: 'Proatividade e evolução técnica', bonus: 'bonus_proatividade' },
-  { key: 'performance_grupo', label: 'Performance em grupo', bonus: 'bonus_grupo' },
-  { key: 'evolucao', label: 'Evolução e assertividade', bonus: 'bonus_evolucao' },
-  { key: 'meta_time', label: 'Meta de time mensal', bonus: 'bonus_meta_time' },
-];
+type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; opcoes: Opcao[] };
 
 export function AvaliacoesTab() {
   const [editores, setEditores] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [filterEditor, setFilterEditor] = useState<string>('all');
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<any>(blank());
+  const [form, setForm] = useState<any>(blankForm());
   const [loading, setLoading] = useState(true);
 
-  function blank() {
-    const base: any = {
+  function blankForm() {
+    return {
       editor_id: '', mes_referencia: '', avaliador: '', perfil: '',
-      criativos_escalados: 0, bonus_escalados: 0, vsl_escaladas: 0, bonus_vsl: 0,
-      bonus_estimado: 0, bonus_total: 0, folgas: 0,
+      criativos_escalados: 0, vsl_escaladas: 0,
+      bonus_total: 0, folgas: 0,
       feedback: '', resumo_ai: '', sugestao_ai: '',
+      respostas: {} as Record<string, string | string[] | number>,
     };
-    FIELDS.forEach(f => { base[f.key] = ''; if (f.bonus) base[f.bonus] = 0; });
-    return base;
   }
 
   const load = async () => {
     setLoading(true);
-    const [e, a] = await Promise.all([
+    const [e, a, c, o] = await Promise.all([
       supabase.from('editores').select('id, nome').order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
+      supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
     ]);
     setEditores(e.data || []);
     setItems(a.data || []);
+    const opts = o.data || [];
+    setCriterios((c.data || []).map((cr: any) => ({ ...cr, opcoes: opts.filter((x: any) => x.criterio_id === cr.id) })));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
-
   const filtered = filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor);
 
-  const save = async () => {
-    if (!form.editor_id || !form.mes_referencia) {
-      return toast({ title: 'Editor e mês obrigatórios', variant: 'destructive' });
+  // Cálculo automático do bônus
+  const bonusEstimado = useMemo(() => {
+    let total = 0;
+    for (const cr of criterios) {
+      const r = form.respostas[cr.chave];
+      if (cr.tipo === 'single' && r) {
+        const op = cr.opcoes.find(o => o.id === r); if (op) total += Number(op.valor);
+      } else if (cr.tipo === 'multi' && Array.isArray(r)) {
+        for (const id of r) { const op = cr.opcoes.find(o => o.id === id); if (op) total += Number(op.valor); }
+      } else if (cr.tipo === 'number') {
+        const unit = Number(cr.opcoes[0]?.valor || 0);
+        total += Number(r || 0) * unit;
+      }
     }
-    const payload = { ...form };
-    ['bonus_responsabilidade','bonus_refacoes','bonus_aderencia','bonus_performance','bonus_proatividade','bonus_grupo','bonus_evolucao','bonus_meta_time','bonus_escalados','bonus_vsl','bonus_estimado','bonus_total','folgas','criativos_escalados','vsl_escaladas']
-      .forEach(k => payload[k] = Number(payload[k] || 0));
+    // bônus por criativos escalados (R$50 por unidade) e VSL (R$ por unidade) — fallback fixo
+    total += Number(form.criativos_escalados || 0) * 50;
+    total += Number(form.vsl_escaladas || 0) * 100;
+    return total;
+  }, [form, criterios]);
+
+  const openNew = () => { setForm(blankForm()); setOpen(true); };
+
+  const save = async () => {
+    if (!form.editor_id || !form.mes_referencia)
+      return toast({ title: 'Editor e mês obrigatórios', variant: 'destructive' });
+
+    // Snapshot textual das respostas para preservar histórico se opções forem alteradas
+    const respostasSnapshot: Record<string, any> = {};
+    for (const cr of criterios) {
+      const r = form.respostas[cr.chave];
+      if (cr.tipo === 'single' && r) {
+        const op = cr.opcoes.find(o => o.id === r);
+        if (op) respostasSnapshot[cr.chave] = { tipo: 'single', label: op.label, valor: Number(op.valor) };
+      } else if (cr.tipo === 'multi' && Array.isArray(r)) {
+        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => ({ label: o.label, valor: Number(o.valor) }));
+        respostasSnapshot[cr.chave] = { tipo: 'multi', selecoes: sel };
+      } else if (cr.tipo === 'number') {
+        respostasSnapshot[cr.chave] = { tipo: 'number', quantidade: Number(r || 0), unitario: Number(cr.opcoes[0]?.valor || 0) };
+      }
+    }
+
+    const payload: any = {
+      editor_id: form.editor_id,
+      mes_referencia: form.mes_referencia,
+      avaliador: form.avaliador || null,
+      perfil: form.perfil || null,
+      criativos_escalados: Number(form.criativos_escalados || 0),
+      bonus_escalados: Number(form.criativos_escalados || 0) * 50,
+      vsl_escaladas: Number(form.vsl_escaladas || 0),
+      bonus_vsl: Number(form.vsl_escaladas || 0) * 100,
+      bonus_estimado: bonusEstimado,
+      bonus_total: Number(form.bonus_total || bonusEstimado),
+      folgas: Number(form.folgas || 0),
+      feedback: form.feedback || null,
+      resumo_ai: form.resumo_ai || null,
+      sugestao_ai: form.sugestao_ai || null,
+      respostas: respostasSnapshot,
+    };
     const { error } = await supabase.from('avaliacoes_mensais').insert(payload);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     toast({ title: 'Avaliação salva' });
-    setOpen(false); setForm(blank()); load();
+    setOpen(false); setForm(blankForm()); load();
   };
 
   const remove = async (id: string) => {
     if (!confirm('Excluir avaliação?')) return;
     await supabase.from('avaliacoes_mensais').delete().eq('id', id); load();
-  };
-
-  // somatório do bônus estimado
-  const sumEstimado = () => {
-    const keys = ['bonus_responsabilidade','bonus_refacoes','bonus_aderencia','bonus_performance','bonus_proatividade','bonus_grupo','bonus_evolucao','bonus_meta_time','bonus_escalados','bonus_vsl'];
-    const total = keys.reduce((s, k) => s + Number(form[k] || 0), 0);
-    setForm({ ...form, bonus_estimado: total });
   };
 
   return (
@@ -94,7 +134,7 @@ export function AvaliacoesTab() {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4" /> Nova avaliação</Button>
+        <Button onClick={openNew}><Plus className="h-4 w-4" /> Nova avaliação</Button>
       </div>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -148,34 +188,73 @@ export function AvaliacoesTab() {
               <div><Label>Perfil</Label><Input value={form.perfil} onChange={e => setForm({ ...form, perfil: e.target.value })} placeholder="Misto / Estático / Dinâmico" /></div>
             </div>
 
-            <div className="space-y-3">
-              {FIELDS.map(f => (
-                <div key={f.key} className="grid grid-cols-[1fr_140px] gap-2 items-end">
-                  <div>
-                    <Label>{f.label}</Label>
-                    <Textarea rows={2} value={form[f.key]} onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
+            {criterios.length === 0 && (
+              <div className="p-4 text-sm text-muted-foreground bg-secondary/30 rounded">
+                Nenhum critério configurado. Vá até a aba <strong>Configuração</strong> para criar.
+              </div>
+            )}
+
+            {criterios.map(cr => (
+              <div key={cr.id} className="space-y-2 border-b border-border/40 pb-3">
+                <Label className="text-sm">{cr.label}</Label>
+                {cr.tipo === 'single' && (
+                  <Select
+                    value={(form.respostas[cr.chave] as string) || ''}
+                    onValueChange={v => setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: v } })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Selecione uma opção" /></SelectTrigger>
+                    <SelectContent>
+                      {cr.opcoes.map(op => (
+                        <SelectItem key={op.id} value={op.id}>
+                          {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {cr.tipo === 'multi' && (
+                  <div className="space-y-1.5">
+                    {cr.opcoes.map(op => {
+                      const arr = (form.respostas[cr.chave] as string[]) || [];
+                      const checked = arr.includes(op.id);
+                      return (
+                        <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
+                          <Checkbox checked={checked} onCheckedChange={(v) => {
+                            const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
+                            setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
+                          }} />
+                          <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
+                        </label>
+                      );
+                    })}
                   </div>
-                  {f.bonus && (
-                    <div>
-                      <Label>Bônus (R$)</Label>
-                      <Input type="number" value={form[f.bonus]} onChange={e => setForm({ ...form, [f.bonus!]: e.target.value })} />
-                    </div>
-                  )}
-                </div>
-              ))}
+                )}
+                {cr.tipo === 'number' && (
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min={0} className="w-32"
+                      value={(form.respostas[cr.chave] as number) || 0}
+                      onChange={e => setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: Number(e.target.value) } })} />
+                    <span className="text-xs text-muted-foreground">× R$ {Number(cr.opcoes[0]?.valor || 0)} cada</span>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Criativos escalados</Label><Input type="number" value={form.criativos_escalados} onChange={e => setForm({ ...form, criativos_escalados: e.target.value })} /><span className="text-xs text-muted-foreground">R$ 50 por unidade</span></div>
+              <div><Label>VSL escaladas</Label><Input type="number" value={form.vsl_escaladas} onChange={e => setForm({ ...form, vsl_escaladas: e.target.value })} /><span className="text-xs text-muted-foreground">R$ 100 por unidade</span></div>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
-              <div><Label>Criativos escalados</Label><Input type="number" value={form.criativos_escalados} onChange={e => setForm({ ...form, criativos_escalados: e.target.value })} /></div>
-              <div><Label>Bônus escalados (R$)</Label><Input type="number" value={form.bonus_escalados} onChange={e => setForm({ ...form, bonus_escalados: e.target.value })} /></div>
-              <div><Label>VSL escaladas</Label><Input type="number" value={form.vsl_escaladas} onChange={e => setForm({ ...form, vsl_escaladas: e.target.value })} /></div>
-              <div><Label>Bônus VSL (R$)</Label><Input type="number" value={form.bonus_vsl} onChange={e => setForm({ ...form, bonus_vsl: e.target.value })} /></div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 items-end">
-              <div><Label>Bônus estimado (R$)</Label><Input type="number" value={form.bonus_estimado} onChange={e => setForm({ ...form, bonus_estimado: e.target.value })} /></div>
-              <Button variant="outline" onClick={sumEstimado}>Calcular estimado</Button>
-              <div><Label>Bônus total (R$)</Label><Input type="number" value={form.bonus_total} onChange={e => setForm({ ...form, bonus_total: e.target.value })} /></div>
+            <div className="bg-secondary/40 border border-border rounded-lg p-4 grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label className="text-xs text-muted-foreground">Bônus estimado (calculado)</Label>
+                <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusEstimado)}</div>
+              </div>
+              <div>
+                <Label>Bônus total a pagar (R$)</Label>
+                <Input type="number" value={form.bonus_total || bonusEstimado} onChange={e => setForm({ ...form, bonus_total: e.target.value })} />
+                <p className="text-xs text-muted-foreground mt-1">Aplique multiplicador de cargo aqui se necessário.</p>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
