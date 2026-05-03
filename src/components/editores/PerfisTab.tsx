@@ -223,8 +223,8 @@ function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged }:
       </div>
 
       <HistoricoPromocoes editorId={editor.id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} />
-      <HistoricoComissoes editorId={editor.id} items={comissoes} reload={load} />
-      <HistoricoFolgas editorId={editor.id} items={folgas} reload={load} />
+      <HistoricoComissoes items={avaliacoes} />
+      <HistoricoFolgas items={avaliacoes} />
     </div>
   );
 }
