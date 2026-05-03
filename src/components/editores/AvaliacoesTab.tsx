@@ -9,10 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/formatters';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Pencil } from 'lucide-react';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
 type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; opcoes: Opcao[] };
+
+const CHAVE_CRIATIVOS = 'criativos_escalados';
+const CHAVE_VSL = 'vsl_escaladas';
 
 export function AvaliacoesTab() {
   const [editores, setEditores] = useState<any[]>([]);
@@ -21,14 +24,14 @@ export function AvaliacoesTab() {
   const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [filterEditor, setFilterEditor] = useState<string>('all');
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<any>(blankForm());
   const [loading, setLoading] = useState(true);
 
   function blankForm() {
     return {
       editor_id: '', mes_referencia: '', avaliador: '', perfil: '',
-      criativos_escalados: 0, vsl_escaladas: 0,
-      bonus_total_override: '', // se vazio, usa cálculo automático
+      bonus_total_override: '',
       feedback: '',
       respostas: {} as Record<string, string | string[] | number>,
     };
@@ -56,12 +59,10 @@ export function AvaliacoesTab() {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const filtered = filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor);
 
-  // Cargo do editor selecionado e multiplicador
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
   const multiplicador = cargoSel ? Number(cargoSel.multiplicador) : 1;
 
-  // Cálculo automático do bônus base
   const { bonusBase, folgasAuto } = useMemo(() => {
     let total = 0;
     let folgas = 0;
@@ -87,30 +88,64 @@ export function AvaliacoesTab() {
         total += Number(r || 0) * unit;
       }
     }
-    total += Number(form.criativos_escalados || 0) * 50;
-    total += Number(form.vsl_escaladas || 0) * 100;
     return { bonusBase: total, folgasAuto: folgas };
   }, [form, criterios]);
 
   const bonusEstimado = bonusBase;
   const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
 
+  const openNew = () => { setEditingId(null); setForm(blankForm()); setOpen(true); };
 
-  const openNew = () => { setForm(blankForm()); setOpen(true); };
+  const openEdit = (a: any) => {
+    const respostas: Record<string, any> = {};
+    const snap = a.respostas || {};
+    for (const cr of criterios) {
+      const s = snap[cr.chave];
+      if (!s) continue;
+      if (cr.tipo === 'single') {
+        const op = cr.opcoes.find(o => o.id === s.id) || cr.opcoes.find(o => o.label === s.label);
+        if (op) respostas[cr.chave] = op.id;
+      } else if (cr.tipo === 'multi') {
+        const ids: string[] = [];
+        for (const sel of (s.selecoes || [])) {
+          const op = cr.opcoes.find(o => o.id === sel.id) || cr.opcoes.find(o => o.label === sel.label);
+          if (op) ids.push(op.id);
+        }
+        respostas[cr.chave] = ids;
+      } else if (cr.tipo === 'number') {
+        respostas[cr.chave] = Number(s.quantidade || 0);
+      }
+    }
+    // Compat: se colunas legadas existirem e critérios ainda não foram criados, ainda exibir
+    if (a.criativos_escalados != null && respostas[CHAVE_CRIATIVOS] == null) respostas[CHAVE_CRIATIVOS] = Number(a.criativos_escalados);
+    if (a.vsl_escaladas != null && respostas[CHAVE_VSL] == null) respostas[CHAVE_VSL] = Number(a.vsl_escaladas);
+
+    setEditingId(a.id);
+    setForm({
+      editor_id: a.editor_id || '',
+      mes_referencia: a.mes_referencia || '',
+      avaliador: a.avaliador || '',
+      perfil: a.perfil || '',
+      bonus_total_override: a.bonus_total != null && a.bonus_estimado != null && Number(a.bonus_total) !== Math.round(Number(a.bonus_estimado) * (cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1) * 100) / 100
+        ? String(a.bonus_total) : '',
+      feedback: a.feedback || '',
+      respostas,
+    });
+    setOpen(true);
+  };
 
   const save = async () => {
     if (!form.editor_id || !form.mes_referencia)
       return toast({ title: 'Editor e mês obrigatórios', variant: 'destructive' });
 
-    // Snapshot textual das respostas para preservar histórico se opções forem alteradas
     const respostasSnapshot: Record<string, any> = {};
     for (const cr of criterios) {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
         const op = cr.opcoes.find(o => o.id === r);
-        if (op) respostasSnapshot[cr.chave] = { tipo: 'single', label: op.label, valor: Number(op.valor) };
+        if (op) respostasSnapshot[cr.chave] = { tipo: 'single', id: op.id, label: op.label, valor: Number(op.valor) };
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
-        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => ({ label: o.label, valor: Number(o.valor) }));
+        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => ({ id: o.id, label: o.label, valor: Number(o.valor) }));
         respostasSnapshot[cr.chave] = { tipo: 'multi', selecoes: sel };
       } else if (cr.tipo === 'number') {
         respostasSnapshot[cr.chave] = { tipo: 'number', quantidade: Number(r || 0), unitario: Number(cr.opcoes[0]?.valor || 0) };
@@ -121,27 +156,36 @@ export function AvaliacoesTab() {
       ? Number(form.bonus_total_override)
       : bonusComMultiplicador;
 
+    // Mantém colunas legadas se os critérios existirem
+    const critCriativos = criterios.find(c => c.chave === CHAVE_CRIATIVOS);
+    const critVsl = criterios.find(c => c.chave === CHAVE_VSL);
+    const qtdCriativos = Number(form.respostas[CHAVE_CRIATIVOS] || 0);
+    const qtdVsl = Number(form.respostas[CHAVE_VSL] || 0);
+    const unitCriativos = Number(critCriativos?.opcoes[0]?.valor || 50);
+    const unitVsl = Number(critVsl?.opcoes[0]?.valor || 100);
+
     const payload: any = {
       editor_id: form.editor_id,
       mes_referencia: form.mes_referencia,
       avaliador: form.avaliador || null,
       perfil: form.perfil || null,
-      criativos_escalados: Number(form.criativos_escalados || 0),
-      bonus_escalados: Number(form.criativos_escalados || 0) * 50,
-      vsl_escaladas: Number(form.vsl_escaladas || 0),
-      bonus_vsl: Number(form.vsl_escaladas || 0) * 100,
+      criativos_escalados: qtdCriativos,
+      bonus_escalados: qtdCriativos * unitCriativos,
+      vsl_escaladas: qtdVsl,
+      bonus_vsl: qtdVsl * unitVsl,
       bonus_estimado: bonusEstimado,
       bonus_total: bonusFinal,
       folgas: folgasAuto,
       feedback: form.feedback || null,
       respostas: respostasSnapshot,
     };
-    const { error } = await supabase.from('avaliacoes_mensais').insert(payload);
+    const { error } = editingId
+      ? await supabase.from('avaliacoes_mensais').update(payload).eq('id', editingId)
+      : await supabase.from('avaliacoes_mensais').insert(payload);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    toast({ title: 'Avaliação salva' });
-    setOpen(false); setForm(blankForm()); load();
+    toast({ title: editingId ? 'Avaliação atualizada' : 'Avaliação salva' });
+    setOpen(false); setEditingId(null); setForm(blankForm()); load();
   };
-
 
   const remove = async (id: string) => {
     if (!confirm('Excluir avaliação?')) return;
@@ -179,14 +223,15 @@ export function AvaliacoesTab() {
               </tr></thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40">
+                  <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(a)}>
                     <td className="px-3 py-2">{a.mes_referencia}</td>
                     <td className="px-3 py-2">{editorMap[a.editor_id] || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{a.avaliador || '—'}</td>
                     <td className="px-3 py-2">{formatCurrency(Number(a.bonus_estimado || 0))}</td>
                     <td className="px-3 py-2 font-medium">{formatCurrency(Number(a.bonus_total || 0))}</td>
                     <td className="px-3 py-2">{a.folgas || 0}</td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-2 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(a)}><Pencil className="h-4 w-4" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => remove(a.id)}><Trash2 className="h-4 w-4" /></Button>
                     </td>
                   </tr>
@@ -200,7 +245,7 @@ export function AvaliacoesTab() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Nova avaliação mensal</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingId ? 'Editar avaliação' : 'Nova avaliação mensal'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -267,11 +312,6 @@ export function AvaliacoesTab() {
               </div>
             ))}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Criativos escalados</Label><Input type="number" value={form.criativos_escalados} onChange={e => setForm({ ...form, criativos_escalados: e.target.value })} /><span className="text-xs text-muted-foreground">R$ 50 por unidade</span></div>
-              <div><Label>VSL escaladas</Label><Input type="number" value={form.vsl_escaladas} onChange={e => setForm({ ...form, vsl_escaladas: e.target.value })} /><span className="text-xs text-muted-foreground">R$ 100 por unidade</span></div>
-            </div>
-
             <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -306,7 +346,7 @@ export function AvaliacoesTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={save}>Salvar</Button>
+            <Button onClick={save}>{editingId ? 'Salvar alterações' : 'Salvar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
