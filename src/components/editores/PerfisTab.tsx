@@ -350,7 +350,7 @@ function Section({ title, extra, onAdd, children }: any) {
     <div className="bg-card border border-border rounded-lg">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3"><h4 className="text-sm font-medium">{title}</h4>{extra}</div>
-        <Button size="sm" variant="outline" onClick={onAdd}><Plus className="h-4 w-4" /> Adicionar</Button>
+        {onAdd && <Button size="sm" variant="outline" onClick={onAdd}><Plus className="h-4 w-4" /> Adicionar</Button>}
       </div>
       <div className="overflow-x-auto">{children}</div>
     </div>
