@@ -37,17 +37,26 @@ create policy "all access" on public.criterio_opcoes for all using (true) with c
 alter table public.avaliacoes_mensais
   add column if not exists respostas jsonb default '{}'::jsonb;
 
+-- 3.1) Categoria do critério: individual | grupo | meta
+alter table public.criterios_avaliacao
+  add column if not exists categoria text not null default 'individual'
+  check (categoria in ('individual','grupo','meta'));
+
 -- 4) Seed inicial dos critérios (com base no CSV enviado)
-insert into public.criterios_avaliacao (chave, label, tipo, ordem) values
-  ('responsabilidade', 'Responsabilidade e cumprimento de prazos', 'single', 1),
-  ('refacoes', 'Refações por erro técnico', 'single', 2),
-  ('aderencia_briefing', 'Aderência ao briefing', 'single', 3),
-  ('performance_criativos', 'Performance dos criativos', 'multi', 4),
-  ('proatividade', 'Proatividade e evolução técnica', 'multi', 5),
-  ('performance_grupo', 'Performance em grupo', 'single', 6),
-  ('evolucao', 'Evolução e assertividade', 'single', 7),
-  ('meta_time', 'Meta de time mensal', 'single', 8)
+insert into public.criterios_avaliacao (chave, label, tipo, ordem, categoria) values
+  ('responsabilidade', 'Responsabilidade e cumprimento de prazos', 'single', 1, 'individual'),
+  ('refacoes', 'Refações por erro técnico', 'single', 2, 'individual'),
+  ('aderencia_briefing', 'Aderência ao briefing', 'single', 3, 'individual'),
+  ('performance_criativos', 'Performance dos criativos', 'multi', 4, 'individual'),
+  ('proatividade', 'Proatividade e evolução técnica', 'multi', 5, 'individual'),
+  ('performance_grupo', 'Performance em grupo', 'single', 6, 'grupo'),
+  ('evolucao', 'Evolução e assertividade', 'single', 7, 'individual'),
+  ('meta_time', 'Meta de time mensal', 'single', 8, 'meta')
 on conflict (chave) do nothing;
+
+-- 4.1) Backfill da categoria para registros existentes
+update public.criterios_avaliacao set categoria = 'grupo' where chave = 'performance_grupo' and categoria = 'individual';
+update public.criterios_avaliacao set categoria = 'meta' where chave = 'meta_time' and categoria = 'individual';
 
 -- 5) Seed das opções
 with c as (select chave, id from public.criterios_avaliacao)
