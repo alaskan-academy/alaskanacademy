@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 type Row = {
   id: string;
-  data: string;
+  mes_referencia: string;
   empresa: string;
   oferta: string;
   editor_id: string;
@@ -28,7 +28,7 @@ type Row = {
 
 const blank = () => ({
   id: '' as string,
-  data: '',
+  mes_referencia: '',
   empresa: '',
   oferta: '',
   editor_id: '',
@@ -51,7 +51,7 @@ export default function EditorsPage() {
     setLoading(true);
     const [e, r, emp, of] = await Promise.all([
       supabase.from('editores').select('id, nome').order('nome'),
-      supabase.from('avaliacoes_criativos').select('*').order('data', { ascending: false }),
+      supabase.from('avaliacoes_criativos').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('empresas').select('*').eq('ativo', true).order('nome'),
       supabase.from('ofertas_editores').select('*').eq('ativo', true).order('nome'),
     ]);
@@ -79,7 +79,7 @@ export default function EditorsPage() {
     setEditingId(r.id);
     setForm({
       id: r.id,
-      data: r.data ? String(r.data).slice(0, 10) : '',
+      mes_referencia: r.mes_referencia ? String(r.mes_referencia).slice(0, 7) : '',
       empresa: r.empresa || '',
       oferta: r.oferta || '',
       editor_id: r.editor_id || '',
@@ -90,11 +90,11 @@ export default function EditorsPage() {
   };
 
   const save = async () => {
-    if (!form.data || !form.editor_id || !form.empresa || !form.oferta) {
-      return toast({ title: 'Preencha data, empresa, oferta e editor', variant: 'destructive' });
+    if (!form.mes_referencia || !form.editor_id || !form.empresa || !form.oferta) {
+      return toast({ title: 'Preencha mês, empresa, oferta e editor', variant: 'destructive' });
     }
     const payload = {
-      data: form.data,
+      mes_referencia: `${form.mes_referencia.slice(0, 7)}-01`,
       empresa: form.empresa,
       oferta: form.oferta,
       editor_id: form.editor_id,
@@ -160,7 +160,7 @@ export default function EditorsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-xs text-muted-foreground uppercase">
-                        <th className="text-left px-3 py-2">Data</th>
+                        <th className="text-left px-3 py-2">Mês de análise</th>
                         <th className="text-left px-3 py-2">Empresa</th>
                         <th className="text-left px-3 py-2">Oferta</th>
                         <th className="text-left px-3 py-2">Editor responsável</th>
@@ -173,7 +173,7 @@ export default function EditorsPage() {
                     <tbody>
                       {rows.map(r => (
                         <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(r)}>
-                          <td className="px-3 py-2">{r.data}</td>
+                          <td className="px-3 py-2">{r.mes_referencia ? String(r.mes_referencia).slice(0, 7) : '—'}</td>
                           <td className="px-3 py-2">{r.empresa}</td>
                           <td className="px-3 py-2">{r.oferta}</td>
                           <td className="px-3 py-2">{editorMap[r.editor_id] || '—'}</td>
@@ -199,7 +199,7 @@ export default function EditorsPage() {
               <DialogContent>
                 <DialogHeader><DialogTitle>{editingId ? 'Editar registro' : 'Novo registro'}</DialogTitle></DialogHeader>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Data</Label><Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></div>
+                  <div><Label>Mês de análise</Label><Input type="month" value={form.mes_referencia} onChange={e => setForm({ ...form, mes_referencia: e.target.value })} /></div>
                   <div>
                     <Label>Editor responsável</Label>
                     <select value={form.editor_id} onChange={e => setForm({ ...form, editor_id: e.target.value })}
