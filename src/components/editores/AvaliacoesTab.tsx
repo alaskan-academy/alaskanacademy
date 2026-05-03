@@ -281,7 +281,7 @@ export function AvaliacoesTab() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Editor</Label>
-                <Select value={form.editor_id} onValueChange={v => setForm({ ...form, editor_id: v })}>
+                <Select value={form.editor_id} onValueChange={v => setForm({ ...form, editor_id: v, responsaveis_ids: [] })}>
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>{editores.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}</SelectContent>
                 </Select>
@@ -291,6 +291,31 @@ export function AvaliacoesTab() {
               <div><Label>Avaliador(a)</Label><Input value={form.avaliador} onChange={e => setForm({ ...form, avaliador: e.target.value })} /></div>
               <div><Label>Perfil</Label><Input value={form.perfil} onChange={e => setForm({ ...form, perfil: e.target.value })} placeholder="Misto / Estático / Dinâmico" /></div>
             </div>
+
+            {isHeadOuLider && (
+              <div className="space-y-2 border-b border-border/40 pb-3">
+                <Label className="text-sm">Editores sob responsabilidade</Label>
+                <div className="space-y-1.5">
+                  {responsaveisDisponiveis.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">Nenhum editor disponível para vincular.</div>
+                  ) : responsaveisDisponiveis.map(op => {
+                    const checked = form.responsaveis_ids.includes(op.id);
+                    return (
+                      <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
+                        <Checkbox checked={checked} onCheckedChange={(v) => {
+                          const next = v
+                            ? [...form.responsaveis_ids, op.id]
+                            : form.responsaveis_ids.filter((id: string) => id !== op.id);
+                          setForm({ ...form, responsaveis_ids: next });
+                        }} />
+                        <span>{op.nome}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">A líder/head recebe 20% da comissão total destes editores no mês selecionado.</p>
+              </div>
+            )}
 
             {criterios.length === 0 && (
               <div className="p-4 text-sm text-muted-foreground bg-secondary/30 rounded">
@@ -345,7 +370,7 @@ export function AvaliacoesTab() {
             ))}
 
             <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-xs text-muted-foreground">Bônus base</Label>
                   <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
@@ -355,6 +380,10 @@ export function AvaliacoesTab() {
                   <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
                 </div>
                 <div>
+                  <Label className="text-xs text-muted-foreground">Comissão liderança</Label>
+                  <div className="text-lg font-medium">{formatCurrency(bonusResponsaveis)}</div>
+                </div>
+                <div>
                   <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
                   <div className="text-lg font-medium">{folgasAuto}</div>
                 </div>
@@ -362,11 +391,11 @@ export function AvaliacoesTab() {
               <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
                 <div>
                   <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
-                  <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusComMultiplicador)}</div>
+                  <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusTotalCalculado)}</div>
                 </div>
                 <div>
                   <Label>Override do bônus total (opcional)</Label>
-                  <Input type="number" placeholder={String(bonusComMultiplicador)}
+                  <Input type="number" placeholder={String(bonusTotalCalculado)}
                     value={form.bonus_total_override}
                     onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
                 </div>
