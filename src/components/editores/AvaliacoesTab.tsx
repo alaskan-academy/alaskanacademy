@@ -369,30 +369,46 @@ export function AvaliacoesTab() {
               </div>
             ))}
 
-            <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Bônus base</Label>
-                  <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Multiplicador {cargoSel ? `(${cargoSel.nome})` : ''}</Label>
-                  <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Comissão liderança</Label>
-                  <div className="text-lg font-medium">{formatCurrency(bonusResponsaveis)}</div>
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
-                  <div className="text-lg font-medium">{folgasAuto}</div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
-                  <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusTotalCalculado)}</div>
-                </div>
+             <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                 <div>
+                   <Label className="text-xs text-muted-foreground">Bônus base</Label>
+                   <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+                 </div>
+                 <div>
+                   <Label className="text-xs text-muted-foreground">Multiplicador {cargoSel ? `(${cargoSel.nome})` : ''}</Label>
+                   <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
+                 </div>
+                 <div>
+                   <Label className="text-xs text-muted-foreground">Bônus com multiplicador</Label>
+                   <div className="text-lg font-medium">{formatCurrency(bonusComMultiplicador)}</div>
+                 </div>
+                 <div>
+                   <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
+                   <div className="text-lg font-medium">{folgasAuto}</div>
+                 </div>
+               </div>
+               {isHeadOuLider && (
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2 border-t border-border/60">
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Editores sob responsabilidade</Label>
+                     <div className="text-lg font-medium">{form.responsaveis_ids.length}</div>
+                   </div>
+                   <div>
+                     <Label className="text-xs text-muted-foreground">+ 20% da comissão do time</Label>
+                     <div className="text-lg font-medium text-primary">{formatCurrency(bonusResponsaveis)}</div>
+                   </div>
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Subtotal (multiplicador + liderança)</Label>
+                     <div className="text-lg font-medium">{formatCurrency(bonusTotalCalculado)}</div>
+                   </div>
+                 </div>
+               )}
+               <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
+                 <div>
+                   <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
+                   <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusTotalCalculado)}</div>
+                 </div>
                 <div>
                   <Label>Override do bônus total (opcional)</Label>
                   <Input type="number" placeholder={String(bonusTotalCalculado)}
