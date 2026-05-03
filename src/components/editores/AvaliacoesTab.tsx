@@ -16,6 +16,7 @@ type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'mu
 
 export function AvaliacoesTab() {
   const [editores, setEditores] = useState<any[]>([]);
+  const [cargos, setCargos] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [filterEditor, setFilterEditor] = useState<string>('all');
@@ -27,22 +28,24 @@ export function AvaliacoesTab() {
     return {
       editor_id: '', mes_referencia: '', avaliador: '', perfil: '',
       criativos_escalados: 0, vsl_escaladas: 0,
-      bonus_total: 0, folgas: 0,
-      feedback: '', resumo_ai: '', sugestao_ai: '',
+      bonus_total_override: '', // se vazio, usa cálculo automático
+      feedback: '',
       respostas: {} as Record<string, string | string[] | number>,
     };
   }
 
   const load = async () => {
     setLoading(true);
-    const [e, a, c, o] = await Promise.all([
-      supabase.from('editores').select('id, nome').order('nome'),
+    const [e, a, c, o, cg] = await Promise.all([
+      supabase.from('editores').select('id, nome, cargo_id').order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
       supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('cargos').select('*'),
     ]);
     setEditores(e.data || []);
     setItems(a.data || []);
+    setCargos(cg.data || []);
     const opts = o.data || [];
     setCriterios((c.data || []).map((cr: any) => ({ ...cr, opcoes: opts.filter((x: any) => x.criterio_id === cr.id) })));
     setLoading(false);
@@ -50,27 +53,48 @@ export function AvaliacoesTab() {
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
+  const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const filtered = filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor);
 
-  // Cálculo automático do bônus
-  const bonusEstimado = useMemo(() => {
+  // Cargo do editor selecionado e multiplicador
+  const editorSel = editores.find(e => e.id === form.editor_id);
+  const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
+  const multiplicador = cargoSel ? Number(cargoSel.multiplicador) : 1;
+
+  // Cálculo automático do bônus base
+  const { bonusBase, folgasAuto } = useMemo(() => {
     let total = 0;
+    let folgas = 0;
+    const folgaRe = /\((\d+(?:[.,]\d+)?)\s*folgas?\)/i;
     for (const cr of criterios) {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
-        const op = cr.opcoes.find(o => o.id === r); if (op) total += Number(op.valor);
+        const op = cr.opcoes.find(o => o.id === r);
+        if (op) {
+          total += Number(op.valor);
+          const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+        }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
-        for (const id of r) { const op = cr.opcoes.find(o => o.id === id); if (op) total += Number(op.valor); }
+        for (const id of r) {
+          const op = cr.opcoes.find(o => o.id === id);
+          if (op) {
+            total += Number(op.valor);
+            const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+          }
+        }
       } else if (cr.tipo === 'number') {
         const unit = Number(cr.opcoes[0]?.valor || 0);
         total += Number(r || 0) * unit;
       }
     }
-    // bônus por criativos escalados (R$50 por unidade) e VSL (R$ por unidade) — fallback fixo
     total += Number(form.criativos_escalados || 0) * 50;
     total += Number(form.vsl_escaladas || 0) * 100;
-    return total;
+    return { bonusBase: total, folgasAuto: folgas };
   }, [form, criterios]);
+
+  const bonusEstimado = bonusBase;
+  const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
+
 
   const openNew = () => { setForm(blankForm()); setOpen(true); };
 
