@@ -117,6 +117,10 @@ export function AvaliacoesTab() {
       }
     }
 
+    const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
+      ? Number(form.bonus_total_override)
+      : bonusComMultiplicador;
+
     const payload: any = {
       editor_id: form.editor_id,
       mes_referencia: form.mes_referencia,
@@ -127,11 +131,9 @@ export function AvaliacoesTab() {
       vsl_escaladas: Number(form.vsl_escaladas || 0),
       bonus_vsl: Number(form.vsl_escaladas || 0) * 100,
       bonus_estimado: bonusEstimado,
-      bonus_total: Number(form.bonus_total || bonusEstimado),
-      folgas: Number(form.folgas || 0),
+      bonus_total: bonusFinal,
+      folgas: folgasAuto,
       feedback: form.feedback || null,
-      resumo_ai: form.resumo_ai || null,
-      sugestao_ai: form.sugestao_ai || null,
       respostas: respostasSnapshot,
     };
     const { error } = await supabase.from('avaliacoes_mensais').insert(payload);
@@ -139,6 +141,7 @@ export function AvaliacoesTab() {
     toast({ title: 'Avaliação salva' });
     setOpen(false); setForm(blankForm()); load();
   };
+
 
   const remove = async (id: string) => {
     if (!confirm('Excluir avaliação?')) return;
