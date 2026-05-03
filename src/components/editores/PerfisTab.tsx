@@ -40,6 +40,7 @@ export function PerfisTab() {
   const openNew = () => {
     setEditing(null);
     setForm({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '' });
+    if (cargos.length === 0) load();
     setOpenForm(true);
   };
   const openEdit = (ed: Editor) => {
