@@ -135,6 +135,14 @@ export function AvaliacoesTab() {
     if (a.criativos_escalados != null && respostas[CHAVE_CRIATIVOS] == null) respostas[CHAVE_CRIATIVOS] = Number(a.criativos_escalados);
     if (a.vsl_escaladas != null && respostas[CHAVE_VSL] == null) respostas[CHAVE_VSL] = Number(a.vsl_escaladas);
 
+    const responsaveisIds = Array.isArray(snap[CHAVE_RESPONSAVEIS]?.editor_ids)
+      ? snap[CHAVE_RESPONSAVEIS].editor_ids.filter((id: unknown) => typeof id === 'string')
+      : [];
+    const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
+    const cargoMultiplicador = Number(cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1);
+    const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * cargoMultiplicador * 100) / 100;
+    const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
+
     setEditingId(a.id);
     setForm({
       editor_id: a.editor_id || '',
@@ -142,9 +150,10 @@ export function AvaliacoesTab() {
       data_lancamento: a.data_lancamento ? String(a.data_lancamento).slice(0, 10) : '',
       avaliador: a.avaliador || '',
       perfil: a.perfil || '',
-      bonus_total_override: a.bonus_total != null && a.bonus_estimado != null && Number(a.bonus_total) !== Math.round(Number(a.bonus_estimado) * (cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1) * 100) / 100
+      bonus_total_override: a.bonus_total != null && Number(a.bonus_total) !== bonusTotalCalculadoItem
         ? String(a.bonus_total) : '',
       feedback: a.feedback || '',
+      responsaveis_ids: responsaveisIds,
       respostas,
     });
     setOpen(true);
