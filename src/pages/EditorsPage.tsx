@@ -13,6 +13,8 @@ import { PerfisTab } from '@/components/editores/PerfisTab';
 import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
 import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
 import { ConfiguracaoTab } from '@/components/editores/ConfiguracaoTab';
+import { EmpresasOfertasTab } from '@/components/editores/EmpresasOfertasTab';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Row = {
   id: string;
@@ -37,6 +39,8 @@ const blank = () => ({
 export default function EditorsPage() {
   const confirm = useConfirm();
   const [editors, setEditors] = useState<any[]>([]);
+  const [empresas, setEmpresas] = useState<any[]>([]);
+  const [ofertas, setOfertas] = useState<any[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -45,17 +49,27 @@ export default function EditorsPage() {
 
   const load = async () => {
     setLoading(true);
-    const [e, r] = await Promise.all([
+    const [e, r, emp, of] = await Promise.all([
       supabase.from('editores').select('id, nome').order('nome'),
       supabase.from('avaliacoes_criativos').select('*').order('data', { ascending: false }),
+      supabase.from('empresas').select('*').eq('ativo', true).order('nome'),
+      supabase.from('ofertas_editores').select('*').eq('ativo', true).order('nome'),
     ]);
     setEditors(e.data || []);
     setRows((r.data as any) || []);
+    setEmpresas(emp.data || []);
+    setOfertas(of.data || []);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editors.map(x => [x.id, x.nome]));
+  const ofertasFiltradas = form.empresa
+    ? ofertas.filter(o => {
+        const emp = empresas.find(e => e.nome === form.empresa);
+        return !emp || !o.empresa_id || o.empresa_id === emp.id;
+      })
+    : ofertas;
 
   const taxa = (testados: number, validados: number) =>
     testados > 0 ? Math.round((validados / testados) * 100) : 0;
@@ -119,7 +133,16 @@ export default function EditorsPage() {
         <TabsContent value="perfis"><PerfisTab /></TabsContent>
         <TabsContent value="avaliacoes"><AvaliacoesTab /></TabsContent>
         <TabsContent value="desempenho"><DesempenhoTab /></TabsContent>
-        <TabsContent value="config"><ConfiguracaoTab /></TabsContent>
+        <TabsContent value="config">
+          <Tabs defaultValue="criterios" className="space-y-4">
+            <TabsList className="bg-secondary border border-border">
+              <TabsTrigger value="criterios" className={tabCls}>Critérios</TabsTrigger>
+              <TabsTrigger value="empresas" className={tabCls}>Empresas e ofertas</TabsTrigger>
+            </TabsList>
+            <TabsContent value="criterios"><ConfiguracaoTab /></TabsContent>
+            <TabsContent value="empresas"><EmpresasOfertasTab /></TabsContent>
+          </Tabs>
+        </TabsContent>
 
         <TabsContent value="avaliacao">
           <div className="space-y-4">
@@ -185,8 +208,24 @@ export default function EditorsPage() {
                       {editors.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
                     </select>
                   </div>
-                  <div><Label>Empresa</Label><Input value={form.empresa} onChange={e => setForm({ ...form, empresa: e.target.value })} placeholder="Ex: Alaskan Academy" /></div>
-                  <div><Label>Oferta</Label><Input value={form.oferta} onChange={e => setForm({ ...form, oferta: e.target.value })} placeholder="Ex: Velas Perfeitas" /></div>
+                  <div>
+                    <Label>Empresa</Label>
+                    <Select value={form.empresa} onValueChange={v => setForm({ ...form, empresa: v, oferta: '' })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {empresas.map(e => <SelectItem key={e.id} value={e.nome}>{e.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Oferta</Label>
+                    <Select value={form.oferta} onValueChange={v => setForm({ ...form, oferta: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {ofertasFiltradas.map(o => <SelectItem key={o.id} value={o.nome}>{o.nome}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div><Label>Ads testados</Label><Input type="number" min={0} value={form.ads_testados} onChange={e => setForm({ ...form, ads_testados: Number(e.target.value) })} /></div>
                   <div><Label>Ads validados</Label><Input type="number" min={0} value={form.ads_validados} onChange={e => setForm({ ...form, ads_validados: Number(e.target.value) })} /></div>
                   <div className="col-span-2">
