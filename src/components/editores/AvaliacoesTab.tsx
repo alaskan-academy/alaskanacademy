@@ -66,6 +66,10 @@ export function AvaliacoesTab() {
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
   const multiplicador = cargoSel ? Number(cargoSel.multiplicador) : 1;
+  const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
+  const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
+  const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 
   const { bonusBase, folgasAuto } = useMemo(() => {
     let total = 0;
