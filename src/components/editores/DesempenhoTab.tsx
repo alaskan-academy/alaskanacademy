@@ -261,6 +261,21 @@ export function DesempenhoTab() {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        <div className="bg-card border border-border rounded-lg p-4 lg:col-span-2">
+          <h4 className="text-sm font-medium mb-3">Criativos testados vs validados ao longo do tempo</h4>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={evolucao}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="mes" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+              <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+              <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} formatter={(v: any) => formatNumber(Number(v))} />
+              <Legend />
+              <Line type="monotone" dataKey="testados" name="Criativos testados" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="validados" name="Criativos validados" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Tabela: Assertividade por editor */}
