@@ -273,6 +273,11 @@ export function DesempenhoTab() {
               <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} formatter={(v: any, name: any) => name === 'Taxa de validação' ? formatPercent(Number(v)) : formatNumber(Number(v))} />
               <Legend />
               <Line yAxisId="left" type="monotone" dataKey="testados" name="Criativos testados" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
+              <Line yAxisId="right" type="monotone" dataKey="taxa" name="Taxa de validação" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       {/* Tabela: Assertividade por editor */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
