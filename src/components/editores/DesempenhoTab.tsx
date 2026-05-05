@@ -263,7 +263,7 @@ export function DesempenhoTab() {
         </div>
 
         <div className="bg-card border border-border rounded-lg p-4 lg:col-span-2">
-          <h4 className="text-sm font-medium mb-3">Criativos testados vs validados ao longo do tempo</h4>
+          <h4 className="text-sm font-medium mb-3">Criativos testados vs Taxa de validação ao longo do tempo</h4>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={evolucao}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -273,12 +273,6 @@ export function DesempenhoTab() {
               <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} formatter={(v: any, name: any) => name === 'Taxa de validação' ? formatPercent(Number(v)) : formatNumber(Number(v))} />
               <Legend />
               <Line yAxisId="left" type="monotone" dataKey="testados" name="Criativos testados" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
-              <Line yAxisId="left" type="monotone" dataKey="validados" name="Criativos validados" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
-              <Line yAxisId="right" type="monotone" dataKey="taxa" name="Taxa de validação" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
 
       {/* Tabela: Assertividade por editor */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">
