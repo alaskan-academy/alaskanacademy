@@ -268,11 +268,13 @@ export function DesempenhoTab() {
             <LineChart data={evolucao}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="mes" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-              <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-              <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} formatter={(v: any) => formatNumber(Number(v))} />
+              <YAxis yAxisId="left" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} unit="%" />
+              <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }} formatter={(v: any, name: any) => name === 'Taxa de validação' ? formatPercent(Number(v)) : formatNumber(Number(v))} />
               <Legend />
-              <Line type="monotone" dataKey="testados" name="Criativos testados" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="validados" name="Criativos validados" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
+              <Line yAxisId="left" type="monotone" dataKey="testados" name="Criativos testados" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} />
+              <Line yAxisId="left" type="monotone" dataKey="validados" name="Criativos validados" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} />
+              <Line yAxisId="right" type="monotone" dataKey="taxa" name="Taxa de validação" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
