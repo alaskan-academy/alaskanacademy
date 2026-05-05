@@ -34,7 +34,7 @@ export function DesempenhoTab() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterEditor, setFilterEditor] = useState('all');
-  const [filterOferta, setFilterOferta] = useState('all');
+  const [filterOfertas, setFilterOfertas] = useState<string[]>([]);
   const [monthPreset, setMonthPreset] = useState<MonthPreset>('this');
   const [customStart, setCustomStart] = useState(currentYM(-2));
   const [customEnd, setCustomEnd] = useState(currentYM(0));
