@@ -167,14 +167,40 @@ export function DesempenhoTab() {
           </Select>
         </div>
         <div>
-          <Label className="text-xs">Projeto</Label>
-          <Select value={filterOferta} onValueChange={setFilterOferta}>
-            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos projetos</SelectItem>
-              {ofertas.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Label className="text-xs">Projetos</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[220px] justify-between font-normal">
+                <span className="truncate">
+                  {filterOfertas.length === 0 ? 'Todos projetos' : `${filterOfertas.length} selecionado(s)`}
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[260px] p-2" align="start">
+              <div className="flex items-center justify-between px-1 pb-2 border-b border-border mb-2">
+                <button className="text-xs text-primary hover:underline" onClick={() => setFilterOfertas(ofertas as string[])}>Todos</button>
+                <button className="text-xs text-muted-foreground hover:underline" onClick={() => setFilterOfertas([])}>Limpar</button>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {ofertas.map(o => {
+                  const checked = filterOfertas.includes(o as string);
+                  return (
+                    <label key={o as string} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-secondary cursor-pointer text-sm">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          setFilterOfertas(prev => v ? [...prev, o as string] : prev.filter(x => x !== o));
+                        }}
+                      />
+                      <span className="truncate">{o as string}</span>
+                    </label>
+                  );
+                })}
+                {ofertas.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Sem projetos</div>}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
