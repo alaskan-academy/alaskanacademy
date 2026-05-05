@@ -73,9 +73,9 @@ export function DesempenhoTab() {
     const d = String(i.mes_referencia).slice(0, 10);
     if (d < startStr || d > endStr) return false;
     if (filterEditor !== 'all' && i.editor_id !== filterEditor) return false;
-    if (filterOferta !== 'all' && i.oferta !== filterOferta) return false;
+    if (filterOfertas.length > 0 && !filterOfertas.includes(i.oferta)) return false;
     return true;
-  }), [items, startStr, endStr, filterEditor, filterOferta]);
+  }), [items, startStr, endStr, filterEditor, filterOfertas]);
 
   const totals = useMemo(() => {
     const t = filtered.reduce((acc, i) => {
