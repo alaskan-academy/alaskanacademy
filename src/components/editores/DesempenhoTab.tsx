@@ -3,6 +3,10 @@ import { supabase } from '@/lib/supabase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { ChevronDown } from 'lucide-react';
 import { formatNumber, formatPercent } from '@/lib/formatters';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, Legend,
@@ -30,7 +34,7 @@ export function DesempenhoTab() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterEditor, setFilterEditor] = useState('all');
-  const [filterOferta, setFilterOferta] = useState('all');
+  const [filterOfertas, setFilterOfertas] = useState<string[]>([]);
   const [monthPreset, setMonthPreset] = useState<MonthPreset>('this');
   const [customStart, setCustomStart] = useState(currentYM(-2));
   const [customEnd, setCustomEnd] = useState(currentYM(0));
@@ -69,9 +73,9 @@ export function DesempenhoTab() {
     const d = String(i.mes_referencia).slice(0, 10);
     if (d < startStr || d > endStr) return false;
     if (filterEditor !== 'all' && i.editor_id !== filterEditor) return false;
-    if (filterOferta !== 'all' && i.oferta !== filterOferta) return false;
+    if (filterOfertas.length > 0 && !filterOfertas.includes(i.oferta)) return false;
     return true;
-  }), [items, startStr, endStr, filterEditor, filterOferta]);
+  }), [items, startStr, endStr, filterEditor, filterOfertas]);
 
   const totals = useMemo(() => {
     const t = filtered.reduce((acc, i) => {
@@ -163,14 +167,40 @@ export function DesempenhoTab() {
           </Select>
         </div>
         <div>
-          <Label className="text-xs">Projeto</Label>
-          <Select value={filterOferta} onValueChange={setFilterOferta}>
-            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos projetos</SelectItem>
-              {ofertas.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Label className="text-xs">Projetos</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[220px] justify-between font-normal">
+                <span className="truncate">
+                  {filterOfertas.length === 0 ? 'Todos projetos' : `${filterOfertas.length} selecionado(s)`}
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[260px] p-2" align="start">
+              <div className="flex items-center justify-between px-1 pb-2 border-b border-border mb-2">
+                <button className="text-xs text-primary hover:underline" onClick={() => setFilterOfertas(ofertas as string[])}>Todos</button>
+                <button className="text-xs text-muted-foreground hover:underline" onClick={() => setFilterOfertas([])}>Limpar</button>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {ofertas.map(o => {
+                  const checked = filterOfertas.includes(o as string);
+                  return (
+                    <label key={o as string} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-secondary cursor-pointer text-sm">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          setFilterOfertas(prev => v ? [...prev, o as string] : prev.filter(x => x !== o));
+                        }}
+                      />
+                      <span className="truncate">{o as string}</span>
+                    </label>
+                  );
+                })}
+                {ofertas.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Sem projetos</div>}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
