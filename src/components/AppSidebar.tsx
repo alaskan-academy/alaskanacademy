@@ -173,7 +173,7 @@ export function AppSidebar() {
         )}
 
         <div className="space-y-0.5">
-          <DashboardItem id={null} label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} />
+          <DashboardItem id={null} label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} expandable />
 
           {loadingFunis ? (
             <div className="flex justify-center py-3">
