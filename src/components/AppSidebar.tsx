@@ -81,8 +81,8 @@ export function AppSidebar() {
 
   const showLabels = isMobile || !collapsed;
 
-  const DashboardItem = ({ id, label, icon, colorDot, onNav }: {
-    id: string | null; label: string; icon?: React.ReactNode; colorDot?: string; onNav?: () => void;
+  const DashboardItem = ({ id, label, icon, colorDot, onNav, expandable = false }: {
+    id: string | null; label: string; icon?: React.ReactNode; colorDot?: string; onNav?: () => void; expandable?: boolean;
   }) => {
     const isSelected = funilId === id;
     const isExpanded = expandedId === id && isSelected;
@@ -103,13 +103,15 @@ export function AppSidebar() {
           {showLabels && (
             <>
               <span className="truncate flex-1 text-left">{label}</span>
-              <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", isExpanded ? "rotate-180" : "")} />
+              {expandable && (
+                <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", isExpanded ? "rotate-180" : "")} />
+              )}
             </>
           )}
         </button>
 
-        {/* Sub-pages — only when expanded and labels visible */}
-        {isExpanded && showLabels && (
+        {/* Sub-pages — only when expanded, expandable, and labels visible */}
+        {expandable && isExpanded && showLabels && (
           <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2">
             {subPages.map((sp) => {
               const isActive = location.pathname === sp.path;
