@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DashboardsSettings from "@/components/DashboardsSettings";
 import { ContasAnunciosTab } from "@/components/editores/ContasAnunciosTab";
 import { GerenciarUsuariosTab } from "@/components/GerenciarUsuariosTab";
+import { ConfiguracaoTab } from "@/components/editores/ConfiguracaoTab";
+import { EmpresasOfertasTab } from "@/components/editores/EmpresasOfertasTab";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function SettingsPage() {
@@ -85,11 +86,8 @@ export default function SettingsPage() {
 
   return (
     <DashboardLayout title="Configurações">
-      <Tabs defaultValue="dashboards">
+      <Tabs defaultValue="fiscal">
         <TabsList className="bg-secondary border border-border mb-6 flex-wrap h-auto">
-          <TabsTrigger value="dashboards" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            Dashboards
-          </TabsTrigger>
           <TabsTrigger value="fiscal" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Parâmetros Fiscais
           </TabsTrigger>
@@ -97,20 +95,36 @@ export default function SettingsPage() {
             Contas de Anúncios
           </TabsTrigger>
           {perfil?.is_admin && (
+            <TabsTrigger value="criterios" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Critérios
+            </TabsTrigger>
+          )}
+          {perfil?.is_admin && (
+            <TabsTrigger value="empresas" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Empresas e ofertas
+            </TabsTrigger>
+          )}
+          {perfil?.is_admin && (
             <TabsTrigger value="usuarios" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               Usuários
             </TabsTrigger>
           )}
         </TabsList>
 
-        <TabsContent value="dashboards">
-          <DashboardsSettings />
-        </TabsContent>
-
         <TabsContent value="contas">
           <ContasAnunciosTab />
         </TabsContent>
 
+        {perfil?.is_admin && (
+          <TabsContent value="criterios">
+            <ConfiguracaoTab />
+          </TabsContent>
+        )}
+        {perfil?.is_admin && (
+          <TabsContent value="empresas">
+            <EmpresasOfertasTab />
+          </TabsContent>
+        )}
         {perfil?.is_admin && (
           <TabsContent value="usuarios">
             <GerenciarUsuariosTab />

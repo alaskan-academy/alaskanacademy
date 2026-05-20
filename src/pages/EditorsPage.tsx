@@ -12,8 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { PerfisTab } from '@/components/editores/PerfisTab';
 import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
 import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
-import { ConfiguracaoTab } from '@/components/editores/ConfiguracaoTab';
-import { EmpresasOfertasTab } from '@/components/editores/EmpresasOfertasTab';
 import { CriativosMetaTab } from '@/components/editores/CriativosMetaTab';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
@@ -128,11 +126,10 @@ export default function EditorsPage() {
       <Tabs defaultValue="perfis" className="space-y-4">
         <TabsList className="bg-secondary border border-border flex-wrap h-auto">
           <TabsTrigger value="perfis" className={tabCls}>Perfis</TabsTrigger>
-          {isAdmin && <TabsTrigger value="avaliacoes" className={tabCls}>Avaliações</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="desempenho" className={tabCls}>Desempenho</TabsTrigger>}
+          <TabsTrigger value="avaliacoes" className={tabCls}>Avaliações</TabsTrigger>
+          <TabsTrigger value="desempenho" className={tabCls}>Desempenho</TabsTrigger>
           {isAdmin && <TabsTrigger value="avaliacao" className={tabCls}>Avaliar criativo</TabsTrigger>}
           <TabsTrigger value="criativos" className={tabCls}>Criativos Meta</TabsTrigger>
-          {isAdmin && <TabsTrigger value="config" className={tabCls}>Configuração</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="perfis"><PerfisTab /></TabsContent>
@@ -140,18 +137,7 @@ export default function EditorsPage() {
         <TabsContent value="desempenho"><DesempenhoTab /></TabsContent>
         <TabsContent value="criativos"><CriativosMetaTab /></TabsContent>
 
-        <TabsContent value="config">
-          <Tabs defaultValue="criterios" className="space-y-4">
-            <TabsList className="bg-secondary border border-border">
-              <TabsTrigger value="criterios" className={tabCls}>Critérios</TabsTrigger>
-              <TabsTrigger value="empresas" className={tabCls}>Empresas e ofertas</TabsTrigger>
-            </TabsList>
-            <TabsContent value="criterios"><ConfiguracaoTab /></TabsContent>
-            <TabsContent value="empresas"><EmpresasOfertasTab /></TabsContent>
-          </Tabs>
-        </TabsContent>
-
-        <TabsContent value="avaliacao">
+<TabsContent value="avaliacao">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>

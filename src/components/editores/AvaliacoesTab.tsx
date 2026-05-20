@@ -11,6 +11,7 @@ import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
@@ -28,12 +29,20 @@ const CHAVE_RESPONSAVEIS = 'editores_responsaveis';
 
 export function AvaliacoesTab() {
   const confirm = useConfirm();
+  const { user, perfil: authPerfil } = useAuth();
+  const isAdmin = authPerfil?.is_admin ?? false;
+
+  // editor vinculado ao usuário logado e seu cargo
+  const [meuEditorId, setMeuEditorId]   = useState<string | null>(null);
+  const [cargoDoUsuario, setCargoDoUsuario] = useState<string>('');
+
   const [editores, setEditores] = useState<any[]>([]);
   const [cargos, setCargos] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [criterios, setCriterios] = useState<Criterio[]>([]);
   const [filterEditor, setFilterEditor] = useState<string>('all');
   const [open, setOpen] = useState(false);
+  const [viewOnly, setViewOnly] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<any>(blankForm());
   const [loading, setLoading] = useState(true);
@@ -51,28 +60,52 @@ export function AvaliacoesTab() {
   const load = async () => {
     setLoading(true);
     const [e, a, c, o, cg] = await Promise.all([
-      supabase.from('editores').select('id, nome, cargo_id').order('nome'),
+      supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador').order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
       supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
       supabase.from('cargos').select('*'),
     ]);
-    setEditores(e.data || []);
+    const eds: any[] = e.data || [];
+    const cgs: any[] = cg.data || [];
+    setEditores(eds);
     setItems(a.data || []);
-    setCargos(cg.data || []);
+    setCargos(cgs);
     const opts = o.data || [];
     setCriterios((c.data || []).map((cr: any) => ({ ...cr, opcoes: opts.filter((x: any) => x.criterio_id === cr.id) })));
+
+    // identifica editor + cargo do usuário logado
+    const meuEditor = eds.find((ed: any) => ed.usuario_id === user?.id) ?? null;
+    setMeuEditorId(meuEditor?.id ?? null);
+    if (meuEditor?.cargo_id) {
+      const cargo = cgs.find((cg: any) => cg.id === meuEditor.cargo_id);
+      const nome = String(cargo?.nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      setCargoDoUsuario(nome);
+    }
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
-  const filtered = filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor);
+
+  const canSeeAll = isAdmin || cargoDoUsuario.includes('head') || cargoDoUsuario.includes('lider');
+  const canEditRow = (a: any) => {
+    if (isAdmin) return true;
+    if (!canSeeAll) return false;
+    return a.editor_id !== meuEditorId; // líderes não podem editar a própria avaliação
+  };
+  const filtered = canSeeAll
+    ? (filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor))
+    : items.filter(i => i.editor_id === meuEditorId);
 
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
-  const multiplicador = cargoSel ? Number(cargoSel.multiplicador) : 1;
+  // multiplicador individual tem prioridade sobre o do cargo
+  const multiplicador = editorSel?.multiplicador != null
+    ? Number(editorSel.multiplicador)
+    : cargoSel ? Number(cargoSel.multiplicador) : 1;
+  const multiplicadorFonte = editorSel?.multiplicador != null ? 'individual' : 'cargo';
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
@@ -116,9 +149,10 @@ export function AvaliacoesTab() {
   }, [form.responsaveis_ids, isHeadOuLider, items, mesReferenciaPayload]);
   const bonusTotalCalculado = Math.round((bonusComMultiplicador + bonusResponsaveis) * 100) / 100;
 
-  const openNew = () => { setEditingId(null); setForm(blankForm()); setOpen(true); };
+  const openNew = () => { setViewOnly(false); setEditingId(null); setForm(blankForm()); setOpen(true); };
 
-  const openEdit = (a: any) => {
+  const openEdit = (a: any, readOnly = false) => {
+    setViewOnly(readOnly);
     const respostas: Record<string, any> = {};
     const snap = a.respostas || {};
     for (const cr of criterios) {
@@ -146,8 +180,11 @@ export function AvaliacoesTab() {
       ? snap[CHAVE_RESPONSAVEIS].editor_ids.filter((id: unknown) => typeof id === 'string')
       : [];
     const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
-    const cargoMultiplicador = Number(cargoMap[editores.find(e => e.id === a.editor_id)?.cargo_id]?.multiplicador || 1);
-    const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * cargoMultiplicador * 100) / 100;
+    const editorDaAval = editores.find(e => e.id === a.editor_id);
+    const multIndividual = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : null;
+    const multCargo = Number(cargoMap[editorDaAval?.cargo_id]?.multiplicador || 1);
+    const multEfetivo = multIndividual ?? multCargo;
+    const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * multEfetivo * 100) / 100;
     const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
 
     setEditingId(a.id);
@@ -238,16 +275,20 @@ export function AvaliacoesTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <Label className="text-xs text-muted-foreground">Filtrar por editor</Label>
-          <Select value={filterEditor} onValueChange={setFilterEditor}>
-            <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {editores.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {canSeeAll && (
+            <>
+              <Label className="text-xs text-muted-foreground">Filtrar por editor</Label>
+              <Select value={filterEditor} onValueChange={setFilterEditor}>
+                <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {editores.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </>
+          )}
         </div>
-        <Button onClick={openNew}><Plus className="h-4 w-4" /> Nova avaliação</Button>
+        {canSeeAll && <Button onClick={openNew}><Plus className="h-4 w-4" /> Nova avaliação</Button>}
       </div>
 
       <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -259,22 +300,28 @@ export function AvaliacoesTab() {
                 <th className="text-left px-3 py-2">Editor</th>
                 <th className="text-left px-3 py-2">Bônus total</th>
                 <th className="text-left px-3 py-2">Folgas</th>
-                <th className="px-3 py-2"></th>
+                {canSeeAll && <th className="px-3 py-2"></th>}
               </tr></thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(a)}>
+                  <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(a, !canEditRow(a))}>
                     <td className="px-3 py-2">{a.mes_referencia}</td>
                     <td className="px-3 py-2">{editorMap[a.editor_id] || '—'}</td>
                     <td className="px-3 py-2 font-medium">{formatCurrency(Number(a.bonus_total || 0))}</td>
                     <td className="px-3 py-2">{a.folgas || 0}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(a)}><Pencil className="h-4 w-4" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => remove(a.id)}><Trash2 className="h-4 w-4" /></Button>
-                    </td>
+                    {canSeeAll && (
+                      <td className="px-3 py-2 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                        {canEditRow(a) && (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => openEdit(a)}><Pencil className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => remove(a.id)}><Trash2 className="h-4 w-4" /></Button>
+                          </>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">Nenhuma avaliação</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={canSeeAll ? 5 : 4} className="px-3 py-8 text-center text-muted-foreground">Nenhuma avaliação</td></tr>}
               </tbody>
             </table>
           </div>
@@ -283,7 +330,10 @@ export function AvaliacoesTab() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editingId ? 'Editar avaliação' : 'Nova avaliação mensal'}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{viewOnly ? 'Avaliação (somente leitura)' : editingId ? 'Editar avaliação' : 'Nova avaliação mensal'}</DialogTitle>
+          </DialogHeader>
+          <fieldset disabled={viewOnly} className={viewOnly ? 'opacity-80' : ''}>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -395,7 +445,9 @@ export function AvaliacoesTab() {
                    <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
                  </div>
                  <div>
-                   <Label className="text-xs text-muted-foreground">Multiplicador {cargoSel ? `(${cargoSel.nome})` : ''}</Label>
+                   <Label className="text-xs text-muted-foreground">
+                     Multiplicador {multiplicadorFonte === 'individual' ? '(individual)' : cargoSel ? `(${cargoSel.nome})` : ''}
+                   </Label>
                    <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
                  </div>
                  <div>
@@ -440,9 +492,16 @@ export function AvaliacoesTab() {
             <div><Label>Feedback</Label><Textarea rows={3} value={form.feedback} onChange={e => setForm({ ...form, feedback: e.target.value })} /></div>
 
           </div>
+          </fieldset>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={save}>{editingId ? 'Salvar alterações' : 'Salvar'}</Button>
+            {viewOnly ? (
+              <Button variant="outline" onClick={() => setOpen(false)}>Fechar</Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+                <Button onClick={save}>{editingId ? 'Salvar alterações' : 'Salvar'}</Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

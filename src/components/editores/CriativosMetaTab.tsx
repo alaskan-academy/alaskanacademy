@@ -4,7 +4,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { ArrowUpDown, Trophy, Anchor, ShoppingCart, MousePointer, RefreshCw, Search, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, Check } from 'lucide-react';
+import { ArrowUpDown, Trophy, Anchor, ShoppingCart, MousePointer, RefreshCw, Search, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, Check, RotateCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/hooks/use-toast';
 import { ImportarPaytModal } from './ImportarPaytModal';
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -51,6 +53,23 @@ const MIN_VENDAS = 3;
 const qualifica = (r: any) =>
   Number(r.investimento ?? 0) >= MIN_SPEND || Number(r.vendas ?? 0) > MIN_VENDAS;
 
+// Selects the best Notion entry when multiple ads share the same name across projects.
+// Prefers the entry whose projeto_nome matches the account's produto_payt.
+function pickBest(
+  entries: Array<{ editor_nome: string | null; projeto_nome: string | null }> | undefined,
+  produto: string,
+) {
+  if (!entries || entries.length === 0) return null;
+  if (entries.length === 1) return entries[0];
+  const prod = produto.toLowerCase();
+  return entries.find(e =>
+    e.projeto_nome && (
+      e.projeto_nome.toLowerCase().includes(prod) ||
+      prod.includes(e.projeto_nome.toLowerCase())
+    ),
+  ) ?? entries[0];
+}
+
 function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
   const top = [...rows]
     .filter(r => qualifica(r) && Number(r[def.key] ?? 0) > 0)
@@ -81,7 +100,13 @@ function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
             )}>
               {i + 1}
             </span>
-            <span className="flex-1 text-sm truncate" title={r.ad_nome}>{r.ad_nome}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm truncate" title={r.ad_nome}>{r.ad_nome}</div>
+              {(r.projeto_notion || r.produto_payt) && (
+                <div className="text-xs text-muted-foreground truncate">{r.projeto_notion || r.produto_payt}</div>
+              )}
+              {r.editor_notion && <div className="text-xs text-muted-foreground/60 truncate">{r.editor_notion}</div>}
+            </div>
             <span className={cn(
               'text-sm font-semibold tabular-nums',
               def.colorFn ? def.colorFn(Number(r[def.key])) : 'text-foreground',
@@ -97,7 +122,7 @@ function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
 
 function ConsistencyCard({ defs, rows }: { defs: RankingDef[]; rows: any[] }) {
   // conta quantas vezes cada ad aparece no top 5 de cada ranking
-  const counts = new Map<string, { ad_nome: string; count: number; cats: string[] }>();
+  const counts = new Map<string, { ad_nome: string; produto_payt: string; editor_notion: string | null; projeto_notion: string | null; count: number; cats: string[] }>();
   for (const def of defs) {
     const top = [...rows]
       .filter(r => qualifica(r) && Number(r[def.key] ?? 0) > 0)
@@ -105,7 +130,7 @@ function ConsistencyCard({ defs, rows }: { defs: RankingDef[]; rows: any[] }) {
       .slice(0, 5);
     for (const r of top) {
       const id = String(r.ad_id ?? r.ad_nome);
-      const cur = counts.get(id) ?? { ad_nome: r.ad_nome, count: 0, cats: [] };
+      const cur = counts.get(id) ?? { ad_nome: r.ad_nome, produto_payt: r.produto_payt ?? '', editor_notion: r.editor_notion ?? null, projeto_notion: r.projeto_notion ?? null, count: 0, cats: [] };
       cur.count++;
       cur.cats.push(def.title);
       counts.set(id, cur);
@@ -143,7 +168,11 @@ function ConsistencyCard({ defs, rows }: { defs: RankingDef[]; rows: any[] }) {
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm truncate" title={e.ad_nome}>{e.ad_nome}</p>
-              <p className="text-xs text-muted-foreground truncate">{e.cats.join(' · ')}</p>
+              {(e.projeto_notion || e.produto_payt) && (
+                <p className="text-xs text-muted-foreground truncate">{e.projeto_notion || e.produto_payt}</p>
+              )}
+              {e.editor_notion && <p className="text-xs text-muted-foreground/60 truncate">{e.editor_notion}</p>}
+              <p className="text-xs text-muted-foreground/50 truncate">{e.cats.join(' · ')}</p>
             </div>
             <span className="text-sm font-semibold text-emerald-400 tabular-nums">{e.count}x</span>
           </div>
@@ -209,6 +238,8 @@ export function CriativosMetaTab() {
   const [colOrder, setColOrder]   = useState<ColKey[]>(ALL_COL_KEYS);
   const [colHidden, setColHidden] = useState<Set<ColKey>>(new Set());
   const [showColPanel, setShowColPanel] = useState(false);
+  const [notionMap, setNotionMap] = useState<Record<string, Array<{ editor_nome: string | null; projeto_nome: string | null }>>>({});
+  const [syncing, setSyncing] = useState(false);
 
   const { startStr, endStr } = useMemo(() => {
     if (preset === 'yesterday') return { startStr: ago(1), endStr: ago(1) };
@@ -218,78 +249,114 @@ export function CriativosMetaTab() {
   }, [preset, customStart, customEnd]);
 
   const load = async () => {
-      setLoading(true);
-      const [metaRes, paytRes, contasRes] = await Promise.all([
-        supabase
-          .from('metricas_meta')
-          .select(`
-            data, ad_id, ad_nome, ad_account_id, campanha_id, campanha_nome, adset_id,
-            investimento, impressoes, cliques_link,
-            ctr, cpm, cpc,
-            video_plays, video_3s, video_75pct,
-            compras_meta, faturamento_atribuido
-          `)
-          .eq('nivel', 'ad')
-          .not('ad_nome', 'is', null)
-          .gte('data', startStr)
-          .lte('data', endStr)
-          .limit(50000),
-        supabase
-          .from('vendas_payt')
-          .select('utm_content, utm_ad_id, utm_campaign, utm_medium, valor, produto')
-          .eq('status', 'paid')
-          .or('tipo_venda.is.null,tipo_venda.neq.Upsell')
-          .gte('data', startStr)
-          .lte('data', endStr)
-          .not('utm_content', 'is', null),
-        supabase
-          .from('ad_accounts')
-          .select('id, nome, produto_payt')
-          .eq('ativo', true),
-      ]);
+    setLoading(true);
+    const [metaRes, paytRes, contasRes] = await Promise.all([
+      supabase
+        .from('metricas_meta')
+        .select(`
+          data, ad_id, ad_nome, ad_account_id, campanha_id, campanha_nome, adset_id,
+          investimento, impressoes, cliques_link,
+          ctr, cpm, cpc,
+          video_plays, video_3s, video_75pct,
+          compras_meta, faturamento_atribuido
+        `)
+        .eq('nivel', 'ad')
+        .not('ad_nome', 'is', null)
+        .gte('data', startStr)
+        .lte('data', endStr)
+        .limit(50000),
+      supabase
+        .from('vendas_payt')
+        .select('utm_content, utm_ad_id, utm_campaign, utm_medium, valor, produto')
+        .eq('status', 'paid')
+        .or('tipo_venda.is.null,tipo_venda.neq.Upsell')
+        .gte('data', startStr)
+        .lte('data', endStr)
+        .not('utm_content', 'is', null),
+      supabase
+        .from('ad_accounts')
+        .select('id, nome, produto_payt')
+        .eq('ativo', true),
+    ]);
 
-      // mapa de contas: id → { nome, produto_payt }
-      const am: Record<string, { nome: string; produto_payt: string | null }> = {};
-      for (const c of contasRes.data || []) {
-        am[c.id] = { nome: c.nome, produto_payt: c.produto_payt };
+    // mapa de contas: id → { nome, produto_payt }
+    const am: Record<string, { nome: string; produto_payt: string | null }> = {};
+    for (const c of contasRes.data || []) {
+      am[c.id] = { nome: c.nome, produto_payt: c.produto_payt };
+    }
+
+    // Dois mapas de atribuição:
+    // pmById: keyed por ad_id do Meta (extraído do utm_content) — matching exato
+    // pmByKey: keyed por "utm_content|campanha_id|adset_id" — fallback para vendas sem utm_ad_id
+    const pmById:  Record<string, { vendas: number; valor: number }> = {};
+    const pmByKey: Record<string, { vendas: number; valor: number }> = {};
+
+    for (const v of paytRes.data || []) {
+      const adId  = (v.utm_ad_id as string | null) || null;
+      const prod  = (v.produto   as string | null) || '';
+      const valor = Number(v.valor || 0);
+
+      if (adId) {
+        // chave: ad_id + produto — garante que só contamos vendas do produto correto por conta
+        const key = adId + '|' + prod;
+        if (!pmById[key]) pmById[key] = { vendas: 0, valor: 0 };
+        pmById[key].vendas += 1;
+        pmById[key].valor  += valor;
+      } else {
+        // fallback: match por nome+campanha+adset
+        const utmCamp   = (v.utm_campaign as string | null) || '';
+        const utmMedium = (v.utm_medium   as string | null) || '';
+        const campId  = utmCamp.includes('|')   ? utmCamp.split('|').slice(-1)[0].trim()   : '';
+        const adsetId = utmMedium.includes('|') ? utmMedium.split('|').slice(-1)[0].trim() : '';
+        const key = (v.utm_content as string) + '|' + campId + '|' + adsetId;
+        if (!pmByKey[key]) pmByKey[key] = { vendas: 0, valor: 0 };
+        pmByKey[key].vendas += 1;
+        pmByKey[key].valor  += valor;
       }
+    }
 
-      // Dois mapas de atribuição:
-      // pmById: keyed por ad_id do Meta (extraído do utm_content) — matching exato
-      // pmByKey: keyed por "utm_content|campanha_id|adset_id" — fallback para vendas sem utm_ad_id
-      const pmById:  Record<string, { vendas: number; valor: number }> = {};
-      const pmByKey: Record<string, { vendas: number; valor: number }> = {};
+    setRows(metaRes.data || []);
+    setPaytByAdId(pmById);
+    setPaytByKey(pmByKey);
+    setAccountMap(am);
 
-      for (const v of paytRes.data || []) {
-        const adId   = (v.utm_ad_id as string | null) || null;
-        const prod   = (v.produto   as string | null) || '';
-        const valor  = Number(v.valor || 0);
+    // Carrega mapa do Notion (nome → editor/projeto)
+    const { data: notionRows } = await supabase
+      .from('notion_criativos')
+      .select('nome, editor_nome, projeto_nome');
+    const nm: Record<string, Array<{ editor_nome: string | null; projeto_nome: string | null }>> = {};
+    for (const r of notionRows || []) {
+      const k = String(r.nome).trim().toLowerCase();
+      if (!nm[k]) nm[k] = [];
+      nm[k].push({ editor_nome: r.editor_nome, projeto_nome: r.projeto_nome });
+    }
+    setNotionMap(nm);
 
-        if (adId) {
-          // chave: ad_id + produto — garante que só contamos vendas do produto correto por conta
-          const key = adId + '|' + prod;
-          if (!pmById[key]) pmById[key] = { vendas: 0, valor: 0 };
-          pmById[key].vendas += 1;
-          pmById[key].valor  += valor;
-        } else {
-          // fallback: match por nome+campanha+adset
-          const utmCamp   = (v.utm_campaign as string | null) || '';
-          const utmMedium = (v.utm_medium   as string | null) || '';
-          const campId  = utmCamp.includes('|')   ? utmCamp.split('|').slice(-1)[0].trim()   : '';
-          const adsetId = utmMedium.includes('|') ? utmMedium.split('|').slice(-1)[0].trim() : '';
-          const key = (v.utm_content as string) + '|' + campId + '|' + adsetId;
-          if (!pmByKey[key]) pmByKey[key] = { vendas: 0, valor: 0 };
-          pmByKey[key].vendas += 1;
-          pmByKey[key].valor  += valor;
+    setLoading(false);
+  };
+
+  const syncNotion = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-notion-criativos');
+      if (error || data?.error) {
+        toast({ title: 'Erro ao sincronizar Notion', description: data?.error || String(error), variant: 'destructive' });
+      } else {
+        toast({ title: `Notion sincronizado — ${data.synced} criativos` });
+        // Recarrega mapa
+        const { data: notionRows } = await supabase.from('notion_criativos').select('nome, editor_nome, projeto_nome');
+        const nm: Record<string, Array<{ editor_nome: string | null; projeto_nome: string | null }>> = {};
+        for (const r of notionRows || []) {
+          const k = String(r.nome).trim().toLowerCase();
+          if (!nm[k]) nm[k] = [];
+          nm[k].push({ editor_nome: r.editor_nome, projeto_nome: r.projeto_nome });
         }
+        setNotionMap(nm);
       }
-
-      setRows(metaRes.data || []);
-      setPaytByAdId(pmById);
-      setPaytByKey(pmByKey);
-      setAccountMap(am);
-      setLoading(false);
-    };
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => { load(); }, [startStr, endStr]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -368,8 +435,7 @@ export function CriativosMetaTab() {
 
       // Tentativa 1: match por ad_id + produto da conta (exato e por produto)
       const conta = accountMap[m.ad_account_id];
-      const produtoConta = conta?.produto_payt || '';
-      const byId = m.ad_id ? paytByAdId[m.ad_id + '|' + produtoConta] : null;
+      const byId = m.ad_id ? paytByAdId[m.ad_id + '|' + (conta?.produto_payt || '')] : null;
       if (byId) {
         paytVendas      = byId.vendas;
         paytFaturamento = byId.valor;
@@ -395,9 +461,28 @@ export function CriativosMetaTab() {
       // ROAS com faturamento real da Payt (ou atribuído do Meta)
       const roas = inv > 0 ? faturamento / inv : 0;
 
+      // Lookup Notion: exact → fallback without suffix (- cópia, - VSL, etc.)
+      const produtoPayt = conta?.produto_payt ?? '';
+      const adNomeLower = String(m.ad_nome || '').trim().toLowerCase();
+      const produtoLower = produtoPayt.toLowerCase();
+      const notionInfo = pickBest(notionMap[adNomeLower], produtoLower) ?? (() => {
+        const base = adNomeLower.replace(/\s*[-–—]\s*(c[oó]pia|vsl|copy)\s*(\d*)$/i, '').trim();
+        return base !== adNomeLower ? pickBest(notionMap[base], produtoLower) : null;
+      })();
+
+      // Only show project when it matches produto_payt (prevents inactive projects)
+      const projetoNotion = notionInfo?.projeto_nome ?? null;
+      const projetoBate = projetoNotion && produtoPayt
+        ? projetoNotion.toLowerCase().includes(produtoLower) ||
+          produtoLower.includes(projetoNotion.toLowerCase())
+        : false;
+
       return {
         ...m,
         conta_nome: conta?.nome ?? '—',
+        produto_payt: produtoPayt,
+        editor_notion: notionInfo?.editor_nome ?? null,
+        projeto_notion: projetoBate ? projetoNotion : null,
         ctr_pct, cpm, cpc,
         hook_rate, body_rate,
         taxa_conv, roas,
@@ -406,7 +491,7 @@ export function CriativosMetaTab() {
         fonte_vendas: foundPayt ? (byId ? 'payt-id' : 'payt-key') : 'meta',
       };
     });
-  }, [rows, paytByAdId, paytByKey, accountMap]);
+  }, [rows, paytByAdId, paytByKey, accountMap, notionMap]);
 
   const sorted = useMemo(() =>
     [...ads].sort((a, b) => {
@@ -530,7 +615,11 @@ export function CriativosMetaTab() {
     <div className="space-y-5">
       {/* Filtros */}
       <div className="bg-card border border-border rounded-lg p-4 flex items-end gap-3 flex-wrap">
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={syncNotion} disabled={syncing}>
+            <RotateCw className={cn('h-3.5 w-3.5', syncing && 'animate-spin')} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar Notion'}
+          </Button>
           <ImportarPaytModal onImported={load} />
         </div>
         <div className="w-full border-t border-border/50 mt-1 mb-0" />

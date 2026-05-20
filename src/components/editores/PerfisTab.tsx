@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 type Cargo = { id: string; nome: string; multiplicador: number; cor: string | null; ordem: number };
-type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null };
+type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null; multiplicador: number | null };
 
 export function PerfisTab() {
   const confirm = useConfirm();
@@ -28,7 +28,7 @@ export function PerfisTab() {
   const [selected, setSelected] = useState<Editor | null>(null);
   const [openForm, setOpenForm] = useState(false);
   const [editing, setEditing] = useState<Editor | null>(null);
-  const [form, setForm] = useState({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '' });
+  const [form, setForm] = useState({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '', multiplicador: '' });
 
   const load = async () => {
     setLoading(true);
@@ -36,13 +36,18 @@ export function PerfisTab() {
       supabase.from('cargos').select('*').order('ordem'),
       supabase.from('editores').select('*').order('nome'),
     ]);
-    setCargos(c.data || []);
+    const cgs: Cargo[] = c.data || [];
     const eds: Editor[] = e.data || [];
+    setCargos(cgs);
     setEditores(eds);
-    // não-admin: abre automaticamente o próprio perfil
+    // não-admin sem cargo de liderança: abre automaticamente o próprio perfil
     if (!isAdmin && user) {
       const mine = eds.find(ed => ed.usuario_id === user.id) ?? null;
-      setSelected(mine);
+      const cgsMap = Object.fromEntries(cgs.map(cg => [cg.id, cg]));
+      const myCargoNome = mine?.cargo_id ? (cgsMap[mine.cargo_id]?.nome || '') : '';
+      const normalizado = myCargoNome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      const isHeadOrAbove = normalizado.includes('head') || normalizado.includes('lider');
+      if (!isHeadOrAbove) setSelected(mine);
     }
     setLoading(false);
   };
@@ -50,9 +55,19 @@ export function PerfisTab() {
 
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
 
+  const canSeeAll = useMemo(() => {
+    if (isAdmin) return true;
+    const mine = editores.find(ed => ed.usuario_id === user?.id);
+    if (!mine?.cargo_id) return false;
+    const cargo = cargoMap[mine.cargo_id];
+    if (!cargo) return false;
+    const nome = cargo.nome.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    return nome.includes('head') || nome.includes('lider');
+  }, [isAdmin, editores, cargoMap, user]);
+
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '' });
+    setForm({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '', multiplicador: '' });
     if (cargos.length === 0) load();
     setOpenForm(true);
   };
@@ -61,6 +76,7 @@ export function PerfisTab() {
     setForm({
       nome: ed.nome, cargo_id: ed.cargo_id || '', data_inicio: ed.data_inicio || '',
       ativo: ed.ativo, observacoes: ed.observacoes || '',
+      multiplicador: ed.multiplicador != null ? String(ed.multiplicador) : '',
     });
     setOpenForm(true);
   };
@@ -72,6 +88,7 @@ export function PerfisTab() {
       data_inicio: form.data_inicio || null,
       ativo: form.ativo,
       observacoes: form.observacoes || null,
+      multiplicador: form.multiplicador !== '' ? parseFloat(form.multiplicador) : null,
     };
     const res = editing
       ? await supabase.from('editores').update(payload).eq('id', editing.id)
@@ -103,7 +120,7 @@ export function PerfisTab() {
           {editores.map(ed => {
             const cg = ed.cargo_id ? cargoMap[ed.cargo_id] : null;
             const isMine = ed.usuario_id === user?.id;
-            const canView = isAdmin || isMine;
+            const canView = canSeeAll || isMine;
             return (
               <button
                 key={ed.id}
@@ -123,7 +140,9 @@ export function PerfisTab() {
                   {cg && (
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                       <span className="inline-block w-2 h-2 rounded-full" style={{ background: cg.cor || '#888' }} />
-                      {cg.nome} · {Number(cg.multiplicador).toFixed(2)}x
+                      {cg.nome} · <span className={cn(ed.multiplicador != null && 'text-primary font-medium')}>
+                        {Number(ed.multiplicador ?? cg.multiplicador).toFixed(2)}x
+                      </span>
                     </div>
                   )}
                 </div>
@@ -186,6 +205,29 @@ export function PerfisTab() {
               <Label>Observações</Label>
               <Textarea value={form.observacoes} onChange={e => setForm({ ...form, observacoes: e.target.value })} />
             </div>
+            <div>
+              <Label>Multiplicador individual</Label>
+              <p className="text-xs text-muted-foreground mb-1.5">
+                Sobrescreve o multiplicador padrão do cargo. Deixe em branco para usar o do cargo.
+              </p>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={form.cargo_id ? `Padrão: ${Number(cargos.find(c => c.id === form.cargo_id)?.multiplicador ?? 1).toFixed(2)}x` : 'Ex: 1.20'}
+                value={form.multiplicador}
+                onChange={e => setForm({ ...form, multiplicador: e.target.value })}
+              />
+              <div className="mt-2 rounded-md border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+                <div className="font-medium text-foreground mb-1">Referência por cargo</div>
+                <div className="flex justify-between"><span>Júnior 2</span><span>0,70 – 0,90x</span></div>
+                <div className="flex justify-between"><span>Júnior 1</span><span>1,00x</span></div>
+                <div className="flex justify-between"><span>Pleno</span><span>1,10 – 1,20x</span></div>
+                <div className="flex justify-between"><span>Sênior</span><span>1,30x</span></div>
+                <div className="flex justify-between"><span>Head / Líder</span><span>1,40 – 1,50x</span></div>
+                <div className="flex justify-between"><span>Líder Estrategista</span><span>1,60 – 1,80x</span></div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenForm(false)}>Cancelar</Button>
@@ -234,9 +276,28 @@ function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged, i
               <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
                 <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: cargoAtual.cor || '#888' }} />
                 {cargoAtual.nome}
-                <Badge variant="secondary">multiplicador {Number(cargoAtual.multiplicador).toFixed(2)}x</Badge>
+                {editor.multiplicador != null ? (
+                  <Badge variant="secondary">
+                    {Number(editor.multiplicador).toFixed(2)}x <span className="opacity-60 ml-1">(individual)</span>
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">{Number(cargoAtual.multiplicador).toFixed(2)}x</Badge>
+                )}
               </div>
             )}
+            <div className="flex items-center gap-3 mt-3">
+              <div className="bg-secondary border border-border rounded-lg px-4 py-2 text-center min-w-[90px]">
+                <div className="text-xs text-muted-foreground mb-0.5">Multiplicador</div>
+                <div className="text-xl font-bold text-primary">
+                  {cargoAtual
+                    ? Number(editor.multiplicador ?? cargoAtual.multiplicador).toFixed(2) + 'x'
+                    : editor.multiplicador != null ? Number(editor.multiplicador).toFixed(2) + 'x' : '—'}
+                </div>
+                {editor.multiplicador != null && (
+                  <div className="text-xs text-muted-foreground mt-0.5">individual</div>
+                )}
+              </div>
+            </div>
             <div className="text-xs text-muted-foreground mt-2">
               Início: {editor.data_inicio || '—'} · {editor.ativo ? 'Ativo' : 'Inativo'}
             </div>
