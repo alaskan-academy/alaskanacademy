@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Mountain } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 export default function LoginPage() {
   const { signIn } = useAuth();
   const navigate   = useNavigate();
+  const location   = useLocation();
+  const from       = (location.state as any)?.from?.pathname ?? "/";
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
@@ -23,7 +25,7 @@ export default function LoginPage() {
     if (err) {
       setError('Email ou senha incorretos.');
     } else {
-      navigate('/');
+      navigate(from, { replace: true });
     }
   };
 
