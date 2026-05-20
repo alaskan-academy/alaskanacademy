@@ -10,13 +10,18 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
-import { Plus, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { Plus, ChevronRight, Pencil, Trash2, Lock } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { cn } from '@/lib/utils';
 
 type Cargo = { id: string; nome: string; multiplicador: number; cor: string | null; ordem: number };
-type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null };
+type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null };
 
 export function PerfisTab() {
   const confirm = useConfirm();
+  const { user, perfil: authPerfil } = useAuth();
+  const isAdmin = authPerfil?.is_admin ?? false;
+
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [editores, setEditores] = useState<Editor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +37,13 @@ export function PerfisTab() {
       supabase.from('editores').select('*').order('nome'),
     ]);
     setCargos(c.data || []);
-    setEditores(e.data || []);
+    const eds: Editor[] = e.data || [];
+    setEditores(eds);
+    // não-admin: abre automaticamente o próprio perfil
+    if (!isAdmin && user) {
+      const mine = eds.find(ed => ed.usuario_id === user.id) ?? null;
+      setSelected(mine);
+    }
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -84,17 +95,27 @@ export function PerfisTab() {
       <div className="lg:col-span-1 bg-card border border-border rounded-lg">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h3 className="text-sm font-medium">Editores</h3>
-          <Button size="sm" onClick={openNew}><Plus className="h-4 w-4" /> Novo</Button>
+          {isAdmin && <Button size="sm" onClick={openNew}><Plus className="h-4 w-4" /> Novo</Button>}
         </div>
         <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
           {loading && <div className="p-4 text-sm text-muted-foreground">Carregando...</div>}
           {!loading && editores.length === 0 && <div className="p-4 text-sm text-muted-foreground">Nenhum editor cadastrado</div>}
           {editores.map(ed => {
             const cg = ed.cargo_id ? cargoMap[ed.cargo_id] : null;
+            const isMine = ed.usuario_id === user?.id;
+            const canView = isAdmin || isMine;
             return (
-              <button key={ed.id} onClick={() => setSelected(ed)}
-                className={`w-full text-left px-4 py-3 hover:bg-secondary/50 transition-colors flex items-center justify-between ${selected?.id === ed.id ? 'bg-secondary' : ''}`}>
-                <div className="min-w-0">
+              <button
+                key={ed.id}
+                onClick={() => canView && setSelected(ed)}
+                disabled={!canView}
+                className={cn(
+                  'w-full text-left px-4 py-3 flex items-center justify-between transition-colors',
+                  canView ? 'hover:bg-secondary/50 cursor-pointer' : 'cursor-default',
+                  selected?.id === ed.id ? 'bg-secondary' : '',
+                )}
+              >
+                <div className={cn('min-w-0 flex-1', !canView && 'blur-sm select-none')}>
                   <div className="text-sm font-medium truncate flex items-center gap-2">
                     {ed.nome}
                     {!ed.ativo && <Badge variant="outline" className="text-xs">inativo</Badge>}
@@ -106,7 +127,10 @@ export function PerfisTab() {
                     </div>
                   )}
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                {canView
+                  ? <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  : <Lock className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                }
               </button>
             );
           })}
@@ -122,6 +146,7 @@ export function PerfisTab() {
             onEdit={() => openEdit(selected)}
             onDelete={() => remove(selected.id)}
             onChanged={load}
+            isAdmin={isAdmin}
           />
         ) : (
           <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
@@ -172,9 +197,9 @@ export function PerfisTab() {
   );
 }
 
-function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged }: {
+function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged, isAdmin }: {
   editor: Editor; cargos: Cargo[]; cargoMap: Record<string, Cargo>;
-  onEdit: () => void; onDelete: () => void; onChanged: () => void;
+  onEdit: () => void; onDelete: () => void; onChanged: () => void; isAdmin: boolean;
 }) {
   const [promocoes, setPromocoes] = useState<any[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<any[]>([]);
@@ -217,21 +242,23 @@ function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged }:
             </div>
             {editor.observacoes && <p className="text-sm mt-3 text-foreground/80">{editor.observacoes}</p>}
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button>
-          </div>
+          {isAdmin && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
+              <Button size="sm" variant="outline" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button>
+            </div>
+          )}
         </div>
       </div>
 
-      <HistoricoPromocoes editorId={editor.id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} />
+      <HistoricoPromocoes editorId={editor.id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} isAdmin={isAdmin} />
       <HistoricoComissoes items={avaliacoes} />
       <HistoricoFolgas items={avaliacoes} />
     </div>
   );
 }
 
-function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload }: any) {
+function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload, isAdmin }: any) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ cargo_id: '', data: '', observacao: '' });
   const save = async () => {
@@ -242,7 +269,7 @@ function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload }: any) 
     setOpen(false); setForm({ cargo_id: '', data: '', observacao: '' }); reload();
   };
   return (
-    <Section title="Histórico de promoções" onAdd={() => setOpen(true)}>
+    <Section title="Histórico de promoções" onAdd={isAdmin ? () => setOpen(true) : undefined}>
       {items.length === 0 ? <Empty /> : (
         <table className="w-full text-sm">
           <thead><tr className="text-xs text-muted-foreground border-b border-border">

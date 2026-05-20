@@ -19,23 +19,27 @@ type Usuario = {
 };
 
 type PermMap = Record<string, boolean>; // pageKey → permitido
+type EditorOpt = { id: string; nome: string };
 
 const defaultPerms = (): PermMap =>
   Object.fromEntries(PAGINAS.map(p => [p.key, true]));
 
 export function GerenciarUsuariosTab() {
   const confirm = useConfirm();
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [permsMap, setPermsMap] = useState<Record<string, PermMap>>({}); // userId → PermMap
-  const [loading, setLoading]   = useState(true);
-  const [open, setOpen]         = useState(false);
+  const [usuarios, setUsuarios]   = useState<Usuario[]>([]);
+  const [editores, setEditores]   = useState<EditorOpt[]>([]);
+  const [editorMap, setEditorMap] = useState<Record<string, string>>({}); // usuario_id → editor_id
+  const [permsMap, setPermsMap]   = useState<Record<string, PermMap>>({}); // userId → PermMap
+  const [loading, setLoading]     = useState(true);
+  const [open, setOpen]           = useState(false);
 
   // Form para novo usuário
-  const [nome, setNome]         = useState('');
-  const [email, setEmail]       = useState('');
-  const [senha, setSenha]       = useState('');
-  const [newPerms, setNewPerms] = useState<PermMap>(defaultPerms());
-  const [saving, setSaving]     = useState(false);
+  const [nome, setNome]           = useState('');
+  const [email, setEmail]         = useState('');
+  const [senha, setSenha]         = useState('');
+  const [editorId, setEditorId]   = useState('');
+  const [newPerms, setNewPerms]   = useState<PermMap>(defaultPerms());
+  const [saving, setSaving]       = useState(false);
 
   // Modal trocar senha
   const [pwUser, setPwUser]     = useState<Usuario | null>(null);
@@ -44,10 +48,20 @@ export function GerenciarUsuariosTab() {
 
   const load = async () => {
     setLoading(true);
-    const { data: users, error } = await supabase.rpc('listar_usuarios');
+    const [{ data: users, error }, { data: eds }] = await Promise.all([
+      supabase.rpc('listar_usuarios'),
+      supabase.from('editores').select('id, nome, usuario_id').order('nome'),
+    ]);
+
     if (error) { toast({ title: 'Erro ao carregar usuários', variant: 'destructive' }); setLoading(false); return; }
 
     setUsuarios(users ?? []);
+    setEditores((eds ?? []).map((e: any) => ({ id: e.id, nome: e.nome })));
+
+    // mapa usuario_id → editor_id
+    const em: Record<string, string> = {};
+    for (const ed of eds ?? []) { if (ed.usuario_id) em[ed.usuario_id] = ed.id; }
+    setEditorMap(em);
 
     // Carrega permissões de todos os usuários
     const ids = (users ?? []).map((u: Usuario) => u.id);
@@ -93,15 +107,21 @@ export function GerenciarUsuariosTab() {
       return;
     }
 
-    // Salva permissões
     const userId = data.user.id;
+
+    // Salva permissões
     const rows = PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true }));
     await supabase.from('permissoes_paginas').upsert(rows, { onConflict: 'usuario_id,pagina' });
+
+    // Vincula editor se selecionado
+    if (editorId) {
+      await supabase.from('editores').update({ usuario_id: userId }).eq('id', editorId);
+    }
 
     toast({ title: 'Usuário criado' });
     setSaving(false);
     setOpen(false);
-    setNome(''); setEmail(''); setSenha(''); setNewPerms(defaultPerms());
+    setNome(''); setEmail(''); setSenha(''); setEditorId(''); setNewPerms(defaultPerms());
     load();
   };
 
@@ -191,8 +211,28 @@ export function GerenciarUsuariosTab() {
               </div>
 
               {!u.is_admin && (
-                <div className="border-t border-border/50 pt-3">
-                  <p className="text-xs text-muted-foreground mb-2">Páginas visíveis</p>
+                <div className="border-t border-border/50 pt-3 space-y-3">
+                  {/* Vínculo com editor */}
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1.5">Editor vinculado</p>
+                    <select
+                      value={editorMap[u.id] ?? ''}
+                      onChange={async e => {
+                        const newEdId = e.target.value;
+                        // Remove vínculo anterior se existir
+                        await supabase.from('editores').update({ usuario_id: null }).eq('usuario_id', u.id);
+                        if (newEdId) await supabase.from('editores').update({ usuario_id: u.id }).eq('id', newEdId);
+                        load();
+                      }}
+                      className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full max-w-xs"
+                    >
+                      <option value="">— Nenhum —</option>
+                      {editores.map(ed => (
+                        <option key={ed.id} value={ed.id}>{ed.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Páginas visíveis</p>
                   <div className="flex flex-wrap gap-2">
                     {PAGINAS.map(p => {
                       const allowed = permsMap[u.id]?.[p.key] ?? true;
@@ -240,6 +280,19 @@ export function GerenciarUsuariosTab() {
             <div>
               <Label className="text-xs">Senha inicial</Label>
               <Input type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Mínimo 6 caracteres" className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Editor vinculado (opcional)</Label>
+              <select
+                value={editorId}
+                onChange={e => setEditorId(e.target.value)}
+                className="w-full mt-1 bg-secondary border border-border rounded-md px-3 py-2 text-sm"
+              >
+                <option value="">— Nenhum —</option>
+                {editores.map(ed => (
+                  <option key={ed.id} value={ed.id}>{ed.nome}</option>
+                ))}
+              </select>
             </div>
             <div>
               <Label className="text-xs mb-2 block">Páginas visíveis</Label>

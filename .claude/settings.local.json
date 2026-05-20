@@ -9,7 +9,8 @@
       "mcp__7dc092d3-374a-4226-971d-c554b19af9b5__deploy_edge_function",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(curl -s -X POST \"https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/setup-admin\" -H \"Content-Type: application/json\" -d '{\"nome\":\"Academy Alaskan\",\"email\":\"academyalaskan@gmail.com\",\"password\":\"*Alaskan2026\"}')"
+      "Bash(curl -s -X POST \"https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/setup-admin\" -H \"Content-Type: application/json\" -d '{\"nome\":\"Academy Alaskan\",\"email\":\"academyalaskan@gmail.com\",\"password\":\"*Alaskan2026\"}')",
+      "Bash(find \"C:\\\\Users\\\\Jessica Veiga\\\\Desktop\\\\Sync\\\\Claude\\\\Projetos Alaskan\\\\Dashboard\" -name \"*migration*\" -o -name \"*setup*\" -o -name \"*schema*\" 2>/dev/null | grep -i \"\\\\.sql\\\\|\\\\.ts\\\\|\\\\.tsx\")"
     ]
   }
 }
