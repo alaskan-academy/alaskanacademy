@@ -71,14 +71,24 @@ export function GerenciarUsuariosTab() {
 
   useEffect(() => { load(); }, []);
 
+  const fnError = async (error: any, data: any): Promise<string | null> => {
+    if (data?.error) return data.error;
+    if (error) {
+      try { const b = await error.context?.json?.(); if (b?.error) return b.error; } catch {}
+      return error.message ?? 'Erro desconhecido';
+    }
+    return null;
+  };
+
   const handleCreate = async () => {
     if (!email || !senha) return toast({ title: 'Preencha email e senha', variant: 'destructive' });
     setSaving(true);
     const { data, error } = await supabase.functions.invoke('admin-users', {
       body: { action: 'create', email, password: senha, nome },
     });
-    if (error || data?.error) {
-      toast({ title: data?.error ?? 'Erro ao criar usuário', variant: 'destructive' });
+    const err = await fnError(error, data);
+    if (err) {
+      toast({ title: err, variant: 'destructive' });
       setSaving(false);
       return;
     }
@@ -120,7 +130,8 @@ export function GerenciarUsuariosTab() {
     const { data, error } = await supabase.functions.invoke('admin-users', {
       body: { action: 'delete', userId: u.id },
     });
-    if (error || data?.error) return toast({ title: data?.error ?? 'Erro ao excluir', variant: 'destructive' });
+    const err = await fnError(error, data);
+    if (err) return toast({ title: err, variant: 'destructive' });
     toast({ title: 'Usuário removido' });
     load();
   };
@@ -132,7 +143,8 @@ export function GerenciarUsuariosTab() {
       body: { action: 'update_password', userId: pwUser.id, password: newPw },
     });
     setPwSaving(false);
-    if (error || data?.error) return toast({ title: data?.error ?? 'Erro ao trocar senha', variant: 'destructive' });
+    const err = await fnError(error, data);
+    if (err) return toast({ title: err, variant: 'destructive' });
     toast({ title: 'Senha atualizada' });
     setPwUser(null); setNewPw('');
   };
