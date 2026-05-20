@@ -14,6 +14,7 @@ import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
 import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
 import { ConfiguracaoTab } from '@/components/editores/ConfiguracaoTab';
 import { EmpresasOfertasTab } from '@/components/editores/EmpresasOfertasTab';
+import { CriativosMetaTab } from '@/components/editores/CriativosMetaTab';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Row = {
@@ -127,12 +128,15 @@ export default function EditorsPage() {
           <TabsTrigger value="avaliacoes" className={tabCls}>Avaliações</TabsTrigger>
           <TabsTrigger value="desempenho" className={tabCls}>Desempenho</TabsTrigger>
           <TabsTrigger value="avaliacao" className={tabCls}>Avaliar criativo</TabsTrigger>
+          <TabsTrigger value="criativos" className={tabCls}>Criativos Meta</TabsTrigger>
           <TabsTrigger value="config" className={tabCls}>Configuração</TabsTrigger>
         </TabsList>
 
         <TabsContent value="perfis"><PerfisTab /></TabsContent>
         <TabsContent value="avaliacoes"><AvaliacoesTab /></TabsContent>
         <TabsContent value="desempenho"><DesempenhoTab /></TabsContent>
+        <TabsContent value="criativos"><CriativosMetaTab /></TabsContent>
+
         <TabsContent value="config">
           <Tabs defaultValue="criterios" className="space-y-4">
             <TabsList className="bg-secondary border border-border">

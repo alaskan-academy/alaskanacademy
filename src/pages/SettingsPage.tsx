@@ -6,6 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardsSettings from "@/components/DashboardsSettings";
+import { ContasAnunciosTab } from "@/components/editores/ContasAnunciosTab";
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -89,10 +90,17 @@ export default function SettingsPage() {
           <TabsTrigger value="fiscal" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Parâmetros Fiscais
           </TabsTrigger>
+          <TabsTrigger value="contas" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            Contas de Anúncios
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboards">
           <DashboardsSettings />
+        </TabsContent>
+
+        <TabsContent value="contas">
+          <ContasAnunciosTab />
         </TabsContent>
 
         <TabsContent value="fiscal">
