@@ -26,10 +26,15 @@ function clr(v: number, good: number, ok: number, rev = false) {
   return v >= good ? 'text-emerald-400' : v >= ok ? 'text-amber-400' : 'text-red-400';
 }
 
-// ─── datas ────────────────────────────────────────────────────────────────────
-const iso   = (d: Date) => d.toISOString().slice(0, 10);
-const today = () => iso(new Date());
-const ago   = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+// ─── datas (fuso de São Paulo) ────────────────────────────────────────────────
+const TZ = 'America/Sao_Paulo';
+const brDate = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: TZ }); // → YYYY-MM-DD
+const today  = () => brDate(new Date());
+const ago    = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return brDate(d);
+};
 
 // ─── ranking card ─────────────────────────────────────────────────────────────
 type RankingDef = {
@@ -41,9 +46,14 @@ type RankingDef = {
   subtitle?: string;
 };
 
+const MIN_SPEND = 100;
+const MIN_VENDAS = 3;
+const qualifica = (r: any) =>
+  Number(r.investimento ?? 0) >= MIN_SPEND || Number(r.vendas ?? 0) > MIN_VENDAS;
+
 function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
   const top = [...rows]
-    .filter(r => Number(r[def.key] ?? 0) > 0)
+    .filter(r => qualifica(r) && Number(r[def.key] ?? 0) > 0)
     .sort((a, b) => Number(b[def.key] ?? 0) - Number(a[def.key] ?? 0))
     .slice(0, 5);
 
@@ -78,6 +88,64 @@ function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
             )}>
               {def.fmt(Number(r[def.key] ?? 0))}
             </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConsistencyCard({ defs, rows }: { defs: RankingDef[]; rows: any[] }) {
+  // conta quantas vezes cada ad aparece no top 5 de cada ranking
+  const counts = new Map<string, { ad_nome: string; count: number; cats: string[] }>();
+  for (const def of defs) {
+    const top = [...rows]
+      .filter(r => qualifica(r) && Number(r[def.key] ?? 0) > 0)
+      .sort((a, b) => Number(b[def.key] ?? 0) - Number(a[def.key] ?? 0))
+      .slice(0, 5);
+    for (const r of top) {
+      const id = String(r.ad_id ?? r.ad_nome);
+      const cur = counts.get(id) ?? { ad_nome: r.ad_nome, count: 0, cats: [] };
+      cur.count++;
+      cur.cats.push(def.title);
+      counts.set(id, cur);
+    }
+  }
+
+  const top = [...counts.values()]
+    .filter(e => e.count >= 2)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+        <span className="text-primary"><Trophy className="h-4 w-4" /></span>
+        <div>
+          <h4 className="text-sm font-semibold">Mais consistente</h4>
+          <p className="text-xs text-muted-foreground">Aparece em mais de um ranking</p>
+        </div>
+      </div>
+      <div className="divide-y divide-border/50">
+        {top.length === 0 && (
+          <div className="px-4 py-6 text-center text-xs text-muted-foreground">Nenhum ad no top de 2+ métricas</div>
+        )}
+        {top.map((e, i) => (
+          <div key={e.ad_nome + i} className="px-4 py-2.5 flex items-start gap-3">
+            <span className={cn(
+              'text-xs font-bold w-5 text-center mt-0.5',
+              i === 0 && 'text-amber-400',
+              i === 1 && 'text-slate-400',
+              i === 2 && 'text-orange-600',
+              i > 2    && 'text-muted-foreground',
+            )}>
+              {i + 1}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm truncate" title={e.ad_nome}>{e.ad_nome}</p>
+              <p className="text-xs text-muted-foreground truncate">{e.cats.join(' · ')}</p>
+            </div>
+            <span className="text-sm font-semibold text-emerald-400 tabular-nums">{e.count}x</span>
           </div>
         ))}
       </div>
@@ -568,6 +636,7 @@ export function CriativosMetaTab() {
         {RANKINGS.map(def => (
           <RankingCard key={def.key} def={def} rows={adsParaRanking} />
         ))}
+        <ConsistencyCard defs={RANKINGS} rows={adsParaRanking} />
       </div>
 
       {/* Tabela completa */}

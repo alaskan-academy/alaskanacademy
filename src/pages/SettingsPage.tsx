@@ -7,8 +7,11 @@ import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardsSettings from "@/components/DashboardsSettings";
 import { ContasAnunciosTab } from "@/components/editores/ContasAnunciosTab";
+import { GerenciarUsuariosTab } from "@/components/GerenciarUsuariosTab";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function SettingsPage() {
+  const { perfil } = useAuth();
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     imposto_simples_nacional_pct: 0,
@@ -83,7 +86,7 @@ export default function SettingsPage() {
   return (
     <DashboardLayout title="Configurações">
       <Tabs defaultValue="dashboards">
-        <TabsList className="bg-secondary border border-border mb-6">
+        <TabsList className="bg-secondary border border-border mb-6 flex-wrap h-auto">
           <TabsTrigger value="dashboards" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Dashboards
           </TabsTrigger>
@@ -93,6 +96,11 @@ export default function SettingsPage() {
           <TabsTrigger value="contas" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             Contas de Anúncios
           </TabsTrigger>
+          {perfil?.is_admin && (
+            <TabsTrigger value="usuarios" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Usuários
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="dashboards">
@@ -102,6 +110,12 @@ export default function SettingsPage() {
         <TabsContent value="contas">
           <ContasAnunciosTab />
         </TabsContent>
+
+        {perfil?.is_admin && (
+          <TabsContent value="usuarios">
+            <GerenciarUsuariosTab />
+          </TabsContent>
+        )}
 
         <TabsContent value="fiscal">
           {loading ? (

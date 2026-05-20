@@ -1,11 +1,12 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
 import { useFilters } from '@/contexts/FilterContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
@@ -17,18 +18,18 @@ interface Funil {
   ativo: boolean;
 }
 
-const subPages = [
-  { path: '/', label: 'Resumo', icon: LayoutDashboard },
-  { path: '/meta-ads', label: 'Meta Ads', icon: TrendingUp },
-  { path: '/funil', label: 'Funil', icon: Filter },
-  { path: '/vendas', label: 'Vendas', icon: ShoppingCart },
-  { path: '/utm', label: 'Análise UTM', icon: Link2 },
-  { path: '/clientes', label: 'Clientes', icon: Users },
+const ALL_SUB_PAGES = [
+  { path: '/',         label: 'Resumo',      icon: LayoutDashboard, key: 'overview' },
+  { path: '/meta-ads', label: 'Meta Ads',    icon: TrendingUp,      key: 'meta-ads' },
+  { path: '/funil',    label: 'Funil',       icon: Filter,          key: 'funil' },
+  { path: '/vendas',   label: 'Vendas',      icon: ShoppingCart,    key: 'vendas' },
+  { path: '/utm',      label: 'Análise UTM', icon: Link2,           key: 'utm' },
+  { path: '/clientes', label: 'Clientes',    icon: Users,           key: 'clientes' },
 ];
 
-const fixedItems = [
-  { path: '/configuracoes', label: 'Configurações', icon: Settings },
-  { path: '/editores', label: 'Editores', icon: BarChart3 },
+const ALL_FIXED_ITEMS = [
+  { path: '/configuracoes', label: 'Configurações', icon: Settings,  key: 'configuracoes' },
+  { path: '/editores',      label: 'Editores',      icon: BarChart3, key: 'editores' },
 ];
 
 const prodColors: Record<string, string> = {
@@ -44,10 +45,19 @@ const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
   const { funilId, setFunilId } = useFilters();
+  const { canAccess, perfil, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [funis, setFunis] = useState<Funil[]>([]);
   const [loadingFunis, setLoadingFunis] = useState(true);
+
+  const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
+  const fixedItems = ALL_FIXED_ITEMS.filter(p => canAccess(p.key));
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   // Track which dashboard is expanded — null means "Geral"
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -214,6 +224,15 @@ export function AppSidebar() {
             </button>
           </div>
           <SidebarInner onNav={() => setMobileOpen(false)} />
+          <div className="border-t border-sidebar-border flex items-center gap-2 px-4 py-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground truncate">{perfil?.nome}</p>
+              {perfil?.is_admin && <p className="text-[10px] text-muted-foreground">Admin</p>}
+            </div>
+            <button onClick={handleSignOut} title="Sair" className="text-muted-foreground hover:text-foreground p-1 rounded">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </aside>
       </>
     );
@@ -231,9 +250,28 @@ export function AppSidebar() {
           {!collapsed && <span className="text-foreground font-semibold text-lg tracking-tight">Alaskan</span>}
         </div>
         <SidebarInner />
+        {/* Usuário + logout */}
+        <div className={cn(
+          "border-t border-sidebar-border flex items-center gap-2 px-3 py-2",
+          collapsed ? "justify-center" : "",
+        )}>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-foreground truncate">{perfil?.nome}</p>
+              {perfil?.is_admin && <p className="text-[10px] text-muted-foreground">Admin</p>}
+            </div>
+          )}
+          <button
+            onClick={handleSignOut}
+            title="Sair"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
         <button
           onClick={toggle}
-          className="flex items-center justify-center h-12 border-t border-sidebar-border text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center justify-center h-10 border-t border-sidebar-border text-muted-foreground hover:text-foreground transition-colors"
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>

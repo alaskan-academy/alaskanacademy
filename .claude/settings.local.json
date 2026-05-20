@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__7dc092d3-374a-4226-971d-c554b19af9b5__list_tables",
+      "mcp__7dc092d3-374a-4226-971d-c554b19af9b5__execute_sql",
+      "mcp__7dc092d3-374a-4226-971d-c554b19af9b5__apply_migration",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx tsc *)",
+      "mcp__7dc092d3-374a-4226-971d-c554b19af9b5__deploy_edge_function",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
