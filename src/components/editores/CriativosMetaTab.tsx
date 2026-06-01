@@ -105,7 +105,7 @@ function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
               {(r.projeto_notion || r.produto_payt) && (
                 <div className="text-xs text-muted-foreground truncate">{r.projeto_notion || r.produto_payt}</div>
               )}
-              {r.editor_notion && <div className="text-xs text-muted-foreground/60 truncate">{r.editor_notion}</div>}
+              {/* editor_notion oculto temporariamente */}
             </div>
             <span className={cn(
               'text-sm font-semibold tabular-nums',
@@ -171,7 +171,7 @@ function ConsistencyCard({ defs, rows }: { defs: RankingDef[]; rows: any[] }) {
               {(e.projeto_notion || e.produto_payt) && (
                 <p className="text-xs text-muted-foreground truncate">{e.projeto_notion || e.produto_payt}</p>
               )}
-              {e.editor_notion && <p className="text-xs text-muted-foreground/60 truncate">{e.editor_notion}</p>}
+              {/* editor_notion oculto temporariamente */}
               <p className="text-xs text-muted-foreground/50 truncate">{e.cats.join(' · ')}</p>
             </div>
             <span className="text-sm font-semibold text-emerald-400 tabular-nums">{e.count}x</span>
