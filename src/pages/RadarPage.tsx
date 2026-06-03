@@ -5,10 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
@@ -143,7 +141,7 @@ export default function RadarPage() {
   const [form, setForm]             = useState(blankForm());
   const [saving, setSaving]         = useState(false);
 
-  // detail sheet
+  // detalhe dialog
   const [detalhe, setDetalhe]       = useState<Teste | null>(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -298,24 +296,24 @@ export default function RadarPage() {
           <Input placeholder="Buscar teste..." value={search} onChange={e => setSearch(e.target.value)}
             className="pl-8 h-8 text-sm" />
         </div>
-        <Select value={filtroArea} onValueChange={setFiltroArea}>
+        <Select value={filtroArea || 'all'} onValueChange={v => setFiltroArea(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Área" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todas as áreas</SelectItem>
+            <SelectItem value="all">Todas as áreas</SelectItem>
             {areas.map(a => <SelectItem key={a.id} value={a.id}>{a.icone} {a.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+        <Select value={filtroStatus || 'all'} onValueChange={v => setFiltroStatus(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos os status</SelectItem>
+            <SelectItem value="all">Todos os status</SelectItem>
             {Object.entries(STATUS_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={filtroResultado} onValueChange={setFiltroResultado}>
+        <Select value={filtroResultado || 'all'} onValueChange={v => setFiltroResultado(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Resultado" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos</SelectItem>
+            <SelectItem value="all">Todos</SelectItem>
             {Object.entries(RESULTADO_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -387,23 +385,23 @@ export default function RadarPage() {
         </div>
       )}
 
-      {/* ── Detail Sheet ── */}
-      <Sheet open={!!detalhe} onOpenChange={v => !v && setDetalhe(null)}>
-        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+      {/* ── Detalhe Dialog ── */}
+      <Dialog open={!!detalhe} onOpenChange={v => !v && setDetalhe(null)}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           {detalhe && (
             <>
-              <SheetHeader className="mb-4">
-                <div className="flex items-center gap-2 mb-1">
+              <DialogHeader>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
                   {detalhe.area && (
                     <span className="text-xs text-muted-foreground">{detalhe.area.icone} {detalhe.area.nome}</span>
                   )}
                   <StatusBadge status={detalhe.status} />
                   {detalhe.resultado && <ResultadoBadge resultado={detalhe.resultado} />}
                 </div>
-                <SheetTitle className="text-base leading-snug">{detalhe.titulo}</SheetTitle>
-              </SheetHeader>
+                <DialogTitle className="text-base leading-snug text-left">{detalhe.titulo}</DialogTitle>
+              </DialogHeader>
 
-              <div className="space-y-4 text-sm">
+              <div className="space-y-4 text-sm mt-2">
 
                 {/* Datas + responsável */}
                 <div className="flex flex-wrap gap-4 text-xs text-muted-foreground border border-border rounded-md px-3 py-2">
@@ -418,7 +416,6 @@ export default function RadarPage() {
                   )}
                 </div>
 
-                {/* Hipótese */}
                 {detalhe.hipotese && (
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Hipótese</p>
@@ -426,7 +423,6 @@ export default function RadarPage() {
                   </div>
                 )}
 
-                {/* Metodologia */}
                 {detalhe.metodologia && (
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Metodologia</p>
@@ -434,7 +430,6 @@ export default function RadarPage() {
                   </div>
                 )}
 
-                {/* Conclusão */}
                 {detalhe.conclusao && (
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Conclusão</p>
@@ -442,7 +437,6 @@ export default function RadarPage() {
                   </div>
                 )}
 
-                {/* Aprendizado */}
                 {detalhe.aprendizado && (
                   <div className="bg-primary/5 border border-primary/20 rounded-md p-3">
                     <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">💡 Aprendizado</p>
@@ -450,7 +444,6 @@ export default function RadarPage() {
                   </div>
                 )}
 
-                {/* Tags */}
                 {detalhe.tags?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     <Tag className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
@@ -461,21 +454,20 @@ export default function RadarPage() {
                 )}
               </div>
 
-              {/* Ações */}
               {podeEditar(detalhe) && (
-                <div className="flex gap-2 mt-6 pt-4 border-t border-border">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(detalhe)} className="flex-1">
+                <DialogFooter className="mt-4 gap-2 sm:justify-start">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(detalhe)}>
                     <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => remove(detalhe.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
                   </Button>
-                </div>
+                </DialogFooter>
               )}
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Modal Criar / Editar ── */}
       <Dialog open={openForm} onOpenChange={v => !v && setOpenForm(false)}>
