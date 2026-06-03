@@ -369,9 +369,9 @@ export default function AtivosPage() {
 
       ) : (
 
-        /* ── Visão Lista flat ── */
+        /* ── Visão Lista agrupada por tipo ── */
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          {/* Cabeçalho da lista */}
+          {/* Cabeçalho */}
           <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/30">
             <div className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nome</div>
             <div className="hidden lg:block w-[140px] text-xs font-semibold uppercase tracking-wide text-muted-foreground">BM</div>
@@ -382,7 +382,8 @@ export default function AtivosPage() {
 
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground">Nenhum ativo encontrado.</div>
-          ) : (
+          ) : tipoFilter !== 'all' ? (
+            /* Filtrado por tipo — lista simples */
             <div className="divide-y divide-border/50">
               {filtered.map(a => (
                 <AtivoRow key={a.id} a={a} bmName={bmMap[a.bm_id || ''] || ''}
@@ -390,6 +391,33 @@ export default function AtivosPage() {
                   copied={copied} copy={copy} />
               ))}
             </div>
+          ) : (
+            /* Sem filtro de tipo — agrupa por categoria com separador sutil */
+            <>
+              {TIPOS.filter(t => t.value !== 'bm').map(t => {
+                const grupo = filtered.filter(a => a.tipo === t.value);
+                if (grupo.length === 0) return null;
+                return (
+                  <div key={t.value}>
+                    {/* Separador de tipo */}
+                    <div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 border-t border-border/60">
+                      <t.icon className="h-3 w-3 text-muted-foreground/70" />
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                        {t.plural}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/50 ml-1">{grupo.length}</span>
+                    </div>
+                    <div className="divide-y divide-border/40">
+                      {grupo.map(a => (
+                        <AtivoRow key={a.id} a={a} bmName={bmMap[a.bm_id || ''] || ''}
+                          isAdmin={isAdmin} onEdit={() => openEdit(a)} onDelete={() => remove(a)}
+                          copied={copied} copy={copy} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
           )}
         </div>
 
