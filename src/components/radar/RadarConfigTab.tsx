@@ -11,6 +11,9 @@ import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 
+// Projetos não são gerenciados aqui — usam a tabela ofertas_editores,
+// gerenciada em Configurações → Empresas e Ofertas.
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type Area = {
@@ -24,14 +27,6 @@ type Area = {
   ativo: boolean;
 };
 
-type Projeto = {
-  id: string;
-  nome: string;
-  descricao: string | null;
-  ativo: boolean;
-  ordem: number;
-};
-
 const CATEGORIAS = [
   { value: 'trafego',        label: 'Tráfego' },
   { value: 'criativo',       label: 'Criativo' },
@@ -42,7 +37,6 @@ const CATEGORIAS = [
 ];
 
 const blankArea = () => ({ nome: '', slug: '', categoria: 'trafego', icone: '🔬', descricao: '' });
-const blankProj = () => ({ nome: '', descricao: '' });
 
 // ─── Seção Áreas ─────────────────────────────────────────────────────────────
 
@@ -198,111 +192,17 @@ function AreasSection() {
   );
 }
 
-// ─── Seção Projetos ───────────────────────────────────────────────────────────
-
-function ProjetosSection() {
-  const confirm = useConfirm();
-  const [projetos, setProjetos]   = useState<Projeto[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [open, setOpen]           = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm]           = useState(blankProj());
-
-  const load = async () => {
-    setLoading(true);
-    const { data } = await supabase.from('radar_projetos').select('*').order('ordem');
-    setProjetos(data || []);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, []);
-
-  const openNew = () => { setEditingId(null); setForm(blankProj()); setOpen(true); };
-  const openEdit = (p: Projeto) => { setEditingId(p.id); setForm({ nome: p.nome, descricao: p.descricao || '' }); setOpen(true); };
-
-  const save = async () => {
-    if (!form.nome.trim()) return toast({ title: 'Nome obrigatório', variant: 'destructive' });
-    const payload = { nome: form.nome.trim(), descricao: form.descricao || null, atualizado_em: new Date().toISOString() };
-    const { error } = editingId
-      ? await supabase.from('radar_projetos').update(payload).eq('id', editingId)
-      : await supabase.from('radar_projetos').insert({ ...payload, ordem: projetos.length + 1 });
-    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    toast({ title: editingId ? 'Projeto atualizado' : 'Projeto criado' });
-    setOpen(false); load();
-  };
-
-  const toggleAtivo = async (p: Projeto) => {
-    await supabase.from('radar_projetos').update({ ativo: !p.ativo }).eq('id', p.id);
-    load();
-  };
-
-  const remove = async (p: Projeto) => {
-    if (!(await confirm({ title: `Excluir "${p.nome}"?`, description: 'Esta ação não pode ser desfeita.' }))) return;
-    const { error } = await supabase.from('radar_projetos').delete().eq('id', p.id);
-    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    load();
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="text-sm font-semibold uppercase tracking-wide text-primary">Projetos</h4>
-          <p className="text-xs text-muted-foreground">Projetos da empresa para categorizar testes no Radar.</p>
-        </div>
-        <Button size="sm" onClick={openNew}><Plus className="h-4 w-4" /> Novo</Button>
-      </div>
-
-      {loading ? (
-        <div className="p-4 text-sm text-muted-foreground">Carregando...</div>
-      ) : (
-        <div className="bg-card border border-border rounded-lg divide-y divide-border/60">
-          {projetos.length === 0 && <div className="p-4 text-sm text-muted-foreground">Nenhum projeto cadastrado</div>}
-          {projetos.map(p => (
-            <div key={p.id} className={`flex items-center justify-between gap-2 px-4 py-2 text-sm ${!p.ativo ? 'opacity-50' : ''}`}>
-              <div className="min-w-0">
-                <div className="font-medium truncate">{p.nome}</div>
-                {p.descricao && <div className="text-xs text-muted-foreground truncate">{p.descricao}</div>}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Switch checked={p.ativo} onCheckedChange={() => toggleAtivo(p)} />
-                <Button size="sm" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-3.5 w-3.5" /></Button>
-                <Button size="sm" variant="ghost" onClick={() => remove(p)} className="text-destructive hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={open} onOpenChange={v => !v && setOpen(false)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editingId ? 'Editar projeto' : 'Novo projeto'}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Nome <span className="text-destructive">*</span></Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} className="mt-1" placeholder="Ex: Curso Saponaria Brasil" />
-            </div>
-            <div>
-              <Label>Descrição <span className="text-xs text-muted-foreground">(opcional)</span></Label>
-              <Textarea value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} className="mt-1 min-h-[70px]" placeholder="Breve descrição do projeto..." />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={save}>{editingId ? 'Salvar' : 'Criar'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
 // ─── Tab principal ────────────────────────────────────────────────────────────
 
 export function RadarConfigTab() {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-4xl">
+    <div className="max-w-xl">
       <AreasSection />
-      <ProjetosSection />
+      <p className="text-xs text-muted-foreground mt-4">
+        Os <span className="font-medium">Projetos</span> do Radar são gerenciados em{' '}
+        <span className="font-medium">Empresas e Ofertas</span> — a mesma lista de ofertas cadastradas lá
+        aparece na seleção de projeto ao criar ou editar um teste.
+      </p>
     </div>
   );
 }

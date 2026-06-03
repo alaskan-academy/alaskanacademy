@@ -158,7 +158,7 @@ export default function RadarPage() {
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
       supabase.from('radar_testes').select('*').order('criado_em', { ascending: false }),
       supabase.from('perfis').select('id, nome').order('nome'),
-      supabase.from('radar_projetos').select('id, nome, ativo').eq('ativo', true).order('ordem'),
+      supabase.from('ofertas_editores').select('id, nome, ativo').eq('ativo', true).order('nome'),
     ]);
     setAreas(areasData || []);
     setPerfis(perfisData || []);
@@ -640,7 +640,7 @@ export default function RadarPage() {
             <div className="col-span-2">
               <Label>Projetos <span className="text-xs text-muted-foreground">(pode selecionar mais de um)</span></Label>
               {projetos.length === 0 ? (
-                <p className="text-xs text-muted-foreground mt-2 italic">Nenhum projeto cadastrado. Adicione em Configurações → Radar.</p>
+                <p className="text-xs text-muted-foreground mt-2 italic">Nenhuma oferta cadastrada. Adicione em Configurações → Empresas e Ofertas.</p>
               ) : (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {projetos.map(p => (
