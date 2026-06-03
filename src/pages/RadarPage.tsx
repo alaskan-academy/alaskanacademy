@@ -195,7 +195,7 @@ export default function RadarPage() {
   };
 
   // ── Load ──────────────────────────────────────────────────────────────────
-  const load = async () => {
+  const load = async (afterLoad?: (loaded: Teste[]) => void) => {
     setLoading(true);
     const [{ data: areasData }, { data: testesData }, { data: perfisData }, { data: projetosData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
@@ -211,15 +211,15 @@ export default function RadarPage() {
     const perfilMap  = Object.fromEntries((perfisData   || []).map((p: PerfilSimples) => [p.id, p.nome]));
     const projetoMap = Object.fromEntries((projetosData || []).map((p: Projeto)       => [p.id, p.nome]));
 
-    setTestes(
-      (testesData || []).map((t: any) => ({
-        ...t,
-        area:            areaMap[t.area_id] ?? null,
-        responsavel_nome: perfilMap[t.responsavel_id] ?? null,
-        projetos_nomes:  (t.projeto_ids || []).map((id: string) => projetoMap[id]).filter(Boolean),
-      }))
-    );
+    const loaded = (testesData || []).map((t: any) => ({
+      ...t,
+      area:             areaMap[t.area_id] ?? null,
+      responsavel_nome: perfilMap[t.responsavel_id] ?? null,
+      projetos_nomes:   (t.projeto_ids || []).map((id: string) => projetoMap[id]).filter(Boolean),
+    }));
+    setTestes(loaded);
     setLoading(false);
+    afterLoad?.(loaded);
   };
 
   useEffect(() => { load(); }, []);
@@ -301,7 +301,7 @@ export default function RadarPage() {
     if (error) return toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
     toast({ title: editingId ? 'Teste atualizado' : 'Teste criado' });
     setOpenForm(false);
-    load();
+    load((loaded) => silentSyncObsidian(loaded));
     silentSyncSheets();
   };
 
@@ -313,76 +313,70 @@ export default function RadarPage() {
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     toast({ title: 'Teste excluído', description: 'Salvo no histórico — não se preocupe.' });
     setDetalhe(null);
-    load();
+    load((loaded) => silentSyncObsidian(loaded));
     silentSyncSheets();
   };
 
   // ── Obsidian sync ─────────────────────────────────────────────────────────
   const [syncingObsidian, setSyncingObsidian] = useState(false);
 
+  // Dispara sync Obsidian em background com lista fresquinha (fire & forget)
+  const silentSyncObsidian = (list: Teste[]) => {
+    supabase
+      .from('configuracoes_texto')
+      .select('valor')
+      .eq('chave', 'obsidian_api_key')
+      .single()
+      .then(({ data: cfg }) => {
+        if (!cfg?.valor) return;
+        runObsidianSync(cfg.valor, list).catch(() => {});
+      })
+      .catch(() => {});
+  };
+
+  const runObsidianSync = async (apiKey: string, list: Teste[]): Promise<{ ok: number; fail: number }> => {
+    const OBSIDIAN = 'https://127.0.0.1:27124';
+    const headers  = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'text/markdown' };
+    const toSlug   = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 60);
+    const fmt = (v: string | null | undefined) => v ? `"${v.replace(/"/g, "'")}"` : '""';
+
+    let ok = 0; let fail = 0;
+    for (const t of list) {
+      const areaNome = t.area?.nome ?? 'Geral';
+      const path = `Radar Alaskan/${areaNome}/${toSlug(t.titulo) || t.id.slice(0, 8)}.md`;
+      const fm = ['---', `titulo: ${fmt(t.titulo)}`, `area: ${fmt(areaNome)}`, `status: ${t.status}`,
+        `resultado: ${t.resultado ?? ''}`, `projetos: [${(t.projetos_nomes ?? []).map(p => `"${p}"`).join(', ')}]`,
+        `tags: [${(t.tags ?? []).join(', ')}]`, `data_inicio: ${t.data_inicio ?? ''}`,
+        `data_fim: ${t.data_fim ?? ''}`,
+        `criado_em: ${t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR') : ''}`, '---'].join('\n');
+      const body = [`# ${t.titulo}\n`,
+        ...(t.hipotese    ? [`## Hipótese\n${t.hipotese}\n`]        : []),
+        ...(t.metodologia ? [`## Metodologia\n${t.metodologia}\n`]  : []),
+        ...(t.conclusao   ? [`## Conclusão\n${t.conclusao}\n`]      : []),
+        ...(t.aprendizado ? [`## 💡 Aprendizado\n${t.aprendizado}\n`] : []),
+      ].join('\n');
+      try {
+        const res = await fetch(`${OBSIDIAN}/vault/${encodeURIComponent(path)}`,
+          { method: 'PUT', headers, body: `${fm}\n\n${body}` }
+        );
+        if (res.ok || res.status === 204) ok++; else fail++;
+      } catch { fail++; }
+    }
+    return { ok, fail };
+  };
+
   const syncObsidian = async () => {
     setSyncingObsidian(true);
     try {
-      // Busca API key do Supabase
       const { data: cfg } = await supabase
         .from('configuracoes_texto')
         .select('valor')
         .eq('chave', 'obsidian_api_key')
         .single();
+      if (!cfg?.valor) throw new Error('Chave do Obsidian não configurada.');
 
-      if (!cfg?.valor) throw new Error('Chave do Obsidian não configurada em Settings.');
-
-      const OBSIDIAN = 'https://127.0.0.1:27124';
-      const headers  = { Authorization: `Bearer ${cfg.valor}`, 'Content-Type': 'text/markdown' };
-
-      const toSlug = (s: string) =>
-        s.toLowerCase()
-          .normalize('NFD').replace(/[̀-ͯ]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/[^a-z0-9-]/g, '')
-          .slice(0, 60);
-
-      const fmtFrontmatter = (v: string | null | undefined) =>
-        v ? `"${v.replace(/"/g, "'")}"` : '""';
-
-      let ok = 0; let fail = 0;
-
-      for (const t of testes) {
-        const areaNome = t.area?.nome ?? 'Geral';
-        const areaSlug = toSlug(areaNome);
-        const testSlug = toSlug(t.titulo) || t.id.slice(0, 8);
-        const path     = `Radar Alaskan/${areaNome}/${testSlug}.md`;
-
-        const frontmatter = [
-          '---',
-          `titulo: ${fmtFrontmatter(t.titulo)}`,
-          `area: ${fmtFrontmatter(areaNome)}`,
-          `status: ${t.status}`,
-          `resultado: ${t.resultado ?? ''}`,
-          `projetos: [${(t.projetos_nomes ?? []).map(p => `"${p}"`).join(', ')}]`,
-          `tags: [${(t.tags ?? []).join(', ')}]`,
-          `data_inicio: ${t.data_inicio ?? ''}`,
-          `data_fim: ${t.data_fim ?? ''}`,
-          `criado_em: ${t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR') : ''}`,
-          '---',
-        ].join('\n');
-
-        const sections: string[] = [`# ${t.titulo}\n`];
-        if (t.hipotese)    sections.push(`## Hipótese\n${t.hipotese}\n`);
-        if (t.metodologia) sections.push(`## Metodologia\n${t.metodologia}\n`);
-        if (t.conclusao)   sections.push(`## Conclusão\n${t.conclusao}\n`);
-        if (t.aprendizado) sections.push(`## 💡 Aprendizado\n${t.aprendizado}\n`);
-
-        const content = `${frontmatter}\n\n${sections.join('\n')}`;
-
-        try {
-          const res = await fetch(
-            `${OBSIDIAN}/vault/${encodeURIComponent(path)}`,
-            { method: 'PUT', headers, body: content }
-          );
-          if (res.ok || res.status === 204) ok++; else fail++;
-        } catch { fail++; }
-      }
+      const { ok, fail } = await runObsidianSync(cfg.valor, testes);
 
       if (fail === 0) {
         toast({ title: `Obsidian atualizado — ${ok} notas sincronizadas` });
@@ -390,7 +384,7 @@ export default function RadarPage() {
         toast({
           title: `Sync parcial: ${ok} ok, ${fail} falhas`,
           description: fail === testes.length
-            ? 'Verifique se o Obsidian está aberto e o plugin Local REST API ativo. Pode ser necessário aceitar o certificado em https://127.0.0.1:27124/'
+            ? 'Abra https://127.0.0.1:27124/ no browser para aceitar o certificado, depois tente novamente.'
             : 'Algumas notas não foram atualizadas.',
           variant: 'destructive',
         });
