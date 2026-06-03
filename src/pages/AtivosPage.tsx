@@ -245,6 +245,18 @@ export default function AtivosPage() {
   const total   = ativos.length;
   const ativos_ = ativos.filter(a => a.status === 'active').length;
   const bloq    = ativos.filter(a => a.status === 'blocked').length;
+  const statCards = [
+    { label: 'Total',       value: total,                                    color: '' },
+    { label: 'Ativos',      value: ativos_,                                  color: 'text-emerald-400' },
+    { label: 'Bloqueados',  value: bloq,                                     color: bloq > 0 ? 'text-red-400' : '' },
+    { label: 'BMs',         value: ativos.filter(a => a.tipo === 'bm').length,        color: 'text-primary' },
+    { label: 'CAs',         value: ativos.filter(a => a.tipo === 'ca').length,        color: '' },
+    { label: 'Pixels',      value: ativos.filter(a => a.tipo === 'pixel').length,     color: '' },
+    { label: 'Domínios',    value: ativos.filter(a => a.tipo === 'domain').length,    color: '' },
+    { label: 'WhatsApp',    value: ativos.filter(a => a.tipo === 'whatsapp').length,  color: '' },
+    { label: 'Fanpages',    value: ativos.filter(a => a.tipo === 'fanpage').length,   color: '' },
+    { label: 'Instagram',   value: ativos.filter(a => a.tipo === 'instagram').length, color: '' },
+  ];
 
   // CRUD
   const openNew  = (tipo?: TipoAtivo) => { setEditingId(null); setForm({ ...blankForm(), tipo: tipo || 'ca' }); setOpen(true); };
@@ -284,19 +296,18 @@ export default function AtivosPage() {
   return (
     <DashboardLayout title="Ativos Meta Ads">
 
-      {/* ── Barra superior ── */}
-      <div className="flex flex-wrap items-center gap-3 mb-5">
-        {/* Stats inline */}
-        <div className="flex items-center gap-3 text-sm">
-          <span className="font-semibold text-foreground">{total} ativos</span>
-          <span className="text-muted-foreground/40">·</span>
-          <span className="text-emerald-400 font-medium">{ativos_} ativos</span>
-          {bloq > 0 && <>
-            <span className="text-muted-foreground/40">·</span>
-            <span className="text-red-400 font-medium">{bloq} bloqueados</span>
-          </>}
-        </div>
+      {/* ── Cards de resumo ── */}
+      <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-5">
+        {statCards.map(s => (
+          <div key={s.label} className="bg-card border border-border rounded-lg px-3 py-2.5 text-center">
+            <div className={cn('text-xl font-bold tabular-nums', s.color || 'text-foreground')}>{s.value}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5 truncate">{s.label}</div>
+          </div>
+        ))}
+      </div>
 
+      {/* ── Barra de controles ── */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="flex-1" />
 
         {/* View toggle */}
