@@ -11,6 +11,7 @@ export const PAGINAS = [
   { key: 'clientes',      path: '/clientes',      label: 'Clientes' },
   { key: 'editores',      path: '/editores',      label: 'Editores' },
   { key: 'configuracoes', path: '/configuracoes', label: 'Configurações' },
+  { key: 'radar',         path: '/radar',         label: 'Radar Alaskan' },
 ] as const;
 
 export type PaginaKey = (typeof PAGINAS)[number]['key'];
@@ -18,6 +19,7 @@ export type PaginaKey = (typeof PAGINAS)[number]['key'];
 interface Perfil {
   nome: string;
   is_admin: boolean;
+  radar_pode_criar: boolean;
 }
 
 interface AuthContextType {

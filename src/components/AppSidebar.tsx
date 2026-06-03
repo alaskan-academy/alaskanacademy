@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -28,8 +28,9 @@ const ALL_SUB_PAGES = [
 ];
 
 const ALL_FIXED_ITEMS = [
-  { path: '/configuracoes', label: 'Configurações', icon: Settings,  key: 'configuracoes' },
+  { path: '/radar',         label: 'Radar',         icon: Radar,     key: 'radar' },
   { path: '/editores',      label: 'Editores',      icon: BarChart3, key: 'editores' },
+  { path: '/configuracoes', label: 'Configurações', icon: Settings,  key: 'configuracoes' },
 ];
 
 const prodColors: Record<string, string> = {

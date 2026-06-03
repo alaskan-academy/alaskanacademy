@@ -17,6 +17,7 @@ import UTMPage from "./pages/UTMPage";
 import ClientsPage from "./pages/ClientsPage";
 import EditorsPage from "./pages/EditorsPage";
 import SettingsPage from "./pages/SettingsPage";
+import RadarPage from "./pages/RadarPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
                   <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
                   <Route path="/clientes" element={<ProtectedRoute pageKey="clientes"><ClientsPage /></ProtectedRoute>} />
                   <Route path="/editores" element={<ProtectedRoute pageKey="editores"><EditorsPage /></ProtectedRoute>} />
+                  <Route path="/radar" element={<ProtectedRoute pageKey="radar"><RadarPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
                 </Routes>
