@@ -226,8 +226,10 @@ export default function AtivosPage() {
   const bmMap  = useMemo(() => Object.fromEntries(bms.map(b => [b.asset_id, b.nome])), [bms]);
 
   const filtered = useMemo(() => {
+    // Na visão Por BM excluímos os próprios BMs da lista de filhos
     let list = view === 'lista' ? ativos.filter(a => a.tipo !== 'bm') : ativos;
     if (bmFilter !== 'all') list = list.filter(a => a.bm_id === bmFilter || a.asset_id === bmFilter);
+    // Filtro de tipo se aplica às duas visões (na Por BM filtra os filhos de cada BM)
     if (tipoFilter !== 'all') list = list.filter(a => a.tipo === tipoFilter);
     if (search) {
       const q = search.toLowerCase();
@@ -239,7 +241,7 @@ export default function AtivosPage() {
       );
     }
     return list;
-  }, [ativos, bmFilter, tipoFilter, tipoFilter, search, view]);
+  }, [ativos, bmFilter, tipoFilter, search, view]);
 
   // Stats
   const total   = ativos.length;
@@ -345,17 +347,15 @@ export default function AtivosPage() {
             {bms.map(b => <SelectItem key={b.asset_id} value={b.asset_id}>{b.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        {view === 'lista' && (
-          <Select value={tipoFilter} onValueChange={v => setTipoFilter(v as TipoAtivo | 'all')}>
-            <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os tipos</SelectItem>
-              {TIPOS.filter(t => t.value !== 'bm').map(t => (
-                <SelectItem key={t.value} value={t.value}>{t.plural}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <Select value={tipoFilter} onValueChange={v => setTipoFilter(v as TipoAtivo | 'all')}>
+          <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            {TIPOS.filter(t => t.value !== 'bm').map(t => (
+              <SelectItem key={t.value} value={t.value}>{t.plural}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* ── Conteúdo ── */}
