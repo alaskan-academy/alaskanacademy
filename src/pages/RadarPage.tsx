@@ -301,7 +301,7 @@ export default function RadarPage() {
     if (error) return toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
     toast({ title: editingId ? 'Teste atualizado' : 'Teste criado' });
     setOpenForm(false);
-    load((loaded) => silentSyncObsidian(loaded));
+    load((loaded) => { if (isAdmin) silentSyncObsidian(loaded); });
     silentSyncSheets();
   };
 
@@ -313,7 +313,7 @@ export default function RadarPage() {
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     toast({ title: 'Teste excluído', description: 'Salvo no histórico — não se preocupe.' });
     setDetalhe(null);
-    load((loaded) => silentSyncObsidian(loaded));
+    load((loaded) => { if (isAdmin) silentSyncObsidian(loaded); });
     silentSyncSheets();
   };
 
