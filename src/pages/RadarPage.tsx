@@ -14,7 +14,8 @@ import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
-  FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle
+  FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle,
+  Sheet, Loader2
 } from 'lucide-react';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -151,6 +152,33 @@ export default function RadarPage() {
   // detalhe dialog
   const [detalhe, setDetalhe]       = useState<Teste | null>(null);
 
+  // sync sheets
+  const [syncing, setSyncing] = useState(false);
+
+  const syncSheets = async () => {
+    setSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/radar-sheets-sync`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+      toast({ title: `Planilha atualizada — ${json.synced} testes exportados` });
+    } catch (e: any) {
+      toast({ title: 'Erro ao sincronizar', description: e.message, variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // ── Load ──────────────────────────────────────────────────────────────────
   const load = async () => {
     setLoading(true);
@@ -281,11 +309,21 @@ export default function RadarPage() {
             Central de testes e aprendizados da empresa
           </p>
         </div>
-        {podeCriar && (
-          <Button onClick={openNew} className="shrink-0">
-            <Plus className="h-4 w-4 mr-1" /> Novo teste
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={syncSheets} disabled={syncing} title="Exportar para Google Sheets">
+              {syncing
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Sheet className="h-4 w-4" />}
+              <span className="hidden sm:inline ml-1">{syncing ? 'Sincronizando...' : 'Sheets'}</span>
+            </Button>
+          )}
+          {podeCriar && (
+            <Button onClick={openNew} className="shrink-0">
+              <Plus className="h-4 w-4 mr-1" /> Novo teste
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── Stats ── */}
