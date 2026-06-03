@@ -155,6 +155,21 @@ export default function RadarPage() {
   // sync sheets
   const [syncing, setSyncing] = useState(false);
 
+  // Dispara sync em background sem bloquear a UI (fire & forget)
+  const silentSyncSheets = () => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return;
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/radar-sheets-sync`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      }).catch(() => {}); // falha silenciosa — não interrompe o fluxo do usuário
+    });
+  };
+
+  // Sync manual com feedback (botão Sheets no header)
   const syncSheets = async () => {
     setSyncing(true);
     try {
@@ -286,6 +301,7 @@ export default function RadarPage() {
     toast({ title: editingId ? 'Teste atualizado' : 'Teste criado' });
     setOpenForm(false);
     load();
+    silentSyncSheets();
   };
 
   const remove = async (id: string) => {
@@ -295,6 +311,7 @@ export default function RadarPage() {
     toast({ title: 'Teste excluído' });
     setDetalhe(null);
     load();
+    silentSyncSheets();
   };
 
   const podeEditar = (t: Teste) => isAdmin || t.criado_por === user?.id;
