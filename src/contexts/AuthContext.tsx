@@ -12,6 +12,7 @@ export const PAGINAS = [
   { key: 'editores',      path: '/editores',      label: 'Editores' },
   { key: 'configuracoes', path: '/configuracoes', label: 'Configurações' },
   { key: 'radar',         path: '/radar',         label: 'Radar Alaskan' },
+  { key: 'ativos',        path: '/ativos',        label: 'Ativos Meta' },
 ] as const;
 
 export type PaginaKey = (typeof PAGINAS)[number]['key'];
