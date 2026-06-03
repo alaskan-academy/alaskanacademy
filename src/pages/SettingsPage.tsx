@@ -9,6 +9,7 @@ import { ContasAnunciosTab } from "@/components/editores/ContasAnunciosTab";
 import { GerenciarUsuariosTab } from "@/components/GerenciarUsuariosTab";
 import { ConfiguracaoTab } from "@/components/editores/ConfiguracaoTab";
 import { EmpresasOfertasTab } from "@/components/editores/EmpresasOfertasTab";
+import { RadarConfigTab } from "@/components/radar/RadarConfigTab";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function SettingsPage() {
@@ -109,6 +110,11 @@ export default function SettingsPage() {
               Usuários
             </TabsTrigger>
           )}
+          {perfil?.is_admin && (
+            <TabsTrigger value="radar" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Radar
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="contas">
@@ -128,6 +134,11 @@ export default function SettingsPage() {
         {perfil?.is_admin && (
           <TabsContent value="usuarios">
             <GerenciarUsuariosTab />
+          </TabsContent>
+        )}
+        {perfil?.is_admin && (
+          <TabsContent value="radar">
+            <RadarConfigTab />
           </TabsContent>
         )}
 

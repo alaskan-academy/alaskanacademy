@@ -8,11 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import {
-  Plus, Search, Pencil, Trash2, Calendar, User, Tag,
+  Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
   FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle
 } from 'lucide-react';
 
@@ -41,12 +42,15 @@ type Teste = {
   conclusao: string | null;
   aprendizado: string | null;
   tags: string[];
+  projeto_ids: string[];
+  projetos_nomes?: string[];
   responsavel_id: string | null;
   responsavel_nome?: string;
   criado_por: string | null;
   criado_em: string;
 };
 
+type Projeto = { id: string; nome: string; ativo: boolean };
 type PerfilSimples = { id: string; nome: string };
 
 const blankForm = () => ({
@@ -62,6 +66,7 @@ const blankForm = () => ({
   aprendizado: '',
   tags: '',
   responsavel_id: '',
+  projeto_ids: [] as string[],
 });
 
 // ─── Labels & cores ──────────────────────────────────────────────────────────
@@ -127,13 +132,15 @@ export default function RadarPage() {
   const [areas, setAreas]       = useState<Area[]>([]);
   const [testes, setTestes]     = useState<Teste[]>([]);
   const [perfis, setPerfis]     = useState<PerfilSimples[]>([]);
+  const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [loading, setLoading]   = useState(true);
 
   // filtros
-  const [search, setSearch]         = useState('');
-  const [filtroArea, setFiltroArea] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState('');
+  const [search, setSearch]               = useState('');
+  const [filtroArea, setFiltroArea]       = useState('');
+  const [filtroStatus, setFiltroStatus]   = useState('');
   const [filtroResultado, setFiltroResultado] = useState('');
+  const [filtroProjeto, setFiltroProjeto] = useState('');
 
   // modal criar/editar
   const [openForm, setOpenForm]     = useState(false);
@@ -147,22 +154,26 @@ export default function RadarPage() {
   // ── Load ──────────────────────────────────────────────────────────────────
   const load = async () => {
     setLoading(true);
-    const [{ data: areasData }, { data: testesData }, { data: perfisData }] = await Promise.all([
+    const [{ data: areasData }, { data: testesData }, { data: perfisData }, { data: projetosData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
       supabase.from('radar_testes').select('*').order('criado_em', { ascending: false }),
       supabase.from('perfis').select('id, nome').order('nome'),
+      supabase.from('radar_projetos').select('id, nome, ativo').eq('ativo', true).order('ordem'),
     ]);
     setAreas(areasData || []);
     setPerfis(perfisData || []);
+    setProjetos(projetosData || []);
 
-    const areaMap = Object.fromEntries((areasData || []).map((a: Area) => [a.id, a]));
-    const perfilMap = Object.fromEntries((perfisData || []).map((p: PerfilSimples) => [p.id, p.nome]));
+    const areaMap    = Object.fromEntries((areasData    || []).map((a: Area)          => [a.id, a]));
+    const perfilMap  = Object.fromEntries((perfisData   || []).map((p: PerfilSimples) => [p.id, p.nome]));
+    const projetoMap = Object.fromEntries((projetosData || []).map((p: Projeto)       => [p.id, p.nome]));
 
     setTestes(
       (testesData || []).map((t: any) => ({
         ...t,
-        area: areaMap[t.area_id] ?? null,
+        area:            areaMap[t.area_id] ?? null,
         responsavel_nome: perfilMap[t.responsavel_id] ?? null,
+        projetos_nomes:  (t.projeto_ids || []).map((id: string) => projetoMap[id]).filter(Boolean),
       }))
     );
     setLoading(false);
@@ -177,9 +188,10 @@ export default function RadarPage() {
       if (filtroArea && t.area_id !== filtroArea) return false;
       if (filtroStatus && t.status !== filtroStatus) return false;
       if (filtroResultado && t.resultado !== filtroResultado) return false;
+      if (filtroProjeto && !(t.projeto_ids || []).includes(filtroProjeto)) return false;
       return true;
     });
-  }, [testes, search, filtroArea, filtroStatus, filtroResultado]);
+  }, [testes, search, filtroArea, filtroStatus, filtroResultado, filtroProjeto]);
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const stats = useMemo(() => ({
@@ -212,6 +224,7 @@ export default function RadarPage() {
       aprendizado: t.aprendizado || '',
       tags: (t.tags || []).join(', '),
       responsavel_id: t.responsavel_id || '',
+      projeto_ids: t.projeto_ids || [],
     });
     setOpenForm(true);
   };
@@ -232,6 +245,7 @@ export default function RadarPage() {
       aprendizado: form.aprendizado || null,
       tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
       responsavel_id: form.responsavel_id || null,
+      projeto_ids: form.projeto_ids,
       atualizado_em: new Date().toISOString(),
     };
 
@@ -317,6 +331,13 @@ export default function RadarPage() {
             {Object.entries(RESULTADO_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={filtroProjeto || 'all'} onValueChange={v => setFiltroProjeto(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="Projeto" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os projetos</SelectItem>
+            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* ── Lista ── */}
@@ -353,6 +374,17 @@ export default function RadarPage() {
 
               {/* resultado */}
               {t.resultado && <div className="mb-2"><ResultadoBadge resultado={t.resultado} /></div>}
+
+              {/* projetos */}
+              {t.projetos_nomes && t.projetos_nomes.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {t.projetos_nomes.map(nome => (
+                    <span key={nome} className="inline-flex items-center gap-1 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+                      <FolderOpen className="h-2.5 w-2.5" />{nome}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* tags */}
               {t.tags?.length > 0 && (
@@ -441,6 +473,19 @@ export default function RadarPage() {
                   <div className="bg-primary/5 border border-primary/20 rounded-md p-3">
                     <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">💡 Aprendizado</p>
                     <p className="text-sm leading-relaxed whitespace-pre-wrap">{detalhe.aprendizado}</p>
+                  </div>
+                )}
+
+                {detalhe.projetos_nomes && detalhe.projetos_nomes.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Projetos</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {detalhe.projetos_nomes.map(nome => (
+                        <span key={nome} className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20">
+                          <FolderOpen className="h-3 w-3" />{nome}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -589,6 +634,33 @@ export default function RadarPage() {
               <Label>Aprendizado <span className="text-xs text-muted-foreground">(o que a empresa aprende com isso?)</span></Label>
               <Textarea value={form.aprendizado} onChange={e => setForm({ ...form, aprendizado: e.target.value })}
                 placeholder="Qual o aprendizado que fica para a empresa?" className="mt-1 min-h-[80px]" />
+            </div>
+
+            {/* Projetos */}
+            <div className="col-span-2">
+              <Label>Projetos <span className="text-xs text-muted-foreground">(pode selecionar mais de um)</span></Label>
+              {projetos.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-2 italic">Nenhum projeto cadastrado. Adicione em Configurações → Radar.</p>
+              ) : (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {projetos.map(p => (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={form.projeto_ids.includes(p.id)}
+                        onCheckedChange={checked => {
+                          setForm({
+                            ...form,
+                            projeto_ids: checked
+                              ? [...form.projeto_ids, p.id]
+                              : form.projeto_ids.filter(id => id !== p.id),
+                          });
+                        }}
+                      />
+                      <span className="text-sm">{p.nome}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Tags */}
