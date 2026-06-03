@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
   FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle,
-  Sheet, Loader2
+  Sheet, Loader2, BookMarked
 } from 'lucide-react';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -317,6 +317,91 @@ export default function RadarPage() {
     silentSyncSheets();
   };
 
+  // ── Obsidian sync ─────────────────────────────────────────────────────────
+  const [syncingObsidian, setSyncingObsidian] = useState(false);
+
+  const syncObsidian = async () => {
+    setSyncingObsidian(true);
+    try {
+      // Busca API key do Supabase
+      const { data: cfg } = await supabase
+        .from('configuracoes_texto')
+        .select('valor')
+        .eq('chave', 'obsidian_api_key')
+        .single();
+
+      if (!cfg?.valor) throw new Error('Chave do Obsidian não configurada em Settings.');
+
+      const OBSIDIAN = 'https://127.0.0.1:27124';
+      const headers  = { Authorization: `Bearer ${cfg.valor}`, 'Content-Type': 'text/markdown' };
+
+      const toSlug = (s: string) =>
+        s.toLowerCase()
+          .normalize('NFD').replace(/[̀-ͯ]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/[^a-z0-9-]/g, '')
+          .slice(0, 60);
+
+      const fmtFrontmatter = (v: string | null | undefined) =>
+        v ? `"${v.replace(/"/g, "'")}"` : '""';
+
+      let ok = 0; let fail = 0;
+
+      for (const t of testes) {
+        const areaNome = t.area?.nome ?? 'Geral';
+        const areaSlug = toSlug(areaNome);
+        const testSlug = toSlug(t.titulo) || t.id.slice(0, 8);
+        const path     = `Radar Alaskan/${areaNome}/${testSlug}.md`;
+
+        const frontmatter = [
+          '---',
+          `titulo: ${fmtFrontmatter(t.titulo)}`,
+          `area: ${fmtFrontmatter(areaNome)}`,
+          `status: ${t.status}`,
+          `resultado: ${t.resultado ?? ''}`,
+          `projetos: [${(t.projetos_nomes ?? []).map(p => `"${p}"`).join(', ')}]`,
+          `tags: [${(t.tags ?? []).join(', ')}]`,
+          `data_inicio: ${t.data_inicio ?? ''}`,
+          `data_fim: ${t.data_fim ?? ''}`,
+          `criado_em: ${t.criado_em ? new Date(t.criado_em).toLocaleDateString('pt-BR') : ''}`,
+          '---',
+        ].join('\n');
+
+        const sections: string[] = [`# ${t.titulo}\n`];
+        if (t.hipotese)    sections.push(`## Hipótese\n${t.hipotese}\n`);
+        if (t.metodologia) sections.push(`## Metodologia\n${t.metodologia}\n`);
+        if (t.conclusao)   sections.push(`## Conclusão\n${t.conclusao}\n`);
+        if (t.aprendizado) sections.push(`## 💡 Aprendizado\n${t.aprendizado}\n`);
+
+        const content = `${frontmatter}\n\n${sections.join('\n')}`;
+
+        try {
+          const res = await fetch(
+            `${OBSIDIAN}/vault/${encodeURIComponent(path)}`,
+            { method: 'PUT', headers, body: content }
+          );
+          if (res.ok || res.status === 204) ok++; else fail++;
+        } catch { fail++; }
+      }
+
+      if (fail === 0) {
+        toast({ title: `Obsidian atualizado — ${ok} notas sincronizadas` });
+      } else {
+        toast({
+          title: `Sync parcial: ${ok} ok, ${fail} falhas`,
+          description: fail === testes.length
+            ? 'Verifique se o Obsidian está aberto e o plugin Local REST API ativo. Pode ser necessário aceitar o certificado em https://127.0.0.1:27124/'
+            : 'Algumas notas não foram atualizadas.',
+          variant: 'destructive',
+        });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro no sync Obsidian', description: e.message, variant: 'destructive' });
+    } finally {
+      setSyncingObsidian(false);
+    }
+  };
+
   const podeEditar = (t: Teste) => isAdmin || t.criado_por === user?.id;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -332,10 +417,14 @@ export default function RadarPage() {
         <div className="flex items-center gap-2">
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={syncSheets} disabled={syncing} title="Exportar para Google Sheets">
-              {syncing
-                ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <Sheet className="h-4 w-4" />}
+              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sheet className="h-4 w-4" />}
               <span className="hidden sm:inline ml-1">{syncing ? 'Sincronizando...' : 'Sheets'}</span>
+            </Button>
+          )}
+          {isAdmin && (
+            <Button variant="outline" size="sm" onClick={syncObsidian} disabled={syncingObsidian} title="Sincronizar com Obsidian">
+              {syncingObsidian ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookMarked className="h-4 w-4" />}
+              <span className="hidden sm:inline ml-1">{syncingObsidian ? 'Sincronizando...' : 'Obsidian'}</span>
             </Button>
           )}
           {podeCriar && (
