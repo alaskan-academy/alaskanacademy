@@ -335,7 +335,7 @@ export default function RadarPage() {
   };
 
   const runObsidianSync = async (apiKey: string, list: Teste[]): Promise<{ ok: number; fail: number }> => {
-    const OBSIDIAN = 'https://127.0.0.1:27124';
+    const OBSIDIAN = 'http://127.0.0.1:27123';
     const headers  = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'text/markdown' };
     const toSlug   = (s: string) =>
       s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 60);
@@ -384,7 +384,7 @@ export default function RadarPage() {
         toast({
           title: `Sync parcial: ${ok} ok, ${fail} falhas`,
           description: fail === testes.length
-            ? 'Abra https://127.0.0.1:27124/ no browser para aceitar o certificado, depois tente novamente.'
+            ? 'Verifique se o Obsidian está aberto e o plugin Local REST API está ativo.'
             : 'Algumas notas não foram atualizadas.',
           variant: 'destructive',
         });
