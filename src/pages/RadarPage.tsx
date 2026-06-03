@@ -290,6 +290,7 @@ export default function RadarPage() {
       responsavel_id: form.responsavel_id || null,
       projeto_ids: form.projeto_ids,
       atualizado_em: new Date().toISOString(),
+      atualizado_por: user?.id ?? null,
     };
 
     const { error } = editingId
