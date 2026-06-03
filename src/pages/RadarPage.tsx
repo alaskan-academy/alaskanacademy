@@ -199,7 +199,7 @@ export default function RadarPage() {
     setLoading(true);
     const [{ data: areasData }, { data: testesData }, { data: perfisData }, { data: projetosData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
-      supabase.from('radar_testes').select('*').order('criado_em', { ascending: false }),
+      supabase.from('radar_testes').select('*').is('deletado_em', null).order('criado_em', { ascending: false }),
       supabase.from('perfis').select('id, nome').order('nome'),
       supabase.from('ofertas_editores').select('id, nome, ativo').eq('ativo', true).order('nome'),
     ]);
@@ -305,10 +305,12 @@ export default function RadarPage() {
   };
 
   const remove = async (id: string) => {
-    if (!(await confirm({ title: 'Excluir teste?', description: 'Esta ação não pode ser desfeita.' }))) return;
-    const { error } = await supabase.from('radar_testes').delete().eq('id', id);
+    if (!(await confirm({ title: 'Excluir teste?', description: 'O teste ficará salvo no histórico e na aba "Excluídos" do Google Sheets.' }))) return;
+    const { error } = await supabase.from('radar_testes')
+      .update({ deletado_em: new Date().toISOString(), deletado_por: user?.id })
+      .eq('id', id);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    toast({ title: 'Teste excluído' });
+    toast({ title: 'Teste excluído', description: 'Salvo no histórico — não se preocupe.' });
     setDetalhe(null);
     load();
     silentSyncSheets();
