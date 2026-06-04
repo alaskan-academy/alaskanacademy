@@ -71,7 +71,7 @@ export function GerenciarUsuariosTab() {
     setLoading(true);
     const [{ data: users, error }, { data: eds }, { data: crgs }, { data: perfsData }, { data: strs }] = await Promise.all([
       supabase.rpc('listar_usuarios'),
-      supabase.from('editores').select('id, nome, usuario_id, cargo_id, data_inicio, ativo, observacoes, multiplicador').order('nome'),
+      supabase.from('editores').select('id, nome, usuario_id, cargo_id, data_inicio, ativo, observacoes, multiplicador, percentual_lideranca').order('nome'),
       supabase.from('cargos').select('id, nome, multiplicador, cor, ordem, setor_id').order('ordem'),
       supabase.from('perfis').select('id, cargo_id'),
       supabase.from('setores').select('id, nome, pagina_key, cor').order('ordem'),
