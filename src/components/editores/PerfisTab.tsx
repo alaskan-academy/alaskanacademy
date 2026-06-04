@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
-import { Plus, ChevronRight, Pencil, Trash2, Lock } from 'lucide-react';
+import { ChevronRight, Lock, Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
@@ -26,9 +25,6 @@ export function PerfisTab() {
   const [editores, setEditores] = useState<Editor[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Editor | null>(null);
-  const [openForm, setOpenForm] = useState(false);
-  const [editing, setEditing] = useState<Editor | null>(null);
-  const [form, setForm] = useState({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '', multiplicador: '' });
 
   const load = async () => {
     setLoading(true);
@@ -65,54 +61,12 @@ export function PerfisTab() {
     return nome.includes('head') || nome.includes('lider');
   }, [isAdmin, editores, cargoMap, user]);
 
-  const openNew = () => {
-    setEditing(null);
-    setForm({ nome: '', cargo_id: '', data_inicio: '', ativo: true, observacoes: '', multiplicador: '' });
-    if (cargos.length === 0) load();
-    setOpenForm(true);
-  };
-  const openEdit = (ed: Editor) => {
-    setEditing(ed);
-    setForm({
-      nome: ed.nome, cargo_id: ed.cargo_id || '', data_inicio: ed.data_inicio || '',
-      ativo: ed.ativo, observacoes: ed.observacoes || '',
-      multiplicador: ed.multiplicador != null ? String(ed.multiplicador) : '',
-    });
-    setOpenForm(true);
-  };
-
-  const save = async () => {
-    const payload: any = {
-      nome: form.nome,
-      cargo_id: form.cargo_id || null,
-      data_inicio: form.data_inicio || null,
-      ativo: form.ativo,
-      observacoes: form.observacoes || null,
-      multiplicador: form.multiplicador !== '' ? parseFloat(form.multiplicador) : null,
-    };
-    const res = editing
-      ? await supabase.from('editores').update(payload).eq('id', editing.id)
-      : await supabase.from('editores').insert(payload);
-    if (res.error) return toast({ title: 'Erro', description: res.error.message, variant: 'destructive' });
-    toast({ title: editing ? 'Editor atualizado' : 'Editor criado' });
-    setOpenForm(false);
-    load();
-  };
-
-  const remove = async (id: string) => {
-    if (!(await confirm({ title: 'Excluir editor?', description: 'O editor e seus vínculos serão removidos permanentemente.' }))) return;
-    const { error } = await supabase.from('editores').delete().eq('id', id);
-    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    if (selected?.id === id) setSelected(null);
-    load();
-  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-1 bg-card border border-border rounded-lg">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h3 className="text-sm font-medium">Editores</h3>
-          {isAdmin && <Button size="sm" onClick={openNew}><Plus className="h-4 w-4" /> Novo</Button>}
         </div>
         <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
           {loading && <div className="p-4 text-sm text-muted-foreground">Carregando...</div>}
@@ -162,8 +116,6 @@ export function PerfisTab() {
             editor={selected}
             cargos={cargos}
             cargoMap={cargoMap}
-            onEdit={() => openEdit(selected)}
-            onDelete={() => remove(selected.id)}
             onChanged={load}
             isAdmin={isAdmin}
           />
@@ -174,74 +126,13 @@ export function PerfisTab() {
         )}
       </div>
 
-      <Dialog open={openForm} onOpenChange={setOpenForm}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? 'Editar editor' : 'Novo editor'}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label>Nome</Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
-            </div>
-            <div>
-              <Label>Cargo</Label>
-              <Select value={form.cargo_id} onValueChange={v => setForm({ ...form, cargo_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {cargos.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome} — {Number(c.multiplicador).toFixed(2)}x</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Data de início</Label>
-              <Input type="date" value={form.data_inicio} onChange={e => setForm({ ...form, data_inicio: e.target.value })} />
-            </div>
-            <div className="flex items-center gap-2">
-              <input id="ativo" type="checkbox" checked={form.ativo} onChange={e => setForm({ ...form, ativo: e.target.checked })} />
-              <Label htmlFor="ativo">Ativo</Label>
-            </div>
-            <div>
-              <Label>Observações</Label>
-              <Textarea value={form.observacoes} onChange={e => setForm({ ...form, observacoes: e.target.value })} />
-            </div>
-            <div>
-              <Label>Multiplicador individual</Label>
-              <p className="text-xs text-muted-foreground mb-1.5">
-                Sobrescreve o multiplicador padrão do cargo. Deixe em branco para usar o do cargo.
-              </p>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder={form.cargo_id ? `Padrão: ${Number(cargos.find(c => c.id === form.cargo_id)?.multiplicador ?? 1).toFixed(2)}x` : 'Ex: 1.20'}
-                value={form.multiplicador}
-                onChange={e => setForm({ ...form, multiplicador: e.target.value })}
-              />
-              <div className="mt-2 rounded-md border border-border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
-                <div className="font-medium text-foreground mb-1">Referência por cargo</div>
-                <div className="flex justify-between"><span>Júnior 2</span><span>0,70 – 0,90x</span></div>
-                <div className="flex justify-between"><span>Júnior 1</span><span>1,00x</span></div>
-                <div className="flex justify-between"><span>Pleno</span><span>1,10 – 1,20x</span></div>
-                <div className="flex justify-between"><span>Sênior</span><span>1,30x</span></div>
-                <div className="flex justify-between"><span>Head / Líder</span><span>1,40 – 1,50x</span></div>
-                <div className="flex justify-between"><span>Líder Estrategista</span><span>1,60 – 1,80x</span></div>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenForm(false)}>Cancelar</Button>
-            <Button onClick={save}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged, isAdmin }: {
+function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
   editor: Editor; cargos: Cargo[]; cargoMap: Record<string, Cargo>;
-  onEdit: () => void; onDelete: () => void; onChanged: () => void; isAdmin: boolean;
+  onChanged: () => void; isAdmin: boolean;
 }) {
   const [promocoes, setPromocoes] = useState<any[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<any[]>([]);
@@ -303,12 +194,6 @@ function EditorDetail({ editor, cargos, cargoMap, onEdit, onDelete, onChanged, i
             </div>
             {editor.observacoes && <p className="text-sm mt-3 text-foreground/80">{editor.observacoes}</p>}
           </div>
-          {isAdmin && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={onEdit}><Pencil className="h-4 w-4" /></Button>
-              <Button size="sm" variant="outline" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button>
-            </div>
-          )}
         </div>
       </div>
 
