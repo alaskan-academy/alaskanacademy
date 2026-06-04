@@ -60,10 +60,11 @@ export function GerenciarUsuariosTab() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: users, error }, { data: eds }, { data: crgs }] = await Promise.all([
+    const [{ data: users, error }, { data: eds }, { data: crgs }, { data: perfsData }] = await Promise.all([
       supabase.rpc('listar_usuarios'),
       supabase.from('editores').select('id, nome, usuario_id, cargo_id').order('nome'),
       supabase.from('cargos').select('id, nome, multiplicador, cor, ordem').order('ordem'),
+      supabase.from('perfis').select('id, cargo_id'),
     ]);
 
     if (error) { toast({ title: 'Erro ao carregar usuários', variant: 'destructive' }); setLoading(false); return; }
@@ -72,13 +73,18 @@ export function GerenciarUsuariosTab() {
     setEditores((eds ?? []).map((e: any) => ({ id: e.id, nome: e.nome })));
     setCargos(crgs ?? []);
 
-    // mapa usuario_id → editor_id e cargo_id
+    // mapa usuario_id → editor_id
     const em: Record<string, string> = {};
-    const cm: Record<string, string> = {};
     for (const ed of eds ?? []) {
-      if (ed.usuario_id) { em[ed.usuario_id] = ed.id; cm[ed.usuario_id] = ed.cargo_id ?? ''; }
+      if (ed.usuario_id) em[ed.usuario_id] = ed.id;
     }
     setEditorMap(em);
+
+    // cargo vem de perfis.cargo_id (fonte de verdade para todos os usuários)
+    const cm: Record<string, string> = {};
+    for (const p of perfsData ?? []) {
+      cm[p.id] = p.cargo_id ?? '';
+    }
     setCargoMap(cm);
 
     const ids = (users ?? []).map((u: Usuario) => u.id);
@@ -180,10 +186,21 @@ export function GerenciarUsuariosTab() {
   };
 
   const handleCargoChange = async (userId: string, newCargoId: string) => {
-    const edId = editorMap[userId];
-    if (!edId) return;
-    const { error } = await supabase.from('editores').update({ cargo_id: newCargoId || null }).eq('id', edId);
+    const cargoIdValue = newCargoId || null;
+
+    // Atualiza perfis.cargo_id (fonte de verdade para todos)
+    const { error } = await supabase
+      .from('perfis')
+      .update({ cargo_id: cargoIdValue })
+      .eq('id', userId);
     if (error) return toast({ title: 'Erro ao atualizar cargo', variant: 'destructive' });
+
+    // Sincroniza com editores.cargo_id se o usuário tiver editor vinculado
+    const edId = editorMap[userId];
+    if (edId) {
+      await supabase.from('editores').update({ cargo_id: cargoIdValue }).eq('id', edId);
+    }
+
     setCargoMap(prev => ({ ...prev, [userId]: newCargoId }));
     const cargo = cargos.find(c => c.id === newCargoId);
     toast({ title: cargo ? `Cargo atualizado para ${cargo.nome}` : 'Cargo removido' });
@@ -269,24 +286,22 @@ export function GerenciarUsuariosTab() {
                       </select>
                     </div>
 
-                    {/* Cargo — só aparece se tiver editor vinculado */}
-                    {editorMap[u.id] && (
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
-                        <select
-                          value={cargoMap[u.id] ?? ''}
-                          onChange={e => handleCargoChange(u.id, e.target.value)}
-                          className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
-                        >
-                          <option value="">— Sem cargo —</option>
-                          {cargos.map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.nome} — {fmtMult(c.multiplicador)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    {/* Cargo — disponível para qualquer usuário */}
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
+                      <select
+                        value={cargoMap[u.id] ?? ''}
+                        onChange={e => handleCargoChange(u.id, e.target.value)}
+                        className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                      >
+                        <option value="">— Sem cargo —</option>
+                        {cargos.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.nome} — {fmtMult(c.multiplicador)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <p className="text-xs text-muted-foreground">Páginas visíveis</p>
