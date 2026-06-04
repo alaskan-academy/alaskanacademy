@@ -191,7 +191,6 @@ export function CargosTab() {
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] text-muted-foreground uppercase tracking-wide">
                     <th className="text-left px-4 py-2">Cargo</th>
-                    <th className="text-center px-4 py-2">Multiplicador</th>
                     <th className="text-center px-4 py-2">Range mult.</th>
                     <th className="text-center px-4 py-2">Gap salarial</th>
                     <th className="text-center px-4 py-2">Permanência</th>
@@ -214,12 +213,6 @@ export function CargosTab() {
                             <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: c.cor || setor?.cor || '#888' }} />
                             <span className="font-medium">{c.nome}</span>
                           </div>
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                            style={{ backgroundColor: `${c.cor}22`, color: c.cor }}>
-                            {Number(c.multiplicador).toFixed(2)}x
-                          </span>
                         </td>
                         <td className="px-4 py-2.5 text-center text-xs text-muted-foreground">{multRange}</td>
                         <td className="px-4 py-2.5 text-center text-xs">
@@ -271,19 +264,11 @@ export function CargosTab() {
               <Input className="mt-1" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Júnior 1, Pleno, Sênior" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Multiplicador base</Label>
-                <Input className="mt-1" type="number" step="0.01" min="0"
-                  value={form.multiplicador}
-                  onChange={e => setForm({ ...form, multiplicador: parseFloat(e.target.value) || 0 })} />
-              </div>
-              <div>
-                <Label className="text-xs">Ordem</Label>
-                <Input className="mt-1" type="number" min="1"
-                  value={form.ordem}
-                  onChange={e => setForm({ ...form, ordem: parseInt(e.target.value) || 1 })} />
-              </div>
+            <div>
+              <Label className="text-xs">Ordem</Label>
+              <Input className="mt-1 w-28" type="number" min="1"
+                value={form.ordem}
+                onChange={e => setForm({ ...form, ordem: parseInt(e.target.value) || 1 })} />
             </div>
 
             {/* ── Referências com ranges ── */}
