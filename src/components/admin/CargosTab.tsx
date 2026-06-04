@@ -7,7 +7,6 @@ import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 type Setor = { id: string; nome: string; cor: string };
 type Cargo = {
@@ -22,14 +21,14 @@ const blank = (ordem: number): Omit<Cargo, 'id'> => ({
 
 const fmtMeses = (m: number | null) => {
   if (!m) return '—';
-  if (m < 12) return `${m} mes${m !== 1 ? 'es' : ''}`;
+  if (m < 12) return `${m}m`;
   const anos = Math.floor(m / 12);
   const resto = m % 12;
-  return resto ? `${anos}a ${resto}m` : `${anos} ano${anos !== 1 ? 's' : ''}`;
+  return resto ? `${anos}a ${resto}m` : `${anos}a`;
 };
 
 const fmtBRL = (v: number | null) =>
-  v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—';
+  v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 }) : '—';
 
 export function CargosTab() {
   const confirm   = useConfirm();
@@ -39,7 +38,6 @@ export function CargosTab() {
   const [open, setOpen]           = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm]           = useState<Omit<Cargo, 'id'>>(blank(1));
-  const [view, setView]           = useState<'cargos' | 'referencia'>('cargos');
 
   const load = async () => {
     setLoading(true);
@@ -52,8 +50,6 @@ export function CargosTab() {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
-
-  const setorMap = Object.fromEntries(setores.map(s => [s.id, s]));
 
   const openNew = () => {
     setEditingId(null);
@@ -77,8 +73,8 @@ export function CargosTab() {
       ...form,
       multiplicador: Number(form.multiplicador),
       setor_id: form.setor_id || null,
-      gap_salarial: form.gap_salarial != null && form.gap_salarial !== ('' as any) ? Number(form.gap_salarial) : null,
-      tempo_permanencia_meses: form.tempo_permanencia_meses != null && form.tempo_permanencia_meses !== ('' as any) ? Number(form.tempo_permanencia_meses) : null,
+      gap_salarial: form.gap_salarial !== null && (form.gap_salarial as any) !== '' ? Number(form.gap_salarial) : null,
+      tempo_permanencia_meses: form.tempo_permanencia_meses !== null && (form.tempo_permanencia_meses as any) !== '' ? Number(form.tempo_permanencia_meses) : null,
     };
     const { error } = editingId
       ? await supabase.from('cargos').update(payload).eq('id', editingId)
@@ -99,7 +95,7 @@ export function CargosTab() {
     load();
   };
 
-  // Agrupar cargos por setor
+  // Agrupar por setor
   const groups: { setor: Setor | null; cargos: Cargo[] }[] = [];
   const semSetor = cargos.filter(c => !c.setor_id);
   setores.forEach(s => {
@@ -111,46 +107,26 @@ export function CargosTab() {
   return (
     <div className="space-y-4 max-w-3xl">
 
-      {/* Header + toggle de view */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-base font-semibold">Cargos</h3>
-          <p className="text-xs text-muted-foreground">Níveis de cada setor com seus multiplicadores de comissão.</p>
+          <p className="text-xs text-muted-foreground">Níveis, multiplicadores e referências de cada setor.</p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Toggle */}
-          <div className="flex rounded-md border border-border overflow-hidden text-xs">
-            <button
-              onClick={() => setView('cargos')}
-              className={cn('px-3 py-1.5 transition-colors', view === 'cargos' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary')}
-            >
-              Cargos
-            </button>
-            <button
-              onClick={() => setView('referencia')}
-              className={cn('px-3 py-1.5 transition-colors border-l border-border', view === 'referencia' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary')}
-            >
-              Tabela de Referência
-            </button>
-          </div>
-          {view === 'cargos' && (
-            <Button size="sm" onClick={openNew}>
-              <Plus className="h-4 w-4 mr-1" /> Novo cargo
-            </Button>
-          )}
-        </div>
+        <Button size="sm" onClick={openNew}>
+          <Plus className="h-4 w-4 mr-1" /> Novo cargo
+        </Button>
       </div>
 
       {loading ? (
         <div className="bg-card border border-border rounded-lg p-6 text-center text-muted-foreground text-sm">
           Carregando...
         </div>
-      ) : view === 'cargos' ? (
-
-        /* ── Vista: Gerenciar Cargos ── */
+      ) : (
         <div className="space-y-3">
           {groups.map(({ setor, cargos: gc }) => (
             <div key={setor?.id ?? 'sem-setor'} className="bg-card border border-border rounded-lg overflow-hidden">
+
+              {/* Cabeçalho do setor */}
               <div className="flex items-center gap-2 px-4 py-2.5 bg-secondary/40 border-b border-border">
                 {setor ? (
                   <>
@@ -161,11 +137,14 @@ export function CargosTab() {
                   <span className="text-xs font-semibold text-muted-foreground">Sem setor</span>
                 )}
               </div>
+
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] text-muted-foreground uppercase tracking-wide">
                     <th className="text-left px-4 py-2">Cargo</th>
-                    <th className="text-center px-4 py-2">Multiplicador</th>
+                    <th className="text-center px-4 py-2">Mult.</th>
+                    <th className="text-center px-4 py-2">Gap salarial</th>
+                    <th className="text-center px-4 py-2">Permanência</th>
                     <th className="text-center px-4 py-2">Ordem</th>
                     <th className="px-4 py-2 w-20"></th>
                   </tr>
@@ -185,6 +164,16 @@ export function CargosTab() {
                           {Number(c.multiplicador).toFixed(2)}x
                         </span>
                       </td>
+                      <td className="px-4 py-2.5 text-center text-xs">
+                        {c.gap_salarial != null
+                          ? <span className="text-emerald-500 font-medium">{fmtBRL(c.gap_salarial)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-xs">
+                        {c.tempo_permanencia_meses != null
+                          ? <span className="font-medium">{fmtMeses(c.tempo_permanencia_meses)}</span>
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-center text-xs text-muted-foreground">{c.ordem}</td>
                       <td className="px-4 py-2.5 text-right whitespace-nowrap">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(c)}>
@@ -200,81 +189,16 @@ export function CargosTab() {
               </table>
             </div>
           ))}
+
           {groups.length === 0 && (
             <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
               Nenhum cargo cadastrado
             </div>
           )}
-        </div>
-
-      ) : (
-
-        /* ── Vista: Tabela de Referência ── */
-        <div className="space-y-4">
-          {groups.map(({ setor, cargos: gc }) => (
-            <div key={setor?.id ?? 'sem-setor'} className="bg-card border border-border rounded-lg overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 bg-secondary/40 border-b border-border">
-                {setor ? (
-                  <>
-                    <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: setor.cor || '#888' }} />
-                    <span className="text-xs font-semibold text-foreground">{setor.nome}</span>
-                  </>
-                ) : (
-                  <span className="text-xs font-semibold text-muted-foreground">Sem setor</span>
-                )}
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border/50 text-[11px] text-muted-foreground uppercase tracking-wide">
-                    <th className="text-left px-4 py-2.5">Cargo</th>
-                    <th className="text-center px-4 py-2.5">Multiplicador</th>
-                    <th className="text-center px-4 py-2.5">Gap Salarial</th>
-                    <th className="text-center px-4 py-2.5">Permanência</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {gc.map(c => (
-                    <tr key={c.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: c.cor || setor?.cor || '#888' }} />
-                          <span className="font-medium">{c.nome}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                          style={{ backgroundColor: `${c.cor}22`, color: c.cor }}>
-                          {Number(c.multiplicador).toFixed(2)}x
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {c.gap_salarial != null
-                          ? <span className="text-xs font-medium text-emerald-500">{fmtBRL(c.gap_salarial)}</span>
-                          : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {c.tempo_permanencia_meses != null
-                          ? <span className="text-xs font-medium">{fmtMeses(c.tempo_permanencia_meses)}</span>
-                          : <span className="text-xs text-muted-foreground">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-          {groups.length === 0 && (
-            <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
-              Nenhum cargo cadastrado
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground px-0.5">
-            Configure gap salarial e permanência editando cada cargo na aba <strong>Cargos</strong>.
-          </p>
         </div>
       )}
 
-      {/* ── Modal: Criar / Editar ── */}
+      {/* ── Modal ── */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -284,11 +208,8 @@ export function CargosTab() {
 
             <div>
               <Label className="text-xs">Setor</Label>
-              <select
-                value={form.setor_id ?? ''}
-                onChange={e => setForm({ ...form, setor_id: e.target.value || null })}
-                className="w-full mt-1 bg-secondary border border-border rounded-md px-3 py-2 text-sm"
-              >
+              <select value={form.setor_id ?? ''} onChange={e => setForm({ ...form, setor_id: e.target.value || null })}
+                className="w-full mt-1 bg-secondary border border-border rounded-md px-3 py-2 text-sm">
                 <option value="">— Sem setor —</option>
                 {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
               </select>
@@ -296,7 +217,9 @@ export function CargosTab() {
 
             <div>
               <Label className="text-xs">Nome do cargo</Label>
-              <Input className="mt-1" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Júnior 1, Pleno, Sênior" />
+              <Input className="mt-1" value={form.nome}
+                onChange={e => setForm({ ...form, nome: e.target.value })}
+                placeholder="Ex: Júnior 1, Pleno, Sênior" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -314,22 +237,18 @@ export function CargosTab() {
               </div>
             </div>
 
-            {/* ── Seção: Referência ── */}
-            <div className="border-t border-border/50 pt-3 space-y-3">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Referência</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Gap salarial (R$)</Label>
-                  <Input className="mt-1" type="number" step="0.01" min="0" placeholder="Ex: 500.00"
-                    value={form.gap_salarial ?? ''}
-                    onChange={e => setForm({ ...form, gap_salarial: e.target.value !== '' ? parseFloat(e.target.value) : null })} />
-                </div>
-                <div>
-                  <Label className="text-xs">Permanência (meses)</Label>
-                  <Input className="mt-1" type="number" step="1" min="1" placeholder="Ex: 6"
-                    value={form.tempo_permanencia_meses ?? ''}
-                    onChange={e => setForm({ ...form, tempo_permanencia_meses: e.target.value !== '' ? parseInt(e.target.value) : null })} />
-                </div>
+            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/50">
+              <div className="pt-3">
+                <Label className="text-xs">Gap salarial (R$)</Label>
+                <Input className="mt-1" type="number" step="0.01" min="0" placeholder="Ex: 500"
+                  value={form.gap_salarial ?? ''}
+                  onChange={e => setForm({ ...form, gap_salarial: e.target.value !== '' ? parseFloat(e.target.value) : null })} />
+              </div>
+              <div className="pt-3">
+                <Label className="text-xs">Permanência (meses)</Label>
+                <Input className="mt-1" type="number" step="1" min="1" placeholder="Ex: 6"
+                  value={form.tempo_permanencia_meses ?? ''}
+                  onChange={e => setForm({ ...form, tempo_permanencia_meses: e.target.value !== '' ? parseInt(e.target.value) : null })} />
               </div>
             </div>
 
@@ -339,9 +258,7 @@ export function CargosTab() {
                 <input type="color" value={form.cor}
                   onChange={e => setForm({ ...form, cor: e.target.value })}
                   className="h-9 w-12 rounded cursor-pointer border border-border bg-transparent p-0.5" />
-                <Input value={form.cor}
-                  onChange={e => setForm({ ...form, cor: e.target.value })}
-                  className="font-mono text-xs" />
+                <Input value={form.cor} onChange={e => setForm({ ...form, cor: e.target.value })} className="font-mono text-xs" />
                 <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
                   style={{ backgroundColor: `${form.cor}22`, color: form.cor }}>
                   {form.nome || 'Prévia'}
