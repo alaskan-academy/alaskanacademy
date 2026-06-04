@@ -29,7 +29,7 @@ export function PerfisTab() {
     setLoading(true);
     const [c, e] = await Promise.all([
       supabase.from('cargos').select('*').order('ordem'),
-      supabase.from('editores').select('*').order('nome'),
+      supabase.from('editores').select('*').not('usuario_id', 'is', null).order('nome'),
     ]);
     const cgs: Cargo[] = c.data || [];
     const eds: Editor[] = e.data || [];
@@ -83,12 +83,13 @@ export function PerfisTab() {
                   'w-full text-left px-4 py-3 flex items-center justify-between transition-colors',
                   canView ? 'hover:bg-secondary/50 cursor-pointer' : 'cursor-default',
                   selected?.id === ed.id ? 'bg-secondary' : '',
+                  !ed.ativo && 'opacity-50',
                 )}
               >
                 <div className={cn('min-w-0 flex-1', !canView && 'blur-sm select-none')}>
                   <div className="text-sm font-medium truncate flex items-center gap-2">
                     {ed.nome}
-                    {!ed.ativo && <Badge variant="outline" className="text-xs">inativo</Badge>}
+                    {!ed.ativo && <Badge variant="outline" className="text-xs text-muted-foreground">inativo</Badge>}
                   </div>
                   {cg && (
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">

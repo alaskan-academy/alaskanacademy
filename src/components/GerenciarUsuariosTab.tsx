@@ -220,16 +220,36 @@ export function GerenciarUsuariosTab() {
     if (error) return toast({ title: 'Erro ao atualizar cargo', variant: 'destructive' });
 
     const edId = editorMap[userId];
-    if (edId) await supabase.from('editores').update({ cargo_id: cargoIdValue }).eq('id', edId);
 
-    if (newCargoId) {
+    if (!newCargoId) {
+      // Cargo removido: desvincula o usuário do perfil de editor (dados preservados no BD)
+      if (edId) await supabase.from('editores').update({ cargo_id: null, usuario_id: null }).eq('id', edId);
+    } else {
+      // Cargo atribuído: sincroniza cargo_id no perfil vinculado (se houver)
+      if (edId) await supabase.from('editores').update({ cargo_id: cargoIdValue }).eq('id', edId);
+
       const cargo = cargos.find(c => c.id === newCargoId);
       const setor = cargo?.setor_id ? setores.find(s => s.id === cargo.setor_id) : null;
       if (setor?.pagina_key) {
-        await supabase.from('permissoes_paginas').upsert({ usuario_id: userId, pagina: setor.pagina_key, permitido: true }, { onConflict: 'usuario_id,pagina' });
-        if (setor.pagina_key === 'editores' && !editorMap[userId]) {
+        await supabase.from('permissoes_paginas').upsert(
+          { usuario_id: userId, pagina: setor.pagina_key, permitido: true },
+          { onConflict: 'usuario_id,pagina' },
+        );
+        if (setor.pagina_key === 'editores' && !edId) {
           const usuario = usuarios.find(u => u.id === userId);
-          if (usuario) await supabase.from('editores').insert({ nome: usuario.nome, usuario_id: userId, cargo_id: cargoIdValue, ativo: true });
+          // Tenta re-vincular um perfil existente desvinculado (mesmo nome) antes de criar novo
+          const { data: existente } = await supabase
+            .from('editores')
+            .select('id')
+            .eq('nome', usuario?.nome ?? '')
+            .is('usuario_id', null)
+            .limit(1)
+            .maybeSingle();
+          if (existente) {
+            await supabase.from('editores').update({ usuario_id: userId, cargo_id: cargoIdValue, ativo: true }).eq('id', existente.id);
+          } else if (usuario) {
+            await supabase.from('editores').insert({ nome: usuario.nome, usuario_id: userId, cargo_id: cargoIdValue, ativo: true });
+          }
         }
       }
     }
