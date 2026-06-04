@@ -10,25 +10,68 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 
 type Setor = { id: string; nome: string; cor: string };
 type Cargo = {
-  id: string; nome: string; multiplicador: number; cor: string; ordem: number;
-  setor_id: string | null; gap_salarial: number | null; tempo_permanencia_meses: number | null;
+  id: string; nome: string; multiplicador: number; cor: string; ordem: number; setor_id: string | null;
+  multiplicador_min: number | null; multiplicador_max: number | null;
+  gap_salarial_min: number | null;  gap_salarial_max: number | null;
+  tempo_permanencia_min: number | null; tempo_permanencia_max: number | null;
 };
 
 const blank = (ordem: number): Omit<Cargo, 'id'> => ({
   nome: '', multiplicador: 1.0, cor: '#6366f1', ordem, setor_id: null,
-  gap_salarial: null, tempo_permanencia_meses: null,
+  multiplicador_min: null, multiplicador_max: null,
+  gap_salarial_min: null,  gap_salarial_max: null,
+  tempo_permanencia_min: null, tempo_permanencia_max: null,
 });
 
-const fmtMeses = (m: number | null) => {
-  if (!m) return '—';
-  if (m < 12) return `${m}m`;
-  const anos = Math.floor(m / 12);
-  const resto = m % 12;
-  return resto ? `${anos}a ${resto}m` : `${anos}a`;
+/* ── Formatadores ── */
+const fmtMeses = (v: number | null) => {
+  if (!v) return null;
+  if (v < 12) return `${v}m`;
+  const a = Math.floor(v / 12), r = v % 12;
+  return r ? `${a}a ${r}m` : `${a}a`;
 };
 
 const fmtBRL = (v: number | null) =>
-  v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 }) : '—';
+  v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 }) : null;
+
+const fmtRange = (a: string | null, b: string | null, unit = '') => {
+  if (!a && !b) return '—';
+  if (a && b)  return `${a}${unit} – ${b}${unit}`;
+  return `${a ?? b}${unit}`;
+};
+
+/* ── Input de range helper ── */
+function RangeField({
+  label, min, max, step = '1', placeholder,
+  onChangeMin, onChangeMax,
+}: {
+  label: string; min: string; max: string; step?: string; placeholder?: string;
+  onChangeMin: (v: string) => void; onChangeMax: (v: string) => void;
+}) {
+  return (
+    <div>
+      <Label className="text-xs">{label}</Label>
+      <div className="flex items-center gap-1.5 mt-1">
+        <Input
+          type="number" step={step} min="0" placeholder={placeholder ?? 'Mín'}
+          className="h-8 text-xs"
+          value={min}
+          onChange={e => onChangeMin(e.target.value)}
+        />
+        <span className="text-muted-foreground text-xs shrink-0">–</span>
+        <Input
+          type="number" step={step} min="0" placeholder={placeholder ?? 'Máx'}
+          className="h-8 text-xs"
+          value={max}
+          onChange={e => onChangeMax(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ── Converte string → number | null ── */
+const toNum   = (v: string, decimals = true) => v !== '' ? (decimals ? parseFloat(v) : parseInt(v)) : null;
 
 export function CargosTab() {
   const confirm   = useConfirm();
@@ -38,6 +81,14 @@ export function CargosTab() {
   const [open, setOpen]           = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm]           = useState<Omit<Cargo, 'id'>>(blank(1));
+
+  /* Campos do form como strings para inputs controlados */
+  const [fMultMin, setFMultMin]   = useState('');
+  const [fMultMax, setFMultMax]   = useState('');
+  const [fGapMin,  setFGapMin]    = useState('');
+  const [fGapMax,  setFGapMax]    = useState('');
+  const [fPermMin, setFPermMin]   = useState('');
+  const [fPermMax, setFPermMax]   = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -51,20 +102,31 @@ export function CargosTab() {
   };
   useEffect(() => { load(); }, []);
 
+  const resetRangeFields = (c?: Omit<Cargo, 'id'>) => {
+    setFMultMin(c?.multiplicador_min != null ? String(c.multiplicador_min) : '');
+    setFMultMax(c?.multiplicador_max != null ? String(c.multiplicador_max) : '');
+    setFGapMin (c?.gap_salarial_min  != null ? String(c.gap_salarial_min)  : '');
+    setFGapMax (c?.gap_salarial_max  != null ? String(c.gap_salarial_max)  : '');
+    setFPermMin(c?.tempo_permanencia_min != null ? String(c.tempo_permanencia_min) : '');
+    setFPermMax(c?.tempo_permanencia_max != null ? String(c.tempo_permanencia_max) : '');
+  };
+
   const openNew = () => {
     setEditingId(null);
-    setForm({ ...blank(cargos.length + 1), setor_id: setores[0]?.id ?? null });
-    setOpen(true);
+    const f = { ...blank(cargos.length + 1), setor_id: setores[0]?.id ?? null };
+    setForm(f); resetRangeFields(f); setOpen(true);
   };
 
   const openEdit = (c: Cargo) => {
     setEditingId(c.id);
-    setForm({
+    const f: Omit<Cargo, 'id'> = {
       nome: c.nome, multiplicador: c.multiplicador, cor: c.cor || '#6366f1',
       ordem: c.ordem, setor_id: c.setor_id,
-      gap_salarial: c.gap_salarial, tempo_permanencia_meses: c.tempo_permanencia_meses,
-    });
-    setOpen(true);
+      multiplicador_min: c.multiplicador_min, multiplicador_max: c.multiplicador_max,
+      gap_salarial_min:  c.gap_salarial_min,  gap_salarial_max:  c.gap_salarial_max,
+      tempo_permanencia_min: c.tempo_permanencia_min, tempo_permanencia_max: c.tempo_permanencia_max,
+    };
+    setForm(f); resetRangeFields(f); setOpen(true);
   };
 
   const save = async () => {
@@ -73,39 +135,35 @@ export function CargosTab() {
       ...form,
       multiplicador: Number(form.multiplicador),
       setor_id: form.setor_id || null,
-      gap_salarial: form.gap_salarial !== null && (form.gap_salarial as any) !== '' ? Number(form.gap_salarial) : null,
-      tempo_permanencia_meses: form.tempo_permanencia_meses !== null && (form.tempo_permanencia_meses as any) !== '' ? Number(form.tempo_permanencia_meses) : null,
+      multiplicador_min: toNum(fMultMin), multiplicador_max: toNum(fMultMax),
+      gap_salarial_min:  toNum(fGapMin),  gap_salarial_max:  toNum(fGapMax),
+      tempo_permanencia_min: toNum(fPermMin, false), tempo_permanencia_max: toNum(fPermMax, false),
     };
     const { error } = editingId
       ? await supabase.from('cargos').update(payload).eq('id', editingId)
       : await supabase.from('cargos').insert(payload);
     if (error) return toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
     toast({ title: editingId ? 'Cargo atualizado' : 'Cargo criado' });
-    setOpen(false);
-    load();
+    setOpen(false); load();
   };
 
   const remove = async (c: Cargo) => {
-    if (!(await confirm({
-      title: `Excluir cargo "${c.nome}"?`,
-      description: 'Usuários com esse cargo perderão a referência de multiplicador.',
-    }))) return;
+    if (!(await confirm({ title: `Excluir cargo "${c.nome}"?`, description: 'Usuários com esse cargo perderão a referência de multiplicador.' }))) return;
     const { error } = await supabase.from('cargos').delete().eq('id', c.id);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     load();
   };
 
-  // Agrupar por setor
   const groups: { setor: Setor | null; cargos: Cargo[] }[] = [];
   const semSetor = cargos.filter(c => !c.setor_id);
   setores.forEach(s => {
-    const group = cargos.filter(c => c.setor_id === s.id);
-    if (group.length > 0) groups.push({ setor: s, cargos: group });
+    const g = cargos.filter(c => c.setor_id === s.id);
+    if (g.length) groups.push({ setor: s, cargos: g });
   });
-  if (semSetor.length > 0) groups.push({ setor: null, cargos: semSetor });
+  if (semSetor.length) groups.push({ setor: null, cargos: semSetor });
 
   return (
-    <div className="space-y-4 max-w-3xl">
+    <div className="space-y-4 max-w-4xl">
 
       <div className="flex items-center justify-between">
         <div>
@@ -118,82 +176,75 @@ export function CargosTab() {
       </div>
 
       {loading ? (
-        <div className="bg-card border border-border rounded-lg p-6 text-center text-muted-foreground text-sm">
-          Carregando...
-        </div>
+        <div className="bg-card border border-border rounded-lg p-6 text-center text-muted-foreground text-sm">Carregando...</div>
       ) : (
         <div className="space-y-3">
           {groups.map(({ setor, cargos: gc }) => (
             <div key={setor?.id ?? 'sem-setor'} className="bg-card border border-border rounded-lg overflow-hidden">
-
-              {/* Cabeçalho do setor */}
               <div className="flex items-center gap-2 px-4 py-2.5 bg-secondary/40 border-b border-border">
-                {setor ? (
-                  <>
-                    <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: setor.cor || '#888' }} />
-                    <span className="text-xs font-semibold text-foreground">{setor.nome}</span>
-                  </>
-                ) : (
-                  <span className="text-xs font-semibold text-muted-foreground">Sem setor</span>
-                )}
+                {setor
+                  ? <><span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: setor.cor || '#888' }} /><span className="text-xs font-semibold">{setor.nome}</span></>
+                  : <span className="text-xs font-semibold text-muted-foreground">Sem setor</span>}
               </div>
 
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/50 text-[11px] text-muted-foreground uppercase tracking-wide">
                     <th className="text-left px-4 py-2">Cargo</th>
-                    <th className="text-center px-4 py-2">Mult.</th>
+                    <th className="text-center px-4 py-2">Multiplicador</th>
+                    <th className="text-center px-4 py-2">Range mult.</th>
                     <th className="text-center px-4 py-2">Gap salarial</th>
                     <th className="text-center px-4 py-2">Permanência</th>
-                    <th className="text-center px-4 py-2">Ordem</th>
-                    <th className="px-4 py-2 w-20"></th>
+                    <th className="px-4 py-2 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {gc.map(c => (
-                    <tr key={c.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30 transition-colors">
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: c.cor || setor?.cor || '#888' }} />
-                          <span className="font-medium">{c.nome}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
-                          style={{ backgroundColor: `${c.cor}22`, color: c.cor }}>
-                          {Number(c.multiplicador).toFixed(2)}x
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-xs">
-                        {c.gap_salarial != null
-                          ? <span className="text-emerald-500 font-medium">{fmtBRL(c.gap_salarial)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-xs">
-                        {c.tempo_permanencia_meses != null
-                          ? <span className="font-medium">{fmtMeses(c.tempo_permanencia_meses)}</span>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-xs text-muted-foreground">{c.ordem}</td>
-                      <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(c)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 ml-1" onClick={() => remove(c)}>
-                          <Trash2 className="h-3.5 w-3.5 text-destructive/70 hover:text-destructive" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {gc.map(c => {
+                    const multRange = fmtRange(
+                      c.multiplicador_min != null ? `${Number(c.multiplicador_min).toFixed(2)}x` : null,
+                      c.multiplicador_max != null ? `${Number(c.multiplicador_max).toFixed(2)}x` : null,
+                    );
+                    const gapRange = fmtRange(fmtBRL(c.gap_salarial_min), fmtBRL(c.gap_salarial_max));
+                    const permRange = fmtRange(fmtMeses(c.tempo_permanencia_min), fmtMeses(c.tempo_permanencia_max));
+
+                    return (
+                      <tr key={c.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: c.cor || setor?.cor || '#888' }} />
+                            <span className="font-medium">{c.nome}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ backgroundColor: `${c.cor}22`, color: c.cor }}>
+                            {Number(c.multiplicador).toFixed(2)}x
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-center text-xs text-muted-foreground">{multRange}</td>
+                        <td className="px-4 py-2.5 text-center text-xs">
+                          {gapRange !== '—'
+                            ? <span className="text-emerald-500 font-medium">{gapRange}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-center text-xs">
+                          {permRange !== '—'
+                            ? <span className="font-medium">{permRange}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(c)}><Pencil className="h-3.5 w-3.5" /></Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 ml-1" onClick={() => remove(c)}><Trash2 className="h-3.5 w-3.5 text-destructive/70 hover:text-destructive" /></Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ))}
-
           {groups.length === 0 && (
-            <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
-              Nenhum cargo cadastrado
-            </div>
+            <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">Nenhum cargo cadastrado</div>
           )}
         </div>
       )}
@@ -217,14 +268,12 @@ export function CargosTab() {
 
             <div>
               <Label className="text-xs">Nome do cargo</Label>
-              <Input className="mt-1" value={form.nome}
-                onChange={e => setForm({ ...form, nome: e.target.value })}
-                placeholder="Ex: Júnior 1, Pleno, Sênior" />
+              <Input className="mt-1" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Júnior 1, Pleno, Sênior" />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Multiplicador</Label>
+                <Label className="text-xs">Multiplicador base</Label>
                 <Input className="mt-1" type="number" step="0.01" min="0"
                   value={form.multiplicador}
                   onChange={e => setForm({ ...form, multiplicador: parseFloat(e.target.value) || 0 })} />
@@ -237,26 +286,30 @@ export function CargosTab() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/50">
-              <div className="pt-3">
-                <Label className="text-xs">Gap salarial (R$)</Label>
-                <Input className="mt-1" type="number" step="0.01" min="0" placeholder="Ex: 500"
-                  value={form.gap_salarial ?? ''}
-                  onChange={e => setForm({ ...form, gap_salarial: e.target.value !== '' ? parseFloat(e.target.value) : null })} />
-              </div>
-              <div className="pt-3">
-                <Label className="text-xs">Permanência (meses)</Label>
-                <Input className="mt-1" type="number" step="1" min="1" placeholder="Ex: 6"
-                  value={form.tempo_permanencia_meses ?? ''}
-                  onChange={e => setForm({ ...form, tempo_permanencia_meses: e.target.value !== '' ? parseInt(e.target.value) : null })} />
-              </div>
+            {/* ── Referências com ranges ── */}
+            <div className="border-t border-border/50 pt-3 space-y-3">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Referência</p>
+
+              <RangeField label="Range de multiplicador"
+                step="0.01" placeholder="Ex: 0.80"
+                min={fMultMin} max={fMultMax}
+                onChangeMin={setFMultMin} onChangeMax={setFMultMax} />
+
+              <RangeField label="Gap salarial (R$)"
+                step="0.01" placeholder="Ex: 500"
+                min={fGapMin} max={fGapMax}
+                onChangeMin={setFGapMin} onChangeMax={setFGapMax} />
+
+              <RangeField label="Permanência (meses)"
+                step="1" placeholder="Ex: 6"
+                min={fPermMin} max={fPermMax}
+                onChangeMin={setFPermMin} onChangeMax={setFPermMax} />
             </div>
 
             <div>
               <Label className="text-xs">Cor</Label>
               <div className="flex items-center gap-2 mt-1">
-                <input type="color" value={form.cor}
-                  onChange={e => setForm({ ...form, cor: e.target.value })}
+                <input type="color" value={form.cor} onChange={e => setForm({ ...form, cor: e.target.value })}
                   className="h-9 w-12 rounded cursor-pointer border border-border bg-transparent p-0.5" />
                 <Input value={form.cor} onChange={e => setForm({ ...form, cor: e.target.value })} className="font-mono text-xs" />
                 <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
