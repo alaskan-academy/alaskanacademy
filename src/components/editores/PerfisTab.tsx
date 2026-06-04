@@ -17,7 +17,6 @@ type Cargo = { id: string; nome: string; multiplicador: number; cor: string | nu
 type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null; multiplicador: number | null };
 
 export function PerfisTab() {
-  const confirm = useConfirm();
   const { user, perfil: authPerfil } = useAuth();
   const isAdmin = authPerfil?.is_admin ?? false;
 

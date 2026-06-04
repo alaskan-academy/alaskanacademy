@@ -231,7 +231,7 @@ export function GerenciarUsuariosTab() {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full font-medium"
         style={{ backgroundColor: `${cargo.cor}20`, color: cargo.cor }}>
-        {cargo.nome} — {fmtMult(cargo.multiplicador)}
+        {cargo.nome}
       </span>
     );
   };
@@ -305,7 +305,7 @@ export function GerenciarUsuariosTab() {
                         >
                           <option value="">— Sem cargo —</option>
                           {cargos.map(c => (
-                            <option key={c.id} value={c.id}>{c.nome} — {fmtMult(c.multiplicador)}</option>
+                            <option key={c.id} value={c.id}>{c.nome}</option>
                           ))}
                         </select>
                       </div>
