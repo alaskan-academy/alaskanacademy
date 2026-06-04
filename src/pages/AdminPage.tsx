@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { GerenciarUsuariosTab } from '@/components/GerenciarUsuariosTab';
 import { SetoresTab }           from '@/components/admin/SetoresTab';
 import { CargosTab }            from '@/components/admin/CargosTab';
-import { PerfisTab }            from '@/components/editores/PerfisTab';
+import { PromocoesEditorTab }   from '@/components/admin/PromocoesEditorTab';
 import { AvaliarCriativoTab }   from '@/components/editores/AvaliarCriativoTab';
 import { EmpresasOfertasTab }   from '@/components/editores/EmpresasOfertasTab';
 import { ConfiguracaoTab }      from '@/components/editores/ConfiguracaoTab';
@@ -16,7 +16,7 @@ import { RadarConfigTab }       from '@/components/radar/RadarConfigTab';
 import { NotasTab }             from '@/components/admin/NotasTab';
 
 import {
-  Users, Layers, Award, UserCheck, Star, Building2, ListChecks,
+  Users, Layers, Award, TrendingUp, Star, Building2, ListChecks,
   Calculator, Radar, StickyNote,
 } from 'lucide-react';
 
@@ -36,7 +36,7 @@ const TABS: TabDef[] = [
   { group: 'Pessoas',    id: 'usuarios',  label: 'Usuários',           icon: Users       },
   { group: 'Pessoas',    id: 'setores',   label: 'Setores',            icon: Layers      },
   { group: 'Pessoas',    id: 'cargos',    label: 'Cargos',             icon: Award       },
-  { group: 'Pessoas',    id: 'editores',  label: 'Perfis Editores',    icon: UserCheck   },
+  { group: 'Pessoas',    id: 'editores',  label: 'Promoções',          icon: TrendingUp  },
   { group: 'Operações',  id: 'criativos', label: 'Avaliar Criativos',  icon: Star        },
   { group: 'Operações',  id: 'empresas',  label: 'Empresas e Ofertas', icon: Building2   },
   { group: 'Operações',  id: 'criterios', label: 'Critérios',          icon: ListChecks  },
@@ -63,7 +63,7 @@ export default function AdminPage() {
       case 'usuarios':  return <GerenciarUsuariosTab />;
       case 'setores':   return <SetoresTab />;
       case 'cargos':    return <CargosTab />;
-      case 'editores':  return <PerfisTab adminMode />;
+      case 'editores':  return <PromocoesEditorTab />;
       case 'criativos': return <AvaliarCriativoTab />;
       case 'empresas':  return <EmpresasOfertasTab />;
       case 'criterios': return <ConfiguracaoTab />;
