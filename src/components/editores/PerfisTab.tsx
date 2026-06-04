@@ -94,8 +94,8 @@ export function PerfisTab() {
                   {cg && (
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                       <span className="inline-block w-2 h-2 rounded-full" style={{ background: cg.cor || '#888' }} />
-                      {cg.nome} · <span className={cn(ed.multiplicador != null && 'text-primary font-medium')}>
-                        {Number(ed.multiplicador ?? cg.multiplicador).toFixed(2)}x
+                      {cg.nome} · <span className={cn(ed.multiplicador != null ? 'text-primary font-medium' : 'text-muted-foreground')}>
+                        {ed.multiplicador != null ? `${Number(ed.multiplicador).toFixed(2)}x` : '—'}
                       </span>
                     </div>
                   )}
@@ -172,7 +172,7 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
                     {Number(editor.multiplicador).toFixed(2)}x <span className="opacity-60 ml-1">(individual)</span>
                   </Badge>
                 ) : (
-                  <Badge variant="secondary">{Number(cargoAtual.multiplicador).toFixed(2)}x</Badge>
+                  <Badge variant="outline" className="text-muted-foreground">não definido</Badge>
                 )}
               </div>
             )}
@@ -180,9 +180,7 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
               <div className="bg-secondary border border-border rounded-lg px-4 py-2 text-center min-w-[90px]">
                 <div className="text-xs text-muted-foreground mb-0.5">Multiplicador</div>
                 <div className="text-xl font-bold text-primary">
-                  {cargoAtual
-                    ? Number(editor.multiplicador ?? cargoAtual.multiplicador).toFixed(2) + 'x'
-                    : editor.multiplicador != null ? Number(editor.multiplicador).toFixed(2) + 'x' : '—'}
+                  {editor.multiplicador != null ? Number(editor.multiplicador).toFixed(2) + 'x' : '—'}
                 </div>
                 {editor.multiplicador != null && (
                   <div className="text-xs text-muted-foreground mt-0.5">individual</div>

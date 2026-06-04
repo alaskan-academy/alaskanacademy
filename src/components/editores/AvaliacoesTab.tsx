@@ -101,11 +101,9 @@ export function AvaliacoesTab() {
 
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
-  // multiplicador individual tem prioridade sobre o do cargo
-  const multiplicador = editorSel?.multiplicador != null
-    ? Number(editorSel.multiplicador)
-    : cargoSel ? Number(cargoSel.multiplicador) : 1;
-  const multiplicadorFonte = editorSel?.multiplicador != null ? 'individual' : 'cargo';
+  // apenas multiplicador individual configurado no perfil do usuário
+  const multiplicador = editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : 1;
+  const multiplicadorDefinido = editorSel?.multiplicador != null;
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
@@ -181,9 +179,7 @@ export function AvaliacoesTab() {
       : [];
     const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
     const editorDaAval = editores.find(e => e.id === a.editor_id);
-    const multIndividual = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : null;
-    const multCargo = Number(cargoMap[editorDaAval?.cargo_id]?.multiplicador || 1);
-    const multEfetivo = multIndividual ?? multCargo;
+    const multEfetivo = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : 1;
     const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * multEfetivo * 100) / 100;
     const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
 
@@ -446,9 +442,11 @@ export function AvaliacoesTab() {
                  </div>
                  <div>
                    <Label className="text-xs text-muted-foreground">
-                     Multiplicador {multiplicadorFonte === 'individual' ? '(individual)' : cargoSel ? `(${cargoSel.nome})` : ''}
+                     Multiplicador individual
                    </Label>
-                   <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
+                   <div className="text-lg font-medium">
+                     {multiplicadorDefinido ? `${multiplicador.toFixed(2)}x` : <span className="text-muted-foreground text-base">não definido</span>}
+                   </div>
                  </div>
                  <div>
                    <Label className="text-xs text-muted-foreground">Bônus com multiplicador</Label>

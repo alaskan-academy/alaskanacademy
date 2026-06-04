@@ -434,7 +434,7 @@ export function GerenciarUsuariosTab() {
                               <div>
                                 <Label className="text-xs">Multiplicador individual</Label>
                                 <Input type="number" step="0.01" min="0" className="mt-1 h-8 text-xs"
-                                  placeholder={cargo ? `Padrão: ${fmtMult(cargo.multiplicador)}` : 'Ex: 1.20'}
+                                  placeholder="Ex: 1.20"
                                   value={form.multiplicador ?? det.multiplicador}
                                   onChange={e => setEditorField(u.id, 'multiplicador', e.target.value)} />
                               </div>
