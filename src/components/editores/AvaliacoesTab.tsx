@@ -61,7 +61,7 @@ export function AvaliacoesTab() {
   const load = async () => {
     setLoading(true);
     const [e, a, c, o, cg] = await Promise.all([
-      supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador').order('nome'),
+      supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador, percentual_lideranca').not('usuario_id', 'is', null).order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
       supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
@@ -109,6 +109,8 @@ export function AvaliacoesTab() {
   const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null || editorSel?.multiplicador != null;
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
+  // % configurado no perfil do editor, com fallback para 20%
+  const pctLideranca = editorSel?.percentual_lideranca != null ? Number(editorSel.percentual_lideranca) / 100 : 0.2;
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
   const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 
@@ -146,7 +148,7 @@ export function AvaliacoesTab() {
     if (!isHeadOuLider || !mesReferenciaPayload || form.responsaveis_ids.length === 0) return 0;
     return items
       .filter(item => item.mes_referencia === mesReferenciaPayload && form.responsaveis_ids.includes(item.editor_id))
-      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * 0.2, 0);
+      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * pctLideranca, 0);
   }, [form.responsaveis_ids, isHeadOuLider, items, mesReferenciaPayload]);
   const bonusTotalCalculado = Math.round((bonusComMultiplicador + bonusResponsaveis) * 100) / 100;
 
@@ -229,7 +231,7 @@ export function AvaliacoesTab() {
         tipo: 'leaders',
         editor_ids: form.responsaveis_ids,
         bonus_lideranca: Math.round(bonusResponsaveis * 100) / 100,
-        percentual: 0.2,
+        percentual: pctLideranca,
       };
     }
 
@@ -475,7 +477,7 @@ export function AvaliacoesTab() {
                      <div className="text-lg font-medium">{form.responsaveis_ids.length}</div>
                    </div>
                    <div>
-                     <Label className="text-xs text-muted-foreground">+ 20% da comissão do time</Label>
+                     <Label className="text-xs text-muted-foreground">+ {(pctLideranca * 100).toFixed(0)}% da comissão do time</Label>
                      <div className="text-lg font-medium text-primary">{formatCurrency(bonusResponsaveis)}</div>
                    </div>
                    <div>

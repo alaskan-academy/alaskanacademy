@@ -15,7 +15,7 @@ import { useConfirm } from '@/hooks/use-confirm';
 type Usuario      = { id: string; email: string; nome: string; is_admin: boolean; created_at: string };
 type Cargo        = { id: string; nome: string; multiplicador: string; cor: string; ordem: number; setor_id: string | null };
 type Setor        = { id: string; nome: string; pagina_key: string | null; cor: string };
-type EditorDetalhe = { id: string; nome: string; cargo_id: string; data_inicio: string; ativo: boolean; observacoes: string; multiplicador: string };
+type EditorDetalhe = { id: string; nome: string; cargo_id: string; data_inicio: string; ativo: boolean; observacoes: string; multiplicador: string; percentual_lideranca: string };
 type PermMap      = Record<string, boolean>;
 type EditorOpt    = { id: string; nome: string };
 
@@ -93,6 +93,7 @@ export function GerenciarUsuariosTab() {
           data_inicio: ed.data_inicio ?? '', ativo: ed.ativo ?? true,
           observacoes: ed.observacoes ?? '',
           multiplicador: ed.multiplicador != null ? String(ed.multiplicador) : '',
+          percentual_lideranca: ed.percentual_lideranca != null ? String(ed.percentual_lideranca) : '',
         };
       }
     }
@@ -272,7 +273,14 @@ export function GerenciarUsuariosTab() {
     if (!edId) return;
     const f = getEditorForm(userId);
     setSavingEditor(prev => ({ ...prev, [userId]: true }));
-    const payload: any = { nome: f.nome, data_inicio: f.data_inicio || null, ativo: f.ativo ?? true, observacoes: f.observacoes || null, multiplicador: f.multiplicador !== '' && f.multiplicador != null ? parseFloat(String(f.multiplicador)) : null };
+    const payload: any = {
+      nome: f.nome,
+      data_inicio: f.data_inicio || null,
+      ativo: f.ativo ?? true,
+      observacoes: f.observacoes || null,
+      multiplicador: f.multiplicador !== '' && f.multiplicador != null ? parseFloat(String(f.multiplicador)) : null,
+      percentual_lideranca: f.percentual_lideranca !== '' && f.percentual_lideranca != null ? parseFloat(String(f.percentual_lideranca)) : null,
+    };
     const { error } = await supabase.from('editores').update(payload).eq('id', edId);
     setSavingEditor(prev => ({ ...prev, [userId]: false }));
     if (error) return toast({ title: 'Erro ao salvar perfil', variant: 'destructive' });
@@ -438,12 +446,22 @@ export function GerenciarUsuariosTab() {
                                   value={form.multiplicador ?? det.multiplicador}
                                   onChange={e => setEditorField(u.id, 'multiplicador', e.target.value)} />
                               </div>
-                              <div className="flex items-end pb-1">
-                                <label className="flex items-center gap-2 text-xs cursor-pointer">
-                                  <input type="checkbox" checked={form.ativo ?? det.ativo} onChange={e => setEditorField(u.id, 'ativo', e.target.checked)} className="rounded" />
-                                  Ativo
-                                </label>
+                              <div>
+                                <Label className="text-xs">% Comissão liderança</Label>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <Input type="number" step="0.1" min="0" max="100" className="h-8 text-xs"
+                                    placeholder="Padrão: 20"
+                                    value={form.percentual_lideranca ?? det.percentual_lideranca}
+                                    onChange={e => setEditorField(u.id, 'percentual_lideranca', e.target.value)} />
+                                  <span className="text-xs text-muted-foreground shrink-0">%</span>
+                                </div>
                               </div>
+                            </div>
+                            <div className="flex items-center">
+                              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                                <input type="checkbox" checked={form.ativo ?? det.ativo} onChange={e => setEditorField(u.id, 'ativo', e.target.checked)} className="rounded" />
+                                Ativo
+                              </label>
                             </div>
                             <div>
                               <Label className="text-xs">Observações</Label>
