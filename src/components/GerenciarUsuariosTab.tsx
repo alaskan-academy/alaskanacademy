@@ -12,7 +12,8 @@ import { PAGINAS } from '@/contexts/AuthContext';
 import { useConfirm } from '@/hooks/use-confirm';
 
 type Usuario = { id: string; email: string; nome: string; is_admin: boolean; created_at: string };
-type Cargo    = { id: string; nome: string; multiplicador: string; cor: string; ordem: number };
+type Cargo    = { id: string; nome: string; multiplicador: string; cor: string; ordem: number; setor_id: string | null };
+type Setor    = { id: string; nome: string; pagina_key: string | null; cor: string };
 type EditorDetalhe = {
   id: string; nome: string; cargo_id: string;
   data_inicio: string; ativo: boolean; observacoes: string; multiplicador: string;
@@ -29,6 +30,7 @@ export function GerenciarUsuariosTab() {
   const [usuarios, setUsuarios]         = useState<Usuario[]>([]);
   const [editores, setEditores]         = useState<EditorOpt[]>([]);
   const [cargos, setCargos]             = useState<Cargo[]>([]);
+  const [setores, setSetores]           = useState<Setor[]>([]);
   const [editorMap, setEditorMap]       = useState<Record<string, string>>({});       // usuario_id → editor_id
   const [cargoMap, setCargoMap]         = useState<Record<string, string>>({});       // usuario_id → cargo_id
   const [editorDetalhes, setEditorDetalhes] = useState<Record<string, EditorDetalhe>>({}); // usuario_id → detalhes
@@ -56,12 +58,14 @@ export function GerenciarUsuariosTab() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: users, error }, { data: eds }, { data: crgs }, { data: perfsData }] = await Promise.all([
+    const [{ data: users, error }, { data: eds }, { data: crgs }, { data: perfsData }, { data: strs }] = await Promise.all([
       supabase.rpc('listar_usuarios'),
       supabase.from('editores').select('id, nome, usuario_id, cargo_id, data_inicio, ativo, observacoes, multiplicador').order('nome'),
-      supabase.from('cargos').select('id, nome, multiplicador, cor, ordem').order('ordem'),
+      supabase.from('cargos').select('id, nome, multiplicador, cor, ordem, setor_id').order('ordem'),
       supabase.from('perfis').select('id, cargo_id'),
+      supabase.from('setores').select('id, nome, pagina_key, cor').order('ordem'),
     ]);
+    setSetores(strs ?? []);
     if (error) { toast({ title: 'Erro ao carregar usuários', variant: 'destructive' }); setLoading(false); return; }
 
     setUsuarios(users ?? []);
@@ -180,13 +184,46 @@ export function GerenciarUsuariosTab() {
 
   const handleCargoChange = async (userId: string, newCargoId: string) => {
     const cargoIdValue = newCargoId || null;
+
+    // 1. Salva cargo no perfil
     const { error } = await supabase.from('perfis').update({ cargo_id: cargoIdValue }).eq('id', userId);
     if (error) return toast({ title: 'Erro ao atualizar cargo', variant: 'destructive' });
+
+    // 2. Sincroniza com editores se vinculado
     const edId = editorMap[userId];
     if (edId) await supabase.from('editores').update({ cargo_id: cargoIdValue }).eq('id', edId);
+
+    // 3. Auto-acesso e auto-perfil via setor
+    if (newCargoId) {
+      const cargo = cargos.find(c => c.id === newCargoId);
+      const setor = cargo?.setor_id ? setores.find(s => s.id === cargo.setor_id) : null;
+      if (setor?.pagina_key) {
+        // Concede acesso à página do setor
+        await supabase.from('permissoes_paginas').upsert(
+          { usuario_id: userId, pagina: setor.pagina_key, permitido: true },
+          { onConflict: 'usuario_id,pagina' }
+        );
+        // Se setor de editores e usuário ainda não tem perfil de editor → cria automaticamente
+        if (setor.pagina_key === 'editores' && !editorMap[userId]) {
+          const usuario = usuarios.find(u => u.id === userId);
+          if (usuario) {
+            await supabase.from('editores').insert({
+              nome: usuario.nome,
+              usuario_id: userId,
+              cargo_id: cargoIdValue,
+              ativo: true,
+            });
+          }
+        }
+      }
+    }
+
     setCargoMap(prev => ({ ...prev, [userId]: newCargoId }));
     const cargo = cargos.find(c => c.id === newCargoId);
-    toast({ title: cargo ? `Cargo atualizado para ${cargo.nome}` : 'Cargo removido' });
+    const setor = cargo?.setor_id ? setores.find(s => s.id === cargo.setor_id) : null;
+    const msg   = cargo ? `${cargo.nome}${setor ? ` (${setor.nome})` : ''}` : 'removido';
+    toast({ title: cargo ? `Cargo atualizado: ${msg}` : 'Cargo removido' });
+    load();
   };
 
   const getEditorForm = (userId: string): Partial<EditorDetalhe> => {

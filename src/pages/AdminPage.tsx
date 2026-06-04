@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 import { GerenciarUsuariosTab } from '@/components/GerenciarUsuariosTab';
+import { SetoresTab }           from '@/components/admin/SetoresTab';
 import { CargosTab }            from '@/components/admin/CargosTab';
 import { AvaliarCriativoTab }   from '@/components/editores/AvaliarCriativoTab';
 import { EmpresasOfertasTab }   from '@/components/editores/EmpresasOfertasTab';
@@ -14,12 +15,12 @@ import { RadarConfigTab }       from '@/components/radar/RadarConfigTab';
 import { NotasTab }             from '@/components/admin/NotasTab';
 
 import {
-  Users, Award, Star, Building2, ListChecks,
+  Users, Layers, Award, Star, Building2, ListChecks,
   Calculator, Radar, StickyNote,
 } from 'lucide-react';
 
 type TabId =
-  | 'usuarios' | 'cargos'
+  | 'usuarios' | 'setores' | 'cargos'
   | 'criativos' | 'empresas' | 'criterios'
   | 'fiscal' | 'radar' | 'notas';
 
@@ -32,6 +33,7 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { group: 'Pessoas',    id: 'usuarios',  label: 'Usuários',           icon: Users       },
+  { group: 'Pessoas',    id: 'setores',   label: 'Setores',            icon: Layers      },
   { group: 'Pessoas',    id: 'cargos',    label: 'Cargos',             icon: Award       },
   { group: 'Operações',  id: 'criativos', label: 'Avaliar Criativos',  icon: Star        },
   { group: 'Operações',  id: 'empresas',  label: 'Empresas e Ofertas', icon: Building2   },
@@ -57,6 +59,7 @@ export default function AdminPage() {
   const renderContent = () => {
     switch (active) {
       case 'usuarios':  return <GerenciarUsuariosTab />;
+      case 'setores':   return <SetoresTab />;
       case 'cargos':    return <CargosTab />;
       case 'criativos': return <AvaliarCriativoTab />;
       case 'empresas':  return <EmpresasOfertasTab />;
