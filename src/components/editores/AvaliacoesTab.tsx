@@ -55,6 +55,7 @@ export function AvaliacoesTab() {
       responsaveis_ids: [] as string[],
       respostas: {} as Record<string, string | string[] | number>,
       multiplicador_snapshot: null as number | null, // congelado no momento do save
+      pct_lideranca_snapshot: null as number | null, // % liderança congelado no momento do save
     };
   }
 
@@ -109,8 +110,10 @@ export function AvaliacoesTab() {
   const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null || editorSel?.multiplicador != null;
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
-  // % configurado no perfil do editor, com fallback para 20%
-  const pctLideranca = editorSel?.percentual_lideranca != null ? Number(editorSel.percentual_lideranca) / 100 : 0.2;
+  // Avaliação existente → usa % congelado no snapshot; nova → usa % atual do editor (fallback 20%)
+  const pctLideranca = form.pct_lideranca_snapshot != null
+    ? form.pct_lideranca_snapshot
+    : (editorSel?.percentual_lideranca != null ? Number(editorSel.percentual_lideranca) / 100 : 0.2);
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
   const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 
@@ -184,10 +187,13 @@ export function AvaliacoesTab() {
       : [];
     const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
     const editorDaAval = editores.find(e => e.id === a.editor_id);
-    // Usa snapshot congelado se existir; avaliações legadas sem snapshot usam o multiplicador atual como fallback
+    // Multiplicador: usa snapshot congelado; legados usam atual como fallback
     const snapshotSalvo = a.multiplicador_snapshot != null ? Number(a.multiplicador_snapshot) : null;
     const multFallback  = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : 1;
     const multEfetivo   = snapshotSalvo ?? multFallback;
+    // % liderança: lê o percentual gravado no snapshot da avaliação; legados usam atual como fallback
+    const pctSalvo    = snap[CHAVE_RESPONSAVEIS]?.percentual != null ? Number(snap[CHAVE_RESPONSAVEIS].percentual) : null;
+    const pctFallback = editorDaAval?.percentual_lideranca != null ? Number(editorDaAval.percentual_lideranca) / 100 : 0.2;
     const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * multEfetivo * 100) / 100;
     const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
 
@@ -203,7 +209,8 @@ export function AvaliacoesTab() {
       feedback: a.feedback || '',
       responsaveis_ids: responsaveisIds,
       respostas,
-      multiplicador_snapshot: snapshotSalvo ?? multFallback, // garante sempre um valor congelado
+      multiplicador_snapshot: snapshotSalvo ?? multFallback,
+      pct_lideranca_snapshot: pctSalvo ?? pctFallback,
     });
     setOpen(true);
   };
@@ -231,7 +238,7 @@ export function AvaliacoesTab() {
         tipo: 'leaders',
         editor_ids: form.responsaveis_ids,
         bonus_lideranca: Math.round(bonusResponsaveis * 100) / 100,
-        percentual: pctLideranca,
+        percentual: editingId ? (form.pct_lideranca_snapshot ?? pctLideranca) : pctLideranca,
       };
     }
 
