@@ -38,6 +38,7 @@ export function GerenciarUsuariosTab() {
   const [loading, setLoading]           = useState(true);
   const [open, setOpen]                 = useState(false);
   const [expandedEditor, setExpandedEditor] = useState<Record<string, boolean>>({});  // usuario_id → expandido
+  const [setorFilter, setSetorFilter]       = useState<Record<string, string>>({});   // usuario_id → setor_id selecionado
 
   // Form novo usuário
   const [nome, setNome]     = useState('');
@@ -176,6 +177,18 @@ export function GerenciarUsuariosTab() {
     toast({ title: 'Senha atualizada' }); setPwUser(null); setNewPw('');
   };
 
+  const handleSetorFilter = (userId: string, newSetorId: string) => {
+    setSetorFilter(prev => ({ ...prev, [userId]: newSetorId }));
+    // Se o cargo atual não pertence ao novo setor, limpa cargo
+    const currentCargoId = cargoMap[userId];
+    if (currentCargoId) {
+      const currentCargo = cargos.find(c => c.id === currentCargoId);
+      if (currentCargo && currentCargo.setor_id !== newSetorId) {
+        handleCargoChange(userId, '');
+      }
+    }
+  };
+
   const handleEditorChange = async (userId: string, newEdId: string) => {
     await supabase.from('editores').update({ usuario_id: null }).eq('usuario_id', userId);
     if (newEdId) await supabase.from('editores').update({ usuario_id: userId }).eq('id', newEdId);
@@ -219,7 +232,9 @@ export function GerenciarUsuariosTab() {
     }
 
     setCargoMap(prev => ({ ...prev, [userId]: newCargoId }));
+    // Sincroniza filtro de setor com o novo cargo
     const cargo = cargos.find(c => c.id === newCargoId);
+    if (cargo?.setor_id) setSetorFilter(prev => ({ ...prev, [userId]: cargo.setor_id! }));
     const setor = cargo?.setor_id ? setores.find(s => s.id === cargo.setor_id) : null;
     const msg   = cargo ? `${cargo.nome}${setor ? ` (${setor.nome})` : ''}` : 'removido';
     toast({ title: cargo ? `Cargo atualizado: ${msg}` : 'Cargo removido' });
@@ -294,6 +309,11 @@ export function GerenciarUsuariosTab() {
             const form = getEditorForm(u.id);
             const edExpanded = expandedEditor[u.id] ?? false;
             const cargo = cargos.find(c => c.id === cargoMap[u.id]);
+            // Setor: usa o filtro local; se vazio, deriva do cargo atual
+            const setorIdAtual = setorFilter[u.id] ?? cargo?.setor_id ?? '';
+            const cargosFiltrados = setorIdAtual
+              ? cargos.filter(c => c.setor_id === setorIdAtual)
+              : cargos;
 
             return (
               <div key={u.id} className="bg-card border border-border rounded-lg p-4 space-y-3">
@@ -320,8 +340,39 @@ export function GerenciarUsuariosTab() {
                 {!u.is_admin && (
                   <div className="border-t border-border/50 pt-3 space-y-3">
 
-                    {/* Editor vinculado + Cargo */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Setor → Cargo → Editor vinculado */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* 1. Setor */}
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1.5">Setor</p>
+                        <select
+                          value={setorIdAtual}
+                          onChange={e => handleSetorFilter(u.id, e.target.value)}
+                          className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                        >
+                          <option value="">— Todos —</option>
+                          {setores.map(s => (
+                            <option key={s.id} value={s.id}>{s.nome}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* 2. Cargo (filtrado pelo setor) */}
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
+                        <select
+                          value={cargoMap[u.id] ?? ''}
+                          onChange={e => handleCargoChange(u.id, e.target.value)}
+                          className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                        >
+                          <option value="">— Sem cargo —</option>
+                          {cargosFiltrados.map(c => (
+                            <option key={c.id} value={c.id}>{c.nome}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* 3. Editor vinculado */}
                       <div>
                         <p className="text-xs text-muted-foreground mb-1.5">Editor vinculado</p>
                         <select
@@ -331,19 +382,6 @@ export function GerenciarUsuariosTab() {
                         >
                           <option value="">— Nenhum —</option>
                           {editores.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
-                        <select
-                          value={cargoMap[u.id] ?? ''}
-                          onChange={e => handleCargoChange(u.id, e.target.value)}
-                          className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
-                        >
-                          <option value="">— Sem cargo —</option>
-                          {cargos.map(c => (
-                            <option key={c.id} value={c.id}>{c.nome}</option>
-                          ))}
                         </select>
                       </div>
                     </div>
