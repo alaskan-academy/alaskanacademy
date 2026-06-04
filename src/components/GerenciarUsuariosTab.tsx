@@ -284,6 +284,8 @@ export function GerenciarUsuariosTab() {
     const { error } = await supabase.from('editores').update(payload).eq('id', edId);
     setSavingEditor(prev => ({ ...prev, [userId]: false }));
     if (error) return toast({ title: 'Erro ao salvar perfil', variant: 'destructive' });
+    // Limpa o estado local de edição para que o campo reflita os dados frescos do banco
+    setEditorForm(prev => { const n = { ...prev }; delete n[userId]; return n; });
     toast({ title: 'Perfil atualizado' }); load();
   };
 
