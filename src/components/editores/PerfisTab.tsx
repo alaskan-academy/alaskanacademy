@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 type Cargo = { id: string; nome: string; multiplicador: number; cor: string | null; ordem: number };
 type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null; multiplicador: number | null };
 
-export function PerfisTab() {
+export function PerfisTab({ adminMode = false }: { adminMode?: boolean }) {
   const { user, perfil: authPerfil } = useAuth();
   const isAdmin = authPerfil?.is_admin ?? false;
 
@@ -117,7 +117,7 @@ export function PerfisTab() {
             cargos={cargos}
             cargoMap={cargoMap}
             onChanged={load}
-            isAdmin={isAdmin}
+            isAdmin={adminMode}
           />
         ) : (
           <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
