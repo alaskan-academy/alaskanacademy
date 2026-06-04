@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -28,10 +28,11 @@ const ALL_SUB_PAGES = [
 ];
 
 const ALL_FIXED_ITEMS = [
-  { path: '/radar',         label: 'Radar',         icon: Radar,     key: 'radar' },
-  { path: '/ativos',        label: 'Ativos Meta',   icon: Shield,    key: 'ativos' },
-  { path: '/editores',      label: 'Editores',      icon: BarChart3, key: 'editores' },
-  { path: '/configuracoes', label: 'Configurações', icon: Settings,  key: 'configuracoes' },
+  { path: '/radar',          label: 'Radar',          icon: Radar,       key: 'radar',          adminOnly: false },
+  { path: '/ativos',         label: 'Ativos Meta',    icon: Shield,      key: 'ativos',         adminOnly: false },
+  { path: '/editores',       label: 'Editores',       icon: BarChart3,   key: 'editores',       adminOnly: false },
+  { path: '/configuracoes',  label: 'Configurações',  icon: Settings,    key: 'configuracoes',  adminOnly: false },
+  { path: '/administrativo', label: 'Administrativo', icon: ShieldCheck, key: 'administrativo', adminOnly: true  },
 ];
 
 const prodColors: Record<string, string> = {
@@ -54,7 +55,7 @@ export function AppSidebar() {
   const [loadingFunis, setLoadingFunis] = useState(true);
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
-  const fixedItems = ALL_FIXED_ITEMS.filter(p => canAccess(p.key));
+  const fixedItems = ALL_FIXED_ITEMS.filter(p => p.adminOnly ? perfil?.is_admin : canAccess(p.key));
 
   const handleSignOut = async () => {
     await signOut();
