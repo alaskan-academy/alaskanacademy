@@ -18,52 +18,69 @@ type Usuario = {
   created_at: string;
 };
 
-type PermMap = Record<string, boolean>; // pageKey → permitido
+type Cargo = {
+  id: string;
+  nome: string;
+  multiplicador: string;
+  cor: string;
+  ordem: number;
+};
+
+type PermMap = Record<string, boolean>;
 type EditorOpt = { id: string; nome: string };
 
 const defaultPerms = (): PermMap =>
   Object.fromEntries(PAGINAS.map(p => [p.key, true]));
 
+const fmtMult = (m: string | number) => `${parseFloat(String(m)).toFixed(2)}x`;
+
 export function GerenciarUsuariosTab() {
   const confirm = useConfirm();
-  const [usuarios, setUsuarios]   = useState<Usuario[]>([]);
-  const [editores, setEditores]   = useState<EditorOpt[]>([]);
-  const [editorMap, setEditorMap] = useState<Record<string, string>>({}); // usuario_id → editor_id
-  const [permsMap, setPermsMap]   = useState<Record<string, PermMap>>({}); // userId → PermMap
-  const [loading, setLoading]     = useState(true);
-  const [open, setOpen]           = useState(false);
+  const [usuarios, setUsuarios]     = useState<Usuario[]>([]);
+  const [editores, setEditores]     = useState<EditorOpt[]>([]);
+  const [cargos, setCargos]         = useState<Cargo[]>([]);
+  const [editorMap, setEditorMap]   = useState<Record<string, string>>({}); // usuario_id → editor_id
+  const [cargoMap, setCargoMap]     = useState<Record<string, string>>({}); // usuario_id → cargo_id
+  const [permsMap, setPermsMap]     = useState<Record<string, PermMap>>({});
+  const [loading, setLoading]       = useState(true);
+  const [open, setOpen]             = useState(false);
 
-  // Form para novo usuário
-  const [nome, setNome]           = useState('');
-  const [email, setEmail]         = useState('');
-  const [senha, setSenha]         = useState('');
-  const [editorId, setEditorId]   = useState('');
-  const [newPerms, setNewPerms]   = useState<PermMap>(defaultPerms());
-  const [saving, setSaving]       = useState(false);
+  // Form novo usuário
+  const [nome, setNome]             = useState('');
+  const [email, setEmail]           = useState('');
+  const [senha, setSenha]           = useState('');
+  const [editorId, setEditorId]     = useState('');
+  const [newPerms, setNewPerms]     = useState<PermMap>(defaultPerms());
+  const [saving, setSaving]         = useState(false);
 
   // Modal trocar senha
-  const [pwUser, setPwUser]     = useState<Usuario | null>(null);
-  const [newPw, setNewPw]       = useState('');
-  const [pwSaving, setPwSaving] = useState(false);
+  const [pwUser, setPwUser]         = useState<Usuario | null>(null);
+  const [newPw, setNewPw]           = useState('');
+  const [pwSaving, setPwSaving]     = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const [{ data: users, error }, { data: eds }] = await Promise.all([
+    const [{ data: users, error }, { data: eds }, { data: crgs }] = await Promise.all([
       supabase.rpc('listar_usuarios'),
-      supabase.from('editores').select('id, nome, usuario_id').order('nome'),
+      supabase.from('editores').select('id, nome, usuario_id, cargo_id').order('nome'),
+      supabase.from('cargos').select('id, nome, multiplicador, cor, ordem').order('ordem'),
     ]);
 
     if (error) { toast({ title: 'Erro ao carregar usuários', variant: 'destructive' }); setLoading(false); return; }
 
     setUsuarios(users ?? []);
     setEditores((eds ?? []).map((e: any) => ({ id: e.id, nome: e.nome })));
+    setCargos(crgs ?? []);
 
-    // mapa usuario_id → editor_id
+    // mapa usuario_id → editor_id e cargo_id
     const em: Record<string, string> = {};
-    for (const ed of eds ?? []) { if (ed.usuario_id) em[ed.usuario_id] = ed.id; }
+    const cm: Record<string, string> = {};
+    for (const ed of eds ?? []) {
+      if (ed.usuario_id) { em[ed.usuario_id] = ed.id; cm[ed.usuario_id] = ed.cargo_id ?? ''; }
+    }
     setEditorMap(em);
+    setCargoMap(cm);
 
-    // Carrega permissões de todos os usuários
     const ids = (users ?? []).map((u: Usuario) => u.id);
     if (ids.length) {
       const { data: perms } = await supabase
@@ -74,8 +91,7 @@ export function GerenciarUsuariosTab() {
       const map: Record<string, PermMap> = {};
       for (const u of users ?? []) {
         const base = defaultPerms();
-        const rows = (perms ?? []).filter((r: any) => r.usuario_id === u.id);
-        for (const r of rows) base[r.pagina] = r.permitido;
+        for (const r of (perms ?? []).filter((r: any) => r.usuario_id === u.id)) base[r.pagina] = r.permitido;
         map[u.id] = base;
       }
       setPermsMap(map);
@@ -101,22 +117,12 @@ export function GerenciarUsuariosTab() {
       body: { action: 'create', email, password: senha, nome },
     });
     const err = await fnError(error, data);
-    if (err) {
-      toast({ title: err, variant: 'destructive' });
-      setSaving(false);
-      return;
-    }
+    if (err) { toast({ title: err, variant: 'destructive' }); setSaving(false); return; }
 
     const userId = data.user.id;
-
-    // Salva permissões
     const rows = PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true }));
     await supabase.from('permissoes_paginas').upsert(rows, { onConflict: 'usuario_id,pagina' });
-
-    // Vincula editor se selecionado
-    if (editorId) {
-      await supabase.from('editores').update({ usuario_id: userId }).eq('id', editorId);
-    }
+    if (editorId) await supabase.from('editores').update({ usuario_id: userId }).eq('id', editorId);
 
     toast({ title: 'Usuário criado' });
     setSaving(false);
@@ -147,9 +153,7 @@ export function GerenciarUsuariosTab() {
 
   const handleDelete = async (u: Usuario) => {
     if (!(await confirm({ title: `Excluir ${u.nome}?`, description: 'O acesso será removido permanentemente.' }))) return;
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'delete', userId: u.id },
-    });
+    const { data, error } = await supabase.functions.invoke('admin-users', { body: { action: 'delete', userId: u.id } });
     const err = await fnError(error, data);
     if (err) return toast({ title: err, variant: 'destructive' });
     toast({ title: 'Usuário removido' });
@@ -167,6 +171,43 @@ export function GerenciarUsuariosTab() {
     if (err) return toast({ title: err, variant: 'destructive' });
     toast({ title: 'Senha atualizada' });
     setPwUser(null); setNewPw('');
+  };
+
+  const handleEditorChange = async (userId: string, newEdId: string) => {
+    await supabase.from('editores').update({ usuario_id: null }).eq('usuario_id', userId);
+    if (newEdId) await supabase.from('editores').update({ usuario_id: userId }).eq('id', newEdId);
+    load();
+  };
+
+  const handleCargoChange = async (userId: string, newCargoId: string) => {
+    const edId = editorMap[userId];
+    if (!edId) return;
+    const { error } = await supabase.from('editores').update({ cargo_id: newCargoId || null }).eq('id', edId);
+    if (error) return toast({ title: 'Erro ao atualizar cargo', variant: 'destructive' });
+    setCargoMap(prev => ({ ...prev, [userId]: newCargoId }));
+    const cargo = cargos.find(c => c.id === newCargoId);
+    toast({ title: cargo ? `Cargo atualizado para ${cargo.nome}` : 'Cargo removido' });
+  };
+
+  // Badge de cargo para exibição
+  const CargoBadge = ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) => {
+    if (isAdmin) {
+      return (
+        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+          style={{ backgroundColor: '#eab30820', color: '#eab308' }}>
+          Sócio
+        </span>
+      );
+    }
+    const cargoId = cargoMap[userId];
+    const cargo = cargos.find(c => c.id === cargoId);
+    if (!cargo) return <span className="text-xs text-muted-foreground">— sem cargo —</span>;
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+        style={{ backgroundColor: `${cargo.cor}20`, color: cargo.cor }}>
+        {cargo.nome} — {fmtMult(cargo.multiplicador)}
+      </span>
+    );
   };
 
   return (
@@ -189,15 +230,15 @@ export function GerenciarUsuariosTab() {
             <div key={u.id} className="bg-card border border-border rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{u.nome}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium truncate">{u.nome}</p>
+                    <CargoBadge userId={u.id} isAdmin={u.is_admin} />
+                  </div>
                   <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                 </div>
-                {u.is_admin && (
-                  <span className="text-xs bg-primary/15 text-primary px-2 py-0.5 rounded-full font-medium">Admin</span>
-                )}
                 <Button
                   size="sm" variant="ghost"
-                  title={u.is_admin ? 'Remover admin' : 'Tornar admin'}
+                  title={u.is_admin ? 'Remover sócio/admin' : 'Tornar sócio/admin'}
                   onClick={() => toggleAdmin(u)}
                 >
                   <Shield className={cn('h-4 w-4', u.is_admin ? 'text-primary' : 'text-muted-foreground')} />
@@ -212,26 +253,42 @@ export function GerenciarUsuariosTab() {
 
               {!u.is_admin && (
                 <div className="border-t border-border/50 pt-3 space-y-3">
-                  {/* Vínculo com editor */}
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1.5">Editor vinculado</p>
-                    <select
-                      value={editorMap[u.id] ?? ''}
-                      onChange={async e => {
-                        const newEdId = e.target.value;
-                        // Remove vínculo anterior se existir
-                        await supabase.from('editores').update({ usuario_id: null }).eq('usuario_id', u.id);
-                        if (newEdId) await supabase.from('editores').update({ usuario_id: u.id }).eq('id', newEdId);
-                        load();
-                      }}
-                      className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full max-w-xs"
-                    >
-                      <option value="">— Nenhum —</option>
-                      {editores.map(ed => (
-                        <option key={ed.id} value={ed.id}>{ed.nome}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Vínculo com editor */}
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1.5">Editor vinculado</p>
+                      <select
+                        value={editorMap[u.id] ?? ''}
+                        onChange={e => handleEditorChange(u.id, e.target.value)}
+                        className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                      >
+                        <option value="">— Nenhum —</option>
+                        {editores.map(ed => (
+                          <option key={ed.id} value={ed.id}>{ed.nome}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Cargo — só aparece se tiver editor vinculado */}
+                    {editorMap[u.id] && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
+                        <select
+                          value={cargoMap[u.id] ?? ''}
+                          onChange={e => handleCargoChange(u.id, e.target.value)}
+                          className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                        >
+                          <option value="">— Sem cargo —</option>
+                          {cargos.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome} — {fmtMult(c.multiplicador)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
+
                   <p className="text-xs text-muted-foreground">Páginas visíveis</p>
                   <div className="flex flex-wrap gap-2">
                     {PAGINAS.map(p => {
