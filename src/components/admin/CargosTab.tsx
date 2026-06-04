@@ -14,6 +14,7 @@ type Cargo = {
   multiplicador_min: number | null; multiplicador_max: number | null;
   gap_salarial_min: number | null;  gap_salarial_max: number | null;
   tempo_permanencia_min: number | null; tempo_permanencia_max: number | null;
+  comissao_time_pct: number | null;
 };
 
 const blank = (ordem: number): Omit<Cargo, 'id'> => ({
@@ -21,6 +22,7 @@ const blank = (ordem: number): Omit<Cargo, 'id'> => ({
   multiplicador_min: null, multiplicador_max: null,
   gap_salarial_min: null,  gap_salarial_max: null,
   tempo_permanencia_min: null, tempo_permanencia_max: null,
+  comissao_time_pct: null,
 });
 
 /* ── Formatadores ── */
@@ -125,6 +127,7 @@ export function CargosTab() {
       multiplicador_min: c.multiplicador_min, multiplicador_max: c.multiplicador_max,
       gap_salarial_min:  c.gap_salarial_min,  gap_salarial_max:  c.gap_salarial_max,
       tempo_permanencia_min: c.tempo_permanencia_min, tempo_permanencia_max: c.tempo_permanencia_max,
+      comissao_time_pct: c.comissao_time_pct,
     };
     setForm(f); resetRangeFields(f); setOpen(true);
   };
@@ -194,6 +197,7 @@ export function CargosTab() {
                     <th className="text-center px-4 py-2">Range mult.</th>
                     <th className="text-center px-4 py-2">Gap salarial</th>
                     <th className="text-center px-4 py-2">Permanência</th>
+                    <th className="text-center px-4 py-2">% Time</th>
                     <th className="px-4 py-2 w-16"></th>
                   </tr>
                 </thead>
@@ -223,6 +227,11 @@ export function CargosTab() {
                         <td className="px-4 py-2.5 text-center text-xs">
                           {permRange !== '—'
                             ? <span className="font-medium">{permRange}</span>
+                            : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-center text-xs">
+                          {c.comissao_time_pct != null
+                            ? <span className="font-medium text-blue-400">{Number(c.comissao_time_pct).toFixed(1)}%</span>
                             : <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-right whitespace-nowrap">
@@ -289,6 +298,20 @@ export function CargosTab() {
                 step="1" placeholder="Ex: 6"
                 min={fPermMin} max={fPermMax}
                 onChangeMin={setFPermMin} onChangeMax={setFPermMax} />
+
+              <div>
+                <Label className="text-xs">% Comissão do time</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input
+                    type="number" step="0.1" min="0" max="100"
+                    placeholder="Ex: 20"
+                    className="h-8 text-xs w-32"
+                    value={form.comissao_time_pct ?? ''}
+                    onChange={e => setForm({ ...form, comissao_time_pct: e.target.value !== '' ? parseFloat(e.target.value) : null })}
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+              </div>
             </div>
 
             <div>
