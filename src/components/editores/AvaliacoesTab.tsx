@@ -54,6 +54,7 @@ export function AvaliacoesTab() {
       feedback: '',
       responsaveis_ids: [] as string[],
       respostas: {} as Record<string, string | string[] | number>,
+      multiplicador_snapshot: null as number | null, // congelado no momento do save
     };
   }
 
@@ -101,9 +102,11 @@ export function AvaliacoesTab() {
 
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
-  // apenas multiplicador individual configurado no perfil do usuário
-  const multiplicador = editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : 1;
-  const multiplicadorDefinido = editorSel?.multiplicador != null;
+  // Avaliação existente → usa snapshot congelado; nova → usa multiplicador atual do editor
+  const multiplicador = form.multiplicador_snapshot != null
+    ? Number(form.multiplicador_snapshot)
+    : (editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : 1);
+  const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null || editorSel?.multiplicador != null;
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
@@ -179,7 +182,10 @@ export function AvaliacoesTab() {
       : [];
     const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
     const editorDaAval = editores.find(e => e.id === a.editor_id);
-    const multEfetivo = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : 1;
+    // Usa snapshot congelado se existir; avaliações legadas sem snapshot usam o multiplicador atual como fallback
+    const snapshotSalvo = a.multiplicador_snapshot != null ? Number(a.multiplicador_snapshot) : null;
+    const multFallback  = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : 1;
+    const multEfetivo   = snapshotSalvo ?? multFallback;
     const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * multEfetivo * 100) / 100;
     const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
 
@@ -195,6 +201,7 @@ export function AvaliacoesTab() {
       feedback: a.feedback || '',
       responsaveis_ids: responsaveisIds,
       respostas,
+      multiplicador_snapshot: snapshotSalvo ?? multFallback, // garante sempre um valor congelado
     });
     setOpen(true);
   };
@@ -253,6 +260,10 @@ export function AvaliacoesTab() {
       folgas: folgasAuto,
       feedback: form.feedback || null,
       respostas: respostasSnapshot,
+      // Nova avaliação → congela o multiplicador atual; edição → preserva o snapshot já salvo
+      multiplicador_snapshot: editingId
+        ? form.multiplicador_snapshot   // não altera o que já estava salvo
+        : (editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : null),
     };
     const { error } = editingId
       ? await supabase.from('avaliacoes_mensais').update(payload).eq('id', editingId)
