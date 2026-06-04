@@ -305,6 +305,8 @@ export function GerenciarUsuariosTab() {
             const cargosFiltrados = setorIdAtual ? cargos.filter(c => c.setor_id === setorIdAtual) : cargos;
             const permsCount  = Object.values(permsMap[u.id] ?? {}).filter(Boolean).length;
             const semCargo    = !u.is_admin && !cargoMap[u.id];
+            const setorDoCargo = cargo?.setor_id ? setores.find(s => s.id === cargo.setor_id) : null;
+            const isEditorSetor = setorDoCargo?.pagina_key === 'editores';
             const bg          = avatarBg(u.nome);
 
             return (
@@ -385,8 +387,8 @@ export function GerenciarUsuariosTab() {
                       </div>
                     </div>
 
-                    {/* Seção: Perfil (accordion) */}
-                    {det && (
+                    {/* Seção: Perfil (accordion) — só aparece quando o setor do cargo é editores */}
+                    {isEditorSetor && det && (
                       <div>
                         <button
                           onClick={() => setExpandedEditor(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
