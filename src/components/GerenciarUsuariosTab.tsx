@@ -429,15 +429,6 @@ export function GerenciarUsuariosTab() {
                               <Label className="text-xs">Observações</Label>
                               <Textarea className="mt-1 text-xs min-h-[56px]" value={form.observacoes ?? det.observacoes} onChange={e => setEditorField(u.id, 'observacoes', e.target.value)} />
                             </div>
-                            {/* Editor vinculado — campo avançado */}
-                            <div>
-                              <Label className="text-xs text-muted-foreground">Perfil vinculado (avançado)</Label>
-                              <select value={editorMap[u.id] ?? ''} onChange={e => handleEditorChange(u.id, e.target.value)}
-                                className="mt-1 bg-secondary border border-border rounded-md px-2.5 py-1.5 text-xs w-full">
-                                <option value="">— Nenhum —</option>
-                                {editores.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
-                              </select>
-                            </div>
                             <div className="flex justify-end pt-1">
                               <Button size="sm" onClick={() => saveEditorProfile(u.id)} disabled={savingEditor[u.id]}>
                                 {savingEditor[u.id] ? 'Salvando...' : 'Salvar perfil'}
