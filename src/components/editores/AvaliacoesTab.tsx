@@ -133,6 +133,8 @@ export function AvaliacoesTab() {
       const m = op.label.match(folgaRe);
       return m ? Number(m[1].replace(',', '.')) : 0;
     };
+    let ganhos = 0;   // soma apenas dos valores positivos
+    let deducoes = 0; // soma apenas dos valores negativos (número negativo)
     for (const cr of criterios) {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
@@ -144,6 +146,7 @@ export function AvaliacoesTab() {
             ? form.snapValues[snapKey]
             : Number(op.valor);
           total += valor;
+          if (valor >= 0) ganhos += valor; else deducoes += valor;
           folgas += getFolgas(op);
         }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
@@ -155,6 +158,7 @@ export function AvaliacoesTab() {
               ? form.snapValues[snapKey]
               : Number(op.valor);
             total += valor;
+            if (valor >= 0) ganhos += valor; else deducoes += valor;
             folgas += getFolgas(op);
           }
         }
@@ -163,10 +167,12 @@ export function AvaliacoesTab() {
         const unit = (editingId && form.snapValues[snapKey] != null)
           ? form.snapValues[snapKey]
           : Number(cr.opcoes[0]?.valor || 0);
-        total += Number(r || 0) * unit;
+        const contrib = Number(r || 0) * unit;
+        total += contrib;
+        if (contrib >= 0) ganhos += contrib; else deducoes += contrib;
       }
     }
-    return { bonusBase: total, folgasAuto: folgas };
+    return { bonusBase: total, folgasAuto: folgas, ganhos, deducoes };
   }, [form, criterios, editingId]);
 
   const bonusEstimado = bonusBase;
@@ -536,15 +542,36 @@ export function AvaliacoesTab() {
             })}
 
              <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <div>
-                   <Label className="text-xs text-muted-foreground">Bônus base</Label>
-                   <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+
+               {/* Linha 1: Ganhos / Deduções / Bônus base — só exibe breakdown quando há deduções */}
+               {deducoes < 0 ? (
+                 <div className="grid grid-cols-3 gap-4 pb-3 border-b border-border/60">
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Ganhos brutos</Label>
+                     <div className="text-lg font-medium text-emerald-500">{formatCurrency(ganhos)}</div>
+                   </div>
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Penalidades</Label>
+                     <div className="text-lg font-medium text-destructive">− {formatCurrency(Math.abs(deducoes))}</div>
+                   </div>
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Bônus base</Label>
+                     <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+                   </div>
                  </div>
+               ) : (
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-3 border-b border-border/60">
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Bônus base</Label>
+                     <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+                   </div>
+                 </div>
+               )}
+
+               {/* Linha 2: Multiplicador + Bônus com mult + Folgas */}
+               <div className="grid grid-cols-3 gap-4">
                  <div>
-                   <Label className="text-xs text-muted-foreground">
-                     Multiplicador individual
-                   </Label>
+                   <Label className="text-xs text-muted-foreground">Multiplicador individual</Label>
                    <div className="text-lg font-medium">
                      {multiplicadorDefinido ? `${multiplicador.toFixed(2)}x` : <span className="text-muted-foreground text-base">não definido</span>}
                    </div>
@@ -554,39 +581,43 @@ export function AvaliacoesTab() {
                    <div className="text-lg font-medium">{formatCurrency(bonusComMultiplicador)}</div>
                  </div>
                  <div>
-                   <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
+                   <Label className="text-xs text-muted-foreground">Folgas conquistadas</Label>
                    <div className="text-lg font-medium">{folgasAuto}</div>
                  </div>
                </div>
+
+               {/* Linha 3: Liderança (só heads/líderes) */}
                {isHeadOuLider && (
-                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2 border-t border-border/60">
+                 <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border/60">
                    <div>
-                     <Label className="text-xs text-muted-foreground">Editores sob responsabilidade</Label>
+                     <Label className="text-xs text-muted-foreground">Editores supervisionados</Label>
                      <div className="text-lg font-medium">{form.responsaveis_ids.length}</div>
                    </div>
                    <div>
-                     <Label className="text-xs text-muted-foreground">+ {(pctLideranca * 100).toFixed(0)}% da comissão do time</Label>
+                     <Label className="text-xs text-muted-foreground">+ {(pctLideranca * 100).toFixed(0)}% bônus de liderança</Label>
                      <div className="text-lg font-medium text-primary">{formatCurrency(bonusResponsaveis)}</div>
                    </div>
                    <div>
-                     <Label className="text-xs text-muted-foreground">Subtotal (multiplicador + liderança)</Label>
+                     <Label className="text-xs text-muted-foreground">Subtotal (mult. + liderança)</Label>
                      <div className="text-lg font-medium">{formatCurrency(bonusTotalCalculado)}</div>
                    </div>
                  </div>
                )}
+
+               {/* Linha 4: Total final + override */}
                <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
                  <div>
                    <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
                    <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusTotalCalculado)}</div>
                  </div>
-                <div>
-                  <Label>Override do bônus total (opcional)</Label>
-                  <Input type="number" placeholder={String(bonusTotalCalculado)}
-                    value={form.bonus_total_override}
-                    onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
-                </div>
-              </div>
-            </div>
+                 <div>
+                   <Label>Ajuste manual (opcional)</Label>
+                   <Input type="number" placeholder={String(bonusTotalCalculado)}
+                     value={form.bonus_total_override}
+                     onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
+                 </div>
+               </div>
+             </div>
 
             <div><Label>Feedback</Label><Textarea rows={3} value={form.feedback} onChange={e => setForm({ ...form, feedback: e.target.value })} /></div>
 
