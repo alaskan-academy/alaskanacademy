@@ -90,6 +90,8 @@ export function AvaliacoesTab() {
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
+  // Apenas IDs de editores vinculados (usuario_id IS NOT NULL) — exclui desvinculados como Lucas
+  const validEditorIds = new Set(editores.map(e => e.id));
 
   const canSeeAll = isAdmin || cargoDoUsuario.includes('head') || cargoDoUsuario.includes('lider');
   const canEditRow = (a: any) => {
@@ -98,7 +100,9 @@ export function AvaliacoesTab() {
     return a.editor_id !== meuEditorId; // líderes não podem editar a própria avaliação
   };
   const filtered = canSeeAll
-    ? (filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor))
+    ? (filterEditor === 'all'
+        ? items.filter(i => validEditorIds.has(i.editor_id))
+        : items.filter(i => i.editor_id === filterEditor))
     : items.filter(i => i.editor_id === meuEditorId);
 
   const editorSel = editores.find(e => e.id === form.editor_id);
@@ -386,7 +390,7 @@ export function AvaliacoesTab() {
                     );
                   })}
                 </div>
-                <p className="text-xs text-muted-foreground">A líder/head recebe 20% da comissão total destes editores no mês selecionado.</p>
+                <p className="text-xs text-muted-foreground">A líder/head recebe {(pctLideranca * 100).toFixed(0)}% da comissão total destes editores no mês selecionado.</p>
               </div>
             )}
 
