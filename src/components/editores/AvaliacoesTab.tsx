@@ -66,8 +66,8 @@ export function AvaliacoesTab() {
     const [e, a, c, o, cg] = await Promise.all([
       supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador, percentual_lideranca').not('usuario_id', 'is', null).order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
-      supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
-      supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('criterios_avaliacao').select('*').order('ordem'),
+      supabase.from('criterio_opcoes').select('*').order('ordem'),
       supabase.from('cargos').select('*'),
     ]);
     const eds: any[] = e.data || [];
@@ -443,7 +443,17 @@ export function AvaliacoesTab() {
             )}
 
             {CATEGORIAS.map(cat => {
-              const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
+              // Critério visível: (ativo) OU (editando avaliação existente que já tinha valor salvo nele)
+              const criterioVisivel = (c: Criterio) => {
+                if (c.ativo) return true;
+                if (!editingId) return false;
+                const v = form.respostas[c.chave];
+                if (v == null) return false;
+                if (c.tipo === 'multi') return Array.isArray(v) && v.length > 0;
+                if (c.tipo === 'number') return Number(v) > 0;
+                return Boolean(v);
+              };
+              const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && criterioVisivel(c));
               if (critsCat.length === 0) return null;
               return (
                 <div key={cat.value} className="space-y-3 rounded-lg border border-border bg-secondary/20 p-4">
@@ -461,29 +471,35 @@ export function AvaliacoesTab() {
                         >
                           <SelectTrigger><SelectValue placeholder="Selecione uma opção" /></SelectTrigger>
                           <SelectContent>
-                            {cr.opcoes.map(op => (
-                              <SelectItem key={op.id} value={op.id}>
-                                {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
-                              </SelectItem>
-                            ))}
+                            {cr.opcoes
+                              // Opção visível: ativa OU selecionada nesta avaliação (editando)
+                              .filter(op => op.ativo || (editingId && form.respostas[cr.chave] === op.id))
+                              .map(op => (
+                                <SelectItem key={op.id} value={op.id}>
+                                  {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
+                                </SelectItem>
+                              ))}
                           </SelectContent>
                         </Select>
                       )}
                       {cr.tipo === 'multi' && (
                         <div className="space-y-1.5">
-                          {cr.opcoes.map(op => {
-                            const arr = (form.respostas[cr.chave] as string[]) || [];
-                            const checked = arr.includes(op.id);
-                            return (
-                              <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
-                                <Checkbox checked={checked} onCheckedChange={(v) => {
-                                  const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
-                                  setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
-                                }} />
-                                <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
-                              </label>
-                            );
-                          })}
+                          {cr.opcoes
+                            // Opção visível: ativa OU selecionada nesta avaliação (editando)
+                            .filter(op => op.ativo || (editingId && (form.respostas[cr.chave] as string[] || []).includes(op.id)))
+                            .map(op => {
+                              const arr = (form.respostas[cr.chave] as string[]) || [];
+                              const checked = arr.includes(op.id);
+                              return (
+                                <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
+                                  <Checkbox checked={checked} onCheckedChange={(v) => {
+                                    const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
+                                    setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
+                                  }} />
+                                  <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
+                                </label>
+                              );
+                            })}
                         </div>
                       )}
                       {cr.tipo === 'number' && (
