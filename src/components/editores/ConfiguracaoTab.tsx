@@ -150,7 +150,9 @@ export function ConfiguracaoTab() {
                           <div key={o.id} className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
                             <div className="min-w-0 truncate">{o.label}</div>
                             <div className="flex items-center gap-3 shrink-0">
-                              <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
+                              <span className={`text-xs font-medium ${Number(o.valor) < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {Number(o.valor) < 0 ? `− R$ ${Math.abs(Number(o.valor))}` : `R$ ${Number(o.valor)}`}
+                              </span>
                               {Number(o.folgas ?? 0) > 0 && (
                                 <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                                   {Number(o.folgas)}f
@@ -221,7 +223,7 @@ export function ConfiguracaoTab() {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label>Valor (R$)</Label>
-                <Input type="number" min={0} value={optForm.valor} onChange={e => setOptForm({ ...optForm, valor: Number(e.target.value) })} />
+                <Input type="number" value={optForm.valor} onChange={e => setOptForm({ ...optForm, valor: Number(e.target.value) })} />
               </div>
               <div>
                 <Label>Folgas</Label>

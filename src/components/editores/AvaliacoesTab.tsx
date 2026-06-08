@@ -483,11 +483,17 @@ export function AvaliacoesTab() {
                             {cr.opcoes
                               // Opção visível: ativa OU selecionada nesta avaliação (editando)
                               .filter(op => op.ativo || (editingId && form.respostas[cr.chave] === op.id))
-                              .map(op => (
-                                <SelectItem key={op.id} value={op.id}>
-                                  {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
-                                </SelectItem>
-                              ))}
+                              .map(op => {
+                                const v = Number(op.valor);
+                                return (
+                                  <SelectItem key={op.id} value={op.id}>
+                                    {op.label}{' '}
+                                    <span className={v < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                                      ({v < 0 ? `− R$ ${Math.abs(v)}` : `R$ ${v}`})
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
                           </SelectContent>
                         </Select>
                       )}
@@ -505,7 +511,11 @@ export function AvaliacoesTab() {
                                     const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
                                     setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
                                   }} />
-                                  <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
+                                  <span>{op.label}{' '}
+                                    <span className={Number(op.valor) < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                                      ({Number(op.valor) < 0 ? `− R$ ${Math.abs(Number(op.valor))}` : `R$ ${Number(op.valor)}`})
+                                    </span>
+                                  </span>
                                 </label>
                               );
                             })}
