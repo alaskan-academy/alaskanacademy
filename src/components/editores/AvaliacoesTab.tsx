@@ -443,15 +443,18 @@ export function AvaliacoesTab() {
             )}
 
             {CATEGORIAS.map(cat => {
-              // Critério visível: (ativo) OU (editando avaliação existente que já tinha valor salvo nele)
+              // Critério visível:
+              // - Nova avaliação: apenas critérios ativos
+              // - Avaliação existente: apenas critérios que tinham valor salvo (nem novos, nem removidos)
               const criterioVisivel = (c: Criterio) => {
-                if (c.ativo) return true;
-                if (!editingId) return false;
-                const v = form.respostas[c.chave];
-                if (v == null) return false;
-                if (c.tipo === 'multi') return Array.isArray(v) && v.length > 0;
-                if (c.tipo === 'number') return Number(v) > 0;
-                return Boolean(v);
+                if (editingId) {
+                  const v = form.respostas[c.chave];
+                  if (v == null) return false;
+                  if (c.tipo === 'multi') return Array.isArray(v) && v.length > 0;
+                  if (c.tipo === 'number') return Number(v) > 0;
+                  return Boolean(v);
+                }
+                return c.ativo;
               };
               const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && criterioVisivel(c));
               if (critsCat.length === 0) return null;
