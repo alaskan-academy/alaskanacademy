@@ -56,6 +56,8 @@ export function AvaliacoesTab() {
       respostas: {} as Record<string, string | string[] | number>,
       multiplicador_snapshot: null as number | null, // congelado no momento do save
       pct_lideranca_snapshot: null as number | null, // % liderança congelado no momento do save
+      // Valores das opções congelados no momento do save — chave: "criterio_chave:opcao_id" ou "criterio_chave:unit"
+      snapValues: {} as Record<string, number>,
     };
   }
 
@@ -130,24 +132,36 @@ export function AvaliacoesTab() {
       if (cr.tipo === 'single' && r) {
         const op = cr.opcoes.find(o => o.id === r);
         if (op) {
-          total += Number(op.valor);
+          // Editando avaliação existente → usa valor congelado no snapshot; opção trocada → usa valor atual
+          const snapKey = `${cr.chave}:${op.id}`;
+          const valor = (editingId && form.snapValues[snapKey] != null)
+            ? form.snapValues[snapKey]
+            : Number(op.valor);
+          total += valor;
           const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
         }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
         for (const id of r) {
           const op = cr.opcoes.find(o => o.id === id);
           if (op) {
-            total += Number(op.valor);
+            const snapKey = `${cr.chave}:${op.id}`;
+            const valor = (editingId && form.snapValues[snapKey] != null)
+              ? form.snapValues[snapKey]
+              : Number(op.valor);
+            total += valor;
             const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
           }
         }
       } else if (cr.tipo === 'number') {
-        const unit = Number(cr.opcoes[0]?.valor || 0);
+        const snapKey = `${cr.chave}:unit`;
+        const unit = (editingId && form.snapValues[snapKey] != null)
+          ? form.snapValues[snapKey]
+          : Number(cr.opcoes[0]?.valor || 0);
         total += Number(r || 0) * unit;
       }
     }
     return { bonusBase: total, folgasAuto: folgas };
-  }, [form, criterios]);
+  }, [form, criterios, editingId]);
 
   const bonusEstimado = bonusBase;
   const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
@@ -164,22 +178,32 @@ export function AvaliacoesTab() {
   const openEdit = (a: any, readOnly = false) => {
     setViewOnly(readOnly);
     const respostas: Record<string, any> = {};
+    const snapValues: Record<string, number> = {};
     const snap = a.respostas || {};
     for (const cr of criterios) {
       const s = snap[cr.chave];
       if (!s) continue;
       if (cr.tipo === 'single') {
         const op = cr.opcoes.find(o => o.id === s.id) || cr.opcoes.find(o => o.label === s.label);
-        if (op) respostas[cr.chave] = op.id;
+        if (op) {
+          respostas[cr.chave] = op.id;
+          // Congela o valor que estava salvo; se não havia valor no snap (avaliações legadas), usa o atual
+          snapValues[`${cr.chave}:${op.id}`] = s.valor != null ? Number(s.valor) : Number(op.valor);
+        }
       } else if (cr.tipo === 'multi') {
         const ids: string[] = [];
         for (const sel of (s.selecoes || [])) {
           const op = cr.opcoes.find(o => o.id === sel.id) || cr.opcoes.find(o => o.label === sel.label);
-          if (op) ids.push(op.id);
+          if (op) {
+            ids.push(op.id);
+            snapValues[`${cr.chave}:${op.id}`] = sel.valor != null ? Number(sel.valor) : Number(op.valor);
+          }
         }
         respostas[cr.chave] = ids;
       } else if (cr.tipo === 'number') {
         respostas[cr.chave] = Number(s.quantidade || 0);
+        // Congela o valor unitário salvo
+        snapValues[`${cr.chave}:unit`] = s.unitario != null ? Number(s.unitario) : Number(cr.opcoes[0]?.valor || 0);
       }
     }
     // Compat: se colunas legadas existirem e critérios ainda não foram criados, ainda exibir
@@ -215,6 +239,7 @@ export function AvaliacoesTab() {
       respostas,
       multiplicador_snapshot: snapshotSalvo ?? multFallback,
       pct_lideranca_snapshot: pctSalvo ?? pctFallback,
+      snapValues,
     });
     setOpen(true);
   };
@@ -228,12 +253,29 @@ export function AvaliacoesTab() {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
         const op = cr.opcoes.find(o => o.id === r);
-        if (op) respostasSnapshot[cr.chave] = { tipo: 'single', id: op.id, label: op.label, valor: Number(op.valor) };
+        if (op) {
+          // Editando: opção não mudada → preserva valor congelado; opção trocada → usa valor atual
+          const snapKey = `${cr.chave}:${op.id}`;
+          const valor = (editingId && form.snapValues[snapKey] != null)
+            ? form.snapValues[snapKey]
+            : Number(op.valor);
+          respostasSnapshot[cr.chave] = { tipo: 'single', id: op.id, label: op.label, valor };
+        }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
-        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => ({ id: o.id, label: o.label, valor: Number(o.valor) }));
+        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => {
+          const snapKey = `${cr.chave}:${o.id}`;
+          const valor = (editingId && form.snapValues[snapKey] != null)
+            ? form.snapValues[snapKey]
+            : Number(o.valor);
+          return { id: o.id, label: o.label, valor };
+        });
         respostasSnapshot[cr.chave] = { tipo: 'multi', selecoes: sel };
       } else if (cr.tipo === 'number') {
-        respostasSnapshot[cr.chave] = { tipo: 'number', quantidade: Number(r || 0), unitario: Number(cr.opcoes[0]?.valor || 0) };
+        const snapKey = `${cr.chave}:unit`;
+        const unitario = (editingId && form.snapValues[snapKey] != null)
+          ? form.snapValues[snapKey]
+          : Number(cr.opcoes[0]?.valor || 0);
+        respostasSnapshot[cr.chave] = { tipo: 'number', quantidade: Number(r || 0), unitario };
       }
     }
 
