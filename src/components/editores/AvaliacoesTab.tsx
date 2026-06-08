@@ -58,6 +58,8 @@ export function AvaliacoesTab() {
       pct_lideranca_snapshot: null as number | null, // % liderança congelado no momento do save
       // Valores das opções congelados no momento do save — chave: "criterio_chave:opcao_id" ou "criterio_chave:unit"
       snapValues: {} as Record<string, number>,
+      // Lista de chaves dos critérios ativos no momento do save — null = avaliação antiga (sem esse dado)
+      criteriosSnap: null as string[] | null,
     };
   }
 
@@ -252,6 +254,7 @@ export function AvaliacoesTab() {
       multiplicador_snapshot: snapshotSalvo ?? multFallback,
       pct_lideranca_snapshot: pctSalvo ?? pctFallback,
       snapValues,
+      criteriosSnap: Array.isArray(snap['_criterios_snap']) ? (snap['_criterios_snap'] as string[]) : null,
     });
     setOpen(true);
   };
@@ -299,6 +302,9 @@ export function AvaliacoesTab() {
         percentual: editingId ? (form.pct_lideranca_snapshot ?? pctLideranca) : pctLideranca,
       };
     }
+
+    // Grava lista de critérios ativos neste momento → usada para saber o que mostrar ao editar depois
+    respostasSnapshot['_criterios_snap'] = criterios.filter(c => c.ativo).map(c => c.chave);
 
     const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
       ? Number(form.bonus_total_override)
@@ -457,16 +463,23 @@ export function AvaliacoesTab() {
             {CATEGORIAS.map(cat => {
               // Critério visível:
               // - Nova avaliação: apenas critérios ativos
-              // - Avaliação existente: apenas critérios que tinham valor salvo (nem novos, nem removidos)
+              // - Avaliação com _criterios_snap: mostra exatamente os que estavam ativos na época + inativos com valor
+              // - Avaliação antiga (sem _criterios_snap): mostra ativos + inativos com valor (fallback seguro)
               const criterioVisivel = (c: Criterio) => {
-                if (editingId) {
+                if (!editingId) return c.ativo;
+                const temValor = () => {
                   const v = form.respostas[c.chave];
                   if (v == null) return false;
-                  if (c.tipo === 'multi') return Array.isArray(v) && v.length > 0;
+                  if (c.tipo === 'multi') return Array.isArray(v) && (v as string[]).length > 0;
                   if (c.tipo === 'number') return Number(v) > 0;
                   return Boolean(v);
+                };
+                if (form.criteriosSnap) {
+                  // Avaliação nova: mostra os critérios que existiam na época OU inativos com valor salvo
+                  return form.criteriosSnap.includes(c.chave) || temValor();
                 }
-                return c.ativo;
+                // Avaliação antiga sem snapshot: mostra ativos + inativos com valor
+                return c.ativo || temValor();
               };
               const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && criterioVisivel(c));
               if (critsCat.length === 0) return null;
