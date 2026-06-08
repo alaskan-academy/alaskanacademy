@@ -11,7 +11,7 @@ import { useConfirm } from '@/hooks/use-confirm';
 import { Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
 
 type Categoria = 'individual' | 'grupo' | 'meta';
-type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
+type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria };
 
 const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
@@ -32,7 +32,7 @@ export function ConfiguracaoTab() {
 
   const [openOpt, setOpenOpt] = useState(false);
   const [editingOpt, setEditingOpt] = useState<Opcao | null>(null);
-  const [optForm, setOptForm] = useState({ criterio_id: '', label: '', valor: 0, ordem: 0, ativo: true });
+  const [optForm, setOptForm] = useState({ criterio_id: '', label: '', valor: 0, folgas: 0, ordem: 0, ativo: true });
 
   const load = async () => {
     setLoading(true);
@@ -73,17 +73,17 @@ export function ConfiguracaoTab() {
   const openNewOpt = (criterio_id: string) => {
     setEditingOpt(null);
     const len = opcoes.filter(o => o.criterio_id === criterio_id).length;
-    setOptForm({ criterio_id, label: '', valor: 0, ordem: len + 1, ativo: true });
+    setOptForm({ criterio_id, label: '', valor: 0, folgas: 0, ordem: len + 1, ativo: true });
     setOpenOpt(true);
   };
   const openEditOpt = (o: Opcao) => {
     setEditingOpt(o);
-    setOptForm({ criterio_id: o.criterio_id, label: o.label, valor: Number(o.valor), ordem: o.ordem, ativo: o.ativo });
+    setOptForm({ criterio_id: o.criterio_id, label: o.label, valor: Number(o.valor), folgas: Number(o.folgas ?? 0), ordem: o.ordem, ativo: o.ativo });
     setOpenOpt(true);
   };
   const saveOpt = async () => {
     if (!optForm.label) return toast({ title: 'Label obrigatório', variant: 'destructive' });
-    const payload = { ...optForm, valor: Number(optForm.valor), ordem: Number(optForm.ordem) };
+    const payload = { ...optForm, valor: Number(optForm.valor), folgas: Number(optForm.folgas ?? 0), ordem: Number(optForm.ordem) };
     const res = editingOpt
       ? await supabase.from('criterio_opcoes').update(payload).eq('id', editingOpt.id)
       : await supabase.from('criterio_opcoes').insert(payload);
@@ -151,6 +151,11 @@ export function ConfiguracaoTab() {
                             <div className="min-w-0 truncate">{o.label}</div>
                             <div className="flex items-center gap-3 shrink-0">
                               <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
+                              {Number(o.folgas ?? 0) > 0 && (
+                                <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                  {Number(o.folgas)}f
+                                </span>
+                              )}
                               <Switch checked={o.ativo} onCheckedChange={() => toggleOptAtivo(o)} />
                               <Button size="sm" variant="ghost" onClick={() => openEditOpt(o)}><Pencil className="h-3.5 w-3.5" /></Button>
                               <Button size="sm" variant="ghost" onClick={() => removeOpt(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -213,9 +218,20 @@ export function ConfiguracaoTab() {
           <DialogHeader><DialogTitle>{editingOpt ? 'Editar opção' : 'Nova opção'}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Label</Label><Input value={optForm.label} onChange={e => setOptForm({ ...optForm, label: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Valor (R$)</Label><Input type="number" value={optForm.valor} onChange={e => setOptForm({ ...optForm, valor: Number(e.target.value) })} /></div>
-              <div><Label>Ordem</Label><Input type="number" value={optForm.ordem} onChange={e => setOptForm({ ...optForm, ordem: Number(e.target.value) })} /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Valor (R$)</Label>
+                <Input type="number" min={0} value={optForm.valor} onChange={e => setOptForm({ ...optForm, valor: Number(e.target.value) })} />
+              </div>
+              <div>
+                <Label>Folgas</Label>
+                <Input type="number" min={0} step={0.5} value={optForm.folgas} onChange={e => setOptForm({ ...optForm, folgas: Number(e.target.value) })}
+                  placeholder="0" />
+              </div>
+              <div>
+                <Label>Ordem</Label>
+                <Input type="number" value={optForm.ordem} onChange={e => setOptForm({ ...optForm, ordem: Number(e.target.value) })} />
+              </div>
             </div>
             <div className="flex items-center gap-2"><Switch checked={optForm.ativo} onCheckedChange={v => setOptForm({ ...optForm, ativo: v })} /><Label>Ativo</Label></div>
           </div>

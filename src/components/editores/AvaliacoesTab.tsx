@@ -13,7 +13,7 @@ import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
-type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
+type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
 type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[] };
 
@@ -127,6 +127,12 @@ export function AvaliacoesTab() {
     let total = 0;
     let folgas = 0;
     const folgaRe = /\((\d+(?:[.,]\d+)?)\s*folgas?\)/i;
+    // Extrai folgas de uma opção: campo dedicado tem prioridade; fallback para regex no label (legado)
+    const getFolgas = (op: Opcao) => {
+      if (Number(op.folgas ?? 0) > 0) return Number(op.folgas);
+      const m = op.label.match(folgaRe);
+      return m ? Number(m[1].replace(',', '.')) : 0;
+    };
     for (const cr of criterios) {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
@@ -138,7 +144,7 @@ export function AvaliacoesTab() {
             ? form.snapValues[snapKey]
             : Number(op.valor);
           total += valor;
-          const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+          folgas += getFolgas(op);
         }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
         for (const id of r) {
@@ -149,7 +155,7 @@ export function AvaliacoesTab() {
               ? form.snapValues[snapKey]
               : Number(op.valor);
             total += valor;
-            const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+            folgas += getFolgas(op);
           }
         }
       } else if (cr.tipo === 'number') {
