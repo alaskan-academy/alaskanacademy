@@ -123,7 +123,7 @@ export function AvaliacoesTab() {
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
   const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 
-  const { bonusBase, folgasAuto } = useMemo(() => {
+  const { bonusBase, folgasAuto, ganhos, deducoes } = useMemo(() => {
     let total = 0;
     let folgas = 0;
     const folgaRe = /\((\d+(?:[.,]\d+)?)\s*folgas?\)/i;
