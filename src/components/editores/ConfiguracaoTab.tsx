@@ -8,11 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
-import { Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Pencil, GripVertical, Archive, ArchiveRestore, ChevronDown, ChevronRight } from 'lucide-react';
 
 type Categoria = 'individual' | 'grupo' | 'meta';
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; arquivado: boolean; categoria: Categoria };
 
 const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
   { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
@@ -29,6 +29,7 @@ export function ConfiguracaoTab() {
   const [openCrit, setOpenCrit] = useState(false);
   const [editingCrit, setEditingCrit] = useState<Criterio | null>(null);
   const [critForm, setCritForm] = useState({ chave: '', label: '', tipo: 'single' as 'single'|'multi'|'number', ordem: 0, ativo: true, categoria: 'individual' as Categoria });
+  const [showArquivados, setShowArquivados] = useState(false);
 
   const [openOpt, setOpenOpt] = useState(false);
   const [editingOpt, setEditingOpt] = useState<Opcao | null>(null);
@@ -68,6 +69,13 @@ export function ConfiguracaoTab() {
   };
   const toggleCritAtivo = async (c: Criterio) => {
     await supabase.from('criterios_avaliacao').update({ ativo: !c.ativo }).eq('id', c.id); load();
+  };
+  const arquivarCrit = async (c: Criterio) => {
+    if (!(await confirm({ title: 'Arquivar critério?', description: 'O critério será ocultado das novas avaliações e movido para a área de arquivados. Avaliações já salvas não serão afetadas.' }))) return;
+    await supabase.from('criterios_avaliacao').update({ arquivado: true, ativo: false }).eq('id', c.id); load();
+  };
+  const desarquivarCrit = async (c: Criterio) => {
+    await supabase.from('criterios_avaliacao').update({ arquivado: false, ativo: true }).eq('id', c.id); load();
   };
 
   const openNewOpt = (criterio_id: string) => {
@@ -111,7 +119,7 @@ export function ConfiguracaoTab() {
       {loading ? <div className="p-6 text-center text-muted-foreground">Carregando...</div> : (
         <div className="space-y-6">
           {CATEGORIAS.map(cat => {
-            const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
+            const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && !c.arquivado);
             return (
               <div key={cat.value} className="space-y-3">
                 <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
@@ -140,6 +148,7 @@ export function ConfiguracaoTab() {
                         <div className="flex items-center gap-2">
                           <Switch checked={c.ativo} onCheckedChange={() => toggleCritAtivo(c)} />
                           <Button size="sm" variant="ghost" onClick={() => openEditCrit(c)}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" title="Arquivar" onClick={() => arquivarCrit(c)}><Archive className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
@@ -174,7 +183,45 @@ export function ConfiguracaoTab() {
               </div>
             );
           })}
-          {criterios.length === 0 && <div className="p-8 text-center text-muted-foreground bg-card border border-border rounded-lg">Nenhum critério criado ainda</div>}
+          {criterios.filter(c => !c.arquivado).length === 0 && <div className="p-8 text-center text-muted-foreground bg-card border border-border rounded-lg">Nenhum critério criado ainda</div>}
+
+          {/* Seção de arquivados */}
+          {criterios.some(c => c.arquivado) && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowArquivados(v => !v)}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full border-t border-border pt-3"
+              >
+                {showArquivados ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <Archive className="h-4 w-4" />
+                Arquivados ({criterios.filter(c => c.arquivado).length})
+              </button>
+              {showArquivados && (
+                <div className="space-y-2 pl-1">
+                  {criterios.filter(c => c.arquivado).map(c => (
+                    <div key={c.id} className="bg-card border border-border rounded-lg opacity-60 hover:opacity-80 transition-opacity">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{c.label}</span>
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{c.tipo}</span>
+                            <span className="text-xs text-muted-foreground">#{c.chave}</span>
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">arquivado</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="ghost" title="Desarquivar" onClick={() => desarquivarCrit(c)}>
+                            <ArchiveRestore className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[]; created_at: string };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; arquivado: boolean; categoria: Categoria; opcoes: Opcao[]; created_at: string };
 
 const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
   { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
@@ -469,7 +469,7 @@ export function AvaliacoesTab() {
               // - Avaliação com _criterios_snap: exatamente os da época + inativos com valor
               // - Avaliação antiga (sem snap): critérios criados ANTES da avaliação + inativos com valor
               const criterioVisivel = (c: Criterio) => {
-                if (!editingId) return c.ativo;
+                if (!editingId) return c.ativo && !c.arquivado;
                 const temValor = () => {
                   const v = form.respostas[c.chave];
                   if (v == null) return false;
