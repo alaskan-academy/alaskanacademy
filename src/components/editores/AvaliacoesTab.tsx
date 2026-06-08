@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[] };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[]; created_at: string };
 
 const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
   { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
@@ -60,6 +60,8 @@ export function AvaliacoesTab() {
       snapValues: {} as Record<string, number>,
       // Lista de chaves dos critérios ativos no momento do save — null = avaliação antiga (sem esse dado)
       criteriosSnap: null as string[] | null,
+      // created_at da avaliação — usado para filtrar critérios criados depois dela
+      avaliacao_created_at: null as string | null,
     };
   }
 
@@ -255,6 +257,7 @@ export function AvaliacoesTab() {
       pct_lideranca_snapshot: pctSalvo ?? pctFallback,
       snapValues,
       criteriosSnap: Array.isArray(snap['_criterios_snap']) ? (snap['_criterios_snap'] as string[]) : null,
+      avaliacao_created_at: a.created_at ?? null,
     });
     setOpen(true);
   };
@@ -463,8 +466,8 @@ export function AvaliacoesTab() {
             {CATEGORIAS.map(cat => {
               // Critério visível:
               // - Nova avaliação: apenas critérios ativos
-              // - Avaliação com _criterios_snap: mostra exatamente os que estavam ativos na época + inativos com valor
-              // - Avaliação antiga (sem _criterios_snap): mostra ativos + inativos com valor (fallback seguro)
+              // - Avaliação com _criterios_snap: exatamente os da época + inativos com valor
+              // - Avaliação antiga (sem snap): critérios criados ANTES da avaliação + inativos com valor
               const criterioVisivel = (c: Criterio) => {
                 if (!editingId) return c.ativo;
                 const temValor = () => {
@@ -475,11 +478,13 @@ export function AvaliacoesTab() {
                   return Boolean(v);
                 };
                 if (form.criteriosSnap) {
-                  // Avaliação nova: mostra os critérios que existiam na época OU inativos com valor salvo
                   return form.criteriosSnap.includes(c.chave) || temValor();
                 }
-                // Avaliação antiga sem snapshot: mostra ativos + inativos com valor
-                return c.ativo || temValor();
+                // Fallback para avaliações antigas: critério existia antes da avaliação ser criada?
+                const existiaAntes = form.avaliacao_created_at && c.created_at
+                  ? c.created_at <= form.avaliacao_created_at
+                  : c.ativo; // se não tiver datas, usa ativo como fallback final
+                return existiaAntes || temValor();
               };
               const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && criterioVisivel(c));
               if (critsCat.length === 0) return null;
