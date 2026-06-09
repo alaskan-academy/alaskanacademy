@@ -306,8 +306,22 @@ export function AvaliacoesTab() {
       };
     }
 
-    // Grava lista de critérios ativos neste momento → usada para saber o que mostrar ao editar depois
-    respostasSnapshot['_criterios_snap'] = criterios.filter(c => c.ativo).map(c => c.chave);
+    // Grava lista de critérios do snap:
+    // - Nova avaliação: critérios ativos e não arquivados no momento
+    // - Edição de avaliação existente: preserva snap original + adiciona novos critérios respondidos
+    //   (nunca remove do snap, para garantir imutabilidade histórica)
+    if (editingId && form.criteriosSnap) {
+      const snapSet = new Set(form.criteriosSnap);
+      // Adiciona ao snap qualquer critério que tenha recebido valor nesta edição
+      for (const [chave, val] of Object.entries(form.respostas)) {
+        if (chave === CHAVE_RESPONSAVEIS) continue;
+        const hasVal = Array.isArray(val) ? val.length > 0 : Boolean(val) && Number(val) > 0 || val === true;
+        if (hasVal) snapSet.add(chave);
+      }
+      respostasSnapshot['_criterios_snap'] = [...snapSet];
+    } else {
+      respostasSnapshot['_criterios_snap'] = criterios.filter(c => c.ativo && !c.arquivado).map(c => c.chave);
+    }
 
     const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
       ? Number(form.bonus_total_override)
