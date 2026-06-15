@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Link2, ImageIcon, Upload, X,
   Sheet, Loader2, BookOpen, Tag, User, Calendar, ExternalLink,
+  Archive, ArchiveRestore, ChevronDown, ChevronRight,
 } from 'lucide-react';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ type Area = {
 
 type Referencia = {
   id: string;
+  arquivado: boolean;
   titulo: string;
   descricao: string | null;
   area_id: string | null;
@@ -99,8 +101,9 @@ export default function ReferenciasPage() {
   const [saving,     setSaving]     = useState(false);
   const [syncing,    setSyncing]    = useState(false);
 
-  const [search,     setSearch]     = useState('');
-  const [filtroArea, setFiltroArea] = useState('');
+  const [search,        setSearch]        = useState('');
+  const [filtroArea,    setFiltroArea]    = useState('');
+  const [showArquivados, setShowArquivados] = useState(false);
 
   const [openForm,   setOpenForm]   = useState(false);
   const [editingId,  setEditingId]  = useState<string | null>(null);
@@ -135,7 +138,7 @@ export default function ReferenciasPage() {
   useEffect(() => { load(); }, []);
 
   // ── Filtros ───────────────────────────────────────────────────────────────
-  const filtradas = useMemo(() => referencias.filter(r => {
+  const applyFilters = (list: Referencia[]) => list.filter(r => {
     if (search) {
       const q = search.toLowerCase();
       const match = r.titulo.toLowerCase().includes(q)
@@ -145,7 +148,10 @@ export default function ReferenciasPage() {
     }
     if (filtroArea && r.area_id !== filtroArea) return false;
     return true;
-  }), [referencias, search, filtroArea]);
+  });
+
+  const filtradas   = useMemo(() => applyFilters(referencias.filter(r => !r.arquivado)), [referencias, search, filtroArea]);
+  const arquivadas  = useMemo(() => applyFilters(referencias.filter(r =>  r.arquivado)),  [referencias, search, filtroArea]);
 
   // ── Form helpers ──────────────────────────────────────────────────────────
   const openNew = () => {
@@ -270,6 +276,28 @@ export default function ReferenciasPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  // ── Archive / Unarchive ───────────────────────────────────────────────────
+  const arquivar = async (r: Referencia) => {
+    if (!(await confirm({
+      title: 'Arquivar referência?',
+      description: 'A referência será ocultada da lista principal e movida para a área de arquivados.',
+    }))) return;
+    const { error } = await supabase.from('referencias').update({ arquivado: true }).eq('id', r.id);
+    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    toast({ title: 'Referência arquivada' });
+    setDetalhe(null);
+    load();
+    silentSyncSheets();
+  };
+
+  const desarquivar = async (r: Referencia) => {
+    const { error } = await supabase.from('referencias').update({ arquivado: false }).eq('id', r.id);
+    if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    toast({ title: 'Referência restaurada' });
+    load();
+    silentSyncSheets();
   };
 
   // ── Delete ────────────────────────────────────────────────────────────────
@@ -463,6 +491,58 @@ export default function ReferenciasPage() {
         </div>
       )}
 
+      {/* ── Seção Arquivados ── */}
+      {arquivadas.length > 0 && (
+        <div className="mt-8">
+          <button
+            onClick={() => setShowArquivados(v => !v)}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3"
+          >
+            {showArquivados
+              ? <ChevronDown className="h-4 w-4" />
+              : <ChevronRight className="h-4 w-4" />}
+            <Archive className="h-4 w-4" />
+            Arquivados ({arquivadas.length})
+          </button>
+
+          {showArquivados && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 opacity-60">
+              {arquivadas.map(r => (
+                <div
+                  key={r.id}
+                  className="bg-card border border-border border-dashed rounded-lg overflow-hidden"
+                >
+                  <div className="p-4">
+                    {r.area && (
+                      <span className="text-xs text-muted-foreground block mb-1">{r.area.icone} {r.area.nome}</span>
+                    )}
+                    <p className="text-sm font-medium leading-snug mb-3 line-clamp-2 text-muted-foreground">{r.titulo}</p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm" variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => desarquivar(r)}
+                      >
+                        <ArchiveRestore className="h-3 w-3 mr-1" /> Restaurar
+                      </Button>
+                      {podeEditar(r) && (
+                        <Button
+                          size="sm" variant="ghost"
+                          className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => remove(r)}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" /> Excluir
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Detalhe Dialog ── */}
       <Dialog open={!!detalhe} onOpenChange={v => !v && setDetalhe(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -549,9 +629,12 @@ export default function ReferenciasPage() {
               </div>
 
               {podeEditar(detalhe) && (
-                <DialogFooter className="mt-4 gap-2 sm:justify-start">
+                <DialogFooter className="mt-4 gap-2 sm:justify-start flex-wrap">
                   <Button size="sm" variant="outline" onClick={() => openEdit(detalhe)}>
                     <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => arquivar(detalhe)}>
+                    <Archive className="h-3.5 w-3.5 mr-1" /> Arquivar
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => remove(detalhe)}>
                     <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
