@@ -7,13 +7,13 @@ const SHEET_EXCLUIDOS = "Ref. Excluídas";
 
 const HEADERS_ATIVOS = [
   "Título", "Área", "Categoria", "Descrição",
-  "Links", "Imagens", "Tags",
+  "Links", "Nº Imagens", "Imagem 1", "Imagem 2", "Imagem 3", "Tags",
   "Criado por", "Criado em", "Atualizado por", "Atualizado em",
 ];
 
 const HEADERS_EXCLUIDOS = [
   "Título", "Área", "Categoria", "Descrição",
-  "Links", "Imagens", "Tags",
+  "Links", "Nº Imagens", "Imagem 1", "Imagem 2", "Imagem 3", "Tags",
   "Criado por", "Criado em", "Atualizado por", "Atualizado em",
   "Excluído em", "Excluído por",
 ];
@@ -84,14 +84,22 @@ function buildRow(
   emailMap: Record<string, string>,
 ): string[] {
   const area = areaMap[r.area_id];
+  const imagens = r.imagens ?? [];
+  // Cada imagem vira um HYPERLINK clicável no Sheets; células vazias para as ausentes
+  const imgCell = (url: string | undefined) =>
+    url ? `=HYPERLINK("${url}","🖼 Abrir")` : "";
+
   return [
     r.titulo      ?? "",
     area?.nome    ?? "",
     CATEGORIA_LABEL[area?.categoria] ?? area?.categoria ?? "",
     r.descricao   ?? "",
-    (r.links   ?? []).join("\n"),
-    (r.imagens ?? []).join("\n"),
-    (r.tags    ?? []).join(", "),
+    (r.links ?? []).join("\n"),
+    imagens.length > 0 ? String(imagens.length) : "",
+    imgCell(imagens[0]),
+    imgCell(imagens[1]),
+    imgCell(imagens[2]),
+    (r.tags ?? []).join(", "),
     emailMap[r.criado_por]     ?? "",
     fmtDate(r.criado_em),
     emailMap[r.atualizado_por] ?? "",
