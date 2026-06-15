@@ -86,8 +86,8 @@ function buildRow(
   const area = areaMap[r.area_id];
   const imagens = r.imagens ?? [];
   // Cada imagem vira um HYPERLINK clicável no Sheets; células vazias para as ausentes
-  const imgCell = (url: string | undefined) =>
-    url ? `=HYPERLINK("${url}","Abrir imagem")` : "";
+  // URL pura — Sheets detecta automaticamente e torna clicável (sem problema de locale)
+  const imgCell = (url: string | undefined) => url ?? "";
 
   return [
     r.titulo      ?? "",
