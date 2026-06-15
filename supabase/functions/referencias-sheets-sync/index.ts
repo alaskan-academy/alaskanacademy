@@ -87,7 +87,7 @@ function buildRow(
   const imagens = r.imagens ?? [];
   // Cada imagem vira um HYPERLINK clicável no Sheets; células vazias para as ausentes
   const imgCell = (url: string | undefined) =>
-    url ? `=HYPERLINK("${url}","🖼 Abrir")` : "";
+    url ? `=HYPERLINK("${url}","Abrir imagem")` : "";
 
   return [
     r.titulo      ?? "",
