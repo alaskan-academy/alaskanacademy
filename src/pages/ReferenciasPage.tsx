@@ -240,10 +240,11 @@ export default function ReferenciasPage() {
       for (const file of form.imagensPendentes) {
         const ext  = file.name.split('.').pop() || 'jpg';
         const path = `${refId}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage
+        const { data: upData, error: upErr } = await supabase.storage
           .from('referencias')
           .upload(path, file, { contentType: file.type });
-        if (upErr) throw upErr;
+        if (upErr) throw new Error(`Falha ao enviar "${file.name}": ${upErr.message}`);
+        if (!upData?.path) throw new Error(`Arquivo "${file.name}" não foi gravado no Storage. Verifique se o bucket "referencias" existe e está público no Supabase Dashboard.`);
         const { data: { publicUrl } } = supabase.storage.from('referencias').getPublicUrl(path);
         newUrls.push(publicUrl);
       }
