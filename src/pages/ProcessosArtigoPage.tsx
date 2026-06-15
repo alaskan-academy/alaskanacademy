@@ -15,6 +15,12 @@ import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface CatExtra {
+  id: string;
+  nome: string;
+  icone: string;
+}
+
 interface Artigo {
   id: string;
   titulo: string;
@@ -26,6 +32,8 @@ interface Artigo {
   categoria_id: string;
   categoria_nome: string;
   categoria_icone: string;
+  categorias_adicionais: string[];
+  categorias_extras: CatExtra[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,6 +67,8 @@ export default function ProcessosArtigoPage() {
   const [fVideo, setFVideo] = useState('');
   const [fConteudo, setFConteudo] = useState('');
   const [fImagens, setFImagens] = useState('');
+  const [fCategoriasAdicionais, setFCategoriasAdicionais] = useState<string[]>([]);
+  const [todasCategorias, setTodasCategorias] = useState<CatExtra[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Image lightbox
@@ -76,7 +86,7 @@ export default function ProcessosArtigoPage() {
       .from('processos_artigos')
       .select(`
         id, titulo, video_url, conteudo, imagens, criado_em, atualizado_em,
-        categoria_id,
+        categoria_id, categorias_adicionais,
         processos_categorias ( nome, icone )
       `)
       .eq('id', artigoId)
@@ -87,6 +97,24 @@ export default function ProcessosArtigoPage() {
       navigate('/processos');
       return;
     }
+
+    const extraIds: string[] = data.categorias_adicionais || [];
+    let extras: CatExtra[] = [];
+    if (extraIds.length > 0) {
+      const { data: extraData } = await supabase
+        .from('processos_categorias')
+        .select('id, nome, icone')
+        .in('id', extraIds)
+        .eq('ativo', true);
+      extras = extraData || [];
+    }
+
+    const { data: allCats } = await supabase
+      .from('processos_categorias')
+      .select('id, nome, icone')
+      .eq('ativo', true)
+      .order('criado_em', { ascending: true });
+    setTodasCategorias(allCats || []);
 
     const loaded: Artigo = {
       id: data.id,
@@ -99,6 +127,8 @@ export default function ProcessosArtigoPage() {
       categoria_id: data.categoria_id,
       categoria_nome: (data.processos_categorias as any)?.nome ?? '',
       categoria_icone: (data.processos_categorias as any)?.icone ?? '📋',
+      categorias_adicionais: extraIds,
+      categorias_extras: extras,
     };
 
     setArtigo(loaded);
@@ -116,6 +146,7 @@ export default function ProcessosArtigoPage() {
     setFVideo(artigo.video_url || '');
     setFConteudo(artigo.conteudo || '');
     setFImagens(artigo.imagens.join('\n'));
+    setFCategoriasAdicionais(artigo.categorias_adicionais);
     setFormOpen(true);
   };
 
@@ -132,6 +163,7 @@ export default function ProcessosArtigoPage() {
         video_url: videoUrl,
         conteudo: fConteudo.trim() || null,
         imagens,
+        categorias_adicionais: fCategoriasAdicionais,
         atualizado_por: user?.id,
         atualizado_em: new Date().toISOString(),
       })
@@ -200,10 +232,26 @@ export default function ProcessosArtigoPage() {
 
             {/* Article header */}
             <div className="mb-6">
-              {/* Category badge */}
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-base">{artigo.categoria_icone}</span>
-                <span className="text-xs text-muted-foreground font-medium">{artigo.categoria_nome}</span>
+              {/* Category badges */}
+              <div className="flex items-center flex-wrap gap-2 mb-3">
+                <Link
+                  to={`/processos/c/${artigo.categoria_id}`}
+                  className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                >
+                  <span className="text-base">{artigo.categoria_icone}</span>
+                  <span className="text-xs text-muted-foreground font-medium">{artigo.categoria_nome}</span>
+                </Link>
+                {artigo.categorias_extras.map(cat => (
+                  <Link
+                    key={cat.id}
+                    to={`/processos/c/${cat.id}`}
+                    className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+                  >
+                    <span className="text-muted-foreground/30">·</span>
+                    <span className="text-base">{cat.icone}</span>
+                    <span className="text-xs text-muted-foreground font-medium">{cat.nome}</span>
+                  </Link>
+                ))}
                 {artigo.conteudo && (
                   <>
                     <span className="text-muted-foreground/30">·</span>
@@ -411,6 +459,43 @@ export default function ProcessosArtigoPage() {
                 placeholder={"https://exemplo.com/imagem1.png\nhttps://exemplo.com/imagem2.png"}
               />
             </div>
+
+            {/* Extra categories */}
+            {todasCategorias.filter(c => c.id !== artigo?.categoria_id).length > 0 && (
+              <div>
+                <Label>
+                  Também aparece em{' '}
+                  <span className="text-muted-foreground font-normal">(opcional — outras categorias)</span>
+                </Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {todasCategorias
+                    .filter(c => c.id !== artigo?.categoria_id)
+                    .map(c => {
+                      const checked = fCategoriasAdicionais.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() =>
+                            setFCategoriasAdicionais(prev =>
+                              checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                            )
+                          }
+                          className={cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-all',
+                            checked
+                              ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                              : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                          )}
+                        >
+                          <span>{c.icone}</span>
+                          <span>{c.nome}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end pt-2 border-t border-border">
               <Button variant="outline" onClick={() => setFormOpen(false)}>

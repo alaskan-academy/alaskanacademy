@@ -75,7 +75,7 @@ export default function ProcessosPage() {
         .order('criado_em', { ascending: false }),
       supabase
         .from('processos_artigos')
-        .select('id, titulo, categoria_id, processos_categorias(nome, icone)')
+        .select('id, titulo, categoria_id, categorias_adicionais, processos_categorias(nome, icone)')
         .eq('ativo', true)
         .order('criado_em', { ascending: false }),
     ]);
@@ -83,6 +83,9 @@ export default function ProcessosPage() {
     const countMap: Record<string, number> = {};
     (arts || []).forEach((a: any) => {
       countMap[a.categoria_id] = (countMap[a.categoria_id] || 0) + 1;
+      (a.categorias_adicionais || []).forEach((catId: string) => {
+        countMap[catId] = (countMap[catId] || 0) + 1;
+      });
     });
 
     setCategorias(

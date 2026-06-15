@@ -65,6 +65,7 @@ export default function ProcessosCategoriaPage() {
   const [fVideo, setFVideo] = useState('');
   const [fConteudo, setFConteudo] = useState('');
   const [fImagens, setFImagens] = useState('');
+  const [fCategoriasAdicionais, setFCategoriasAdicionais] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // ── Data ────────────────────────────────────────────────────────────────────
@@ -81,7 +82,7 @@ export default function ProcessosCategoriaPage() {
       supabase
         .from('processos_artigos')
         .select('id, titulo, video_url, criado_em')
-        .eq('categoria_id', categoriaId)
+        .or(`categoria_id.eq.${categoriaId},categorias_adicionais.cs.{${categoriaId}}`)
         .eq('ativo', true)
         .order('criado_em', { ascending: false }),
       supabase
@@ -108,6 +109,7 @@ export default function ProcessosCategoriaPage() {
     setFVideo('');
     setFConteudo('');
     setFImagens('');
+    setFCategoriasAdicionais([]);
     setFormOpen(true);
   };
 
@@ -115,7 +117,7 @@ export default function ProcessosCategoriaPage() {
     e.stopPropagation();
     supabase
       .from('processos_artigos')
-      .select('id, titulo, video_url, conteudo, imagens')
+      .select('id, titulo, video_url, conteudo, imagens, categorias_adicionais')
       .eq('id', a.id)
       .single()
       .then(({ data }) => {
@@ -125,6 +127,7 @@ export default function ProcessosCategoriaPage() {
         setFVideo(data.video_url || '');
         setFConteudo(data.conteudo || '');
         setFImagens((data.imagens || []).join('\n'));
+        setFCategoriasAdicionais(data.categorias_adicionais || []);
         setFormOpen(true);
       });
   };
@@ -161,6 +164,7 @@ export default function ProcessosCategoriaPage() {
           video_url: videoUrl,
           conteudo: fConteudo.trim() || null,
           imagens,
+          categorias_adicionais: fCategoriasAdicionais,
           atualizado_por: user?.id,
           atualizado_em: now,
         })
@@ -174,6 +178,7 @@ export default function ProcessosCategoriaPage() {
           video_url: videoUrl,
           conteudo: fConteudo.trim() || null,
           imagens,
+          categorias_adicionais: fCategoriasAdicionais,
           criado_por: user?.id,
         }));
     }
@@ -400,6 +405,43 @@ export default function ProcessosCategoriaPage() {
                 placeholder={"https://exemplo.com/imagem1.png\nhttps://exemplo.com/imagem2.png"}
               />
             </div>
+
+            {/* Extra categories */}
+            {todasCategorias.filter(c => c.id !== categoriaId).length > 0 && (
+              <div>
+                <Label>
+                  Também aparece em{' '}
+                  <span className="text-muted-foreground font-normal">(opcional — outras categorias)</span>
+                </Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {todasCategorias
+                    .filter(c => c.id !== categoriaId)
+                    .map(c => {
+                      const checked = fCategoriasAdicionais.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() =>
+                            setFCategoriasAdicionais(prev =>
+                              checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                            )
+                          }
+                          className={cn(
+                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs transition-all',
+                            checked
+                              ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                              : 'border-border text-muted-foreground hover:border-muted-foreground/50'
+                          )}
+                        >
+                          <span>{c.icone}</span>
+                          <span>{c.nome}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end pt-2 border-t border-border">
               <Button variant="outline" onClick={() => setFormOpen(false)}>
