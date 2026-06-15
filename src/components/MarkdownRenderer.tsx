@@ -152,6 +152,25 @@ export function MarkdownRenderer({ content, className }: Props) {
       continue;
     }
 
+    // ── Block image: ![alt](url)
+    if (/^!\[[^\]]*\]\([^)]+\)$/.test(line.trim())) {
+      const m = line.trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (m) {
+        elements.push(
+          <div key={key++} className="my-5 rounded-xl overflow-hidden border border-border/60 bg-muted/30">
+            <img
+              src={m[2]}
+              alt={m[1]}
+              className="w-full object-cover"
+              loading="lazy"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          </div>
+        );
+        i++; continue;
+      }
+    }
+
     // ── Blockquote
     if (line.startsWith('> ')) {
       const items: string[] = [];
