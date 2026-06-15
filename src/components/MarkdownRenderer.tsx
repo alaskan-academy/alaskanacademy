@@ -171,6 +171,59 @@ export function MarkdownRenderer({ content, className }: Props) {
       }
     }
 
+    // ── Table: line starts with | and next line is separator |---|---|
+    if (line.startsWith('|') && i + 1 < lines.length && /^\|[\s\-:|]+\|/.test(lines[i + 1])) {
+      const parseRow = (row: string) =>
+        row.split('|').slice(1, -1).map(c => c.trim());
+
+      const headers = parseRow(line);
+      i += 2; // skip separator line
+
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].startsWith('|')) {
+        rows.push(parseRow(lines[i]));
+        i++;
+      }
+
+      elements.push(
+        <div key={key++} className="my-6 overflow-x-auto rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border">
+                {headers.map((h, j) => (
+                  <th
+                    key={j}
+                    className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap"
+                  >
+                    {parseInline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {rows.map((row, ri) => (
+                <tr key={ri} className="hover:bg-muted/20 transition-colors">
+                  {row.map((cell, ci) => (
+                    <td
+                      key={ci}
+                      className={`px-4 py-3 text-[13.5px] leading-snug ${
+                        ci === 0
+                          ? 'font-medium text-foreground'
+                          : 'text-foreground/75'
+                      }`}
+                    >
+                      {parseInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
     // ── Blockquote
     if (line.startsWith('> ')) {
       const items: string[] = [];
