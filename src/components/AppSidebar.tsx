@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, ShieldCheck, BookOpen
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, ShieldCheck, BookOpen, GraduationCap
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -29,7 +29,8 @@ const ALL_SUB_PAGES = [
 
 const ALL_FIXED_ITEMS = [
   { path: '/radar',          label: 'Radar',          icon: Radar,       key: 'radar',          adminOnly: false },
-  { path: '/referencias',    label: 'Referências',    icon: BookOpen,    key: 'referencias',    adminOnly: false },
+  { path: '/referencias',    label: 'Referências',    icon: BookOpen,       key: 'referencias',    adminOnly: false },
+  { path: '/processos',      label: 'Processos',      icon: GraduationCap,  key: 'processos',      adminOnly: false },
   { path: '/ativos',         label: 'Ativos Meta',    icon: Shield,      key: 'ativos',         adminOnly: false },
   { path: '/editores',       label: 'Editores',       icon: BarChart3,   key: 'editores',       adminOnly: false },
   { path: '/configuracoes',  label: 'Configurações',  icon: Settings,    key: 'configuracoes',  adminOnly: false },

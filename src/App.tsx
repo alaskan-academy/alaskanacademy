@@ -20,6 +20,9 @@ import SettingsPage from "./pages/SettingsPage";
 import RadarPage from "./pages/RadarPage";
 import AtivosPage from "./pages/AtivosPage";
 import ReferenciasPage from "./pages/ReferenciasPage";
+import ProcessosPage from "./pages/ProcessosPage";
+import ProcessosCategoriaPage from "./pages/ProcessosCategoriaPage";
+import ProcessosArtigoPage from "./pages/ProcessosArtigoPage";
 import AdminPage from "./pages/AdminPage";
 import NotFound from "./pages/NotFound";
 
@@ -47,6 +50,9 @@ const App = () => (
                   <Route path="/radar" element={<ProtectedRoute pageKey="radar"><RadarPage /></ProtectedRoute>} />
                   <Route path="/ativos" element={<ProtectedRoute pageKey="ativos"><AtivosPage /></ProtectedRoute>} />
                   <Route path="/referencias" element={<ProtectedRoute pageKey="referencias"><ReferenciasPage /></ProtectedRoute>} />
+                  <Route path="/processos" element={<ProtectedRoute pageKey="processos"><ProcessosPage /></ProtectedRoute>} />
+                  <Route path="/processos/c/:categoriaId" element={<ProtectedRoute pageKey="processos"><ProcessosCategoriaPage /></ProtectedRoute>} />
+                  <Route path="/processos/:artigoId" element={<ProtectedRoute pageKey="processos"><ProcessosArtigoPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                   <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
