@@ -3,12 +3,11 @@ import { cn } from '@/lib/utils';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Generates a URL-safe id from a heading text */
 export function makeHeadingId(text: string): string {
   return text
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // strip accents
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
@@ -21,10 +20,14 @@ function parseInline(text: string): React.ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return <strong key={i} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>;
+      return (
+        <strong key={i} className="font-semibold text-foreground">
+          {part.slice(2, -2)}
+        </strong>
+      );
     }
     if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-      return <em key={i}>{part.slice(1, -1)}</em>;
+      return <em key={i} className="italic">{part.slice(1, -1)}</em>;
     }
     const lm = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (lm) {
@@ -60,60 +63,58 @@ export function MarkdownRenderer({ content, className }: Props) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // Headings
-    if (line.startsWith('### ')) {
-      const text = line.slice(4);
-      elements.push(
-        <h3
-          key={key++}
-          id={makeHeadingId(text)}
-          className="text-sm font-semibold text-foreground mt-6 mb-2 first:mt-0 scroll-mt-6"
-        >
-          {parseInline(text)}
-        </h3>
-      );
-      i++;
-      continue;
-    }
-
-    if (line.startsWith('## ')) {
-      const text = line.slice(3);
-      elements.push(
-        <h2
-          key={key++}
-          id={makeHeadingId(text)}
-          className="text-base font-bold text-foreground mt-8 mb-2.5 first:mt-0 border-b border-border/50 pb-1.5 scroll-mt-6"
-        >
-          {parseInline(text)}
-        </h2>
-      );
-      i++;
-      continue;
-    }
-
+    // ── H1
     if (line.startsWith('# ')) {
       const text = line.slice(2);
       elements.push(
         <h1
           key={key++}
           id={makeHeadingId(text)}
-          className="text-lg font-bold text-foreground mt-8 mb-3 first:mt-0 scroll-mt-6"
+          className="text-[22px] font-bold text-foreground mt-10 mb-4 first:mt-0 leading-tight scroll-mt-6"
         >
           {parseInline(text)}
         </h1>
       );
-      i++;
-      continue;
+      i++; continue;
     }
 
-    // Horizontal rule
+    // ── H2
+    if (line.startsWith('## ')) {
+      const text = line.slice(3);
+      elements.push(
+        <h2
+          key={key++}
+          id={makeHeadingId(text)}
+          className="text-[18px] font-bold text-foreground mt-10 mb-3 pb-2.5 border-b border-border/50 first:mt-0 leading-snug scroll-mt-6"
+        >
+          {parseInline(text)}
+        </h2>
+      );
+      i++; continue;
+    }
+
+    // ── H3
+    if (line.startsWith('### ')) {
+      const text = line.slice(4);
+      elements.push(
+        <h3
+          key={key++}
+          id={makeHeadingId(text)}
+          className="text-[15px] font-semibold text-foreground mt-7 mb-2 first:mt-0 scroll-mt-6"
+        >
+          {parseInline(text)}
+        </h3>
+      );
+      i++; continue;
+    }
+
+    // ── Horizontal rule
     if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim())) {
-      elements.push(<hr key={key++} className="border-border my-5" />);
-      i++;
-      continue;
+      elements.push(<hr key={key++} className="border-border my-7" />);
+      i++; continue;
     }
 
-    // Ordered list — collect consecutive items
+    // ── Ordered list
     if (/^\d+\.\s/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
@@ -121,9 +122,9 @@ export function MarkdownRenderer({ content, className }: Props) {
         i++;
       }
       elements.push(
-        <ol key={key++} className="list-decimal list-outside pl-5 space-y-2 my-3.5">
+        <ol key={key++} className="list-decimal list-outside pl-6 my-5 space-y-2">
           {items.map((item, j) => (
-            <li key={j} className="text-sm text-foreground/90 leading-relaxed pl-0.5">
+            <li key={j} className="text-[14.5px] text-foreground/85 leading-7 pl-1">
               {parseInline(item)}
             </li>
           ))}
@@ -132,7 +133,7 @@ export function MarkdownRenderer({ content, className }: Props) {
       continue;
     }
 
-    // Unordered list — collect consecutive items
+    // ── Unordered list
     if (/^[-*]\s/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^[-*]\s/.test(lines[i])) {
@@ -140,9 +141,9 @@ export function MarkdownRenderer({ content, className }: Props) {
         i++;
       }
       elements.push(
-        <ul key={key++} className="list-disc list-outside pl-5 space-y-2 my-3.5">
+        <ul key={key++} className="list-disc list-outside pl-6 my-5 space-y-2">
           {items.map((item, j) => (
-            <li key={j} className="text-sm text-foreground/90 leading-relaxed pl-0.5">
+            <li key={j} className="text-[14.5px] text-foreground/85 leading-7 pl-1">
               {parseInline(item)}
             </li>
           ))}
@@ -151,7 +152,7 @@ export function MarkdownRenderer({ content, className }: Props) {
       continue;
     }
 
-    // Blockquote
+    // ── Blockquote
     if (line.startsWith('> ')) {
       const items: string[] = [];
       while (i < lines.length && lines[i].startsWith('> ')) {
@@ -159,33 +160,39 @@ export function MarkdownRenderer({ content, className }: Props) {
         i++;
       }
       elements.push(
-        <blockquote key={key++} className="border-l-2 border-primary/50 pl-4 my-4 text-sm text-muted-foreground italic space-y-1">
+        <blockquote
+          key={key++}
+          className="my-5 pl-5 py-1 border-l-[3px] border-primary/50 text-[14px] text-muted-foreground italic space-y-1.5"
+        >
           {items.map((item, j) => <p key={j}>{parseInline(item)}</p>)}
         </blockquote>
       );
       continue;
     }
 
-    // Empty line
+    // ── Empty line → paragraph break spacer
     if (line.trim() === '') {
-      elements.push(<div key={key++} className="h-2" />);
-      i++;
-      continue;
+      // Only emit if adjacent to content (skip consecutive empty lines)
+      const prev = elements[elements.length - 1];
+      if (prev !== undefined) {
+        elements.push(<div key={key++} aria-hidden className="h-1" />);
+      }
+      i++; continue;
     }
 
-    // Paragraph
+    // ── Paragraph
     elements.push(
-      <p key={key++} className="text-sm text-foreground/90 leading-relaxed">
+      <p key={key++} className="text-[14.5px] text-foreground/85 leading-7 mb-1">
         {parseInline(line)}
       </p>
     );
     i++;
   }
 
-  return <div className={cn('space-y-0.5', className)}>{elements}</div>;
+  return <div className={cn('prose-alaskan', className)}>{elements}</div>;
 }
 
-// ── TOC extractor (for use in article pages) ──────────────────────────────────
+// ── TOC extractor ─────────────────────────────────────────────────────────────
 
 export interface TocItem {
   level: number;

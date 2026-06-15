@@ -247,11 +247,8 @@ export default function ProcessosArtigoPage() {
 
             {/* Markdown content */}
             {artigo.conteudo && (
-              <div className="bg-card border border-border rounded-xl p-7 mb-6">
-                <MarkdownRenderer
-                  content={artigo.conteudo}
-                  className="[&_p]:text-[14.5px] [&_p]:leading-7 [&_li]:leading-7"
-                />
+              <div className="bg-card border border-border rounded-xl px-8 py-7 mb-6">
+                <MarkdownRenderer content={artigo.conteudo} />
               </div>
             )}
 
