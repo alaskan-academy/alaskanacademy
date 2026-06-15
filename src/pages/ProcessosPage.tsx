@@ -176,62 +176,88 @@ export default function ProcessosPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout title="Processos da Empresa">
+    <DashboardLayout title="Processos">
       <div className="max-w-5xl mx-auto">
 
-        {/* Sub-header */}
-        <div className="flex items-start justify-between gap-4 mb-6">
-          <p className="text-sm text-muted-foreground leading-relaxed max-w-xl">
-            Central de conhecimento com os processos e fluxos internos da Alaskan.
-          </p>
-          {isAdmin && (
-            <Button size="sm" onClick={openNew} className="shrink-0">
-              <Plus className="h-4 w-4 mr-1.5" />
-              Nova Categoria
-            </Button>
-          )}
-        </div>
+        {/* ── Hero banner ── */}
+        <div className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent mb-10 px-8 py-12">
+          {/* Decorative circles */}
+          <div className="pointer-events-none absolute -top-10 -right-10 h-52 w-52 rounded-full bg-primary/5" />
+          <div className="pointer-events-none absolute -bottom-8 -left-6 h-36 w-36 rounded-full bg-primary/5" />
 
-        {/* Search bar */}
-        <div className="relative mb-8">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Buscar processos..."
-            className="pl-10 h-11 text-sm bg-card"
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-          />
+          {/* Admin button */}
+          {isAdmin && (
+            <div className="absolute top-4 right-4 z-10">
+              <Button size="sm" variant="outline" onClick={openNew} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Nova Categoria
+              </Button>
+            </div>
+          )}
+
+          <div className="relative text-center max-w-2xl mx-auto">
+            <h1 className="text-3xl font-bold text-foreground tracking-tight mb-2">
+              Central de Processos
+            </h1>
+            <p className="text-muted-foreground text-[15px] leading-relaxed mb-8">
+              Guias, fluxos e documentos internos da equipe Alaskan
+            </p>
+
+            {/* Search bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Buscar processos, políticas, guias..."
+                className="h-12 pl-11 text-[15px] rounded-xl bg-background/70 border-border/60 focus-visible:border-primary/60 shadow-sm placeholder:text-muted-foreground/60"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+              />
+              {busca && (
+                <button
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                  onClick={() => setBusca('')}
+                  aria-label="Limpar busca"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* ── Search results ── */}
         {busca.trim() ? (
           <div>
-            <p className="text-xs text-muted-foreground mb-3">
-              {resultados.length} resultado{resultados.length !== 1 ? 's' : ''} para &ldquo;{busca}&rdquo;
+            <p className="text-sm text-muted-foreground mb-4">
+              {resultados.length}{' '}
+              resultado{resultados.length !== 1 ? 's' : ''} para{' '}
+              <span className="text-foreground font-medium">&ldquo;{busca}&rdquo;</span>
             </p>
+
             {resultados.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <Search className="h-8 w-8 mx-auto mb-3 opacity-30" />
+              <div className="text-center py-16 text-muted-foreground bg-card border border-border rounded-xl">
+                <Search className="h-8 w-8 mx-auto mb-3 opacity-25" />
                 <p className="font-medium">Nenhum processo encontrado</p>
                 <p className="text-sm mt-1">Tente outra palavra-chave</p>
               </div>
             ) : (
-              <div className="space-y-1 bg-card border border-border rounded-xl overflow-hidden">
-                {resultados.map((a, idx) => (
+              <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
+                {resultados.map(a => (
                   <button
                     key={a.id}
                     onClick={() => navigate(`/processos/${a.id}`)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-4 py-3.5 hover:bg-accent transition-colors text-left',
-                      idx !== resultados.length - 1 && 'border-b border-border/50'
-                    )}
+                    className="w-full flex items-center gap-3.5 px-5 py-4 hover:bg-accent transition-colors text-left group"
                   >
-                    <span className="text-xl shrink-0">{a.categoria_icone}</span>
+                    <span className="text-xl shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-primary/8">
+                      {a.categoria_icone}
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{a.titulo}</p>
+                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                        {a.titulo}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-0.5">{a.categoria_nome}</p>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
                   </button>
                 ))}
               </div>
@@ -244,7 +270,7 @@ export default function ProcessosPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : categorias.length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
+            <div className="text-center py-20 text-muted-foreground bg-card border border-border rounded-xl">
               <FileText className="h-10 w-10 mx-auto mb-3 opacity-25" />
               <p className="font-medium">Nenhuma categoria ainda</p>
               {isAdmin && (
@@ -252,46 +278,60 @@ export default function ProcessosPage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categorias.map(cat => (
-                <div
-                  key={cat.id}
-                  onClick={() => navigate(`/processos/c/${cat.id}`)}
-                  className="relative group bg-card border border-border rounded-xl p-6 cursor-pointer hover:border-primary/40 hover:shadow-lg transition-all duration-200"
-                >
-                  {/* Admin controls */}
-                  {isAdmin && (
-                    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={e => openEdit(cat, e)}
-                        className="p-1.5 rounded-md bg-background border border-border hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                        title="Editar categoria"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </button>
-                      <button
-                        onClick={e => handleDelete(cat, e)}
-                        className="p-1.5 rounded-md bg-background border border-border hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                        title="Excluir categoria"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-4 px-0.5">
+                Categorias
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categorias.map(cat => (
+                  <div
+                    key={cat.id}
+                    onClick={() => navigate(`/processos/c/${cat.id}`)}
+                    className="relative group bg-card border border-border rounded-xl p-5 cursor-pointer hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+                  >
+                    {/* Admin controls */}
+                    {isAdmin && (
+                      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button
+                          onClick={e => openEdit(cat, e)}
+                          className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={e => handleDelete(cat, e)}
+                          className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
 
-                  <div className="text-3xl mb-3">{cat.icone}</div>
-                  <h3 className="font-semibold text-foreground mb-1 pr-12">{cat.nome}</h3>
-                  {cat.descricao && (
-                    <p className="text-xs text-muted-foreground mb-3 line-clamp-2 leading-relaxed">
-                      {cat.descricao}
-                    </p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {cat.artigo_count} processo{cat.artigo_count !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              ))}
-            </div>
+                    {/* Icon bubble */}
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-2xl mb-4 group-hover:bg-primary/15 transition-colors">
+                      {cat.icone}
+                    </div>
+
+                    <h3 className="font-semibold text-foreground text-[15px] leading-snug mb-1.5 pr-10">
+                      {cat.nome}
+                    </h3>
+
+                    {cat.descricao && (
+                      <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">
+                        {cat.descricao}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-1 text-xs font-medium text-primary mt-2">
+                      <span>{cat.artigo_count} artigo{cat.artigo_count !== 1 ? 's' : ''}</span>
+                      <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )
         )}
       </div>
