@@ -4,7 +4,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
-import { GerenciarUsuariosTab } from '@/components/GerenciarUsuariosTab';
+import { GerenciarUsuariosTab } from '@/components/admin/GerenciarUsuariosTab';
 import { SetoresTab }           from '@/components/admin/SetoresTab';
 import { CargosTab }            from '@/components/admin/CargosTab';
 import { PromocoesEditorTab }   from '@/components/admin/PromocoesEditorTab';
