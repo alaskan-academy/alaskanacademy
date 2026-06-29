@@ -1,7 +1,8 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, ShieldCheck, BookOpen, GraduationCap
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, ShieldCheck, BookOpen, GraduationCap,
+  Wallet, ClipboardList, ArrowLeftRight, FileText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -46,6 +47,13 @@ const prodColors: Record<string, string> = {
 };
 
 const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt-webhook/';
+
+const FINANCEIRO_ITEMS = [
+  { path: '/financeiro/revisao',      label: 'Revisão',       icon: ClipboardList },
+  { path: '/financeiro/fechamento',   label: 'Fechamento',    icon: TrendingUp },
+  { path: '/financeiro/conciliacao',  label: 'Conciliação',   icon: ArrowLeftRight },
+  { path: '/financeiro/notas-fiscais',label: 'Notas Fiscais', icon: FileText },
+];
 
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
@@ -178,6 +186,35 @@ export function AppSidebar() {
           );
         })}
       </div>
+
+      {/* Financeiro */}
+      {canAccess('financeiro') && <div className={cn("border-b border-sidebar-border py-2", showLabels ? "px-3" : "px-2")}>
+        {showLabels && (
+          <div className="flex items-center gap-1.5 px-1 mb-1.5">
+            <Wallet className="h-3 w-3 text-muted-foreground/60" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Financeiro</span>
+          </div>
+        )}
+        {FINANCEIRO_ITEMS.map((item) => {
+          const isActive = location.pathname === item.path || (item.path === '/financeiro/revisao' && location.pathname === '/financeiro');
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md text-sm font-medium transition-colors mb-0.5",
+                showLabels ? "px-3 py-2" : "justify-center py-2 px-1",
+                isActive
+                  ? "bg-primary/15 text-primary"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {showLabels && <span>{item.label}</span>}
+            </NavLink>
+          );
+        })}
+      </div>}
 
       {/* Dashboards */}
       <div className={cn("py-2 flex-1 overflow-y-auto", showLabels ? "px-3" : "px-2")}>

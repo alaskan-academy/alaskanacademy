@@ -24,6 +24,10 @@ import ProcessosPage from "./features/processos/pages/ProcessosPage";
 import ProcessosCategoriaPage from "./features/processos/pages/ProcessosCategoriaPage";
 import ProcessosArtigoPage from "./features/processos/pages/ProcessosArtigoPage";
 import AdminPage from "./features/admin/pages/AdminPage";
+import FinanceiroRevisaoPage from "./features/financeiro/pages/FinanceiroRevisaoPage";
+import FinanceiroFechamentoPage from "./features/financeiro/pages/FinanceiroFechamentoPage";
+import FinanceiroConciliacaoPage from "./features/financeiro/pages/FinanceiroConciliacaoPage";
+import FinanceiroNotasFiscaisPage from "./features/financeiro/pages/FinanceiroNotasFiscaisPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +59,11 @@ const App = () => (
                   <Route path="/processos/:artigoId" element={<ProtectedRoute pageKey="processos"><ProcessosArtigoPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                   <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+                  <Route path="/financeiro" element={<ProtectedRoute pageKey="financeiro"><FinanceiroRevisaoPage /></ProtectedRoute>} />
+                  <Route path="/financeiro/revisao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroRevisaoPage /></ProtectedRoute>} />
+                  <Route path="/financeiro/fechamento" element={<ProtectedRoute pageKey="financeiro"><FinanceiroFechamentoPage /></ProtectedRoute>} />
+                  <Route path="/financeiro/conciliacao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroConciliacaoPage /></ProtectedRoute>} />
+                  <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute pageKey="financeiro"><FinanceiroNotasFiscaisPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
                 </Routes>
               </BrowserRouter>
