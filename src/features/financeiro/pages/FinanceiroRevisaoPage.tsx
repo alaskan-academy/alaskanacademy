@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Upload, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
+import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 
 interface Transacao {
   id: string;
@@ -218,7 +219,9 @@ export default function FinanceiroRevisaoPage() {
   const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
 
   return (
-    <DashboardLayout title="Revisão de Transações">
+    <DashboardLayout title="Financeiro">
+      <FinanceiroNav />
+
       {/* summary */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
         <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">

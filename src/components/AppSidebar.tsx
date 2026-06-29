@@ -2,7 +2,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
   Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, ShieldCheck, BookOpen, GraduationCap,
-  Wallet, ClipboardList, ArrowLeftRight, FileText
+  Wallet
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -34,6 +34,7 @@ const ALL_FIXED_ITEMS = [
   { path: '/processos',      label: 'Processos',      icon: GraduationCap,  key: 'processos',      adminOnly: false },
   { path: '/ativos',         label: 'Ativos Meta',    icon: Shield,      key: 'ativos',         adminOnly: false },
   { path: '/editores',       label: 'Editores',       icon: BarChart3,   key: 'editores',       adminOnly: false },
+  { path: '/financeiro',     label: 'Financeiro',     icon: Wallet,      key: 'financeiro',     adminOnly: false },
   { path: '/configuracoes',  label: 'Configurações',  icon: Settings,    key: 'configuracoes',  adminOnly: false },
   { path: '/administrativo', label: 'Administrativo', icon: ShieldCheck, key: 'administrativo', adminOnly: true  },
 ];
@@ -48,13 +49,6 @@ const prodColors: Record<string, string> = {
 
 const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt-webhook/';
 
-const FINANCEIRO_ITEMS = [
-  { path: '/financeiro/revisao',      label: 'Revisão',       icon: ClipboardList },
-  { path: '/financeiro/fechamento',   label: 'Fechamento',    icon: TrendingUp },
-  { path: '/financeiro/conciliacao',  label: 'Conciliação',   icon: ArrowLeftRight },
-  { path: '/financeiro/notas-fiscais',label: 'Notas Fiscais', icon: FileText },
-];
-
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
   const { funilId, setFunilId } = useFilters();
@@ -66,11 +60,6 @@ export function AppSidebar() {
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
   const fixedItems = ALL_FIXED_ITEMS.filter(p => p.adminOnly ? perfil?.is_admin : canAccess(p.key));
-
-  const [financeiroOpen, setFinanceiroOpen] = useState(() => location.pathname.startsWith('/financeiro'));
-  useEffect(() => {
-    if (location.pathname.startsWith('/financeiro')) setFinanceiroOpen(true);
-  }, [location.pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -171,7 +160,9 @@ export function AppSidebar() {
       {/* Fixed items */}
       <div className={cn("border-b border-sidebar-border py-2", showLabels ? "px-3" : "px-2")}>
         {fixedItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path === '/financeiro'
+            ? location.pathname.startsWith('/financeiro')
+            : location.pathname === item.path;
           return (
             <NavLink
               key={item.path}
@@ -191,53 +182,6 @@ export function AppSidebar() {
           );
         })}
       </div>
-
-      {/* Financeiro — grupo colapsável (mesmo padrão dos itens fixos) */}
-      {canAccess('financeiro') && (
-        <div className={cn("border-b border-sidebar-border py-2", showLabels ? "px-3" : "px-2")}>
-          <button
-            onClick={() => setFinanceiroOpen(o => !o)}
-            className={cn(
-              "flex items-center gap-2.5 w-full rounded-md text-sm font-medium transition-colors",
-              showLabels ? "px-3 py-2" : "justify-center py-2 px-1",
-              location.pathname.startsWith('/financeiro')
-                ? "bg-primary/15 text-primary"
-                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            )}
-          >
-            <Wallet className="h-4 w-4 shrink-0" />
-            {showLabels && (
-              <>
-                <span className="flex-1 text-left">Financeiro</span>
-                <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", financeiroOpen ? "rotate-180" : "")} />
-              </>
-            )}
-          </button>
-
-          {financeiroOpen && showLabels && (
-            <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2">
-              {FINANCEIRO_ITEMS.map((item) => {
-                const isActive = location.pathname === item.path || (item.path === '/financeiro/revisao' && location.pathname === '/financeiro');
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md text-xs font-medium transition-colors px-2 py-1.5",
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                    )}
-                  >
-                    <item.icon className="h-3.5 w-3.5 shrink-0" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Dashboards */}
       <div className={cn("py-2 flex-1 overflow-y-auto", showLabels ? "px-3" : "px-2")}>

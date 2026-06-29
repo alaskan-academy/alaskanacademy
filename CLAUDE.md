@@ -102,7 +102,7 @@ Tab-based page at `/editores` with sub-components in `src/components/editores/`:
 
 ## UX/UI guidelines
 
-- **Sidebar grouping**: a feature with multiple sub-pages (4+) gets ONE collapsible entry in the sidebar (icon + label + chevron that expands a sub-list), not N flat top-level entries. Follow the existing pattern in `AppSidebar.tsx` (`financeiroOpen` state, indented sub-items with `border-l`) — this is how "Financeiro" and the dashboard/funnel switcher both work. Keep the sidebar's top-level item count low; nest, don't flatten.
+- **Sidebar stays flat**: a feature with multiple sub-pages gets exactly ONE top-level sidebar entry (same as every other item, no chevron/expand-in-sidebar). Sub-page switching happens *inside* the feature's pages via an in-page nav rendered at the top of `DashboardLayout`'s content — see `FinanceiroNav.tsx` (pill-style `NavLink` row) used by all `src/features/financeiro/pages/*`. Do not nest sub-items inside the sidebar itself; that pattern is reserved for the dashboard/funnel switcher only.
 - **Consistency over novelty**: new pages reuse existing visual patterns (summary cards row → toolbar/filter row → table or content) rather than inventing new layouts. Check a sibling page (e.g. `EditorsPage`, `ProcessosPage`) before designing a new screen.
 - **Status/state always has a visual cue**: pending/auto/confirmed-style states use colored badges (see `STATUS_LABEL` pattern in `FinanceiroRevisaoPage.tsx`), not just text.
 - **Empty and loading states are mandatory** for any table/list — never leave a blank table mid-fetch or on zero results; show a centered muted message.
