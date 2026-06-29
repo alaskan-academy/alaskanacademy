@@ -99,3 +99,19 @@ Tab-based page at `/editores` with sub-components in `src/components/editores/`:
 - `DesempenhoTab` — performance charts
 - `ConfiguracaoTab` — evaluation criteria
 - `EmpresasOfertasTab` — companies and offers config
+
+## UX/UI guidelines
+
+- **Sidebar grouping**: a feature with multiple sub-pages (4+) gets ONE collapsible entry in the sidebar (icon + label + chevron that expands a sub-list), not N flat top-level entries. Follow the existing pattern in `AppSidebar.tsx` (`financeiroOpen` state, indented sub-items with `border-l`) — this is how "Financeiro" and the dashboard/funnel switcher both work. Keep the sidebar's top-level item count low; nest, don't flatten.
+- **Consistency over novelty**: new pages reuse existing visual patterns (summary cards row → toolbar/filter row → table or content) rather than inventing new layouts. Check a sibling page (e.g. `EditorsPage`, `ProcessosPage`) before designing a new screen.
+- **Status/state always has a visual cue**: pending/auto/confirmed-style states use colored badges (see `STATUS_LABEL` pattern in `FinanceiroRevisaoPage.tsx`), not just text.
+- **Empty and loading states are mandatory** for any table/list — never leave a blank table mid-fetch or on zero results; show a centered muted message.
+- **Destructive or bulk actions require a confirmation step** (modal or `useConfirm` hook) — never fire on a single click with no undo path.
+
+## Security guidelines
+
+- **Never commit credentials, API keys, or tokens** to any file in this repo (including `.md` docs, scripts, or comments). Admin/test credentials used during development must stay only in chat/local environment — never in source control.
+- **RLS is mandatory** on every new Supabase table. Default policy for internal admin-tool tables: `FOR ALL TO authenticated USING (true) WITH CHECK (true)` unless the data needs per-user scoping — never leave a table with RLS disabled or `anon` write access.
+- **Validate/sanitize any user-supplied text rendered as HTML** (e.g. `MarkdownRenderer`) — no `dangerouslySetInnerHTML` with unescaped input.
+- **CSV/file imports are untrusted input**: parse defensively (the `parseCsv` pattern in `FinanceiroRevisaoPage.tsx` skips malformed rows instead of throwing), never `eval`/dynamically execute imported content.
+- **Webhooks** (e.g. future Payt webhook) must validate signatures and use idempotency keys — never trust payload data blindly or process the same event twice.
