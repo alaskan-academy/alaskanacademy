@@ -82,9 +82,9 @@ export default function FinanceiroFechamentoPage() {
     const [payt, trans, metrics] = await Promise.all([
       supabase
         .from('vendas_payt')
-        .select('valor_bruto,valor_liquido')
-        .gte('data_venda', inicio)
-        .lte('data_venda', fim + 'T23:59:59')
+        .select('valor')
+        .gte('data', inicio)
+        .lte('data', fim)
         .eq('status', 'approved'),
       supabase
         .from('transacoes')
@@ -102,8 +102,8 @@ export default function FinanceiroFechamentoPage() {
       toast({ title: 'Erro ao carregar dados', variant: 'destructive' });
     }
 
-    const receitaBruta  = (payt.data  || []).reduce((s, r) => s + Number(r.valor_bruto  || 0), 0);
-    const receitaLiquida= (payt.data  || []).reduce((s, r) => s + Number(r.valor_liquido || 0), 0);
+    const receitaBruta  = (payt.data  || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+    const receitaLiquida= receitaBruta;
     const totalCustos   = (trans.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
     const gastoAds      = (metrics.data || []).reduce((s, r) => s + Number(r.gasto_ads || 0), 0);
     const leads         = (metrics.data || []).reduce((s, r) => s + Number(r.leads    || 0), 0);
@@ -135,11 +135,11 @@ export default function FinanceiroFechamentoPage() {
         const d0 = primeiroDia(yyyy, mm);
         const d1 = ultimoDia(yyyy, mm);
         const [p2, t2] = await Promise.all([
-          supabase.from('vendas_payt').select('valor_bruto,valor_liquido').gte('data_venda', d0).lte('data_venda', d1 + 'T23:59:59').eq('status', 'approved'),
+          supabase.from('vendas_payt').select('valor').gte('data', d0).lte('data', d1).eq('status', 'approved'),
           supabase.from('transacoes').select('valor').gte('data', d0).lte('data', d1),
         ]);
-        const rb = (p2.data || []).reduce((s, r) => s + Number(r.valor_bruto  || 0), 0);
-        const rl = (p2.data || []).reduce((s, r) => s + Number(r.valor_liquido || 0), 0);
+        const rb = (p2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+        const rl = rb;
         const tc = (t2.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
         const mg = rl > 0 ? ((rl - tc) / rl) * 100 : 0;
         return { label: mesLabel(yyyy, mm), receitaBruta: rb, totalCustos: tc, margem: mg };
