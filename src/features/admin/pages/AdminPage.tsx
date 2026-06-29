@@ -4,16 +4,16 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
-import { GerenciarUsuariosTab } from '@/components/admin/GerenciarUsuariosTab';
-import { SetoresTab }           from '@/components/admin/SetoresTab';
-import { CargosTab }            from '@/components/admin/CargosTab';
-import { PromocoesEditorTab }   from '@/components/admin/PromocoesEditorTab';
-import { AvaliarCriativoTab }   from '@/components/editores/AvaliarCriativoTab';
-import { EmpresasOfertasTab }   from '@/components/editores/EmpresasOfertasTab';
-import { ConfiguracaoTab }      from '@/components/editores/ConfiguracaoTab';
-import { ParametrosFiscaisTab } from '@/components/admin/ParametrosFiscaisTab';
-import { RadarConfigTab }       from '@/components/radar/RadarConfigTab';
-import { NotasTab }             from '@/components/admin/NotasTab';
+import { GerenciarUsuariosTab } from '@/features/admin/components/GerenciarUsuariosTab';
+import { SetoresTab }           from '@/features/admin/components/SetoresTab';
+import { CargosTab }            from '@/features/admin/components/CargosTab';
+import { PromocoesEditorTab }   from '@/features/admin/components/PromocoesEditorTab';
+import { AvaliarCriativoTab }   from '@/features/editores/components/AvaliarCriativoTab';
+import { EmpresasOfertasTab }   from '@/features/editores/components/EmpresasOfertasTab';
+import { ConfiguracaoTab }      from '@/features/editores/components/ConfiguracaoTab';
+import { ParametrosFiscaisTab } from '@/features/admin/components/ParametrosFiscaisTab';
+import { RadarConfigTab }       from '@/features/radar/components/RadarConfigTab';
+import { NotasTab }             from '@/features/admin/components/NotasTab';
 
 import {
   Users, Layers, Award, TrendingUp, Star, Building2, ListChecks,

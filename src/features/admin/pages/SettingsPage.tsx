@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { ContasAnunciosTab } from "@/components/editores/ContasAnunciosTab";
+import { ContasAnunciosTab } from "@/features/editores/components/ContasAnunciosTab";
 
 export default function SettingsPage() {
   return (

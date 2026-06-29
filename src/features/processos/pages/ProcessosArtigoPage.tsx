@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { MarkdownRenderer, extractTOC, type TocItem } from '@/components/MarkdownRenderer';
+import { MarkdownRenderer, extractTOC, type TocItem } from '@/features/processos/components/MarkdownRenderer';
 import { ChevronRight, Edit2, Loader2, ImageIcon, ArrowLeft, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
