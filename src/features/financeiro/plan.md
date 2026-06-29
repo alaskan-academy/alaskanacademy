@@ -12,7 +12,7 @@ Baseado no PRD Financeiro Alaskan, seção 4 (Escopo) e 10 (Critérios de Aceita
 - [x] Rotas adicionadas ao App.tsx
 - [x] Entradas no sidebar (AppSidebar.tsx)
 - [x] Schema do banco aplicado no Supabase
-- [ ] Implementação das telas
+- [x] Implementação das telas
 
 ---
 
