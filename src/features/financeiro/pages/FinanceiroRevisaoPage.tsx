@@ -1,9 +1,410 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
+import { supabase } from '@/lib/supabase';
+import { formatCurrency } from '@/lib/formatters';
+import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Upload, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
+
+interface Transacao {
+  id: string;
+  data: string;
+  descricao: string;
+  valor: number;
+  categoria: string | null;
+  centro_custo: string | null;
+  status_revisao: string;
+}
+
+type Filtro = 'pendentes' | 'todas';
+
+const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+  pendente:          { label: 'Pendente',       cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
+  auto_categorizado: { label: 'Auto',           cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
+  confirmado:        { label: 'Confirmado',      cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
+};
+
+function parseCsv(text: string): Omit<Transacao, 'id' | 'status_revisao'>[] {
+  const linhas = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (linhas.length < 2) return [];
+
+  const sep = linhas[0].includes(';') ? ';' : ',';
+  const header = linhas[0].split(sep).map(h => h.toLowerCase().replace(/['"]/g, '').trim());
+
+  const idx = (candidates: string[]) =>
+    candidates.map(c => header.findIndex(h => h.includes(c))).find(i => i >= 0) ?? -1;
+
+  const iData    = idx(['data', 'date']);
+  const iDesc    = idx(['descri', 'historico', 'lançamento', 'lancamento', 'memo']);
+  const iValor   = idx(['valor', 'value', 'amount', 'quantia']);
+  const iCateg   = idx(['categ']);
+  const iCentro  = idx(['centro']);
+
+  if (iData < 0 || iDesc < 0 || iValor < 0) return [];
+
+  const rows: Omit<Transacao, 'id' | 'status_revisao'>[] = [];
+
+  for (let i = 1; i < linhas.length; i++) {
+    const cols = linhas[i].split(sep).map(c => c.replace(/^["']|["']$/g, '').trim());
+    if (cols.length < 3) continue;
+
+    const rawData  = cols[iData]  || '';
+    const rawDesc  = cols[iDesc]  || '';
+    const rawValor = cols[iValor] || '';
+
+    // parse date: dd/mm/yyyy or yyyy-mm-dd
+    let data = '';
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(rawData)) {
+      const [d, m, y] = rawData.split('/');
+      data = `${y}-${m}-${d}`;
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(rawData)) {
+      data = rawData.slice(0, 10);
+    } else {
+      continue;
+    }
+
+    // parse value: "1.234,56" → 1234.56 or "-1234.56"
+    const cleanValor = rawValor.replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+    const valor = parseFloat(cleanValor);
+    if (isNaN(valor)) continue;
+
+    rows.push({
+      data,
+      descricao: rawDesc,
+      valor,
+      categoria:   iCateg  >= 0 ? (cols[iCateg]  || null) : null,
+      centro_custo: iCentro >= 0 ? (cols[iCentro] || null) : null,
+    });
+  }
+
+  return rows;
+}
 
 export default function FinanceiroRevisaoPage() {
+  const [transacoes, setTransacoes]   = useState<Transacao[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [filtro, setFiltro]           = useState<Filtro>('pendentes');
+  const [selected, setSelected]       = useState<Transacao | null>(null);
+  const [saving, setSaving]           = useState(false);
+  const [importing, setImporting]     = useState(false);
+  const fileRef                       = useRef<HTMLInputElement>(null);
+
+  // form state inside modal
+  const [formCateg,    setFormCateg]   = useState('');
+  const [formCentro,   setFormCentro]  = useState('');
+  const [criarRegra,   setCriarRegra]  = useState(true);
+  const [padraoRegra,  setPadraoRegra] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const query = supabase
+      .from('transacoes')
+      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao')
+      .order('data', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (filtro === 'pendentes') query.eq('status_revisao', 'pendente');
+
+    const { data, error } = await query;
+    if (error) toast({ title: 'Erro ao carregar transações', variant: 'destructive' });
+    setTransacoes(data || []);
+    setLoading(false);
+  }, [filtro]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openModal = (t: Transacao) => {
+    setSelected(t);
+    setFormCateg(t.categoria || '');
+    setFormCentro(t.centro_custo || '');
+    setCriarRegra(true);
+    setPadraoRegra(t.descricao);
+  };
+
+  const salvar = async () => {
+    if (!selected || !formCateg) return;
+    setSaving(true);
+    try {
+      await supabase
+        .from('transacoes')
+        .update({ categoria: formCateg, centro_custo: formCentro || null, status_revisao: 'confirmado' })
+        .eq('id', selected.id);
+
+      if (criarRegra && padraoRegra.trim()) {
+        await supabase.from('regras_categoria').insert({
+          padrao: padraoRegra.trim(),
+          tipo_match: 'contains',
+          categoria: formCateg,
+          centro_custo: formCentro || null,
+          confianca: 1.0,
+        });
+      }
+
+      toast({ title: 'Transação categorizada' });
+      setSelected(null);
+      load();
+    } catch {
+      toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        toast({ title: 'Nenhuma linha válida encontrada no arquivo', variant: 'destructive' });
+        return;
+      }
+
+      // busca regras para auto-categorizar
+      const { data: regras } = await supabase
+        .from('regras_categoria')
+        .select('padrao,tipo_match,categoria,centro_custo,confianca')
+        .eq('ativo', true)
+        .order('confianca', { ascending: false });
+
+      const aplicarRegras = (desc: string) => {
+        for (const r of regras || []) {
+          const d = desc.toLowerCase();
+          const p = r.padrao.toLowerCase();
+          const match =
+            r.tipo_match === 'exact'    ? d === p :
+            r.tipo_match === 'regex'    ? new RegExp(p).test(d) :
+                                          d.includes(p);
+          if (match) return { categoria: r.categoria, centro_custo: r.centro_custo, status_revisao: 'auto_categorizado' };
+        }
+        return { categoria: null, centro_custo: null, status_revisao: 'pendente' };
+      };
+
+      const inserts = rows.map(r => ({
+        ...r,
+        ...aplicarRegras(r.descricao),
+        fonte: 'conta_simples',
+      }));
+
+      const { error } = await supabase.from('transacoes').insert(inserts);
+      if (error) throw error;
+
+      const pendentes = inserts.filter(r => r.status_revisao === 'pendente').length;
+      const auto      = inserts.filter(r => r.status_revisao === 'auto_categorizado').length;
+      toast({ title: `${inserts.length} transações importadas`, description: `${auto} auto-categorizadas · ${pendentes} pendentes` });
+      load();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast({ title: 'Erro ao importar', description: msg, variant: 'destructive' });
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const pendentes = transacoes.filter(t => t.status_revisao === 'pendente').length;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
+
   return (
     <DashboardLayout title="Revisão de Transações">
-      <div />
+      {/* summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+        <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
+          <AlertCircle className="h-4 w-4 text-yellow-400 shrink-0" />
+          <div>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Pendentes</p>
+            <p className="text-xl font-semibold">{loading ? '—' : pendentes}</p>
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+          <div>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Categorizadas hoje</p>
+            <p className="text-xl font-semibold">{loading ? '—' : categorizadasHoje}</p>
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-lg px-4 py-3 flex items-center gap-3 col-span-2 sm:col-span-1">
+          <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total visíveis</p>
+            <p className="text-xl font-semibold">{loading ? '—' : transacoes.length}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* toolbar */}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex gap-1 bg-secondary rounded-lg p-1">
+          {(['pendentes', 'todas'] as Filtro[]).map(f => (
+            <button
+              key={f}
+              onClick={() => setFiltro(f)}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-sm font-medium transition-colors capitalize',
+                filtro === f ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {f === 'pendentes' ? `Pendentes${pendentes > 0 ? ` (${pendentes})` : ''}` : 'Todas'}
+            </button>
+          ))}
+        </div>
+        <div>
+          <input ref={fileRef} type="file" accept=".csv,.txt,.ofx" className="hidden" onChange={handleImport} />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+          >
+            <Upload className="h-3.5 w-3.5 mr-2" />
+            {importing ? 'Importando…' : 'Importar extrato'}
+          </Button>
+        </div>
+      </div>
+
+      {/* table */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/40 border-b border-border">
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-28">Data</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Descrição</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-32">Valor</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-44">Categoria</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {loading && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
+              )}
+              {!loading && transacoes.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                  {filtro === 'pendentes' ? 'Nenhuma transação pendente 🎉' : 'Nenhuma transação encontrada'}
+                </td></tr>
+              )}
+              {transacoes.map(t => {
+                const s = STATUS_LABEL[t.status_revisao] ?? STATUS_LABEL.pendente;
+                const isPendente = t.status_revisao === 'pendente';
+                return (
+                  <tr
+                    key={t.id}
+                    onClick={() => openModal(t)}
+                    className={cn(
+                      'cursor-pointer transition-colors hover:bg-muted/30',
+                      isPendente && 'bg-yellow-500/5'
+                    )}
+                  >
+                    <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">
+                      {t.data.split('-').reverse().join('/')}
+                    </td>
+                    <td className="px-4 py-3 font-medium max-w-xs truncate">{t.descricao}</td>
+                    <td className={cn('px-4 py-3 text-right tabular-nums font-medium', t.valor < 0 ? 'text-red-400' : 'text-green-400')}>
+                      {formatCurrency(Math.abs(t.valor))}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[10rem]">
+                      {t.categoria || <span className="italic opacity-50">sem categoria</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', s.cls)}>
+                        {s.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* modal */}
+      <Dialog open={!!selected} onOpenChange={open => !open && setSelected(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Categorizar transação</DialogTitle>
+          </DialogHeader>
+
+          {selected && (
+            <div className="space-y-4">
+              <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span className="font-medium truncate">{selected.descricao}</span>
+                  <span className={cn('font-semibold tabular-nums shrink-0', selected.valor < 0 ? 'text-red-400' : 'text-green-400')}>
+                    {formatCurrency(Math.abs(selected.valor))}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{selected.data.split('-').reverse().join('/')}</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Categoria</Label>
+                <Select value={formCateg} onValueChange={setFormCateg}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a categoria…" /></SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Centro de custo <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                <Select value={formCentro} onValueChange={setFormCentro}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o centro de custo…" /></SelectTrigger>
+                  <SelectContent>
+                    {CENTROS_CUSTO.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 border border-border rounded-lg p-3 bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="criar-regra"
+                    checked={criarRegra}
+                    onCheckedChange={v => setCriarRegra(!!v)}
+                  />
+                  <Label htmlFor="criar-regra" className="cursor-pointer font-normal text-sm">
+                    Criar regra automática para futuras importações
+                  </Label>
+                </div>
+                {criarRegra && (
+                  <div className="space-y-1.5 pt-1">
+                    <Label className="text-xs text-muted-foreground">Padrão de texto</Label>
+                    <Input
+                      value={padraoRegra}
+                      onChange={e => setPadraoRegra(e.target.value)}
+                      placeholder="Texto que aparece na descrição…"
+                      className="text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground">Qualquer descrição que contenha este texto será auto-categorizada.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button>
+            <Button onClick={salvar} disabled={saving || !formCateg}>
+              {saving ? 'Salvando…' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
