@@ -79,13 +79,19 @@ export default function FinanceiroFechamentoPage() {
     const fim    = ultimoDia(ano, mes);
     const meses  = mesesAnteriores(ano, mes, 6);
 
-    const [payt, trans, metrics] = await Promise.all([
+    const [payt, hotmart, trans, metrics] = await Promise.all([
       supabase
         .from('vendas_payt')
         .select('valor')
         .gte('data', inicio)
         .lte('data', fim)
         .eq('status', 'paid'),
+      supabase
+        .from('vendas_hotmart')
+        .select('valor')
+        .gte('data', inicio)
+        .lte('data', fim)
+        .in('status', ['Aprovado', 'Completo']),
       supabase
         .from('transacoes')
         .select('valor,categoria')
@@ -99,11 +105,13 @@ export default function FinanceiroFechamentoPage() {
         .lte('data', fim),
     ]);
 
-    if (payt.error || trans.error || metrics.error) {
+    if (payt.error || hotmart.error || trans.error || metrics.error) {
       toast({ title: 'Erro ao carregar dados', variant: 'destructive' });
     }
 
-    const receitaBruta  = (payt.data  || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+    const receitaPayt    = (payt.data    || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+    const receitaHotmart = (hotmart.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+    const receitaBruta   = receitaPayt + receitaHotmart;
     const receitaLiquida= receitaBruta;
     const totalCustos   = (trans.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
     const gastoAds      = (metrics.data || []).reduce((s, r) => s + Number(r.gasto_ads || 0), 0);
@@ -135,11 +143,13 @@ export default function FinanceiroFechamentoPage() {
       meses.map(async ({ yyyy, mm }) => {
         const d0 = primeiroDia(yyyy, mm);
         const d1 = ultimoDia(yyyy, mm);
-        const [p2, t2] = await Promise.all([
+        const [p2, h2, t2] = await Promise.all([
           supabase.from('vendas_payt').select('valor').gte('data', d0).lte('data', d1).eq('status', 'paid'),
+          supabase.from('vendas_hotmart').select('valor').gte('data', d0).lte('data', d1).in('status', ['Aprovado', 'Completo']),
           supabase.from('transacoes').select('valor').gte('data', d0).lte('data', d1).neq('categoria', 'Anúncios (Facebook ADs)'),
         ]);
-        const rb = (p2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+        const rb = (p2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0)
+                 + (h2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
         const rl = rb;
         const tc = (t2.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
         const mg = rl > 0 ? ((rl - tc) / rl) * 100 : 0;
