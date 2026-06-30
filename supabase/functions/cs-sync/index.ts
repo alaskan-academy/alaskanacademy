@@ -164,7 +164,12 @@ Deno.serve(async (req) => {
         const tx = t as Record<string, unknown>;
         if (tx['status'] !== 2) return false;
         const desc = String(tx['description'] ?? '').toLowerCase();
-        if (desc.startsWith('deposito de limite') || desc.startsWith('resgate de limite')) return false;
+        const name = String(tx['sourceDestinationName'] ?? tx['counterpartName'] ?? '').toLowerCase();
+        const tipoDesc = String((tx['transactionType'] as Record<string, unknown> | undefined)?.['description'] ?? '').toLowerCase();
+        const combined = `${desc} ${name} ${tipoDesc}`;
+        if (combined.includes('deposito de limite') || combined.includes('resgate de limite')) return false;
+        if (combined.includes('limite cartao') || combined.includes('limite cartão')) return false;
+        if (name === 'conta simples solucoes de pagamentos ltda') return false;
         return true;
       })
       .map((t) => {
