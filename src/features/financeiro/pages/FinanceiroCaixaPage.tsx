@@ -20,11 +20,10 @@ const RECEITAS = [
 
 const CUSTOS_OPERACIONAIS = [
   'Anúncios (Facebook ADs)', 'Aplicativos e Ferramentas', 'IAs', 'WhatsApp',
-  'Departamento Pessoal', 'Contabilidade', 'Impostos e Tributos', 'Jurídico',
-  'Endereço Fiscal', 'Cursos e Formações', 'Treinamento e Educação',
-  'Meios de Pagamento', 'Material de Escritório', 'Eletrônicos', 'Eventos',
-  'Registros e Documentos', 'Recarga e Chip', 'Consultorias e Mentorias',
-  'Doações', 'Produtos', 'Outros',
+  'Departamento Pessoal', 'Freelancer', 'Contabilidade', 'Impostos e Tributos',
+  'Jurídico', 'Endereço Fiscal', 'Cursos e Formações', 'Meios de Pagamento',
+  'Material de Escritório', 'Eletrônicos', 'Eventos', 'Registros e Documentos',
+  'Recarga e Chip', 'Doações', 'Outros',
 ];
 
 // "Produtos" aparece nas receitas quando positivo; quando negativo é custo (ex: compra)
