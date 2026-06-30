@@ -30,7 +30,8 @@ type Filtro = 'pendentes' | 'todas';
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   pendente:          { label: 'Pendente',       cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
   auto_categorizado: { label: 'Auto',           cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-  confirmado:        { label: 'Confirmado',      cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
+  confirmado:        { label: 'Confirmado',     cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
+  revisado:          { label: 'Revisado',       cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
 };
 
 function parseCsv(text: string): Omit<Transacao, 'id' | 'status_revisao'>[] {
@@ -123,7 +124,7 @@ export default function FinanceiroRevisaoPage() {
       .order('created_at', { ascending: false })
       .limit(500);
 
-    if (filtro === 'pendentes') query = query.eq('status_revisao', 'pendente');
+    if (filtro === 'pendentes') query = query.in('status_revisao', ['pendente', 'auto_categorizado']);
 
     const { data, error } = await query;
     if (error) toast({ title: 'Erro ao carregar transações', variant: 'destructive' });
@@ -255,7 +256,7 @@ export default function FinanceiroRevisaoPage() {
     }
   };
 
-  const pendentes = transacoes.filter(t => t.status_revisao === 'pendente').length;
+  const pendentes = transacoes.filter(t => t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado').length;
   const hoje = new Date().toISOString().slice(0, 10);
   const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
 
