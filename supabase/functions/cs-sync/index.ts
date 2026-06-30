@@ -1,9 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// ─── Secrets (nunca em código — configurar em Supabase > Settings > Secrets) ──
 const CS_API_KEY     = Deno.env.get('CS_API_KEY')!;
 const CS_API_SECRET  = Deno.env.get('CS_API_SECRET')!;
-const CS_SYNC_SECRET = Deno.env.get('CS_SYNC_SECRET')!; // segredo para acionar a função
+const CS_SYNC_SECRET = Deno.env.get('CS_SYNC_SECRET')!;
 
 const CS_BASE_URL = 'https://api.contasimples.com';
 
@@ -12,11 +11,8 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-// ─── Auth ──────────────────────────────────────────────────────────────────────
-
 async function getAccessToken(): Promise<string> {
   const basic = btoa(`${CS_API_KEY}:${CS_API_SECRET}`);
-
   const res = await fetch(`${CS_BASE_URL}/oauth/v1/access-token`, {
     method: 'POST',
     headers: {
@@ -26,35 +22,20 @@ async function getAccessToken(): Promise<string> {
     },
     body: 'grant_type=client_credentials',
   });
-
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`CS auth failed [${res.status}]: ${body}`);
   }
-
   const { access_token } = await res.json();
   return access_token as string;
 }
 
-// ─── Fetch transactions (paginado) ─────────────────────────────────────────────
-
-async function fetchTransactions(
-  token: string,
-  startDate: string,
-  endDate: string,
-): Promise<unknown[]> {
+async function fetchTransactions(token: string, startDate: string, endDate: string): Promise<unknown[]> {
   const all: unknown[] = [];
   let nextPageStartKey: string | undefined;
-
   do {
-    const params = new URLSearchParams({
-      startDate,
-      endDate,
-      limit: '50',
-      sorting: 'transactionDate:ASC',
-    });
+    const params = new URLSearchParams({ startDate, endDate, limit: '50', sorting: 'transactionDate:ASC' });
     if (nextPageStartKey) params.set('nextPageStartKey', nextPageStartKey);
-
     const res = await fetch(`${CS_BASE_URL}/statements/v1/banking?${params}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -62,32 +43,28 @@ async function fetchTransactions(
         'User-Agent': 'alaskan-dashboard/1.0',
       },
     });
-
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`CS API error [${res.status}]: ${body}`);
     }
-
     const data = await res.json() as { transactions?: unknown[]; nextPageStartKey?: string };
     all.push(...(data.transactions ?? []));
     nextPageStartKey = data.nextPageStartKey;
   } while (nextPageStartKey);
-
   return all;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// Monta a descrição legível da transação
+// Prefere o nome do beneficiário/comerciante quando disponível
 function buildDescricao(t: Record<string, unknown>): string {
-  // Tenta campos em ordem de preferência
   const candidates = [
+    t['sourceDestinationName'],
+    (t['counterpart'] as Record<string, unknown> | undefined)?.['name'],
+    t['counterpartName'],
+    t['placeEstablishment'],
     t['description'],
     t['memo'],
     (t['transactionType'] as Record<string, unknown> | undefined)?.['description'],
     (t['transactionType'] as Record<string, unknown> | undefined)?.['name'],
-    (t['counterpart'] as Record<string, unknown> | undefined)?.['name'],
-    t['counterpartName'],
   ];
   for (const c of candidates) {
     if (typeof c === 'string' && c.trim()) return c.trim();
@@ -95,30 +72,45 @@ function buildDescricao(t: Record<string, unknown>): string {
   return 'Sem descrição';
 }
 
-// brlAmount: positivo = entrada, negativo = saída (CS já entrega com sinal)
 function buildValor(t: Record<string, unknown>): number {
   const raw = t['brlAmount'] ?? t['amount'] ?? 0;
   return typeof raw === 'number' ? raw : Number(raw);
 }
 
-// ─── Handler ──────────────────────────────────────────────────────────────────
+// CS retorna brlAmount sempre positivo; o sinal vem do tipo/descrição da transação
+function isDebit(tx: Record<string, unknown>): boolean {
+  if (tx['isDebit'] === true)  return true;
+  if (tx['isDebit'] === false) return false;
+
+  const tipo     = tx['transactionType'] as Record<string, unknown> | undefined;
+  const txDesc   = String(tx['description'] ?? '').toLowerCase();
+  const tipoDesc = String(tipo?.['description'] ?? tipo?.['name'] ?? '').toLowerCase();
+  const combined = `${txDesc} ${tipoDesc}`;
+
+  return (
+    combined.includes('enviado') ||
+    combined.includes('pagamento') ||
+    combined.includes('saque') ||
+    combined.includes('resgate') ||
+    combined.includes('débito') ||
+    combined.includes('debito') ||
+    combined.includes('tarifa') ||
+    combined.includes('imposto') ||
+    combined.includes('ted') ||
+    combined.includes('transferência enviada') ||
+    combined.includes('transferencia enviada')
+  );
+}
 
 Deno.serve(async (req) => {
-  // Só aceita POST
-  if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
-  }
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  // Valida o segredo de invocação — protege contra chamadas não autorizadas
   const syncSecret = req.headers.get('x-sync-secret');
-  if (!CS_SYNC_SECRET || syncSecret !== CS_SYNC_SECRET) {
-    return json({ error: 'Unauthorized' }, 401);
-  }
+  if (!CS_SYNC_SECRET || syncSecret !== CS_SYNC_SECRET) return json({ error: 'Unauthorized' }, 401);
 
   let body: { startDate?: string; endDate?: string } = {};
-  try { body = await req.json(); } catch { /* body vazio é ok */ }
+  try { body = await req.json(); } catch { /* vazio ok */ }
 
-  // Janela padrão: últimos 3 dias (cobre fins de semana e sync perdido)
   const today = new Date();
   const endDate   = body.endDate   ?? today.toISOString().slice(0, 10);
   const start     = new Date(today);
@@ -126,55 +118,44 @@ Deno.serve(async (req) => {
   const startDate = body.startDate ?? start.toISOString().slice(0, 10);
 
   try {
-    // 1. Autenticar
-    const token = await getAccessToken();
+    const token       = await getAccessToken();
+    const raw         = await fetchTransactions(token, startDate, endDate);
+    const processadas = raw.filter((t) => (t as Record<string, unknown>)['status'] === 2);
 
-    // 2. Buscar transações
-    const raw = await fetchTransactions(token, startDate, endDate);
+    if (processadas.length === 0) return json({ ok: true, inserted: 0, period: { startDate, endDate } });
 
-    // 3. Filtrar: apenas PROCESSADO (status = 2)
-    const processadas = raw.filter(
-      (t) => (t as Record<string, unknown>)['status'] === 2,
-    );
-
-    if (processadas.length === 0) {
-      return json({ ok: true, inserted: 0, period: { startDate, endDate } });
-    }
-
-    // 4. Mapear para o schema de transacoes
     const rows = processadas.map((t) => {
-      const tx = t as Record<string, unknown>;
-      const rawDate = String(tx['transactionDate'] ?? '');
+      const tx         = t as Record<string, unknown>;
+      const valorBruto = buildValor(tx);
       return {
         referencia_externa: String(tx['id']),
-        data: rawDate.slice(0, 10),
-        descricao: buildDescricao(tx),
-        valor: buildValor(tx),
-        status_revisao: 'pendente',
-        fonte: 'conta_simples',
+        data:               String(tx['transactionDate'] ?? '').slice(0, 10),
+        descricao:          buildDescricao(tx),
+        valor:              isDebit(tx) ? -Math.abs(valorBruto) : Math.abs(valorBruto),
+        status_revisao:     'pendente',
+        fonte:              'conta_simples',
       };
     });
 
-    // 5. Upsert idempotente — conflito em referencia_externa é ignorado silenciosamente
-    const { error, count } = await supabase
+    const { error } = await supabase
       .from('transacoes')
-      .upsert(rows, { onConflict: 'referencia_externa', ignoreDuplicates: true })
-      .select('id', { count: 'exact' });
+      .upsert(rows, { onConflict: 'referencia_externa', ignoreDuplicates: true });
 
-    if (error) {
-      console.error('[cs-sync] DB error:', error.message);
-      return json({ error: error.message }, 500);
-    }
+    if (error) { console.error('[cs-sync] DB error:', error.message); return json({ error: error.message }, 500); }
 
-    console.log(`[cs-sync] OK: ${count} inseridas, ${processadas.length - (count ?? 0)} já existiam`);
+    const { count: total } = await supabase
+      .from('transacoes')
+      .select('id', { count: 'exact', head: true })
+      .in('referencia_externa', rows.map(r => r.referencia_externa));
+
+    console.log(`[cs-sync] OK: ${raw.length} buscadas, ${processadas.length} processadas`);
     return json({
-      ok: true,
-      fetched: raw.length,
+      ok:        true,
+      fetched:   raw.length,
       processed: processadas.length,
-      inserted: count ?? 0,
-      period: { startDate, endDate },
+      inserted:  total ?? rows.length,
+      period:    { startDate, endDate },
     });
-
   } catch (err) {
     console.error('[cs-sync] Erro:', err);
     return json({ error: String(err) }, 500);
@@ -182,8 +163,5 @@ Deno.serve(async (req) => {
 });
 
 function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
