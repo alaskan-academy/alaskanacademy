@@ -207,12 +207,17 @@ Deno.serve(async (req) => {
     if (bankingRows.length > 0) await upsertBatch(bankingRows as Record<string, unknown>[]);
     if (cardRows.length > 0)    await upsertBatch(cardRows    as Record<string, unknown>[]);
 
-    console.log(`[cs-sync] OK: ${bankingRows.length} banking, ${cardRows.length} cartão`);
+    // ── 4. Auto-categorização via regras_categoria
+    const { data: categorized, error: catError } = await supabase.rpc('aplicar_regras_categoria');
+    if (catError) console.warn('[cs-sync] Auto-categorização falhou:', catError.message);
+
+    console.log(`[cs-sync] OK: ${bankingRows.length} banking, ${cardRows.length} cartão, ${categorized ?? 0} categorizados`);
     return json({
-      ok:      true,
-      banking: { fetched: bankingRows.length },
-      card:    { fetched: cardRows.length },
-      period:  { startDate, endDate },
+      ok:          true,
+      banking:     { fetched: bankingRows.length },
+      card:        { fetched: cardRows.length },
+      categorized: categorized ?? 0,
+      period:      { startDate, endDate },
     });
   } catch (err) {
     console.error('[cs-sync] Erro:', err);
