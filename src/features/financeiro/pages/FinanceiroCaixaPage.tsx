@@ -123,6 +123,8 @@ export default function FinanceiroCaixaPage() {
   const [ytd, setYtd] = useState(false);
 
   const [totais, setTotais] = useState<TotalCategoria[]>([]);
+  const [totaisSociosPos, setTotaisSociosPos] = useState<TotalCategoria[]>([]);
+  const [totaisSociosNeg, setTotaisSociosNeg] = useState<TotalCategoria[]>([]);
   const [semCategoria, setSemCategoria] = useState(0);
   const [config, setConfig] = useState<CaixaConfig | null>(null);
   const [movimentos, setMovimentos] = useState<MovimentoReserva[]>([]);
@@ -157,20 +159,29 @@ export default function FinanceiroCaixaPage() {
         .select('categoria, valor')
         .gte('data', dataInicio)
         .lte('data', dataFim)
-        .eq('fonte', 'conta_simples');
+        .in('status_revisao', ['confirmado', 'revisado']);
 
       if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
 
       const map = new Map<string, number>();
+      const mapSociosPos = new Map<string, number>();
+      const mapSociosNeg = new Map<string, number>();
       let semCat = 0;
 
       for (const row of data ?? []) {
         const cat = row.categoria ?? '__sem__';
         if (cat === '__sem__') { semCat += row.valor; continue; }
-        map.set(cat, (map.get(cat) ?? 0) + row.valor);
+        if (SOCIOS.includes(cat)) {
+          if (row.valor >= 0) mapSociosPos.set(cat, (mapSociosPos.get(cat) ?? 0) + row.valor);
+          else                mapSociosNeg.set(cat, (mapSociosNeg.get(cat) ?? 0) + row.valor);
+        } else {
+          map.set(cat, (map.get(cat) ?? 0) + row.valor);
+        }
       }
 
       setTotais(Array.from(map.entries()).map(([categoria, total]) => ({ categoria, total })));
+      setTotaisSociosPos(Array.from(mapSociosPos.entries()).map(([categoria, total]) => ({ categoria, total })));
+      setTotaisSociosNeg(Array.from(mapSociosNeg.entries()).map(([categoria, total]) => ({ categoria, total })));
       setSemCategoria(semCat);
     }
     load();
@@ -202,17 +213,16 @@ export default function FinanceiroCaixaPage() {
     .filter(t => t.categoria && CUSTOS_OPERACIONAIS.includes(t.categoria) && t.total < 0)
     .reduce((a, t) => a + t.total, 0);
 
-  const totalSocios = totais
-    .filter(t => t.categoria && SOCIOS.includes(t.categoria))
-    .reduce((a, t) => a + t.total, 0);
+  const totalSociosRetiradas = totaisSociosNeg.reduce((a, t) => a + t.total, 0);
+  const totalSociosAportes   = totaisSociosPos.reduce((a, t) => a + t.total, 0);
 
   const totalReserva = totais
     .filter(t => t.categoria && RESERVA_CAT.includes(t.categoria))
     .reduce((a, t) => a + t.total, 0);
 
   const resultadoOperacional = totalReceitas + totalCustos;
-  const resultadoLiquido = resultadoOperacional + totalSocios;
-  const posicaoCaixa = resultadoLiquido + totalReserva;
+  const resultadoLiquido     = resultadoOperacional + totalSociosRetiradas;
+  const posicaoCaixa         = resultadoLiquido + totalSociosAportes + totalReserva;
 
   // ── Saldo da reserva ──
   const movHistorico = movimentos.reduce((a, m) => a + m.valor, 0);
@@ -290,9 +300,10 @@ export default function FinanceiroCaixaPage() {
               <LinhasDRE label="Despesas Operacionais" totais={totais.map(t => ({ ...t, total: t.total < 0 && t.categoria && CUSTOS_OPERACIONAIS.includes(t.categoria) ? t.total : 0 }))} cats={CUSTOS_OPERACIONAIS} cor="text-red-400" />
               <LinhaTotalDRE label="= Resultado Operacional" valor={resultadoOperacional} />
 
-              <LinhasDRE label="Distribuição aos Sócios" totais={totais} cats={SOCIOS} cor="text-orange-400" />
+              <LinhasDRE label="Distribuição aos Sócios" totais={totaisSociosNeg} cats={SOCIOS} cor="text-orange-400" />
               <LinhaTotalDRE label="= Resultado Líquido" valor={resultadoLiquido} destaque />
 
+              <LinhasDRE label="Aportes de Sócios" totais={totaisSociosPos} cats={SOCIOS} cor="text-blue-400" />
               <LinhasDRE label="Movimentos de Reserva" totais={totais} cats={RESERVA_CAT} />
               <LinhaTotalDRE label="= Posição de Caixa do Período" valor={posicaoCaixa} destaque />
 
