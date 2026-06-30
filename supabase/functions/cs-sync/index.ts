@@ -121,7 +121,14 @@ Deno.serve(async (req) => {
   try {
     const token       = await getAccessToken();
     const raw         = await fetchTransactions(token, startDate, endDate);
-    const processadas = raw.filter((t) => (t as Record<string, unknown>)['status'] === 2);
+    const processadas = raw.filter((t) => {
+      const tx = t as Record<string, unknown>;
+      if (tx['status'] !== 2) return false;
+      // Ignora movimentações internas entre conta e limite do cartão CS
+      const desc = String(tx['description'] ?? '').toLowerCase();
+      if (desc.startsWith('deposito de limite') || desc.startsWith('resgate de limite')) return false;
+      return true;
+    });
 
     if (processadas.length === 0) return json({ ok: true, inserted: 0, period: { startDate, endDate } });
 
