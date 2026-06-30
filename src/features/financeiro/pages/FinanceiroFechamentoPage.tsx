@@ -85,7 +85,7 @@ export default function FinanceiroFechamentoPage() {
         .select('valor')
         .gte('data', inicio)
         .lte('data', fim)
-        .eq('status', 'approved'),
+        .eq('status', 'paid'),
       supabase
         .from('transacoes')
         .select('valor,categoria')
@@ -136,7 +136,7 @@ export default function FinanceiroFechamentoPage() {
         const d0 = primeiroDia(yyyy, mm);
         const d1 = ultimoDia(yyyy, mm);
         const [p2, t2] = await Promise.all([
-          supabase.from('vendas_payt').select('valor').gte('data', d0).lte('data', d1).eq('status', 'approved'),
+          supabase.from('vendas_payt').select('valor').gte('data', d0).lte('data', d1).eq('status', 'paid'),
           supabase.from('transacoes').select('valor').gte('data', d0).lte('data', d1).neq('categoria', 'Anúncios (Facebook ADs)'),
         ]);
         const rb = (p2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
