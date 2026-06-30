@@ -87,10 +87,11 @@ function isDebit(tx: Record<string, unknown>): boolean {
   const tipoDesc = String(tipo?.['description'] ?? tipo?.['name'] ?? '').toLowerCase();
   const combined = `${txDesc} ${tipoDesc}`;
 
+  // "Saque" na CS significa PIX/TED recebido (o remetente sacou da conta dele para a sua)
+  // Não usar "saque" como indicador de débito
   return (
     combined.includes('enviado') ||
     combined.includes('pagamento') ||
-    combined.includes('saque') ||
     combined.includes('resgate') ||
     combined.includes('débito') ||
     combined.includes('debito') ||
