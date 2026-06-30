@@ -116,14 +116,14 @@ export default function FinanceiroRevisaoPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const query = supabase
+    let query = supabase
       .from('transacoes')
       .select('id,data,descricao,valor,categoria,centro_custo,status_revisao')
       .order('data', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(500);
 
-    if (filtro === 'pendentes') query.eq('status_revisao', 'pendente');
+    if (filtro === 'pendentes') query = query.eq('status_revisao', 'pendente');
 
     const { data, error } = await query;
     if (error) toast({ title: 'Erro ao carregar transações', variant: 'destructive' });
