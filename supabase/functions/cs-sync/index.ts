@@ -22,31 +22,21 @@ async function getAccessToken(): Promise<string> {
     },
     body: 'grant_type=client_credentials',
   });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`CS auth failed [${res.status}]: ${body}`);
-  }
+  if (!res.ok) throw new Error(`CS auth failed [${res.status}]: ${await res.text()}`);
   const { access_token } = await res.json();
   return access_token as string;
 }
 
-async function fetchTransactions(token: string, startDate: string, endDate: string): Promise<unknown[]> {
+async function fetchBanking(token: string, startDate: string, endDate: string): Promise<unknown[]> {
   const all: unknown[] = [];
   let nextPageStartKey: string | undefined;
   do {
     const params = new URLSearchParams({ startDate, endDate, limit: '50', sorting: 'transactionDate:ASC' });
     if (nextPageStartKey) params.set('nextPageStartKey', nextPageStartKey);
     const res = await fetch(`${CS_BASE_URL}/statements/v1/banking?${params}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'alaskan-dashboard/1.0',
-      },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'alaskan-dashboard/1.0' },
     });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`CS API error [${res.status}]: ${body}`);
-    }
+    if (!res.ok) throw new Error(`CS banking error [${res.status}]: ${await res.text()}`);
     const data = await res.json() as { transactions?: unknown[]; nextPageStartKey?: string };
     all.push(...(data.transactions ?? []));
     nextPageStartKey = data.nextPageStartKey;
@@ -54,8 +44,48 @@ async function fetchTransactions(token: string, startDate: string, endDate: stri
   return all;
 }
 
-// Prefere o nome do beneficiário/comerciante quando disponível
-function buildDescricao(t: Record<string, unknown>): string {
+async function fetchCardWindow(token: string, startDate: string, endDate: string): Promise<unknown[]> {
+  const all: unknown[] = [];
+  let nextPageStartKey: string | undefined;
+  do {
+    const params = new URLSearchParams({ startDate, endDate, limit: '50', sorting: 'transactionDate:ASC' });
+    if (nextPageStartKey) params.set('nextPageStartKey', nextPageStartKey);
+    const res = await fetch(`${CS_BASE_URL}/statements/v1/credit-card?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'alaskan-dashboard/1.0' },
+    });
+    if (!res.ok) throw new Error(`CS card error [${res.status}]: ${await res.text()}`);
+    const data = await res.json();
+    const txList = Array.isArray(data) ? data :
+                   Array.isArray(data?.transactions) ? data.transactions :
+                   Array.isArray(data?.items) ? data.items :
+                   Array.isArray(data?.data) ? data.data : [];
+    all.push(...txList);
+    nextPageStartKey = data?.nextPageStartKey ?? data?.next_page_start_key ?? undefined;
+  } while (nextPageStartKey);
+  return all;
+}
+
+// CS card API rejects ranges > ~30 days — fetches month by month
+async function fetchCard(token: string, startDate: string, endDate: string): Promise<unknown[]> {
+  const all: unknown[] = [];
+  const end    = new Date(endDate);
+  let cursor   = new Date(startDate);
+  while (cursor <= end) {
+    const windowEnd = new Date(cursor);
+    windowEnd.setMonth(windowEnd.getMonth() + 1);
+    windowEnd.setDate(windowEnd.getDate() - 1);
+    if (windowEnd > end) windowEnd.setTime(end.getTime());
+    const s = cursor.toISOString().slice(0, 10);
+    const e = windowEnd.toISOString().slice(0, 10);
+    const rows = await fetchCardWindow(token, s, e);
+    all.push(...rows);
+    cursor = new Date(windowEnd);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return all;
+}
+
+function buildDescricaoBanking(t: Record<string, unknown>): string {
   const candidates = [
     t['sourceDestinationName'],
     (t['counterpart'] as Record<string, unknown> | undefined)?.['name'],
@@ -72,23 +102,18 @@ function buildDescricao(t: Record<string, unknown>): string {
   return 'Sem descrição';
 }
 
-function buildValor(t: Record<string, unknown>): number {
+function buildValorBanking(t: Record<string, unknown>): number {
   const raw = t['brlAmount'] ?? t['amount'] ?? 0;
   return typeof raw === 'number' ? raw : Number(raw);
 }
 
-// CS retorna brlAmount sempre positivo; o sinal vem do tipo/descrição da transação
-function isDebit(tx: Record<string, unknown>): boolean {
+function isDebitBanking(tx: Record<string, unknown>): boolean {
   if (tx['isDebit'] === true)  return true;
   if (tx['isDebit'] === false) return false;
-
   const tipo     = tx['transactionType'] as Record<string, unknown> | undefined;
   const txDesc   = String(tx['description'] ?? '').toLowerCase();
   const tipoDesc = String(tipo?.['description'] ?? tipo?.['name'] ?? '').toLowerCase();
   const combined = `${txDesc} ${tipoDesc}`;
-
-  // "Saque" na CS significa PIX/TED recebido (o remetente sacou da conta dele para a sua)
-  // Não usar "saque" como indicador de débito
   return (
     combined.includes('enviado') ||
     combined.includes('pagamento') ||
@@ -101,6 +126,17 @@ function isDebit(tx: Record<string, unknown>): boolean {
     combined.includes('transferência enviada') ||
     combined.includes('transferencia enviada')
   );
+}
+
+async function upsertBatch(rows: Record<string, unknown>[]): Promise<void> {
+  const CHUNK = 100;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    const { error } = await supabase
+      .from('transacoes')
+      .upsert(chunk, { onConflict: 'referencia_externa', ignoreDuplicates: true });
+    if (error) throw new Error(`DB upsert error: ${error.message}`);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -119,50 +155,64 @@ Deno.serve(async (req) => {
   const startDate = body.startDate ?? start.toISOString().slice(0, 10);
 
   try {
-    const token       = await getAccessToken();
-    const raw         = await fetchTransactions(token, startDate, endDate);
-    const processadas = raw.filter((t) => {
-      const tx = t as Record<string, unknown>;
-      if (tx['status'] !== 2) return false;
-      // Ignora movimentações internas entre conta e limite do cartão CS
-      const desc = String(tx['description'] ?? '').toLowerCase();
-      if (desc.startsWith('deposito de limite') || desc.startsWith('resgate de limite')) return false;
-      return true;
-    });
+    const token = await getAccessToken();
 
-    if (processadas.length === 0) return json({ ok: true, inserted: 0, period: { startDate, endDate } });
+    // ── 1. Conta corrente
+    const rawBanking = await fetchBanking(token, startDate, endDate);
+    const bankingRows = rawBanking
+      .filter((t) => {
+        const tx = t as Record<string, unknown>;
+        if (tx['status'] !== 2) return false;
+        const desc = String(tx['description'] ?? '').toLowerCase();
+        if (desc.startsWith('deposito de limite') || desc.startsWith('resgate de limite')) return false;
+        return true;
+      })
+      .map((t) => {
+        const tx = t as Record<string, unknown>;
+        const raw = buildValorBanking(tx);
+        return {
+          referencia_externa: String(tx['id']),
+          data: String(tx['transactionDate'] ?? '').slice(0, 10),
+          descricao: buildDescricaoBanking(tx),
+          valor: isDebitBanking(tx) ? -Math.abs(raw) : Math.abs(raw),
+          status_revisao: 'pendente',
+          fonte: 'conta_simples',
+        };
+      });
 
-    const rows = processadas.map((t) => {
-      const tx         = t as Record<string, unknown>;
-      const valorBruto = buildValor(tx);
-      return {
-        referencia_externa: String(tx['id']),
-        data:               String(tx['transactionDate'] ?? '').slice(0, 10),
-        descricao:          buildDescricao(tx),
-        valor:              isDebit(tx) ? -Math.abs(valorBruto) : Math.abs(valorBruto),
-        status_revisao:     'pendente',
-        fonte:              'conta_simples',
-      };
-    });
+    // ── 2. Cartão corporativo (janelas mensais)
+    const rawCard = await fetchCard(token, startDate, endDate);
+    const cardRows = rawCard
+      .filter((t) => {
+        const tx = t as Record<string, unknown>;
+        if (String(tx['type'] ?? '') === 'LIMIT') return false;
+        return true;
+      })
+      .map((t) => {
+        const tx = t as Record<string, unknown>;
+        const amountBrl = Number(tx['amountBrl'] ?? tx['amount'] ?? tx['brlAmount'] ?? 0);
+        const isCashOut = String(tx['operation'] ?? '') === 'CASH_OUT';
+        const merchant  = String(tx['merchant'] ?? tx['description'] ?? tx['name'] ?? '').trim() || 'Cartão CS';
+        return {
+          referencia_externa: `card_${String(tx['id'])}`,
+          data: String(tx['transactionDate'] ?? tx['date'] ?? '').slice(0, 10),
+          descricao: merchant,
+          valor: isCashOut ? -Math.abs(amountBrl) : Math.abs(amountBrl),
+          status_revisao: 'pendente',
+          fonte: 'conta_simples_cartao',
+        };
+      });
 
-    const { error } = await supabase
-      .from('transacoes')
-      .upsert(rows, { onConflict: 'referencia_externa', ignoreDuplicates: true });
+    // ── 3. Upsert em chunks de 100
+    if (bankingRows.length > 0) await upsertBatch(bankingRows as Record<string, unknown>[]);
+    if (cardRows.length > 0)    await upsertBatch(cardRows    as Record<string, unknown>[]);
 
-    if (error) { console.error('[cs-sync] DB error:', error.message); return json({ error: error.message }, 500); }
-
-    const { count: total } = await supabase
-      .from('transacoes')
-      .select('id', { count: 'exact', head: true })
-      .in('referencia_externa', rows.map(r => r.referencia_externa));
-
-    console.log(`[cs-sync] OK: ${raw.length} buscadas, ${processadas.length} processadas`);
+    console.log(`[cs-sync] OK: ${bankingRows.length} banking, ${cardRows.length} cartão`);
     return json({
-      ok:        true,
-      fetched:   raw.length,
-      processed: processadas.length,
-      inserted:  total ?? rows.length,
-      period:    { startDate, endDate },
+      ok:      true,
+      banking: { fetched: bankingRows.length },
+      card:    { fetched: cardRows.length },
+      period:  { startDate, endDate },
     });
   } catch (err) {
     console.error('[cs-sync] Erro:', err);
