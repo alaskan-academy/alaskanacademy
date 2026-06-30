@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, Clock, Plus } from 'lucide-react';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 
@@ -98,11 +98,21 @@ export default function FinanceiroRevisaoPage() {
   const [importing, setImporting]     = useState(false);
   const fileRef                       = useRef<HTMLInputElement>(null);
 
-  // form state inside modal
+  // form state inside modal (edição)
   const [formCateg,    setFormCateg]   = useState('');
   const [formCentro,   setFormCentro]  = useState('');
   const [criarRegra,   setCriarRegra]  = useState(true);
   const [padraoRegra,  setPadraoRegra] = useState('');
+
+  // form state — novo lançamento manual
+  const [novoModal,   setNovoModal]   = useState(false);
+  const [novoData,    setNovoData]    = useState(new Date().toISOString().slice(0, 10));
+  const [novoTipo,    setNovoTipo]    = useState<'entrada' | 'saida'>('saida');
+  const [novoValor,   setNovoValor]   = useState('');
+  const [novoDesc,    setNovoDesc]    = useState('');
+  const [novoCateg,   setNovoCateg]   = useState('');
+  const [novoCentro,  setNovoCentro]  = useState('');
+  const [criandoNovo, setCriandoNovo] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -214,6 +224,37 @@ export default function FinanceiroRevisaoPage() {
     }
   };
 
+  const criarLancamento = async () => {
+    if (!novoDesc.trim() || !novoCateg || !novoValor) return;
+    setCriandoNovo(true);
+    try {
+      const valorNum = parseFloat(novoValor.replace(',', '.'));
+      if (isNaN(valorNum) || valorNum <= 0) throw new Error('Valor inválido');
+      const valorFinal = novoTipo === 'saida' ? -Math.abs(valorNum) : Math.abs(valorNum);
+      const refExt = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const { error } = await supabase.from('transacoes').insert({
+        referencia_externa: refExt,
+        data: novoData,
+        descricao: novoDesc.trim(),
+        valor: valorFinal,
+        categoria: novoCateg,
+        centro_custo: novoCentro || null,
+        status_revisao: 'confirmado',
+        fonte: 'manual',
+      });
+      if (error) throw error;
+      toast({ title: 'Lançamento criado com sucesso' });
+      setNovoModal(false);
+      setNovoDesc(''); setNovoValor(''); setNovoCateg(''); setNovoCentro('');
+      setNovoTipo('saida'); setNovoData(new Date().toISOString().slice(0, 10));
+      load();
+    } catch (err: unknown) {
+      toast({ title: 'Erro ao criar lançamento', description: err instanceof Error ? err.message : '', variant: 'destructive' });
+    } finally {
+      setCriandoNovo(false);
+    }
+  };
+
   const pendentes = transacoes.filter(t => t.status_revisao === 'pendente').length;
   const hoje = new Date().toISOString().slice(0, 10);
   const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
@@ -263,7 +304,11 @@ export default function FinanceiroRevisaoPage() {
             </button>
           ))}
         </div>
-        <div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setNovoModal(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Novo lançamento
+          </Button>
           <input ref={fileRef} type="file" accept=".csv,.txt,.ofx" className="hidden" onChange={handleImport} />
           <Button
             size="sm"
@@ -404,6 +449,91 @@ export default function FinanceiroRevisaoPage() {
             <Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button>
             <Button onClick={salvar} disabled={saving || !formCateg}>
               {saving ? 'Salvando…' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* modal — novo lançamento manual */}
+      <Dialog open={novoModal} onOpenChange={open => { if (!open) setNovoModal(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo lançamento manual</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* tipo entrada/saída */}
+            <div className="flex gap-2">
+              {(['saida', 'entrada'] as const).map(tipo => (
+                <button
+                  key={tipo}
+                  onClick={() => setNovoTipo(tipo)}
+                  className={cn(
+                    'flex-1 py-2 rounded-lg text-sm font-medium border transition-colors',
+                    novoTipo === tipo
+                      ? tipo === 'saida'
+                        ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                        : 'bg-green-500/20 border-green-500/50 text-green-400'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {tipo === 'saida' ? '↓ Saída' : '↑ Entrada'}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Data</Label>
+                <Input type="date" value={novoData} onChange={e => setNovoData(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Valor (R$)</Label>
+                <Input
+                  placeholder="0,00"
+                  value={novoValor}
+                  onChange={e => setNovoValor(e.target.value)}
+                  inputMode="decimal"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Descrição</Label>
+              <Input
+                placeholder="Descrição do lançamento…"
+                value={novoDesc}
+                onChange={e => setNovoDesc(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Categoria</Label>
+              <Select value={novoCateg} onValueChange={setNovoCateg}>
+                <SelectTrigger><SelectValue placeholder="Selecione a categoria…" /></SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Centro de custo <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+              <Select value={novoCentro} onValueChange={setNovoCentro}>
+                <SelectTrigger><SelectValue placeholder="Selecione o centro de custo…" /></SelectTrigger>
+                <SelectContent>
+                  {CENTROS_CUSTO.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNovoModal(false)}>Cancelar</Button>
+            <Button
+              onClick={criarLancamento}
+              disabled={criandoNovo || !novoDesc.trim() || !novoCateg || !novoValor}
+            >
+              {criandoNovo ? 'Salvando…' : 'Criar lançamento'}
             </Button>
           </DialogFooter>
         </DialogContent>
