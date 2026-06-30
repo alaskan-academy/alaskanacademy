@@ -1,12 +1,13 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { ClipboardList, TrendingUp, ArrowLeftRight, FileText } from 'lucide-react';
+import { ClipboardList, TrendingUp, ArrowLeftRight, FileText, Wallet } from 'lucide-react';
 
 const ITEMS = [
   { path: '/financeiro/revisao',       label: 'Revisão',       icon: ClipboardList },
   { path: '/financeiro/fechamento',    label: 'Fechamento',    icon: TrendingUp },
   { path: '/financeiro/conciliacao',   label: 'Conciliação',   icon: ArrowLeftRight },
   { path: '/financeiro/notas-fiscais', label: 'Notas Fiscais', icon: FileText },
+  { path: '/financeiro/caixa',         label: 'Caixa & DRE',   icon: Wallet },
 ];
 
 export function FinanceiroNav() {

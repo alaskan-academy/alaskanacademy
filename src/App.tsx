@@ -28,6 +28,7 @@ import FinanceiroRevisaoPage from "./features/financeiro/pages/FinanceiroRevisao
 import FinanceiroFechamentoPage from "./features/financeiro/pages/FinanceiroFechamentoPage";
 import FinanceiroConciliacaoPage from "./features/financeiro/pages/FinanceiroConciliacaoPage";
 import FinanceiroNotasFiscaisPage from "./features/financeiro/pages/FinanceiroNotasFiscaisPage";
+import FinanceiroCaixaPage from "./features/financeiro/pages/FinanceiroCaixaPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -64,6 +65,7 @@ const App = () => (
                   <Route path="/financeiro/fechamento" element={<ProtectedRoute pageKey="financeiro"><FinanceiroFechamentoPage /></ProtectedRoute>} />
                   <Route path="/financeiro/conciliacao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroConciliacaoPage /></ProtectedRoute>} />
                   <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute pageKey="financeiro"><FinanceiroNotasFiscaisPage /></ProtectedRoute>} />
+                  <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
                 </Routes>
               </BrowserRouter>
