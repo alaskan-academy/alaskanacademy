@@ -191,7 +191,12 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
             <div className="text-xs text-muted-foreground mt-2">
               Início: {editor.data_inicio || '—'} · {editor.ativo ? 'Ativo' : 'Inativo'}
             </div>
-            {editor.observacoes && <p className="text-sm mt-3 text-foreground/80">{editor.observacoes}</p>}
+            {editor.observacoes && (
+              <div
+                className="text-sm mt-3 text-foreground/80 [&_a]:text-primary [&_a]:underline"
+                dangerouslySetInnerHTML={{ __html: editor.observacoes }}
+              />
+            )}
           </div>
         </div>
       </div>
