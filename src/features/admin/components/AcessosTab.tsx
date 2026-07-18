@@ -10,9 +10,10 @@ import { cn } from '@/lib/utils';
 import { PAGINAS } from '@/contexts/AuthContext';
 import { useConfirm } from '@/hooks/use-confirm';
 
-type Usuario = { id: string; email: string; nome: string; is_admin: boolean; created_at: string };
-type Cargo    = { id: string; nome: string; multiplicador: string; cor: string; ordem: number };
-type PermMap  = Record<string, boolean>;
+type Usuario   = { id: string; email: string; nome: string; is_admin: boolean; created_at: string };
+type Cargo     = { id: string; nome: string; multiplicador: string; cor: string; ordem: number; setor_id: string | null };
+type Setor     = { id: string; nome: string; cor: string | null };
+type PermMap   = Record<string, boolean>;
 type EditorOpt = { id: string; nome: string };
 
 const defaultPerms = (): PermMap => Object.fromEntries(PAGINAS.map(p => [p.key, true]));
@@ -34,10 +35,14 @@ export function AcessosTab() {
   const [usuarios, setUsuarios]   = useState<Usuario[]>([]);
   const [editores, setEditores]   = useState<EditorOpt[]>([]);
   const [cargos, setCargos]       = useState<Cargo[]>([]);
-  const [editorMap, setEditorMap] = useState<Record<string, string>>({});  // usuario_id → editor_id
-  const [cargoMap, setCargoMap]   = useState<Record<string, string>>({});  // usuario_id → cargo_id
+  const [setores, setSetores]     = useState<Setor[]>([]);
+  const [editorMap, setEditorMap] = useState<Record<string, string>>({});   // usuario_id → editor_id
+  const [cargoMap, setCargoMap]   = useState<Record<string, string>>({});   // usuario_id → cargo_id
+  const [setorMap, setSetorMap]   = useState<Record<string, string>>({});   // usuario_id → setor_id
+  const [setorPerms, setSetorPerms] = useState<Record<string, string[]>>({}); // setor_id → paginas[]
   const [permsMap, setPermsMap]   = useState<Record<string, PermMap>>({});
   const [loading, setLoading]     = useState(true);
+  const [applyingSetor, setApplyingSetor] = useState<string | null>(null);
 
   // Modal novo usuário
   const [open, setOpen]         = useState(false);
@@ -55,17 +60,20 @@ export function AcessosTab() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: users, error }, { data: eds }, { data: crgs }, { data: perfsData }] = await Promise.all([
+    const [{ data: users, error }, { data: eds }, { data: crgs }, { data: ss }, { data: perfsData }, { data: sp }] = await Promise.all([
       supabase.rpc('listar_usuarios'),
       supabase.from('editores').select('id, nome, usuario_id').order('nome'),
-      supabase.from('cargos').select('id, nome, multiplicador, cor, ordem').order('ordem'),
-      supabase.from('perfis').select('id, cargo_id'),
+      supabase.from('cargos').select('id, nome, multiplicador, cor, ordem, setor_id').order('ordem'),
+      supabase.from('setores').select('id, nome, cor').order('ordem'),
+      supabase.from('perfis').select('id, cargo_id, setor_id'),
+      supabase.from('setor_permissoes').select('setor_id, pagina'),
     ]);
     if (error) { toast({ title: 'Erro ao carregar usuários', variant: 'destructive' }); setLoading(false); return; }
 
     setUsuarios(users ?? []);
     setEditores((eds ?? []).map((e: { id: string; nome: string }) => ({ id: e.id, nome: e.nome })));
     setCargos(crgs ?? []);
+    setSetores(ss ?? []);
 
     const em: Record<string, string> = {};
     for (const ed of eds ?? []) {
@@ -74,8 +82,21 @@ export function AcessosTab() {
     setEditorMap(em);
 
     const cm: Record<string, string> = {};
-    for (const p of perfsData ?? []) cm[p.id] = p.cargo_id ?? '';
+    const sm: Record<string, string> = {};
+    for (const p of perfsData ?? []) {
+      cm[p.id] = p.cargo_id ?? '';
+      sm[p.id] = p.setor_id ?? '';
+    }
     setCargoMap(cm);
+    setSetorMap(sm);
+
+    // permissões por setor
+    const spMap: Record<string, string[]> = {};
+    for (const row of sp ?? []) {
+      if (!spMap[row.setor_id]) spMap[row.setor_id] = [];
+      spMap[row.setor_id].push(row.pagina);
+    }
+    setSetorPerms(spMap);
 
     const ids = (users ?? []).map((u: Usuario) => u.id);
     if (ids.length) {
@@ -160,6 +181,32 @@ export function AcessosTab() {
     load();
   };
 
+  const handleSetorChange = async (userId: string, newSetorId: string) => {
+    const { error } = await supabase.from('perfis').update({ setor_id: newSetorId || null }).eq('id', userId);
+    if (error) return toast({ title: 'Erro ao atualizar setor', variant: 'destructive' });
+    setSetorMap(prev => ({ ...prev, [userId]: newSetorId }));
+    // limpa cargo se não pertence ao novo setor
+    const cargo = cargos.find(c => c.id === cargoMap[userId]);
+    if (cargo && cargo.setor_id !== newSetorId) {
+      await supabase.from('perfis').update({ cargo_id: null }).eq('id', userId);
+      setCargoMap(prev => ({ ...prev, [userId]: '' }));
+    }
+    toast({ title: newSetorId ? `Setor atualizado` : 'Setor removido' });
+  };
+
+  const applySetorPermissions = async (userId: string) => {
+    const setorId = setorMap[userId];
+    if (!setorId) return;
+    const pages = setorPerms[setorId] ?? [];
+    if (pages.length === 0) return toast({ title: 'Setor sem páginas padrão configuradas', variant: 'destructive' });
+    setApplyingSetor(userId);
+    const rows = PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: pages.includes(p.key) }));
+    await supabase.from('permissoes_paginas').upsert(rows, { onConflict: 'usuario_id,pagina' });
+    setApplyingSetor(null);
+    toast({ title: 'Permissões do setor aplicadas' });
+    load();
+  };
+
   const handleCargoChange = async (userId: string, newCargoId: string) => {
     const cargoIdValue = newCargoId || null;
     const { error } = await supabase.from('perfis').update({ cargo_id: cargoIdValue }).eq('id', userId);
@@ -177,13 +224,25 @@ export function AcessosTab() {
         Sócio
       </span>
     );
+    const setor = setores.find(s => s.id === setorMap[userId]);
     const cargo = cargos.find(c => c.id === cargoMap[userId]);
-    if (!cargo) return <span className="text-xs text-muted-foreground">— sem cargo —</span>;
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-        style={{ backgroundColor: `${cargo.cor}20`, color: cargo.cor }}>
-        {cargo.nome}
-      </span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {setor && (
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium border"
+            style={{ backgroundColor: `${setor.cor ?? '#888'}15`, color: setor.cor ?? '#888', borderColor: `${setor.cor ?? '#888'}30` }}>
+            {setor.nome}
+          </span>
+        )}
+        {cargo ? (
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{ backgroundColor: `${cargo.cor}20`, color: cargo.cor }}>
+            {cargo.nome}
+          </span>
+        ) : !setor ? (
+          <span className="text-xs text-muted-foreground">— sem setor —</span>
+        ) : null}
+      </div>
     );
   };
 
@@ -224,8 +283,32 @@ export function AcessosTab() {
 
               {!u.is_admin && (
                 <div className="border-t border-border/50 pt-3 space-y-3">
-                  {/* Editor + Cargo */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Setor + Cargo + Editor */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1.5">Setor</p>
+                      <select
+                        value={setorMap[u.id] ?? ''}
+                        onChange={e => handleSetorChange(u.id, e.target.value)}
+                        className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                      >
+                        <option value="">— Sem setor —</option>
+                        {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
+                      <select
+                        value={cargoMap[u.id] ?? ''}
+                        onChange={e => handleCargoChange(u.id, e.target.value)}
+                        className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                      >
+                        <option value="">— Sem cargo —</option>
+                        {cargos
+                          .filter(c => !setorMap[u.id] || c.setor_id === setorMap[u.id])
+                          .map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                    </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1.5">Editor vinculado</p>
                       <select
@@ -237,18 +320,23 @@ export function AcessosTab() {
                         {editores.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
                       </select>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1.5">Cargo</p>
-                      <select
-                        value={cargoMap[u.id] ?? ''}
-                        onChange={e => handleCargoChange(u.id, e.target.value)}
-                        className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
-                      >
-                        <option value="">— Sem cargo —</option>
-                        {cargos.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                      </select>
-                    </div>
                   </div>
+
+                  {/* Aplicar permissões do setor */}
+                  {setorMap[u.id] && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => applySetorPermissions(u.id)}
+                        disabled={applyingSetor === u.id}
+                        className="text-xs text-primary hover:underline disabled:opacity-50"
+                      >
+                        {applyingSetor === u.id ? 'Aplicando...' : '↺ Aplicar permissões padrão do setor'}
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        ({(setorPerms[setorMap[u.id]] ?? []).length} página{(setorPerms[setorMap[u.id]] ?? []).length !== 1 ? 's' : ''})
+                      </span>
+                    </div>
+                  )}
 
                   {/* Páginas visíveis */}
                   <div>

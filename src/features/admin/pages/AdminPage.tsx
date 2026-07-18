@@ -6,12 +6,11 @@ import { cn } from '@/lib/utils';
 
 import { GerenciarUsuariosTab } from '@/features/admin/components/GerenciarUsuariosTab';
 import { SetoresTab }           from '@/features/admin/components/SetoresTab';
-import { CargosTab }            from '@/features/admin/components/CargosTab';
 import DashboardsSettings       from '@/features/admin/components/DashboardsSettings';
 
-import { Users, Layers, Award, LayoutDashboard } from 'lucide-react';
+import { Users, Layers, LayoutDashboard } from 'lucide-react';
 
-type TabId = 'usuarios' | 'setores' | 'cargos' | 'dashboards';
+type TabId = 'usuarios' | 'setores' | 'dashboards';
 
 interface TabDef {
   id: TabId;
@@ -21,10 +20,9 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { group: 'Pessoas',  id: 'usuarios',   label: 'Usuários',   icon: Users          },
-  { group: 'Pessoas',  id: 'setores',    label: 'Setores',    icon: Layers         },
-  { group: 'Pessoas',  id: 'cargos',     label: 'Cargos',     icon: Award          },
-  { group: 'Sistema',  id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
+  { group: 'Pessoas',  id: 'usuarios',   label: 'Usuários',           icon: Users          },
+  { group: 'Pessoas',  id: 'setores',    label: 'Setores & Cargos',   icon: Layers         },
+  { group: 'Sistema',  id: 'dashboards', label: 'Dashboards',         icon: LayoutDashboard },
 ];
 
 const GROUPS = ['Pessoas', 'Sistema'];
@@ -43,7 +41,6 @@ export default function AdminPage() {
     switch (active) {
       case 'usuarios':   return <GerenciarUsuariosTab />;
       case 'setores':    return <SetoresTab />;
-      case 'cargos':     return <CargosTab />;
       case 'dashboards': return <DashboardsSettings />;
     }
   };
