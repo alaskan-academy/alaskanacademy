@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -492,14 +493,10 @@ export function RadarContent() {
             {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-1">
-          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <input type="date" value={filtroDataDe} onChange={e => setFiltroDataDe(e.target.value)}
-            className="h-8 text-sm px-2 rounded-md border border-input bg-background text-foreground" title="Data início (de)" />
-          <span className="text-muted-foreground text-xs">–</span>
-          <input type="date" value={filtroDataAte} onChange={e => setFiltroDataAte(e.target.value)}
-            className="h-8 text-sm px-2 rounded-md border border-input bg-background text-foreground" title="Data início (até)" />
-        </div>
+        <DateRangeFilter
+          de={filtroDataDe} ate={filtroDataAte}
+          onChangeDe={setFiltroDataDe} onChangeAte={setFiltroDataAte}
+        />
       </div>
 
       {/* ── Lista ── */}
