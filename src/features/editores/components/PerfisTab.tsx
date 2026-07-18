@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -129,6 +129,37 @@ export function PerfisTab() {
   );
 }
 
+function ObservacoesExpandable({ html }: { html: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current) setClamped(ref.current.scrollHeight > ref.current.clientHeight + 2);
+  }, [html]);
+
+  return (
+    <div className="mt-3">
+      <div
+        ref={ref}
+        className={cn(
+          'text-sm text-foreground/80 [&_a]:text-primary [&_a]:underline overflow-hidden transition-all',
+          !expanded && 'line-clamp-4',
+        )}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {(clamped || expanded) && (
+        <button
+          onClick={() => setExpanded(v => !v)}
+          className="text-xs text-primary hover:underline mt-1"
+        >
+          {expanded ? 'Ver menos' : 'Ver mais'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
   editor: Editor; cargos: Cargo[]; cargoMap: Record<string, Cargo>;
   onChanged: () => void; isAdmin: boolean;
@@ -191,12 +222,7 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
             <div className="text-xs text-muted-foreground mt-2">
               Início: {editor.data_inicio || '—'} · {editor.ativo ? 'Ativo' : 'Inativo'}
             </div>
-            {editor.observacoes && (
-              <div
-                className="text-sm mt-3 text-foreground/80 [&_a]:text-primary [&_a]:underline"
-                dangerouslySetInnerHTML={{ __html: editor.observacoes }}
-              />
-            )}
+            {editor.observacoes && <ObservacoesExpandable html={editor.observacoes} />}
           </div>
         </div>
       </div>
