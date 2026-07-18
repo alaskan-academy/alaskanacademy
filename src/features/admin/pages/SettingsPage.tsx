@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ContasAnunciosTab } from "@/components/editores/ContasAnunciosTab";
-import { GerenciarUsuariosTab } from "@/components/GerenciarUsuariosTab";
-import { ConfiguracaoTab } from "@/components/editores/ConfiguracaoTab";
-import { EmpresasOfertasTab } from "@/components/editores/EmpresasOfertasTab";
-import { RadarConfigTab } from "@/components/radar/RadarConfigTab";
-import { AvaliarCriativoTab } from "@/components/editores/AvaliarCriativoTab";
+import { ContasAnunciosTab } from "@/features/editores/components/ContasAnunciosTab";
+import { GerenciarUsuariosTab } from "@/features/admin/components/GerenciarUsuariosTab";
+import { ConfiguracaoTab } from "@/features/editores/components/ConfiguracaoTab";
+import { EmpresasOfertasTab } from "@/features/editores/components/EmpresasOfertasTab";
+import { RadarConfigTab } from "@/features/radar/components/RadarConfigTab";
+import { AvaliarCriativoTab } from "@/features/editores/components/AvaliarCriativoTab";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function SettingsPage() {

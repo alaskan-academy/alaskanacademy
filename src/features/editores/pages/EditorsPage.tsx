@@ -1,9 +1,9 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { PerfisTab } from '@/components/editores/PerfisTab';
-import { AvaliacoesTab } from '@/components/editores/AvaliacoesTab';
-import { DesempenhoTab } from '@/components/editores/DesempenhoTab';
-import { CriativosMetaTab } from '@/components/editores/CriativosMetaTab';
+import { PerfisTab } from '@/features/editores/components/PerfisTab';
+import { AvaliacoesTab } from '@/features/editores/components/AvaliacoesTab';
+import { DesempenhoTab } from '@/features/editores/components/DesempenhoTab';
+import { CriativosMetaTab } from '@/features/editores/components/CriativosMetaTab';
 
 const tabCls = "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground";
 

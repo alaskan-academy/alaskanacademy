@@ -7,18 +7,19 @@ import { FilterProvider } from "@/contexts/FilterContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ConfirmProvider } from "@/hooks/use-confirm";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import LoginPage from "./pages/LoginPage";
-import SetupPage from "./pages/SetupPage";
-import OverviewPage from "./pages/OverviewPage";
-import MetaAdsPage from "./pages/MetaAdsPage";
-import FunnelPage from "./pages/FunnelPage";
-import SalesPage from "./pages/SalesPage";
-import UTMPage from "./pages/UTMPage";
-import ClientsPage from "./pages/ClientsPage";
-import EditorsPage from "./pages/EditorsPage";
-import SettingsPage from "./pages/SettingsPage";
-import RadarPage from "./pages/RadarPage";
-import AtivosPage from "./pages/AtivosPage";
+import LoginPage from "./features/auth/pages/LoginPage";
+import SetupPage from "./features/auth/pages/SetupPage";
+import OverviewPage from "./features/dashboard/pages/OverviewPage";
+import MetaAdsPage from "./features/ads/pages/MetaAdsPage";
+import FunnelPage from "./features/dashboard/pages/FunnelPage";
+import SalesPage from "./features/dashboard/pages/SalesPage";
+import UTMPage from "./features/ads/pages/UTMPage";
+import ClientsPage from "./features/dashboard/pages/ClientsPage";
+import EditorsPage from "./features/editores/pages/EditorsPage";
+import SettingsPage from "./features/admin/pages/SettingsPage";
+import AdminPage from "./features/admin/pages/AdminPage";
+import RadarPage from "./features/radar/pages/RadarPage";
+import AtivosPage from "./features/ads/pages/AtivosPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
                   <Route path="/radar" element={<ProtectedRoute pageKey="radar"><RadarPage /></ProtectedRoute>} />
                   <Route path="/ativos" element={<ProtectedRoute pageKey="ativos"><AtivosPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
+                  <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
                 </Routes>
               </BrowserRouter>
