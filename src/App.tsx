@@ -20,6 +20,7 @@ import SettingsPage from "./features/admin/pages/SettingsPage";
 import AdminPage from "./features/admin/pages/AdminPage";
 import RadarPage from "./features/radar/pages/RadarPage";
 import AtivosPage from "./features/ads/pages/AtivosPage";
+import ReferenciasPage from "./features/referencias/pages/ReferenciasPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
                   <Route path="/editores" element={<ProtectedRoute pageKey="editores"><EditorsPage /></ProtectedRoute>} />
                   <Route path="/radar" element={<ProtectedRoute pageKey="radar"><RadarPage /></ProtectedRoute>} />
                   <Route path="/ativos" element={<ProtectedRoute pageKey="ativos"><AtivosPage /></ProtectedRoute>} />
+                  <Route path="/referencias" element={<ProtectedRoute pageKey="referencias"><ReferenciasPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                   <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
