@@ -1,7 +1,6 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-<<<<<<< HEAD
   Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, Lock, BookOpen, GraduationCap, Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -59,7 +58,6 @@ export function AppSidebar() {
   const [loadingFunis, setLoadingFunis] = useState(true);
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
-<<<<<<< HEAD
   const fixedItems = ALL_FIXED_ITEMS.filter(p =>
     p.adminOnly ? perfil?.is_admin : canAccess(p.key),
   );
