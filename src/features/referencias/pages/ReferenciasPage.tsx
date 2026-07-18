@@ -97,12 +97,16 @@ export function ReferenciasContent() {
 
   const [areas,      setAreas]      = useState<Area[]>([]);
   const [referencias, setReferencias] = useState<Referencia[]>([]);
+  const [perfis,     setPerfis]     = useState<{ id: string; nome: string }[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
   const [syncing,    setSyncing]    = useState(false);
 
-  const [search,        setSearch]        = useState('');
-  const [filtroArea,    setFiltroArea]    = useState('');
+  const [search,         setSearch]         = useState('');
+  const [filtroArea,     setFiltroArea]     = useState('');
+  const [filtroCriador,  setFiltroCriador]  = useState('');
+  const [filtroDataDe,   setFiltroDataDe]   = useState('');
+  const [filtroDataAte,  setFiltroDataAte]  = useState('');
   const [showArquivados, setShowArquivados] = useState(false);
 
   const [openForm,   setOpenForm]   = useState(false);
@@ -122,6 +126,7 @@ export function ReferenciasContent() {
       supabase.from('perfis').select('id, nome').order('nome'),
     ]);
     setAreas(areasData || []);
+    setPerfis(perfisData || []);
     const areaMap  = Object.fromEntries((areasData  || []).map((a: Area)    => [a.id, a]));
     const perfilMap = Object.fromEntries((perfisData || []).map((p: any)    => [p.id, p.nome]));
     setReferencias((refsData || []).map((r: any) => ({
@@ -147,11 +152,14 @@ export function ReferenciasContent() {
       if (!match) return false;
     }
     if (filtroArea && r.area_id !== filtroArea) return false;
+    if (filtroCriador && r.criado_por !== filtroCriador) return false;
+    if (filtroDataDe && r.criado_em.slice(0, 10) < filtroDataDe) return false;
+    if (filtroDataAte && r.criado_em.slice(0, 10) > filtroDataAte) return false;
     return true;
   });
 
-  const filtradas   = useMemo(() => applyFilters(referencias.filter(r => !r.arquivado)), [referencias, search, filtroArea]);
-  const arquivadas  = useMemo(() => applyFilters(referencias.filter(r =>  r.arquivado)),  [referencias, search, filtroArea]);
+  const filtradas   = useMemo(() => applyFilters(referencias.filter(r => !r.arquivado)), [referencias, search, filtroArea, filtroCriador, filtroDataDe, filtroDataAte]);
+  const arquivadas  = useMemo(() => applyFilters(referencias.filter(r =>  r.arquivado)),  [referencias, search, filtroArea, filtroCriador, filtroDataDe, filtroDataAte]);
 
   // ── Form helpers ──────────────────────────────────────────────────────────
   const openNew = () => {
@@ -396,6 +404,21 @@ export function ReferenciasContent() {
             {areas.map(a => <SelectItem key={a.id} value={a.id}>{a.icone} {a.nome}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={filtroCriador || 'all'} onValueChange={v => setFiltroCriador(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Criado por" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os usuários</SelectItem>
+            {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1">
+          <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <input type="date" value={filtroDataDe} onChange={e => setFiltroDataDe(e.target.value)}
+            className="h-8 text-sm px-2 rounded-md border border-input bg-background text-foreground" title="Data (de)" />
+          <span className="text-muted-foreground text-xs">–</span>
+          <input type="date" value={filtroDataAte} onChange={e => setFiltroDataAte(e.target.value)}
+            className="h-8 text-sm px-2 rounded-md border border-input bg-background text-foreground" title="Data (até)" />
+        </div>
       </div>
 
       {/* ── Grade ── */}

@@ -138,10 +138,13 @@ export function RadarContent() {
 
   // filtros
   const [search, setSearch]               = useState('');
-  const [filtroArea, setFiltroArea]       = useState('');
-  const [filtroStatus, setFiltroStatus]   = useState('');
-  const [filtroResultado, setFiltroResultado] = useState('');
-  const [filtroProjeto, setFiltroProjeto] = useState('');
+  const [filtroArea, setFiltroArea]             = useState('');
+  const [filtroStatus, setFiltroStatus]         = useState('');
+  const [filtroResultado, setFiltroResultado]   = useState('');
+  const [filtroProjeto, setFiltroProjeto]       = useState('');
+  const [filtroResponsavel, setFiltroResponsavel] = useState('');
+  const [filtroDataDe, setFiltroDataDe]         = useState('');
+  const [filtroDataAte, setFiltroDataAte]       = useState('');
 
   // modal criar/editar
   const [openForm, setOpenForm]     = useState(false);
@@ -232,9 +235,12 @@ export function RadarContent() {
       if (filtroStatus && t.status !== filtroStatus) return false;
       if (filtroResultado && t.resultado !== filtroResultado) return false;
       if (filtroProjeto && !(t.projeto_ids || []).includes(filtroProjeto)) return false;
+      if (filtroResponsavel && t.responsavel_id !== filtroResponsavel) return false;
+      if (filtroDataDe && (!t.data_inicio || t.data_inicio < filtroDataDe)) return false;
+      if (filtroDataAte && (!t.data_inicio || t.data_inicio > filtroDataAte)) return false;
       return true;
     });
-  }, [testes, search, filtroArea, filtroStatus, filtroResultado, filtroProjeto]);
+  }, [testes, search, filtroArea, filtroStatus, filtroResultado, filtroProjeto, filtroResponsavel, filtroDataDe, filtroDataAte]);
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   const stats = useMemo(() => ({
@@ -479,6 +485,21 @@ export function RadarContent() {
             {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={filtroResponsavel || 'all'} onValueChange={v => setFiltroResponsavel(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Responsável" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os usuários</SelectItem>
+            {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1">
+          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <input type="date" value={filtroDataDe} onChange={e => setFiltroDataDe(e.target.value)}
+            className="h-8 text-sm px-2 rounded-md border border-input bg-background text-foreground" title="Data início (de)" />
+          <span className="text-muted-foreground text-xs">–</span>
+          <input type="date" value={filtroDataAte} onChange={e => setFiltroDataAte(e.target.value)}
+            className="h-8 text-sm px-2 rounded-md border border-input bg-background text-foreground" title="Data início (até)" />
+        </div>
       </div>
 
       {/* ── Lista ── */}
