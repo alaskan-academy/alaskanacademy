@@ -124,7 +124,7 @@ function fmtDate(d: string | null) {
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export default function RadarPage() {
+export function RadarContent() {
   const { perfil: authPerfil, user } = useAuth();
   const isAdmin = authPerfil?.is_admin ?? false;
   const podeCriar = (authPerfil as any)?.radar_pode_criar !== false;
@@ -400,7 +400,7 @@ export default function RadarPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardLayout title="Radar Alaskan">
+    <>
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-6">
         <div>
@@ -820,6 +820,10 @@ export default function RadarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </>
   );
+}
+
+export default function RadarPage() {
+  return <DashboardLayout title="Radar"><RadarContent /></DashboardLayout>;
 }

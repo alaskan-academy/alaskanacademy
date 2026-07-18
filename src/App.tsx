@@ -21,6 +21,7 @@ import AdminPage from "./features/admin/pages/AdminPage";
 import RadarPage from "./features/radar/pages/RadarPage";
 import AtivosPage from "./features/ads/pages/AtivosPage";
 import ReferenciasPage from "./features/referencias/pages/ReferenciasPage";
+import LaboratorioPage from "./features/laboratorio/pages/LaboratorioPage";
 import ProcessosPage from "./features/processos/pages/ProcessosPage";
 import ProcessosCategoriaPage from "./features/processos/pages/ProcessosCategoriaPage";
 import ProcessosArtigoPage from "./features/processos/pages/ProcessosArtigoPage";
@@ -52,9 +53,8 @@ const App = () => (
                   <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
                   <Route path="/clientes" element={<ProtectedRoute pageKey="clientes"><ClientsPage /></ProtectedRoute>} />
                   <Route path="/editores" element={<ProtectedRoute pageKey="editores"><EditorsPage /></ProtectedRoute>} />
-                  <Route path="/radar" element={<ProtectedRoute pageKey="radar"><RadarPage /></ProtectedRoute>} />
+                  <Route path="/laboratorio" element={<ProtectedRoute pageKey="laboratorio"><LaboratorioPage /></ProtectedRoute>} />
                   <Route path="/ativos" element={<ProtectedRoute pageKey="ativos"><AtivosPage /></ProtectedRoute>} />
-                  <Route path="/referencias" element={<ProtectedRoute pageKey="referencias"><ReferenciasPage /></ProtectedRoute>} />
                   <Route path="/processos" element={<ProtectedRoute pageKey="processos"><ProcessosPage /></ProtectedRoute>} />
                   <Route path="/processos/c/:categoriaId" element={<ProtectedRoute pageKey="processos"><ProcessosCategoriaPage /></ProtectedRoute>} />
                   <Route path="/processos/:artigoId" element={<ProtectedRoute pageKey="processos"><ProcessosArtigoPage /></ProtectedRoute>} />

@@ -90,7 +90,7 @@ function storagePathFrom(url: string) {
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
-export default function ReferenciasPage() {
+export function ReferenciasContent() {
   const { perfil, user } = useAuth();
   const isAdmin = perfil?.is_admin ?? false;
   const confirm = useConfirm();
@@ -365,7 +365,7 @@ export default function ReferenciasPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardLayout title="Referências">
+    <>
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-6">
@@ -820,6 +820,10 @@ export default function ReferenciasPage() {
         </DialogContent>
       </Dialog>
 
-    </DashboardLayout>
+    </>
   );
+}
+
+export default function ReferenciasPage() {
+  return <DashboardLayout title="Referências"><ReferenciasContent /></DashboardLayout>;
 }
