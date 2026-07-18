@@ -1,7 +1,8 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, Lock,
+<<<<<<< HEAD
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Radar, Shield, Lock, BookOpen, GraduationCap, Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -28,11 +29,14 @@ const ALL_SUB_PAGES = [
 ];
 
 const ALL_FIXED_ITEMS = [
-  { path: '/radar',          label: 'Radar',          icon: Radar,     key: 'radar',          adminOnly: false },
-  { path: '/ativos',         label: 'Ativos Meta',    icon: Shield,    key: 'ativos',         adminOnly: false },
-  { path: '/editores',       label: 'Editores',       icon: BarChart3, key: 'editores',       adminOnly: false },
-  { path: '/configuracoes',  label: 'Configurações',  icon: Settings,  key: 'configuracoes',  adminOnly: false },
-  { path: '/administrativo', label: 'Administrativo', icon: Lock,      key: 'administrativo', adminOnly: true  },
+  { path: '/radar',          label: 'Radar',          icon: Radar,        key: 'radar',          adminOnly: false },
+  { path: '/referencias',    label: 'Referências',    icon: BookOpen,     key: 'referencias',    adminOnly: false },
+  { path: '/processos',      label: 'Processos',      icon: GraduationCap, key: 'processos',     adminOnly: false },
+  { path: '/ativos',         label: 'Ativos Meta',    icon: Shield,       key: 'ativos',         adminOnly: false },
+  { path: '/editores',       label: 'Editores',       icon: BarChart3,    key: 'editores',       adminOnly: false },
+  { path: '/financeiro',     label: 'Financeiro',     icon: Wallet,       key: 'financeiro',     adminOnly: false },
+  { path: '/configuracoes',  label: 'Configurações',  icon: Settings,     key: 'configuracoes',  adminOnly: false },
+  { path: '/administrativo', label: 'Administrativo', icon: Lock,         key: 'administrativo', adminOnly: true  },
 ];
 
 const prodColors: Record<string, string> = {
@@ -55,6 +59,7 @@ export function AppSidebar() {
   const [loadingFunis, setLoadingFunis] = useState(true);
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
+<<<<<<< HEAD
   const fixedItems = ALL_FIXED_ITEMS.filter(p =>
     p.adminOnly ? perfil?.is_admin : canAccess(p.key),
   );
@@ -158,7 +163,9 @@ export function AppSidebar() {
       {/* Fixed items */}
       <div className={cn("border-b border-sidebar-border py-2", showLabels ? "px-3" : "px-2")}>
         {fixedItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path === '/financeiro'
+            ? location.pathname.startsWith('/financeiro')
+            : location.pathname === item.path;
           return (
             <NavLink
               key={item.path}

@@ -13,9 +13,9 @@ import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
-type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
+type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria; opcoes: Opcao[] };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; arquivado: boolean; categoria: Categoria; opcoes: Opcao[]; created_at: string };
 
 const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
   { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
@@ -54,16 +54,24 @@ export function AvaliacoesTab() {
       feedback: '',
       responsaveis_ids: [] as string[],
       respostas: {} as Record<string, string | string[] | number>,
+      multiplicador_snapshot: null as number | null, // congelado no momento do save
+      pct_lideranca_snapshot: null as number | null, // % liderança congelado no momento do save
+      // Valores das opções congelados no momento do save — chave: "criterio_chave:opcao_id" ou "criterio_chave:unit"
+      snapValues: {} as Record<string, number>,
+      // Lista de chaves dos critérios ativos no momento do save — null = avaliação antiga (sem esse dado)
+      criteriosSnap: null as string[] | null,
+      // created_at da avaliação — usado para filtrar critérios criados depois dela
+      avaliacao_created_at: null as string | null,
     };
   }
 
   const load = async () => {
     setLoading(true);
     const [e, a, c, o, cg] = await Promise.all([
-      supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador').order('nome'),
+      supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador, percentual_lideranca').not('usuario_id', 'is', null).order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
-      supabase.from('criterios_avaliacao').select('*').eq('ativo', true).order('ordem'),
-      supabase.from('criterio_opcoes').select('*').eq('ativo', true).order('ordem'),
+      supabase.from('criterios_avaliacao').select('*').order('ordem'),
+      supabase.from('criterio_opcoes').select('*').order('ordem'),
       supabase.from('cargos').select('*'),
     ]);
     const eds: any[] = e.data || [];
@@ -88,6 +96,8 @@ export function AvaliacoesTab() {
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
+  // Apenas IDs de editores vinculados (usuario_id IS NOT NULL) — exclui desvinculados como Lucas
+  const validEditorIds = new Set(editores.map(e => e.id));
 
   const canSeeAll = isAdmin || cargoDoUsuario.includes('head') || cargoDoUsuario.includes('lider');
   const canEditRow = (a: any) => {
@@ -96,48 +106,78 @@ export function AvaliacoesTab() {
     return a.editor_id !== meuEditorId; // líderes não podem editar a própria avaliação
   };
   const filtered = canSeeAll
-    ? (filterEditor === 'all' ? items : items.filter(i => i.editor_id === filterEditor))
+    ? (filterEditor === 'all'
+        ? items.filter(i => validEditorIds.has(i.editor_id))
+        : items.filter(i => i.editor_id === filterEditor))
     : items.filter(i => i.editor_id === meuEditorId);
 
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
-  // multiplicador individual tem prioridade sobre o do cargo
-  const multiplicador = editorSel?.multiplicador != null
-    ? Number(editorSel.multiplicador)
-    : cargoSel ? Number(cargoSel.multiplicador) : 1;
-  const multiplicadorFonte = editorSel?.multiplicador != null ? 'individual' : 'cargo';
+  // Avaliação existente → usa snapshot congelado; nova → usa multiplicador atual do editor
+  const multiplicador = form.multiplicador_snapshot != null
+    ? Number(form.multiplicador_snapshot)
+    : (editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : 1);
+  const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null || editorSel?.multiplicador != null;
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
+  // Avaliação existente → usa % congelado no snapshot; nova → usa % atual do editor (fallback 20%)
+  const pctLideranca = form.pct_lideranca_snapshot != null
+    ? form.pct_lideranca_snapshot
+    : (editorSel?.percentual_lideranca != null ? Number(editorSel.percentual_lideranca) / 100 : 0.2);
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
   const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 
-  const { bonusBase, folgasAuto } = useMemo(() => {
+  const { bonusBase, folgasAuto, ganhos, deducoes } = useMemo(() => {
     let total = 0;
     let folgas = 0;
     const folgaRe = /\((\d+(?:[.,]\d+)?)\s*folgas?\)/i;
+    // Extrai folgas de uma opção: campo dedicado tem prioridade; fallback para regex no label (legado)
+    const getFolgas = (op: Opcao) => {
+      if (Number(op.folgas ?? 0) > 0) return Number(op.folgas);
+      const m = op.label.match(folgaRe);
+      return m ? Number(m[1].replace(',', '.')) : 0;
+    };
+    let ganhos = 0;   // soma apenas dos valores positivos
+    let deducoes = 0; // soma apenas dos valores negativos (número negativo)
     for (const cr of criterios) {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
         const op = cr.opcoes.find(o => o.id === r);
         if (op) {
-          total += Number(op.valor);
-          const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+          // Editando avaliação existente → usa valor congelado no snapshot; opção trocada → usa valor atual
+          const snapKey = `${cr.chave}:${op.id}`;
+          const valor = (editingId && form.snapValues[snapKey] != null)
+            ? form.snapValues[snapKey]
+            : Number(op.valor);
+          total += valor;
+          if (valor >= 0) ganhos += valor; else deducoes += valor;
+          folgas += getFolgas(op);
         }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
         for (const id of r) {
           const op = cr.opcoes.find(o => o.id === id);
           if (op) {
-            total += Number(op.valor);
-            const m = op.label.match(folgaRe); if (m) folgas += Number(m[1].replace(',', '.'));
+            const snapKey = `${cr.chave}:${op.id}`;
+            const valor = (editingId && form.snapValues[snapKey] != null)
+              ? form.snapValues[snapKey]
+              : Number(op.valor);
+            total += valor;
+            if (valor >= 0) ganhos += valor; else deducoes += valor;
+            folgas += getFolgas(op);
           }
         }
       } else if (cr.tipo === 'number') {
-        const unit = Number(cr.opcoes[0]?.valor || 0);
-        total += Number(r || 0) * unit;
+        const snapKey = `${cr.chave}:unit`;
+        const unit = (editingId && form.snapValues[snapKey] != null)
+          ? form.snapValues[snapKey]
+          : Number(cr.opcoes[0]?.valor || 0);
+        const contrib = Number(r || 0) * unit;
+        total += contrib;
+        if (contrib >= 0) ganhos += contrib; else deducoes += contrib;
       }
     }
-    return { bonusBase: total, folgasAuto: folgas };
-  }, [form, criterios]);
+    return { bonusBase: total, folgasAuto: folgas, ganhos, deducoes };
+  }, [form, criterios, editingId]);
 
   const bonusEstimado = bonusBase;
   const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
@@ -145,7 +185,7 @@ export function AvaliacoesTab() {
     if (!isHeadOuLider || !mesReferenciaPayload || form.responsaveis_ids.length === 0) return 0;
     return items
       .filter(item => item.mes_referencia === mesReferenciaPayload && form.responsaveis_ids.includes(item.editor_id))
-      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * 0.2, 0);
+      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * pctLideranca, 0);
   }, [form.responsaveis_ids, isHeadOuLider, items, mesReferenciaPayload]);
   const bonusTotalCalculado = Math.round((bonusComMultiplicador + bonusResponsaveis) * 100) / 100;
 
@@ -154,22 +194,32 @@ export function AvaliacoesTab() {
   const openEdit = (a: any, readOnly = false) => {
     setViewOnly(readOnly);
     const respostas: Record<string, any> = {};
+    const snapValues: Record<string, number> = {};
     const snap = a.respostas || {};
     for (const cr of criterios) {
       const s = snap[cr.chave];
       if (!s) continue;
       if (cr.tipo === 'single') {
         const op = cr.opcoes.find(o => o.id === s.id) || cr.opcoes.find(o => o.label === s.label);
-        if (op) respostas[cr.chave] = op.id;
+        if (op) {
+          respostas[cr.chave] = op.id;
+          // Congela o valor que estava salvo; se não havia valor no snap (avaliações legadas), usa o atual
+          snapValues[`${cr.chave}:${op.id}`] = s.valor != null ? Number(s.valor) : Number(op.valor);
+        }
       } else if (cr.tipo === 'multi') {
         const ids: string[] = [];
         for (const sel of (s.selecoes || [])) {
           const op = cr.opcoes.find(o => o.id === sel.id) || cr.opcoes.find(o => o.label === sel.label);
-          if (op) ids.push(op.id);
+          if (op) {
+            ids.push(op.id);
+            snapValues[`${cr.chave}:${op.id}`] = sel.valor != null ? Number(sel.valor) : Number(op.valor);
+          }
         }
         respostas[cr.chave] = ids;
       } else if (cr.tipo === 'number') {
         respostas[cr.chave] = Number(s.quantidade || 0);
+        // Congela o valor unitário salvo
+        snapValues[`${cr.chave}:unit`] = s.unitario != null ? Number(s.unitario) : Number(cr.opcoes[0]?.valor || 0);
       }
     }
     // Compat: se colunas legadas existirem e critérios ainda não foram criados, ainda exibir
@@ -181,9 +231,13 @@ export function AvaliacoesTab() {
       : [];
     const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
     const editorDaAval = editores.find(e => e.id === a.editor_id);
-    const multIndividual = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : null;
-    const multCargo = Number(cargoMap[editorDaAval?.cargo_id]?.multiplicador || 1);
-    const multEfetivo = multIndividual ?? multCargo;
+    // Multiplicador: usa snapshot congelado; legados usam atual como fallback
+    const snapshotSalvo = a.multiplicador_snapshot != null ? Number(a.multiplicador_snapshot) : null;
+    const multFallback  = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : 1;
+    const multEfetivo   = snapshotSalvo ?? multFallback;
+    // % liderança: lê o percentual gravado no snapshot da avaliação; legados usam atual como fallback
+    const pctSalvo    = snap[CHAVE_RESPONSAVEIS]?.percentual != null ? Number(snap[CHAVE_RESPONSAVEIS].percentual) : null;
+    const pctFallback = editorDaAval?.percentual_lideranca != null ? Number(editorDaAval.percentual_lideranca) / 100 : 0.2;
     const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * multEfetivo * 100) / 100;
     const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
 
@@ -199,6 +253,11 @@ export function AvaliacoesTab() {
       feedback: a.feedback || '',
       responsaveis_ids: responsaveisIds,
       respostas,
+      multiplicador_snapshot: snapshotSalvo ?? multFallback,
+      pct_lideranca_snapshot: pctSalvo ?? pctFallback,
+      snapValues,
+      criteriosSnap: Array.isArray(snap['_criterios_snap']) ? (snap['_criterios_snap'] as string[]) : null,
+      avaliacao_created_at: a.created_at ?? null,
     });
     setOpen(true);
   };
@@ -212,12 +271,29 @@ export function AvaliacoesTab() {
       const r = form.respostas[cr.chave];
       if (cr.tipo === 'single' && r) {
         const op = cr.opcoes.find(o => o.id === r);
-        if (op) respostasSnapshot[cr.chave] = { tipo: 'single', id: op.id, label: op.label, valor: Number(op.valor) };
+        if (op) {
+          // Editando: opção não mudada → preserva valor congelado; opção trocada → usa valor atual
+          const snapKey = `${cr.chave}:${op.id}`;
+          const valor = (editingId && form.snapValues[snapKey] != null)
+            ? form.snapValues[snapKey]
+            : Number(op.valor);
+          respostasSnapshot[cr.chave] = { tipo: 'single', id: op.id, label: op.label, valor };
+        }
       } else if (cr.tipo === 'multi' && Array.isArray(r)) {
-        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => ({ id: o.id, label: o.label, valor: Number(o.valor) }));
+        const sel = cr.opcoes.filter(o => r.includes(o.id)).map(o => {
+          const snapKey = `${cr.chave}:${o.id}`;
+          const valor = (editingId && form.snapValues[snapKey] != null)
+            ? form.snapValues[snapKey]
+            : Number(o.valor);
+          return { id: o.id, label: o.label, valor };
+        });
         respostasSnapshot[cr.chave] = { tipo: 'multi', selecoes: sel };
       } else if (cr.tipo === 'number') {
-        respostasSnapshot[cr.chave] = { tipo: 'number', quantidade: Number(r || 0), unitario: Number(cr.opcoes[0]?.valor || 0) };
+        const snapKey = `${cr.chave}:unit`;
+        const unitario = (editingId && form.snapValues[snapKey] != null)
+          ? form.snapValues[snapKey]
+          : Number(cr.opcoes[0]?.valor || 0);
+        respostasSnapshot[cr.chave] = { tipo: 'number', quantidade: Number(r || 0), unitario };
       }
     }
 
@@ -226,8 +302,25 @@ export function AvaliacoesTab() {
         tipo: 'leaders',
         editor_ids: form.responsaveis_ids,
         bonus_lideranca: Math.round(bonusResponsaveis * 100) / 100,
-        percentual: 0.2,
+        percentual: editingId ? (form.pct_lideranca_snapshot ?? pctLideranca) : pctLideranca,
       };
+    }
+
+    // Grava lista de critérios do snap:
+    // - Nova avaliação: critérios ativos e não arquivados no momento
+    // - Edição de avaliação existente: preserva snap original + adiciona novos critérios respondidos
+    //   (nunca remove do snap, para garantir imutabilidade histórica)
+    if (editingId && form.criteriosSnap) {
+      const snapSet = new Set(form.criteriosSnap);
+      // Adiciona ao snap qualquer critério que tenha recebido valor nesta edição
+      for (const [chave, val] of Object.entries(form.respostas)) {
+        if (chave === CHAVE_RESPONSAVEIS) continue;
+        const hasVal = Array.isArray(val) ? val.length > 0 : Boolean(val) && Number(val) > 0 || val === true;
+        if (hasVal) snapSet.add(chave);
+      }
+      respostasSnapshot['_criterios_snap'] = [...snapSet];
+    } else {
+      respostasSnapshot['_criterios_snap'] = criterios.filter(c => c.ativo && !c.arquivado).map(c => c.chave);
     }
 
     const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
@@ -257,6 +350,10 @@ export function AvaliacoesTab() {
       folgas: folgasAuto,
       feedback: form.feedback || null,
       respostas: respostasSnapshot,
+      // Nova avaliação → congela o multiplicador atual; edição → preserva o snapshot já salvo
+      multiplicador_snapshot: editingId
+        ? form.multiplicador_snapshot   // não altera o que já estava salvo
+        : (editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : null),
     };
     const { error } = editingId
       ? await supabase.from('avaliacoes_mensais').update(payload).eq('id', editingId)
@@ -370,7 +467,7 @@ export function AvaliacoesTab() {
                     );
                   })}
                 </div>
-                <p className="text-xs text-muted-foreground">A líder/head recebe 20% da comissão total destes editores no mês selecionado.</p>
+                <p className="text-xs text-muted-foreground">A líder/head recebe {(pctLideranca * 100).toFixed(0)}% da comissão total destes editores no mês selecionado.</p>
               </div>
             )}
 
@@ -381,7 +478,29 @@ export function AvaliacoesTab() {
             )}
 
             {CATEGORIAS.map(cat => {
-              const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
+              // Critério visível:
+              // - Nova avaliação: apenas critérios ativos
+              // - Avaliação com _criterios_snap: exatamente os da época + inativos com valor
+              // - Avaliação antiga (sem snap): critérios criados ANTES da avaliação + inativos com valor
+              const criterioVisivel = (c: Criterio) => {
+                if (!editingId) return c.ativo && !c.arquivado;
+                const temValor = () => {
+                  const v = form.respostas[c.chave];
+                  if (v == null) return false;
+                  if (c.tipo === 'multi') return Array.isArray(v) && (v as string[]).length > 0;
+                  if (c.tipo === 'number') return Number(v) > 0;
+                  return Boolean(v);
+                };
+                if (form.criteriosSnap) {
+                  return form.criteriosSnap.includes(c.chave) || temValor();
+                }
+                // Fallback para avaliações antigas: critério existia antes da avaliação ser criada?
+                const existiaAntes = form.avaliacao_created_at && c.created_at
+                  ? c.created_at <= form.avaliacao_created_at
+                  : c.ativo; // se não tiver datas, usa ativo como fallback final
+                return existiaAntes || temValor();
+              };
+              const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && criterioVisivel(c));
               if (critsCat.length === 0) return null;
               return (
                 <div key={cat.value} className="space-y-3 rounded-lg border border-border bg-secondary/20 p-4">
@@ -399,29 +518,45 @@ export function AvaliacoesTab() {
                         >
                           <SelectTrigger><SelectValue placeholder="Selecione uma opção" /></SelectTrigger>
                           <SelectContent>
-                            {cr.opcoes.map(op => (
-                              <SelectItem key={op.id} value={op.id}>
-                                {op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span>
-                              </SelectItem>
-                            ))}
+                            {cr.opcoes
+                              // Opção visível: ativa OU selecionada nesta avaliação (editando)
+                              .filter(op => op.ativo || (editingId && form.respostas[cr.chave] === op.id))
+                              .map(op => {
+                                const v = Number(op.valor);
+                                return (
+                                  <SelectItem key={op.id} value={op.id}>
+                                    {op.label}{' '}
+                                    <span className={v < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                                      ({v < 0 ? `− R$ ${Math.abs(v)}` : `R$ ${v}`})
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
                           </SelectContent>
                         </Select>
                       )}
                       {cr.tipo === 'multi' && (
                         <div className="space-y-1.5">
-                          {cr.opcoes.map(op => {
-                            const arr = (form.respostas[cr.chave] as string[]) || [];
-                            const checked = arr.includes(op.id);
-                            return (
-                              <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
-                                <Checkbox checked={checked} onCheckedChange={(v) => {
-                                  const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
-                                  setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
-                                }} />
-                                <span>{op.label} <span className="text-muted-foreground">(R$ {Number(op.valor)})</span></span>
-                              </label>
-                            );
-                          })}
+                          {cr.opcoes
+                            // Opção visível: ativa OU selecionada nesta avaliação (editando)
+                            .filter(op => op.ativo || (editingId && (form.respostas[cr.chave] as string[] || []).includes(op.id)))
+                            .map(op => {
+                              const arr = (form.respostas[cr.chave] as string[]) || [];
+                              const checked = arr.includes(op.id);
+                              return (
+                                <label key={op.id} className="flex items-start gap-2 text-sm cursor-pointer hover:bg-secondary/30 rounded px-2 py-1">
+                                  <Checkbox checked={checked} onCheckedChange={(v) => {
+                                    const next = v ? [...arr, op.id] : arr.filter(x => x !== op.id);
+                                    setForm({ ...form, respostas: { ...form.respostas, [cr.chave]: next } });
+                                  }} />
+                                  <span>{op.label}{' '}
+                                    <span className={Number(op.valor) < 0 ? 'text-destructive' : 'text-muted-foreground'}>
+                                      ({Number(op.valor) < 0 ? `− R$ ${Math.abs(Number(op.valor))}` : `R$ ${Number(op.valor)}`})
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
                         </div>
                       )}
                       {cr.tipo === 'number' && (
@@ -439,55 +574,82 @@ export function AvaliacoesTab() {
             })}
 
              <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3">
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <div>
-                   <Label className="text-xs text-muted-foreground">Bônus base</Label>
-                   <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+
+               {/* Linha 1: Ganhos / Deduções / Bônus base — só exibe breakdown quando há deduções */}
+               {deducoes < 0 ? (
+                 <div className="grid grid-cols-3 gap-4 pb-3 border-b border-border/60">
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Ganhos brutos</Label>
+                     <div className="text-lg font-medium text-emerald-500">{formatCurrency(ganhos)}</div>
+                   </div>
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Penalidades</Label>
+                     <div className="text-lg font-medium text-destructive">− {formatCurrency(Math.abs(deducoes))}</div>
+                   </div>
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Bônus base</Label>
+                     <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+                   </div>
                  </div>
+               ) : (
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-3 border-b border-border/60">
+                   <div>
+                     <Label className="text-xs text-muted-foreground">Bônus base</Label>
+                     <div className="text-lg font-medium">{formatCurrency(bonusEstimado)}</div>
+                   </div>
+                 </div>
+               )}
+
+               {/* Linha 2: Multiplicador + Bônus com mult + Folgas */}
+               <div className="grid grid-cols-3 gap-4">
                  <div>
-                   <Label className="text-xs text-muted-foreground">
-                     Multiplicador {multiplicadorFonte === 'individual' ? '(individual)' : cargoSel ? `(${cargoSel.nome})` : ''}
-                   </Label>
-                   <div className="text-lg font-medium">{multiplicador.toFixed(2)}x</div>
+                   <Label className="text-xs text-muted-foreground">Multiplicador individual</Label>
+                   <div className="text-lg font-medium">
+                     {multiplicadorDefinido ? `${multiplicador.toFixed(2)}x` : <span className="text-muted-foreground text-base">não definido</span>}
+                   </div>
                  </div>
                  <div>
                    <Label className="text-xs text-muted-foreground">Bônus com multiplicador</Label>
                    <div className="text-lg font-medium">{formatCurrency(bonusComMultiplicador)}</div>
                  </div>
                  <div>
-                   <Label className="text-xs text-muted-foreground">Folgas (auto)</Label>
+                   <Label className="text-xs text-muted-foreground">Folgas conquistadas</Label>
                    <div className="text-lg font-medium">{folgasAuto}</div>
                  </div>
                </div>
+
+               {/* Linha 3: Liderança (só heads/líderes) */}
                {isHeadOuLider && (
-                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-2 border-t border-border/60">
+                 <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border/60">
                    <div>
-                     <Label className="text-xs text-muted-foreground">Editores sob responsabilidade</Label>
+                     <Label className="text-xs text-muted-foreground">Editores supervisionados</Label>
                      <div className="text-lg font-medium">{form.responsaveis_ids.length}</div>
                    </div>
                    <div>
-                     <Label className="text-xs text-muted-foreground">+ 20% da comissão do time</Label>
+                     <Label className="text-xs text-muted-foreground">+ {(pctLideranca * 100).toFixed(0)}% bônus de liderança</Label>
                      <div className="text-lg font-medium text-primary">{formatCurrency(bonusResponsaveis)}</div>
                    </div>
                    <div>
-                     <Label className="text-xs text-muted-foreground">Subtotal (multiplicador + liderança)</Label>
+                     <Label className="text-xs text-muted-foreground">Subtotal (mult. + liderança)</Label>
                      <div className="text-lg font-medium">{formatCurrency(bonusTotalCalculado)}</div>
                    </div>
                  </div>
                )}
+
+               {/* Linha 4: Total final + override */}
                <div className="grid grid-cols-2 gap-4 items-end pt-2 border-t border-border/60">
                  <div>
                    <Label className="text-xs text-muted-foreground">Bônus total calculado</Label>
                    <div className="text-2xl font-semibold text-primary">{formatCurrency(bonusTotalCalculado)}</div>
                  </div>
-                <div>
-                  <Label>Override do bônus total (opcional)</Label>
-                  <Input type="number" placeholder={String(bonusTotalCalculado)}
-                    value={form.bonus_total_override}
-                    onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
-                </div>
-              </div>
-            </div>
+                 <div>
+                   <Label>Ajuste manual (opcional)</Label>
+                   <Input type="number" placeholder={String(bonusTotalCalculado)}
+                     value={form.bonus_total_override}
+                     onChange={e => setForm({ ...form, bonus_total_override: e.target.value })} />
+                 </div>
+               </div>
+             </div>
 
             <div><Label>Feedback</Label><Textarea rows={3} value={form.feedback} onChange={e => setForm({ ...form, feedback: e.target.value })} /></div>
 

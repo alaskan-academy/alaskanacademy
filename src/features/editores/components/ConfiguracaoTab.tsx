@@ -8,11 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
-import { Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Pencil, GripVertical, Archive, ArchiveRestore, ChevronDown, ChevronRight } from 'lucide-react';
 
 type Categoria = 'individual' | 'grupo' | 'meta';
-type Opcao = { id: string; criterio_id: string; label: string; valor: number; ordem: number; ativo: boolean };
-type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; categoria: Categoria };
+type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
+type Criterio = { id: string; chave: string; label: string; tipo: 'single' | 'multi' | 'number'; ordem: number; ativo: boolean; arquivado: boolean; categoria: Categoria };
 
 const CATEGORIAS: { value: Categoria; label: string; description: string }[] = [
   { value: 'individual', label: 'Avaliação individual', description: 'Critérios avaliados por editor individualmente.' },
@@ -29,10 +29,11 @@ export function ConfiguracaoTab() {
   const [openCrit, setOpenCrit] = useState(false);
   const [editingCrit, setEditingCrit] = useState<Criterio | null>(null);
   const [critForm, setCritForm] = useState({ chave: '', label: '', tipo: 'single' as 'single'|'multi'|'number', ordem: 0, ativo: true, categoria: 'individual' as Categoria });
+  const [showArquivados, setShowArquivados] = useState(false);
 
   const [openOpt, setOpenOpt] = useState(false);
   const [editingOpt, setEditingOpt] = useState<Opcao | null>(null);
-  const [optForm, setOptForm] = useState({ criterio_id: '', label: '', valor: 0, ordem: 0, ativo: true });
+  const [optForm, setOptForm] = useState({ criterio_id: '', label: '', valor: 0, folgas: 0, ordem: 0, ativo: true });
 
   const load = async () => {
     setLoading(true);
@@ -69,21 +70,28 @@ export function ConfiguracaoTab() {
   const toggleCritAtivo = async (c: Criterio) => {
     await supabase.from('criterios_avaliacao').update({ ativo: !c.ativo }).eq('id', c.id); load();
   };
+  const arquivarCrit = async (c: Criterio) => {
+    if (!(await confirm({ title: 'Arquivar critério?', description: 'O critério será ocultado das novas avaliações e movido para a área de arquivados. Avaliações já salvas não serão afetadas.' }))) return;
+    await supabase.from('criterios_avaliacao').update({ arquivado: true, ativo: false }).eq('id', c.id); load();
+  };
+  const desarquivarCrit = async (c: Criterio) => {
+    await supabase.from('criterios_avaliacao').update({ arquivado: false, ativo: true }).eq('id', c.id); load();
+  };
 
   const openNewOpt = (criterio_id: string) => {
     setEditingOpt(null);
     const len = opcoes.filter(o => o.criterio_id === criterio_id).length;
-    setOptForm({ criterio_id, label: '', valor: 0, ordem: len + 1, ativo: true });
+    setOptForm({ criterio_id, label: '', valor: 0, folgas: 0, ordem: len + 1, ativo: true });
     setOpenOpt(true);
   };
   const openEditOpt = (o: Opcao) => {
     setEditingOpt(o);
-    setOptForm({ criterio_id: o.criterio_id, label: o.label, valor: Number(o.valor), ordem: o.ordem, ativo: o.ativo });
+    setOptForm({ criterio_id: o.criterio_id, label: o.label, valor: Number(o.valor), folgas: Number(o.folgas ?? 0), ordem: o.ordem, ativo: o.ativo });
     setOpenOpt(true);
   };
   const saveOpt = async () => {
     if (!optForm.label) return toast({ title: 'Label obrigatório', variant: 'destructive' });
-    const payload = { ...optForm, valor: Number(optForm.valor), ordem: Number(optForm.ordem) };
+    const payload = { ...optForm, valor: Number(optForm.valor), folgas: Number(optForm.folgas ?? 0), ordem: Number(optForm.ordem) };
     const res = editingOpt
       ? await supabase.from('criterio_opcoes').update(payload).eq('id', editingOpt.id)
       : await supabase.from('criterio_opcoes').insert(payload);
@@ -111,7 +119,7 @@ export function ConfiguracaoTab() {
       {loading ? <div className="p-6 text-center text-muted-foreground">Carregando...</div> : (
         <div className="space-y-6">
           {CATEGORIAS.map(cat => {
-            const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value);
+            const critsCat = criterios.filter(c => (c.categoria || 'individual') === cat.value && !c.arquivado);
             return (
               <div key={cat.value} className="space-y-3">
                 <div className="flex items-baseline justify-between gap-3 border-b border-border pb-2">
@@ -140,6 +148,7 @@ export function ConfiguracaoTab() {
                         <div className="flex items-center gap-2">
                           <Switch checked={c.ativo} onCheckedChange={() => toggleCritAtivo(c)} />
                           <Button size="sm" variant="ghost" onClick={() => openEditCrit(c)}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" title="Arquivar" onClick={() => arquivarCrit(c)}><Archive className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
@@ -150,7 +159,14 @@ export function ConfiguracaoTab() {
                           <div key={o.id} className={`flex items-center justify-between gap-3 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
                             <div className="min-w-0 truncate">{o.label}</div>
                             <div className="flex items-center gap-3 shrink-0">
-                              <span className="text-xs text-muted-foreground">R$ {Number(o.valor)}</span>
+                              <span className={`text-xs font-medium ${Number(o.valor) < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {Number(o.valor) < 0 ? `− R$ ${Math.abs(Number(o.valor))}` : `R$ ${Number(o.valor)}`}
+                              </span>
+                              {Number(o.folgas ?? 0) > 0 && (
+                                <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                  {Number(o.folgas)}f
+                                </span>
+                              )}
                               <Switch checked={o.ativo} onCheckedChange={() => toggleOptAtivo(o)} />
                               <Button size="sm" variant="ghost" onClick={() => openEditOpt(o)}><Pencil className="h-3.5 w-3.5" /></Button>
                               <Button size="sm" variant="ghost" onClick={() => removeOpt(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -167,7 +183,45 @@ export function ConfiguracaoTab() {
               </div>
             );
           })}
-          {criterios.length === 0 && <div className="p-8 text-center text-muted-foreground bg-card border border-border rounded-lg">Nenhum critério criado ainda</div>}
+          {criterios.filter(c => !c.arquivado).length === 0 && <div className="p-8 text-center text-muted-foreground bg-card border border-border rounded-lg">Nenhum critério criado ainda</div>}
+
+          {/* Seção de arquivados */}
+          {criterios.some(c => c.arquivado) && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowArquivados(v => !v)}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full border-t border-border pt-3"
+              >
+                {showArquivados ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <Archive className="h-4 w-4" />
+                Arquivados ({criterios.filter(c => c.arquivado).length})
+              </button>
+              {showArquivados && (
+                <div className="space-y-2 pl-1">
+                  {criterios.filter(c => c.arquivado).map(c => (
+                    <div key={c.id} className="bg-card border border-border rounded-lg opacity-60 hover:opacity-80 transition-opacity">
+                      <div className="flex items-center justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{c.label}</span>
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{c.tipo}</span>
+                            <span className="text-xs text-muted-foreground">#{c.chave}</span>
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">arquivado</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="ghost" title="Desarquivar" onClick={() => desarquivarCrit(c)}>
+                            <ArchiveRestore className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => removeCrit(c.id)}><Trash2 className="h-4 w-4" /></Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -213,9 +267,20 @@ export function ConfiguracaoTab() {
           <DialogHeader><DialogTitle>{editingOpt ? 'Editar opção' : 'Nova opção'}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Label</Label><Input value={optForm.label} onChange={e => setOptForm({ ...optForm, label: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label>Valor (R$)</Label><Input type="number" value={optForm.valor} onChange={e => setOptForm({ ...optForm, valor: Number(e.target.value) })} /></div>
-              <div><Label>Ordem</Label><Input type="number" value={optForm.ordem} onChange={e => setOptForm({ ...optForm, ordem: Number(e.target.value) })} /></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Valor (R$)</Label>
+                <Input type="number" value={optForm.valor} onChange={e => setOptForm({ ...optForm, valor: Number(e.target.value) })} />
+              </div>
+              <div>
+                <Label>Folgas</Label>
+                <Input type="number" min={0} step={0.5} value={optForm.folgas} onChange={e => setOptForm({ ...optForm, folgas: Number(e.target.value) })}
+                  placeholder="0" />
+              </div>
+              <div>
+                <Label>Ordem</Label>
+                <Input type="number" value={optForm.ordem} onChange={e => setOptForm({ ...optForm, ordem: Number(e.target.value) })} />
+              </div>
             </div>
             <div className="flex items-center gap-2"><Switch checked={optForm.ativo} onCheckedChange={v => setOptForm({ ...optForm, ativo: v })} /><Label>Ativo</Label></div>
           </div>

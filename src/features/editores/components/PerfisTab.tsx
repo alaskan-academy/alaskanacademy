@@ -29,7 +29,7 @@ export function PerfisTab() {
     setLoading(true);
     const [c, e] = await Promise.all([
       supabase.from('cargos').select('*').order('ordem'),
-      supabase.from('editores').select('*').order('nome'),
+      supabase.from('editores').select('*').not('usuario_id', 'is', null).order('nome'),
     ]);
     const cgs: Cargo[] = c.data || [];
     const eds: Editor[] = e.data || [];
@@ -83,18 +83,19 @@ export function PerfisTab() {
                   'w-full text-left px-4 py-3 flex items-center justify-between transition-colors',
                   canView ? 'hover:bg-secondary/50 cursor-pointer' : 'cursor-default',
                   selected?.id === ed.id ? 'bg-secondary' : '',
+                  !ed.ativo && 'opacity-50',
                 )}
               >
                 <div className={cn('min-w-0 flex-1', !canView && 'blur-sm select-none')}>
                   <div className="text-sm font-medium truncate flex items-center gap-2">
                     {ed.nome}
-                    {!ed.ativo && <Badge variant="outline" className="text-xs">inativo</Badge>}
+                    {!ed.ativo && <Badge variant="outline" className="text-xs text-muted-foreground">inativo</Badge>}
                   </div>
                   {cg && (
                     <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                       <span className="inline-block w-2 h-2 rounded-full" style={{ background: cg.cor || '#888' }} />
-                      {cg.nome} · <span className={cn(ed.multiplicador != null && 'text-primary font-medium')}>
-                        {Number(ed.multiplicador ?? cg.multiplicador).toFixed(2)}x
+                      {cg.nome} · <span className={cn(ed.multiplicador != null ? 'text-primary font-medium' : 'text-muted-foreground')}>
+                        {ed.multiplicador != null ? `${Number(ed.multiplicador).toFixed(2)}x` : '—'}
                       </span>
                     </div>
                   )}
@@ -116,7 +117,7 @@ export function PerfisTab() {
             cargos={cargos}
             cargoMap={cargoMap}
             onChanged={load}
-            isAdmin={isAdmin}
+            isAdmin={false}
           />
         ) : (
           <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
@@ -160,6 +161,7 @@ function ObservacoesExpandable({ html }: { html: string }) {
   );
 }
 
+
 function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
   editor: Editor; cargos: Cargo[]; cargoMap: Record<string, Cargo>;
   onChanged: () => void; isAdmin: boolean;
@@ -202,7 +204,7 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
                     {Number(editor.multiplicador).toFixed(2)}x <span className="opacity-60 ml-1">(individual)</span>
                   </Badge>
                 ) : (
-                  <Badge variant="secondary">{Number(cargoAtual.multiplicador).toFixed(2)}x</Badge>
+                  <Badge variant="outline" className="text-muted-foreground">não definido</Badge>
                 )}
               </div>
             )}
@@ -210,9 +212,7 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
               <div className="bg-secondary border border-border rounded-lg px-4 py-2 text-center min-w-[90px]">
                 <div className="text-xs text-muted-foreground mb-0.5">Multiplicador</div>
                 <div className="text-xl font-bold text-primary">
-                  {cargoAtual
-                    ? Number(editor.multiplicador ?? cargoAtual.multiplicador).toFixed(2) + 'x'
-                    : editor.multiplicador != null ? Number(editor.multiplicador).toFixed(2) + 'x' : '—'}
+                  {editor.multiplicador != null ? Number(editor.multiplicador).toFixed(2) + 'x' : '—'}
                 </div>
                 {editor.multiplicador != null && (
                   <div className="text-xs text-muted-foreground mt-0.5">individual</div>
