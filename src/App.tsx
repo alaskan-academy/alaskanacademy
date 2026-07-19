@@ -19,7 +19,6 @@ import EditorsPage from "./features/editores/pages/EditorsPage";
 import SettingsPage from "./features/admin/pages/SettingsPage";
 import AdminPage from "./features/admin/pages/AdminPage";
 import RadarPage from "./features/radar/pages/RadarPage";
-import AtivosPage from "./features/ads/pages/AtivosPage";
 import ReferenciasPage from "./features/referencias/pages/ReferenciasPage";
 import LaboratorioPage from "./features/laboratorio/pages/LaboratorioPage";
 import ProcessosPage from "./features/processos/pages/ProcessosPage";
@@ -30,6 +29,7 @@ import FinanceiroFechamentoPage from "./features/financeiro/pages/FinanceiroFech
 import FinanceiroConciliacaoPage from "./features/financeiro/pages/FinanceiroConciliacaoPage";
 import FinanceiroNotasFiscaisPage from "./features/financeiro/pages/FinanceiroNotasFiscaisPage";
 import FinanceiroCaixaPage from "./features/financeiro/pages/FinanceiroCaixaPage";
+import AcessosPage from "./features/acessos/pages/AcessosPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,7 +54,6 @@ const App = () => (
                   <Route path="/clientes" element={<ProtectedRoute pageKey="clientes"><ClientsPage /></ProtectedRoute>} />
                   <Route path="/editores" element={<ProtectedRoute pageKey="editores"><EditorsPage /></ProtectedRoute>} />
                   <Route path="/laboratorio" element={<ProtectedRoute pageKey="laboratorio"><LaboratorioPage /></ProtectedRoute>} />
-                  <Route path="/ativos" element={<ProtectedRoute pageKey="ativos"><AtivosPage /></ProtectedRoute>} />
                   <Route path="/processos" element={<ProtectedRoute pageKey="processos"><ProcessosPage /></ProtectedRoute>} />
                   <Route path="/processos/c/:categoriaId" element={<ProtectedRoute pageKey="processos"><ProcessosCategoriaPage /></ProtectedRoute>} />
                   <Route path="/processos/:artigoId" element={<ProtectedRoute pageKey="processos"><ProcessosArtigoPage /></ProtectedRoute>} />
@@ -64,6 +63,7 @@ const App = () => (
                   <Route path="/financeiro/conciliacao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroConciliacaoPage /></ProtectedRoute>} />
                   <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute pageKey="financeiro"><FinanceiroNotasFiscaisPage /></ProtectedRoute>} />
                   <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />
+                  <Route path="/acessos" element={<ProtectedRoute pageKey="acessos"><AcessosPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                   <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />

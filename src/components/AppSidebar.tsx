@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, Shield, Lock, GraduationCap, Wallet, FlaskConical,
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -28,13 +28,12 @@ const ALL_SUB_PAGES = [
 ];
 
 const ALL_FIXED_ITEMS = [
-  { path: '/laboratorio',    label: 'Laboratório',    icon: FlaskConical,  key: 'laboratorio',   adminOnly: false },
-  { path: '/processos',      label: 'Processos',      icon: GraduationCap, key: 'processos',     adminOnly: false },
-  { path: '/ativos',         label: 'Ativos Meta',    icon: Shield,       key: 'ativos',         adminOnly: false },
-  { path: '/editores',       label: 'Editores',       icon: BarChart3,    key: 'editores',       adminOnly: false },
-  { path: '/financeiro',     label: 'Financeiro',     icon: Wallet,       key: 'financeiro',     adminOnly: false },
-  { path: '/configuracoes',  label: 'Configurações',  icon: Settings,     key: 'configuracoes',  adminOnly: false },
-  { path: '/administrativo', label: 'Administrativo', icon: Lock,         key: 'administrativo', adminOnly: true  },
+  { path: '/laboratorio',   label: 'Laboratório',   icon: FlaskConical,  key: 'laboratorio',  adminOnly: false },
+  { path: '/processos',     label: 'Processos',     icon: GraduationCap, key: 'processos',    adminOnly: false },
+  { path: '/editores',      label: 'Editores',      icon: BarChart3,     key: 'editores',     adminOnly: false },
+  { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false },
+  { path: '/acessos',       label: 'Acessos',       icon: KeyRound,      key: 'acessos',      adminOnly: false },
+  { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true  },
 ];
 
 const prodColors: Record<string, string> = {
