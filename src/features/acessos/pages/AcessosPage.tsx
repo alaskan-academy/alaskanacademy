@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
@@ -106,7 +107,12 @@ function AcessoRow({ a, isAdmin, onEdit, onDelete }: {
       <div className="w-44 shrink-0">
         <span className="text-sm font-medium">{a.ferramenta}</span>
         {a.notas && (
-          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 truncate max-w-[168px]">{a.notas}</p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 truncate max-w-[168px] cursor-default">{a.notas}</p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-xs text-xs whitespace-pre-wrap">{a.notas}</TooltipContent>
+          </Tooltip>
         )}
       </div>
       <div className="flex-1 min-w-0 flex items-center gap-0.5">
