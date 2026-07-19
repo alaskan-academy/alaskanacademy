@@ -49,6 +49,8 @@ const SETOR_DOT: Record<string, string> = {
 
 const CONF_KEY = 'setores_acessos';
 
+const sortSetores = (arr: string[]) => [...arr].sort((a, b) => a.localeCompare(b, 'pt'));
+
 const blankForm = (setor = '') => ({
   ferramenta: '', setor, url: '', login: '',
   senha: '', status: 'ativo' as 'ativo' | 'inativo', notas: '',
@@ -233,7 +235,7 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
       return;
     }
     const oldName = list[i];
-    const updated = list.map((s, j) => j === i ? trimmed : s);
+    const updated = sortSetores(list.map((s, j) => j === i ? trimmed : s));
     setSaving(true);
     // Bulk-update acessos that use the old name
     if (usageCount(oldName) > 0) {
@@ -274,7 +276,7 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
       toast({ title: 'Setor já existe', variant: 'destructive' });
       return;
     }
-    const updated = [...list, trimmed].sort((a, b) => a.localeCompare(b, 'pt'));
+    const updated = sortSetores([...list, trimmed]);
     setSaving(true);
     await onSave(updated);
     setList(updated);
@@ -392,7 +394,7 @@ export default function AcessosPage() {
       .eq('key', CONF_KEY)
       .maybeSingle();
     if (data?.value) {
-      try { setSetores(JSON.parse(data.value)); } catch { /* usa default */ }
+      try { setSetores(sortSetores(JSON.parse(data.value))); } catch { /* usa default */ }
     }
   };
 
