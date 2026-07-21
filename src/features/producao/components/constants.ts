@@ -55,13 +55,13 @@ export const STATUS_VEICULACAO_LABEL: Record<string, string> = {
   pausado:   'Pausado',
   encerrado: 'Encerrado',
   bloqueado: 'Bloqueado',
+  arquivado: 'Arquivado',
 };
 
 export const AVALIACAO_LABEL: Record<string, string> = {
   sem_dados:    'Sem dados',
   validado:     'Validado',
   nao_validado: 'Não validado',
-  arquivado:    'Arquivado',
 };
 
 export const STATUS_PRODUCAO_LABEL: Record<string, string> = {
