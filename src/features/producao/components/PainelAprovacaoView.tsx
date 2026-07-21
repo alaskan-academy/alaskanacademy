@@ -112,13 +112,30 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
       {fasesVisiveis.map(fase => {
         const items = porFase[fase] ?? [];
         if (!items.length) return null;
+
+        // Agrupa por funil dentro da fase
+        const funilOrder: string[] = [];
+        const porFunil: Record<string, Criativo[]> = {};
+        for (const c of items) {
+          const key = c.funil?.nome ?? '— Sem funil —';
+          if (!porFunil[key]) { porFunil[key] = []; funilOrder.push(key); }
+          porFunil[key].push(c);
+        }
+
         return (
           <div key={fase}>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               {FASES_MAP[fase] ?? fase} — {items.length}
             </h3>
+            {funilOrder.map(funilNome => (
+              <div key={funilNome} className="mb-4">
+                {funilOrder.length > 1 && (
+                  <p className="text-[11px] font-medium text-muted-foreground/60 mb-2 px-1 uppercase tracking-wider">
+                    {funilNome}
+                  </p>
+                )}
             <div className="flex flex-col gap-2">
-              {items.map(c => (
+              {porFunil[funilNome].map(c => (
                 <div key={c.id} className="border border-border rounded-lg p-3 bg-card">
                   {/* Card principal */}
                   <div className="flex items-start gap-3">
@@ -203,6 +220,8 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
                 </div>
               ))}
             </div>
+              </div>
+            ))}
           </div>
         );
       })}

@@ -46,6 +46,11 @@ export function CriativoCard({ criativo, onClick }: Props) {
           )}
         </div>
       )}
+      {criativo.notas && (
+        <p className="mt-1.5 text-[10.5px] text-muted-foreground/70 line-clamp-2 leading-relaxed border-t border-border/40 pt-1.5">
+          {criativo.notas}
+        </p>
+      )}
     </button>
   );
 }

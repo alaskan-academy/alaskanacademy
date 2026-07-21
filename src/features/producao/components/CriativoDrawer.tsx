@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -588,32 +590,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           <Separator />
 
           {/* Histórico */}
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />Histórico de alterações
-            </p>
-            {historico.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhum registro</p>
-            ) : (
-              <div className="space-y-3">
-                {historico.map(h => (
-                  <div key={h.id} className="flex gap-2.5 text-xs">
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30 mt-1.5 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-muted-foreground font-medium">{h.usuario?.nome ?? 'Sistema'} </span>
-                      <HistoricoText entry={h} />
-                      <div className="text-[10.5px] text-muted-foreground/50 mt-0.5">
-                        {new Date(h.criado_em).toLocaleString('pt-BR', {
-                          day: '2-digit', month: '2-digit', year: '2-digit',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <HistoricoSection historico={historico} />
         </div>
       </SheetContent>
     </Sheet>
@@ -729,6 +706,56 @@ function Field({ label, editing, children }: { label: string; editing: boolean; 
     <div>
       <Label className="text-[10.5px] text-muted-foreground">{label}</Label>
       <div className={cn('text-xs text-foreground', editing ? '' : 'mt-0.5')}>{children}</div>
+    </div>
+  );
+}
+
+function HistoricoSection({ historico }: { historico: HistoricoEntry[] }) {
+  const [expandido, setExpandido] = useState(false);
+  const PREVIEW = 3;
+  const total = historico.length;
+  const exibidos = expandido ? historico : historico.slice(0, PREVIEW);
+
+  return (
+    <div>
+      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+        <Clock className="h-3 w-3" />
+        Histórico de alterações
+        {total > 0 && (
+          <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+            {total}
+          </span>
+        )}
+      </p>
+      {total === 0 ? (
+        <p className="text-xs text-muted-foreground">Nenhum registro</p>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {exibidos.map(h => (
+              <div key={h.id} className="flex gap-2 text-xs text-muted-foreground">
+                <span className="shrink-0 mt-0.5 h-1.5 w-1.5 rounded-full bg-border ring-1 ring-border mt-[5px]" />
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-foreground/80">{h.usuario?.nome ?? 'Sistema'}</span>
+                  {' '}
+                  <HistoricoText entry={h} />
+                  <span className="block text-[10px] text-muted-foreground/60 mt-0.5">
+                    {formatDistanceToNow(new Date(h.criado_em), { addSuffix: true, locale: ptBR })}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {total > PREVIEW && (
+            <button
+              onClick={() => setExpandido(e => !e)}
+              className="mt-3 text-[10.5px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {expandido ? 'Recolher' : `Ver tudo (${total})`}
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }
