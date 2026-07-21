@@ -32,6 +32,7 @@ import FinanceiroCaixaPage from "./features/financeiro/pages/FinanceiroCaixaPage
 import AcessosPage from "./features/acessos/pages/AcessosPage";
 import ProducaoPage from "./features/producao/pages/ProducaoPage";
 import NotFound from "./pages/NotFound";
+import { CommandPalette } from "@/components/CommandPalette";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ const App = () => (
             <ConfirmProvider>
               <Toaster />
               <BrowserRouter>
+                <CommandPalette />
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/setup" element={<SetupPage />} />

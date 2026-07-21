@@ -3,7 +3,7 @@ import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
 import { useSidebarState } from '@/contexts/SidebarContext';
 import { useFilters } from '@/contexts/FilterContext';
-import { Menu } from 'lucide-react';
+import { Menu, Search } from 'lucide-react';
 
 export function DashboardLayout({
   children,
@@ -32,7 +32,17 @@ export function DashboardLayout({
               )}
               <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">{title}</h1>
             </div>
-            {!hideFilters && <GlobalFilters />}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => document.dispatchEvent(new CustomEvent('openCommandPalette'))}
+                className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border/60 rounded-md px-2.5 py-1.5 hover:bg-accent transition-colors"
+              >
+                <Search className="h-3.5 w-3.5" />
+                <span>Buscar</span>
+                <kbd className="ml-1 text-[10px] bg-muted px-1 py-0.5 rounded font-mono">Ctrl+K</kbd>
+              </button>
+              {!hideFilters && <GlobalFilters />}
+            </div>
           </div>
         </header>
         <main className="p-4 md:p-6 animate-fade-in">
