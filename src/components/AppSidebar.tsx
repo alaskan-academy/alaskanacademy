@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound,
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -33,6 +33,7 @@ const ALL_FIXED_ITEMS = [
   { path: '/editores',      label: 'Editores',      icon: BarChart3,     key: 'editores',     adminOnly: false },
   { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false },
   { path: '/acessos',       label: 'Acessos',       icon: KeyRound,      key: 'acessos',      adminOnly: false },
+  { path: '/producao',      label: 'Produção',      icon: Film,          key: 'producao',     adminOnly: false },
   { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true  },
 ];
 

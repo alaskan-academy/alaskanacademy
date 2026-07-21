@@ -45,7 +45,7 @@ const STATUS_CFG: Record<StatusAtivo, { label: string; dot: string; badge: strin
   unknown: { label: 'Desconhecido', dot: 'bg-muted-foreground/50',                                       badge: 'bg-muted text-muted-foreground border-border' },
 };
 
-const tipoIcon = (tipo: TipoAtivo) => TIPOS.find(t => t.value === tipo)?.icon ?? Shield;
+const tipoIcon  = (tipo: TipoAtivo) => TIPOS.find(t => t.value === tipo)?.icon ?? Shield;
 const tipoLabel = (tipo: TipoAtivo) => TIPOS.find(t => t.value === tipo)?.label ?? tipo;
 
 const blankForm = () => ({
@@ -66,7 +66,7 @@ function useCopy() {
   return { copied, copy };
 }
 
-// ─── Linha de ativo (lista flat) ─────────────────────────────────────────────
+// ─── Linha de ativo ───────────────────────────────────────────────────────────
 
 function AtivoRow({ a, bmName, isAdmin, onEdit, onDelete, copied, copy }: {
   a: Ativo; bmName: string;
@@ -78,7 +78,6 @@ function AtivoRow({ a, bmName, isAdmin, onEdit, onDelete, copied, copy }: {
 
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors group">
-      {/* Ícone + nome */}
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <div className="flex-1 min-w-0">
         <span className="text-sm font-medium truncate">{a.nome}</span>
@@ -86,13 +85,9 @@ function AtivoRow({ a, bmName, isAdmin, onEdit, onDelete, copied, copy }: {
           <span className="ml-2 text-[11px] text-muted-foreground italic truncate hidden sm:inline">{a.notas}</span>
         )}
       </div>
-
-      {/* BM (tela grande) */}
       {bmName && (
         <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[140px] shrink-0">{bmName}</span>
       )}
-
-      {/* Asset ID — copiar */}
       <button
         onClick={() => copy(a.asset_id)}
         className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
@@ -103,14 +98,10 @@ function AtivoRow({ a, bmName, isAdmin, onEdit, onDelete, copied, copy }: {
           ? <Check className="h-3 w-3 text-emerald-400" />
           : <Copy className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />}
       </button>
-
-      {/* Status badge */}
       <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0 hidden sm:block', st.badge)}>
         {st.label}
       </span>
       <div className={cn('w-2 h-2 rounded-full shrink-0 sm:hidden', st.dot)} />
-
-      {/* Ações (admin) */}
       {isAdmin && (
         <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={onEdit}>
@@ -125,7 +116,7 @@ function AtivoRow({ a, bmName, isAdmin, onEdit, onDelete, copied, copy }: {
   );
 }
 
-// ─── Seção de BM (agrupada) ───────────────────────────────────────────────────
+// ─── Seção de BM ─────────────────────────────────────────────────────────────
 
 function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, copy }: {
   bm: Ativo; children: Ativo[]; bmMap: Record<string, string>;
@@ -134,7 +125,6 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
 }) {
   const [open, setOpen] = useState(true);
 
-  // Resumo por tipo
   const summary = useMemo(() => {
     const counts: Partial<Record<TipoAtivo, number>> = {};
     for (const a of children) counts[a.tipo] = (counts[a.tipo] || 0) + 1;
@@ -145,7 +135,6 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden mb-3">
-      {/* Header da BM */}
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
@@ -156,7 +145,6 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
           <div className="text-[11px] text-muted-foreground mt-0.5">{summary || 'Nenhum ativo vinculado'}</div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* ID da BM */}
           <button
             onClick={e => { e.stopPropagation(); copy(bm.asset_id); }}
             className="hidden sm:flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -178,8 +166,6 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
           {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
         </div>
       </button>
-
-      {/* Lista de ativos */}
       {open && children.length > 0 && (
         <div className="border-t border-border divide-y divide-border/50">
           {children.map(a => (
@@ -193,20 +179,20 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
   );
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+// ─── Conteúdo exportável ──────────────────────────────────────────────────────
 
-export default function AtivosPage() {
+export function AtivosContent() {
   const { perfil } = useAuth();
   const isAdmin = perfil?.is_admin ?? false;
   const confirm = useConfirm();
   const { copied, copy } = useCopy();
 
-  const [ativos, setAtivos]     = useState<Ativo[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState('');
-  const [bmFilter, setBmFilter] = useState('all');
+  const [ativos, setAtivos]         = useState<Ativo[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState('');
+  const [bmFilter, setBmFilter]     = useState('all');
   const [tipoFilter, setTipoFilter] = useState<TipoAtivo | 'all'>('all');
-  const [view, setView]         = useState<'bm' | 'lista'>('bm');
+  const [view, setView]             = useState<'bm' | 'lista'>('bm');
 
   const [open, setOpen]           = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -226,10 +212,8 @@ export default function AtivosPage() {
   const bmMap  = useMemo(() => Object.fromEntries(bms.map(b => [b.asset_id, b.nome])), [bms]);
 
   const filtered = useMemo(() => {
-    // Na visão Por BM excluímos os próprios BMs da lista de filhos
     let list = view === 'lista' ? ativos.filter(a => a.tipo !== 'bm') : ativos;
     if (bmFilter !== 'all') list = list.filter(a => a.bm_id === bmFilter || a.asset_id === bmFilter);
-    // Filtro de tipo se aplica às duas visões (na Por BM filtra os filhos de cada BM)
     if (tipoFilter !== 'all') list = list.filter(a => a.tipo === tipoFilter);
     if (search) {
       const q = search.toLowerCase();
@@ -243,24 +227,22 @@ export default function AtivosPage() {
     return list;
   }, [ativos, bmFilter, tipoFilter, search, view]);
 
-  // Stats
   const total   = ativos.length;
   const ativos_ = ativos.filter(a => a.status === 'active').length;
   const bloq    = ativos.filter(a => a.status === 'blocked').length;
   const statCards = [
-    { label: 'Total',       value: total,                                    color: '' },
-    { label: 'Ativos',      value: ativos_,                                  color: 'text-emerald-400' },
-    { label: 'Bloqueados',  value: bloq,                                     color: bloq > 0 ? 'text-red-400' : '' },
-    { label: 'BMs',         value: ativos.filter(a => a.tipo === 'bm').length,        color: 'text-primary' },
-    { label: 'CAs',         value: ativos.filter(a => a.tipo === 'ca').length,        color: '' },
-    { label: 'Pixels',      value: ativos.filter(a => a.tipo === 'pixel').length,     color: '' },
-    { label: 'Domínios',    value: ativos.filter(a => a.tipo === 'domain').length,    color: '' },
-    { label: 'WhatsApp',    value: ativos.filter(a => a.tipo === 'whatsapp').length,  color: '' },
-    { label: 'Fanpages',    value: ativos.filter(a => a.tipo === 'fanpage').length,   color: '' },
-    { label: 'Instagram',   value: ativos.filter(a => a.tipo === 'instagram').length, color: '' },
+    { label: 'Total',      value: total,                                             color: '' },
+    { label: 'Ativos',     value: ativos_,                                           color: 'text-emerald-400' },
+    { label: 'Bloqueados', value: bloq,                                              color: bloq > 0 ? 'text-red-400' : '' },
+    { label: 'BMs',        value: ativos.filter(a => a.tipo === 'bm').length,        color: 'text-primary' },
+    { label: 'CAs',        value: ativos.filter(a => a.tipo === 'ca').length,        color: '' },
+    { label: 'Pixels',     value: ativos.filter(a => a.tipo === 'pixel').length,     color: '' },
+    { label: 'Domínios',   value: ativos.filter(a => a.tipo === 'domain').length,    color: '' },
+    { label: 'WhatsApp',   value: ativos.filter(a => a.tipo === 'whatsapp').length,  color: '' },
+    { label: 'Fanpages',   value: ativos.filter(a => a.tipo === 'fanpage').length,   color: '' },
+    { label: 'Instagram',  value: ativos.filter(a => a.tipo === 'instagram').length, color: '' },
   ];
 
-  // CRUD
   const openNew  = (tipo?: TipoAtivo) => { setEditingId(null); setForm({ ...blankForm(), tipo: tipo || 'ca' }); setOpen(true); };
   const openEdit = (a: Ativo) => {
     setEditingId(a.id);
@@ -269,8 +251,8 @@ export default function AtivosPage() {
   };
 
   const save = async () => {
-    if (!form.nome.trim())     return toast({ title: 'Nome obrigatório',         variant: 'destructive' });
-    if (!form.asset_id.trim()) return toast({ title: 'ID do ativo obrigatório',  variant: 'destructive' });
+    if (!form.nome.trim())     return toast({ title: 'Nome obrigatório',        variant: 'destructive' });
+    if (!form.asset_id.trim()) return toast({ title: 'ID do ativo obrigatório', variant: 'destructive' });
     setSaving(true);
     const payload = {
       tipo: form.tipo, nome: form.nome.trim(), asset_id: form.asset_id.trim(),
@@ -296,9 +278,8 @@ export default function AtivosPage() {
   };
 
   return (
-    <DashboardLayout title="Ativos Meta Ads">
-
-      {/* ── Cards de resumo ── */}
+    <>
+      {/* Cards de resumo */}
       <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 mb-5">
         {statCards.map(s => (
           <div key={s.label} className="bg-card border border-border rounded-lg px-3 py-2.5 text-center">
@@ -308,11 +289,9 @@ export default function AtivosPage() {
         ))}
       </div>
 
-      {/* ── Barra de controles ── */}
+      {/* Barra de controles */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="flex-1" />
-
-        {/* View toggle */}
         <div className="flex items-center bg-secondary border border-border rounded-lg p-0.5 text-xs">
           <button onClick={() => setView('bm')}
             className={cn('px-3 py-1 rounded-md font-medium transition-colors',
@@ -325,7 +304,6 @@ export default function AtivosPage() {
             Lista
           </button>
         </div>
-
         {isAdmin && (
           <Button size="sm" onClick={() => openNew()}>
             <Plus className="h-4 w-4 mr-1" /> Novo ativo
@@ -333,7 +311,7 @@ export default function AtivosPage() {
         )}
       </div>
 
-      {/* ── Filtros ── */}
+      {/* Filtros */}
       <div className="flex flex-wrap gap-2 mb-5">
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -358,12 +336,10 @@ export default function AtivosPage() {
         </Select>
       </div>
 
-      {/* ── Conteúdo ── */}
+      {/* Conteúdo */}
       {loading ? (
         <div className="text-center py-16 text-sm text-muted-foreground">Carregando...</div>
       ) : view === 'bm' ? (
-
-        /* ── Visão Por BM ── */
         <div>
           {bms
             .filter(bm => bmFilter === 'all' || bm.asset_id === bmFilter)
@@ -377,12 +353,8 @@ export default function AtivosPage() {
               );
             })}
         </div>
-
       ) : (
-
-        /* ── Visão Lista agrupada por tipo ── */
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          {/* Cabeçalho */}
           <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/30">
             <div className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nome</div>
             <div className="hidden lg:block w-[140px] text-xs font-semibold uppercase tracking-wide text-muted-foreground">BM</div>
@@ -390,11 +362,9 @@ export default function AtivosPage() {
             <div className="hidden sm:block w-20 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right">Status</div>
             {isAdmin && <div className="w-14" />}
           </div>
-
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground">Nenhum ativo encontrado.</div>
           ) : tipoFilter !== 'all' ? (
-            /* Filtrado por tipo — lista simples */
             <div className="divide-y divide-border/50">
               {filtered.map(a => (
                 <AtivoRow key={a.id} a={a} bmName={bmMap[a.bm_id || ''] || ''}
@@ -403,14 +373,12 @@ export default function AtivosPage() {
               ))}
             </div>
           ) : (
-            /* Sem filtro de tipo — agrupa por categoria com separador sutil */
             <>
               {TIPOS.filter(t => t.value !== 'bm').map(t => {
                 const grupo = filtered.filter(a => a.tipo === t.value);
                 if (grupo.length === 0) return null;
                 return (
                   <div key={t.value}>
-                    {/* Separador de tipo */}
                     <div className="flex items-center gap-2 px-4 py-1.5 bg-muted/20 border-t border-border/60">
                       <t.icon className="h-3 w-3 text-muted-foreground/70" />
                       <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -431,10 +399,9 @@ export default function AtivosPage() {
             </>
           )}
         </div>
-
       )}
 
-      {/* ── Dialog criar/editar ── */}
+      {/* Dialog criar/editar */}
       <Dialog open={open} onOpenChange={v => !v && setOpen(false)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -503,7 +470,16 @@ export default function AtivosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
 
+// ─── Página standalone (mantida para compatibilidade de rota) ─────────────────
+
+export default function AtivosPage() {
+  return (
+    <DashboardLayout title="Ativos Meta Ads">
+      <AtivosContent />
     </DashboardLayout>
   );
 }

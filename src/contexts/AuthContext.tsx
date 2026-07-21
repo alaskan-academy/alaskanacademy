@@ -13,15 +13,32 @@ export const PAGINAS = [
   { key: 'configuracoes', path: '/configuracoes', label: 'Configurações' },
   { key: 'laboratorio',   path: '/laboratorio',   label: 'Laboratório' },
   { key: 'processos',     path: '/processos',     label: 'Processos' },
-  { key: 'acessos',      path: '/acessos',       label: 'Acessos' },
+  { key: 'acessos',    path: '/acessos',    label: 'Acessos'   },
+  { key: 'producao',   path: '/producao',   label: 'Produção'  },
 ] as const;
 
 export type PaginaKey = (typeof PAGINAS)[number]['key'];
 
-interface Perfil {
+interface Cargo {
+  id: string;
+  nome: string;
+  ordem: number;
+  pode_aprovar: boolean;
+}
+
+interface Setor {
+  id: string;
+  nome: string;
+}
+
+export interface Perfil {
   nome: string;
   is_admin: boolean;
   radar_pode_criar: boolean;
+  cargo_id: string | null;
+  setor_id: string | null;
+  cargo: Cargo | null;
+  setor: Setor | null;
 }
 
 interface AuthContextType {
@@ -45,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadPerfil = async (uid: string) => {
     const { data } = await supabase
       .from('perfis')
-      .select('nome, is_admin')
+      .select('nome, is_admin, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
       .eq('id', uid)
       .single();
     setPerfil(data ?? null);

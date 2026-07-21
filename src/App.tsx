@@ -30,6 +30,7 @@ import FinanceiroConciliacaoPage from "./features/financeiro/pages/FinanceiroCon
 import FinanceiroNotasFiscaisPage from "./features/financeiro/pages/FinanceiroNotasFiscaisPage";
 import FinanceiroCaixaPage from "./features/financeiro/pages/FinanceiroCaixaPage";
 import AcessosPage from "./features/acessos/pages/AcessosPage";
+import ProducaoPage from "./features/producao/pages/ProducaoPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,7 +64,8 @@ const App = () => (
                   <Route path="/financeiro/conciliacao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroConciliacaoPage /></ProtectedRoute>} />
                   <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute pageKey="financeiro"><FinanceiroNotasFiscaisPage /></ProtectedRoute>} />
                   <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />
-                  <Route path="/acessos" element={<ProtectedRoute pageKey="acessos"><AcessosPage /></ProtectedRoute>} />
+                  <Route path="/acessos"  element={<ProtectedRoute pageKey="acessos"><AcessosPage /></ProtectedRoute>} />
+                  <Route path="/producao" element={<ProtectedRoute pageKey="producao"><ProducaoPage /></ProtectedRoute>} />
                   <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                   <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
                   <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />

@@ -1,99 +1,12 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DashboardLayout } from '@/components/DashboardLayout';
-import { useAuth } from '@/contexts/AuthContext';
-import { cn } from '@/lib/utils';
-
-import { GerenciarUsuariosTab } from '@/features/admin/components/GerenciarUsuariosTab';
-import { SetoresTab }           from '@/features/admin/components/SetoresTab';
-import DashboardsSettings       from '@/features/admin/components/DashboardsSettings';
-
-import { Users, Layers, LayoutDashboard } from 'lucide-react';
-
-type TabId = 'usuarios' | 'setores' | 'dashboards';
-
-interface TabDef {
-  id: TabId;
-  label: string;
-  icon: React.ElementType;
-  group: string;
-}
-
-const TABS: TabDef[] = [
-  { group: 'Pessoas',  id: 'usuarios',   label: 'Usuários',           icon: Users          },
-  { group: 'Pessoas',  id: 'setores',    label: 'Setores & Cargos',   icon: Layers         },
-  { group: 'Sistema',  id: 'dashboards', label: 'Dashboards',         icon: LayoutDashboard },
-];
-
-const GROUPS = ['Pessoas', 'Sistema'];
 
 export default function AdminPage() {
-  const { perfil } = useAuth();
-  const navigate   = useNavigate();
-  const [active, setActive] = useState<TabId>('usuarios');
+  const navigate = useNavigate();
 
-  if (!perfil?.is_admin) {
-    navigate('/');
-    return null;
-  }
+  useEffect(() => {
+    navigate('/configuracoes', { replace: true });
+  }, [navigate]);
 
-  const renderContent = () => {
-    switch (active) {
-      case 'usuarios':   return <GerenciarUsuariosTab />;
-      case 'setores':    return <SetoresTab />;
-      case 'dashboards': return <DashboardsSettings />;
-    }
-  };
-
-  return (
-    <DashboardLayout title="Administrativo">
-      <div className="flex gap-6 min-h-[600px]">
-
-        {/* Nav lateral */}
-        <nav className="w-44 shrink-0">
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            {GROUPS.map((group, gi) => {
-              const groupTabs = TABS.filter(t => t.group === group);
-              return (
-                <div key={group}>
-                  {gi > 0 && <div className="border-t border-border" />}
-                  <div className="px-3 pt-3 pb-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                      {group}
-                    </p>
-                  </div>
-                  <div className="pb-2 px-1.5 space-y-0.5">
-                    {groupTabs.map(tab => {
-                      const Icon     = tab.icon;
-                      const isActive = active === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          onClick={() => setActive(tab.id)}
-                          className={cn(
-                            'flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm transition-colors text-left',
-                            isActive
-                              ? 'bg-primary/15 text-primary font-medium'
-                              : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-                          )}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{tab.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </nav>
-
-        {/* Conteúdo */}
-        <div className="flex-1 min-w-0">
-          {renderContent()}
-        </div>
-      </div>
-    </DashboardLayout>
-  );
+  return null;
 }
