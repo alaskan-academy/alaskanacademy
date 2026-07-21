@@ -56,6 +56,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [opPlataforma, setOpPlataforma]           = useState<string[]>(FALLBACK_PLATAFORMAS);
   const [opTipoTeste, setOpTipoTeste]             = useState<string[]>(FALLBACK_TIPOS_TESTE);
   const [opNivelConsciencia, setOpNivelConsciencia] = useState<string[]>(FALLBACK_NIVEIS_CONSCIENCIA);
+  const [opFunilVideo, setOpFunilVideo]           = useState<string[]>(['TSL', 'VSL', 'QUIZ']);
   const [projetos, setProjetos]                   = useState<{ id: string; nome: string }[]>([]);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
@@ -74,10 +75,12 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       const plt = byField('plataforma');
       const tst = byField('tipo_teste');
       const niv = byField('nivel_consciencia');
+      const fv  = byField('funil_video');
       if (fmt.length)  setOpFormato(fmt);
       if (plt.length)  setOpPlataforma(plt);
       if (tst.length)  setOpTipoTeste(tst);
       if (niv.length)  setOpNivelConsciencia(niv);
+      if (fv.length)   setOpFunilVideo(fv);
     }
     if (pj) setProjetos(pj as { id: string; nome: string }[]);
   }, []);
@@ -416,15 +419,18 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <Field label="Funil de Vídeo" editing={editing}>
                   {editing ? (
-                    <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {['TSL', 'VSL', 'QUIZ', 'Vídeo', 'Estático'].map(v => (
-                          <SelectItem key={v} value={v}>{v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opFunilVideo.map(v => (
+                            <SelectItem key={v} value={v}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vídeo" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : <span>{criativo.funil_video ?? '—'}</span>}
                 </Field>
                 <Field label="Formato" editing={editing}>

@@ -10,16 +10,14 @@ import { useToast } from '@/hooks/use-toast';
 import { getDefaultFase, TIPOS_LABEL } from './constants';
 import type { CriativoTipo, Funil, Perfil } from './types';
 
-const FORMATOS = ['Carrossel', 'Vídeo', 'Estático'];
-const PLATAFORMAS = ['Meta Ads', 'TikTok', 'YouTube'];
-const TIPOS_TESTE = ['Hook', 'Copy', 'Ângulo', 'Oferta', 'Formato', 'Outro'];
-const NIVEIS_CONSCIENCIA = [
-  'Inconsciente',
-  'Consciente do Problema',
-  'Consciente da Solução',
-  'Consciente do Produto',
-  'Totalmente Consciente',
+const FALLBACK_FORMATOS           = ['Carrossel', 'Vídeo', 'Estático'];
+const FALLBACK_PLATAFORMAS        = ['Meta Ads', 'TikTok', 'YouTube'];
+const FALLBACK_TIPOS_TESTE        = ['Hook', 'Copy', 'Ângulo', 'Oferta', 'Formato', 'Outro'];
+const FALLBACK_NIVEIS_CONSCIENCIA = [
+  'Inconsciente', 'Consciente do Problema', 'Consciente da Solução',
+  'Consciente do Produto', 'Totalmente Consciente',
 ];
+const FALLBACK_FUNIL_VIDEO = ['TSL', 'VSL', 'QUIZ'];
 
 interface Props {
   open: boolean;
@@ -49,6 +47,11 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
   const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
   const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
+  const [opFunilVideo, setOpFunilVideo] = useState<string[]>(FALLBACK_FUNIL_VIDEO);
+  const [opFormato, setOpFormato] = useState<string[]>(FALLBACK_FORMATOS);
+  const [opPlataforma, setOpPlataforma] = useState<string[]>(FALLBACK_PLATAFORMAS);
+  const [opTipoTeste, setOpTipoTeste] = useState<string[]>(FALLBACK_TIPOS_TESTE);
+  const [opNivelConsciencia, setOpNivelConsciencia] = useState<string[]>(FALLBACK_NIVEIS_CONSCIENCIA);
 
   const funis  = funisProp  ?? internalFunis;
   const perfis = perfisProp ?? internalPerfis;
@@ -60,10 +63,19 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
         funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
         perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').order('nome'),
         supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
-      ]).then(([{ data: fs }, { data: ps }, { data: pj }]) => {
+        supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
+      ]).then(([{ data: fs }, { data: ps }, { data: pj }, { data: op }]) => {
         if (fs && !funisProp)  setInternalFunis(fs as Funil[]);
         if (ps && !perfisProp) setInternalPerfis(ps as Perfil[]);
         if (pj) setProjetos(pj as OfertaEditorOption[]);
+        if (op) {
+          const by = (campo: string) => op.filter(d => d.campo === campo).map(d => d.valor as string);
+          const fv = by('funil_video'); if (fv.length) setOpFunilVideo(fv);
+          const fm = by('formato');     if (fm.length) setOpFormato(fm);
+          const pl = by('plataforma');  if (pl.length) setOpPlataforma(pl);
+          const tt = by('tipo_teste');  if (tt.length) setOpTipoTeste(tt);
+          const nc = by('nivel_consciencia'); if (nc.length) setOpNivelConsciencia(nc);
+        }
       });
     }
   }, [open, defaultDate, funisProp, perfisProp]);
@@ -193,15 +205,15 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           {form.tipo === 'criativo' && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Funil de Vídeo" field="funil_video" options={['TSL', 'VSL', 'QUIZ', 'Vídeo', 'Estático']} />
-                <Sel label="Plataforma" field="plataforma" options={PLATAFORMAS} />
+                <Sel label="Funil de Vídeo" field="funil_video" options={opFunilVideo} />
+                <Sel label="Plataforma" field="plataforma" options={opPlataforma} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Formato" field="formato" options={FORMATOS} />
+                <Sel label="Formato" field="formato" options={opFormato} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Tipo de Teste"       field="tipo_teste"        options={TIPOS_TESTE}          />
-                <Sel label="Nível de Consciência" field="nivel_consciencia" options={NIVEIS_CONSCIENCIA}    />
+                <Sel label="Tipo de Teste"       field="tipo_teste"        options={opTipoTeste}          />
+                <Sel label="Nível de Consciência" field="nivel_consciencia" options={opNivelConsciencia}    />
               </div>
               <div>
                 <Label className="text-xs">Ângulo de Teste</Label>
