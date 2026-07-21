@@ -5,38 +5,55 @@ import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { Search } from 'lucide-react';
 import { useFilters } from '@/contexts/FilterContext';
 
+const PAGE_SIZE = 50;
+
 export default function ClientsPage() {
   const [data, setData] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const { funilId } = useFilters();
 
+  // Reset page when search or funnel changes
+  useEffect(() => { setPage(0); }, [search, funilId]);
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      let result: any[] = [];
+      const from = page * PAGE_SIZE;
+      const to   = from + PAGE_SIZE - 1;
 
       if (funilId) {
-        // Get client IDs that have sales in this funnel
         const { data: vendas } = await supabase.from('vendas').select('cliente_id').eq('funil_id', funilId);
         const clienteIds = [...new Set((vendas || []).map((v: any) => v.cliente_id).filter(Boolean))];
-        if (clienteIds.length === 0) { setData([]); setLoading(false); return; }
-        let q = supabase.from('vw_clientes_listagem').select('*').in('id', clienteIds).order('total_gasto', { ascending: false });
+        if (clienteIds.length === 0) { setData([]); setTotal(0); setLoading(false); return; }
+        let q = supabase
+          .from('vw_clientes_listagem')
+          .select('*', { count: 'exact' })
+          .in('id', clienteIds)
+          .order('total_gasto', { ascending: false })
+          .range(from, to);
         if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
-        const { data: rows } = await q;
-        result = rows || [];
+        const { data: rows, count } = await q;
+        setData(rows ?? []);
+        setTotal(count ?? 0);
       } else {
-        let q = supabase.from('vw_clientes_listagem').select('*').order('total_gasto', { ascending: false });
+        let q = supabase
+          .from('vw_clientes_listagem')
+          .select('*', { count: 'exact' })
+          .order('total_gasto', { ascending: false })
+          .range(from, to);
         if (search) q = q.or(`nome.ilike.%${search}%,email.ilike.%${search}%`);
-        const { data: rows } = await q;
-        result = rows || [];
+        const { data: rows, count } = await q;
+        setData(rows ?? []);
+        setTotal(count ?? 0);
       }
 
-      setData(result);
       setLoading(false);
     };
     fetchData();
-  }, [search, funilId]);
+  }, [page, search, funilId]);
 
   const columns = [
     { key: 'nome', label: 'Nome' },
@@ -92,6 +109,29 @@ export default function ClientsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+        {!loading && total > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border text-xs text-muted-foreground">
+            <span>
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} de {total.toLocaleString('pt-BR')}
+            </span>
+            <div className="flex gap-1">
+              <button
+                disabled={page === 0}
+                onClick={() => setPage(p => p - 1)}
+                className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+              >
+                ← Anterior
+              </button>
+              <button
+                disabled={(page + 1) * PAGE_SIZE >= total}
+                onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+              >
+                Próxima →
+              </button>
+            </div>
           </div>
         )}
       </div>

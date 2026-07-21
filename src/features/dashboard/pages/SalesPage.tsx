@@ -47,9 +47,13 @@ const paymentLabels: Record<string, string> = {
   desconhecido: "Desconhecido",
 };
 
+const PAGE_SIZE = 50;
+
 export default function SalesPage() {
   const { startDateStr, endDateStr, funilId } = useFilters();
   const [salesData, setSalesData] = useState<any[]>([]);
+  const [salesTotal, setSalesTotal] = useState(0);
+  const [salesPage, setSalesPage] = useState(0);
   const [temporal, setTemporal] = useState<any[]>([]);
   const [byProduct, setByProduct] = useState<any[]>([]);
   const [paymentData, setPaymentData] = useState<any[]>([]);
@@ -57,26 +61,46 @@ export default function SalesPage() {
   const [weekData, setWeekData] = useState<any[]>([]);
   const [monthData, setMonthData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingSales, setLoadingSales] = useState(false);
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [saleItems, setSaleItems] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("todos");
 
+  // Reset page when filters change
+  useEffect(() => { setSalesPage(0); }, [startDateStr, endDateStr, funilId, statusFilter]);
+
+  // Paginated sales fetch (runs when page OR filters change)
+  useEffect(() => {
+    const loadSales = async () => {
+      setLoadingSales(true);
+      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
+      const from = salesPage * PAGE_SIZE;
+      const to   = from + PAGE_SIZE - 1;
+
+      let q = supabase
+        .from("vendas")
+        .select("*, clientes(nome, email, telefone)", { count: "exact" })
+        .not("pedido_id", "like", "TEST%")
+        .not("pedido_id", "like", "LC-%")
+        .order("data_venda", { ascending: false })
+        .range(from, to);
+      if (startDateStr && endDateEnd) q = q.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+      if (funilId) q = q.eq("funil_id", funilId);
+      if (statusFilter !== "todos") q = q.eq("status", statusFilter);
+
+      const { data, count } = await q;
+      setSalesData(data ?? []);
+      setSalesTotal(count ?? 0);
+      setLoadingSales(false);
+    };
+    loadSales();
+  }, [salesPage, startDateStr, endDateStr, funilId, statusFilter]);
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      
-      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
-      // Busca is_upsell junto com as vendas
-      let qSales = supabase
-        .from("vendas")
-        .select("*, clientes(nome, email, telefone)")
-        .not("pedido_id", "like", "TEST%")
-        .not("pedido_id", "like", "LC-%")
-        .order("data_venda", { ascending: false });
-      if (startDateStr && endDateEnd) qSales = qSales.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
-      if (funilId) qSales = qSales.eq("funil_id", funilId);
-      if (statusFilter !== "todos") qSales = qSales.eq("status", statusFilter);
+      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
 
       let qT = supabase.from("vw_vendas_temporal").select("*");
       if (startDateStr && endDateStr) qT = qT.gte("data", startDateStr).lte("data", endDateStr);
@@ -103,9 +127,7 @@ export default function SalesPage() {
       let qM = supabase.from("vw_vendas_por_mes").select("*").order("mes_ano", { ascending: true });
       if (funilId) qM = qM.eq("funil_id", funilId);
 
-      const [rS, rT, rP, rPay, rH, rW, rM] = await Promise.all([qSales, qT, qP, qPay, qH, qW, qM]);
-
-      setSalesData(rS.data || []);
+      const [rT, rP, rPay, rH, rW, rM] = await Promise.all([qT, qP, qPay, qH, qW, qM]);
 
       setTemporal(
         (rT.data || []).map((r: any) => ({
@@ -328,7 +350,7 @@ export default function SalesPage() {
 
             {/* Tabela com coluna Tipo */}
             <div className="bg-card border border-border rounded-lg overflow-hidden">
-              {loading ? (
+              {loading || loadingSales ? (
                 <div className="p-8 text-center text-muted-foreground">Carregando...</div>
               ) : (
                 <div className="overflow-x-auto">
@@ -411,6 +433,29 @@ export default function SalesPage() {
                 </div>
               )}
             </div>
+            {salesTotal > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-border text-xs text-muted-foreground">
+                <span>
+                  {salesPage * PAGE_SIZE + 1}–{Math.min((salesPage + 1) * PAGE_SIZE, salesTotal)} de {salesTotal.toLocaleString('pt-BR')}
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    disabled={salesPage === 0}
+                    onClick={() => setSalesPage(p => p - 1)}
+                    className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+                  >
+                    ← Anterior
+                  </button>
+                  <button
+                    disabled={(salesPage + 1) * PAGE_SIZE >= salesTotal}
+                    onClick={() => setSalesPage(p => p + 1)}
+                    className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+                  >
+                    Próxima →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
