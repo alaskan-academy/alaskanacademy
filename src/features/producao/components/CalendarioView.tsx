@@ -157,8 +157,10 @@ function DraggableCalCard({
     }
   };
 
-  const editor = criativo.responsavel?.nome ?? criativo.editor_nome_historico;
-  const fase   = FASES_MAP[criativo.fase] ?? criativo.fase;
+  const editor  = criativo.responsavel?.nome ?? criativo.editor_nome_historico;
+  const fase    = FASES_MAP[criativo.fase] ?? criativo.fase;
+  const funil   = criativo.funil?.nome ?? criativo.funil_video ?? null;
+  const projeto = criativo.projeto?.nome ?? null;
 
   return (
     <div
@@ -179,12 +181,24 @@ function DraggableCalCard({
           else onOpen();
         }}
         className={cn(
-          'w-full text-left rounded px-1 py-px text-[10px] leading-[1.35] truncate border block transition-opacity hover:opacity-75',
+          'w-full text-left rounded px-1 pt-0.5 pb-1 border block transition-opacity hover:opacity-75',
           tipoCor,
         )}
-        title={`${criativo.nome}${editor ? ` · ${editor}` : ''} · ${fase}`}
       >
-        {criativo.nome}
+        {/* Nome */}
+        <span className="font-medium text-[11px] leading-tight truncate block pr-1">{criativo.nome}</span>
+        {/* Fase */}
+        <span className="text-[10px] opacity-70 leading-tight truncate block">{fase}</span>
+        {/* Funil + Projeto */}
+        {(funil || projeto) && (
+          <span className="text-[10px] opacity-60 leading-tight truncate block">
+            {[funil, projeto].filter(Boolean).join(' · ')}
+          </span>
+        )}
+        {/* Editor */}
+        {editor && (
+          <span className="text-[10px] opacity-55 leading-tight truncate block">{editor}</span>
+        )}
       </button>
       {/* Right edge resize handle — visible on hover */}
       <div
@@ -223,9 +237,11 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const [perfis, setPerfis]           = useState<Perfil[]>([]);
   const [loading, setLoading]         = useState(true);
   const [selectedId, setSelectedId]   = useState<string | null>(null);
-  const [filtroFunil, setFiltroFunil] = useState('');
-  const [filtroTipo, setFiltroTipo]   = useState('');
-  const [filtroResp, setFiltroResp]   = useState('');
+  const [filtroProjeto, setFiltroProjeto] = useState('');
+  const [filtroTipo, setFiltroTipo]       = useState('');
+  const [filtroResp, setFiltroResp]       = useState('');
+  const [filtroFase, setFiltroFase]       = useState('');
+  const [projetos, setProjetos]           = useState<{ id: string; nome: string }[]>([]);
   const [popoverDay, setPopoverDay]   = useState<string | null>(null);
   const [createDate, setCreateDate]   = useState<string | null>(null);
 
@@ -252,12 +268,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   // ── Data loading ─────────────────────────────────────────────────────────
 
   const loadAux = useCallback(async () => {
-    const [{ data: fs }, { data: ps }] = await Promise.all([
-      supabase.from('funis').select('id,nome,produto,ativo').eq('ativo', true).order('nome'),
+    const [{ data: fs }, { data: ps }, { data: pr }] = await Promise.all([
+      supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('perfis').select('id,nome,is_admin').order('nome'),
+      supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
     ]);
     setFunis(fs ?? []);
     setPerfis(ps ?? []);
+    setProjetos(pr ?? []);
   }, []);
 
   const loadCriativos = useCallback(async () => {
@@ -292,14 +310,15 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       if (ids.length) q = q.in('responsavel_id', ids);
     }
 
-    if (filtroFunil) q = q.eq('funil_id', filtroFunil);
-    if (filtroTipo)  q = q.eq('tipo', filtroTipo);
-    if (filtroResp)  q = q.eq('responsavel_id', filtroResp);
+    if (filtroProjeto) q = q.eq('projeto_id', filtroProjeto);
+    if (filtroTipo)    q = q.eq('tipo', filtroTipo);
+    if (filtroFase)    q = q.eq('fase', filtroFase);
+    if (filtroResp)    q = q.eq('responsavel_id', filtroResp);
 
     const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
-  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, year, month, filtroFunil, filtroTipo, filtroResp]);
+  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -501,11 +520,11 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Select value={filtroFunil || '_'} onValueChange={v => setFiltroFunil(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
+        <Select value={filtroProjeto || '_'} onValueChange={v => setFiltroProjeto(v === '_' ? '' : v)}>
+          <SelectTrigger className="h-8 w-44 text-xs"><SelectValue placeholder="Todos os projetos" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="_">Todos os funis</SelectItem>
-            {funis.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+            <SelectItem value="_">Todos os projetos</SelectItem>
+            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -516,6 +535,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
             <SelectItem value="criativo">Criativo</SelectItem>
             <SelectItem value="vsl">VSL</SelectItem>
             <SelectItem value="aula">Aula</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filtroFase || '_'} onValueChange={v => setFiltroFase(v === '_' ? '' : v)}>
+          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Fase" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="_">Todas as fases</SelectItem>
+            {FASES.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -841,7 +868,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
           <DragOverlay dropAnimation={null}>
             {activeCriativo && (
-              <div className="w-36 rotate-1 shadow-xl opacity-95 pointer-events-none">
+              <div className="w-40 rotate-1 shadow-xl opacity-95 pointer-events-none">
                 <div className={cn(
                   'rounded px-1.5 py-0.5 text-[10.5px] border font-medium truncate',
                   TIPO_COR[activeCriativo.tipo] ?? 'bg-primary/10 text-primary border-primary/20',

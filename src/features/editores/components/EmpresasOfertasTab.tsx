@@ -18,6 +18,8 @@ export function EmpresasOfertasTab() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [ofertas, setOfertas] = useState<Oferta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showInativasEmpresas, setShowInativasEmpresas] = useState(false);
+  const [showInativasOfertas, setShowInativasOfertas] = useState(false);
 
   const [openEmp, setOpenEmp] = useState(false);
   const [editEmp, setEditEmp] = useState<Empresa | null>(null);
@@ -95,8 +97,8 @@ export function EmpresasOfertasTab() {
         </div>
         <div className="bg-card border border-border rounded-lg divide-y divide-border/60">
           {empresas.length === 0 && <div className="p-4 text-sm text-muted-foreground">Nenhuma empresa</div>}
-          {empresas.map(e => (
-            <div key={e.id} className={`flex items-center justify-between gap-2 px-4 py-2 text-sm ${!e.ativo ? 'opacity-50' : ''}`}>
+          {empresas.filter(e => e.ativo).map(e => (
+            <div key={e.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
               <span>{e.nome}</span>
               <div className="flex items-center gap-2">
                 <Switch checked={e.ativo} onCheckedChange={() => toggleEmp(e)} />
@@ -105,6 +107,26 @@ export function EmpresasOfertasTab() {
               </div>
             </div>
           ))}
+          {empresas.filter(e => !e.ativo).length > 0 && (
+            <>
+              <button
+                onClick={() => setShowInativasEmpresas(s => !s)}
+                className="w-full text-left px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showInativasEmpresas ? '▲' : '▼'} {empresas.filter(e => !e.ativo).length} inativa{empresas.filter(e => !e.ativo).length !== 1 ? 's' : ''}
+              </button>
+              {showInativasEmpresas && empresas.filter(e => !e.ativo).map(e => (
+                <div key={e.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm opacity-50">
+                  <span>{e.nome}</span>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={e.ativo} onCheckedChange={() => toggleEmp(e)} />
+                    <Button size="sm" variant="ghost" onClick={() => editEmpresa(e)}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => removeEmp(e.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
@@ -119,8 +141,8 @@ export function EmpresasOfertasTab() {
         </div>
         <div className="bg-card border border-border rounded-lg divide-y divide-border/60">
           {ofertas.length === 0 && <div className="p-4 text-sm text-muted-foreground">Nenhuma oferta</div>}
-          {ofertas.map(o => (
-            <div key={o.id} className={`flex items-center justify-between gap-2 px-4 py-2 text-sm ${!o.ativo ? 'opacity-50' : ''}`}>
+          {ofertas.filter(o => o.ativo).map(o => (
+            <div key={o.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
               <div className="min-w-0">
                 <div>{o.nome}</div>
                 <div className="text-xs text-muted-foreground">{o.empresa_id ? empMap[o.empresa_id] || '—' : 'Sem empresa'}</div>
@@ -132,6 +154,29 @@ export function EmpresasOfertasTab() {
               </div>
             </div>
           ))}
+          {ofertas.filter(o => !o.ativo).length > 0 && (
+            <>
+              <button
+                onClick={() => setShowInativasOfertas(s => !s)}
+                className="w-full text-left px-4 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showInativasOfertas ? '▲' : '▼'} {ofertas.filter(o => !o.ativo).length} inativa{ofertas.filter(o => !o.ativo).length !== 1 ? 's' : ''}
+              </button>
+              {showInativasOfertas && ofertas.filter(o => !o.ativo).map(o => (
+                <div key={o.id} className="flex items-center justify-between gap-2 px-4 py-2 text-sm opacity-50">
+                  <div className="min-w-0">
+                    <div>{o.nome}</div>
+                    <div className="text-xs text-muted-foreground">{o.empresa_id ? empMap[o.empresa_id] || '—' : 'Sem empresa'}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Switch checked={o.ativo} onCheckedChange={() => toggleOf(o)} />
+                    <Button size="sm" variant="ghost" onClick={() => editOferta(o)}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => removeOf(o.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
 

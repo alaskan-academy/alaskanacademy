@@ -41,7 +41,7 @@ export function PorFunilView({ nivel }: Props) {
   const load = useCallback(async () => {
     setLoading(true);
     const [{ data: fs }, { data: is }, { data: cs }] = await Promise.all([
-      supabase.from('funis').select('id,nome,produto,ativo').eq('ativo', true).order('nome'),
+      supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('funis_producao').select('*'),
       supabase.from('criativos')
         .select('id,nome,tipo,fase,funil_id,responsavel:perfis!responsavel_id(nome)')

@@ -77,9 +77,10 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
   const [loading, setLoading]             = useState(true);
   const [selectedId, setSelectedId]       = useState<string | null>(null);
   const [showModal, setShowModal]         = useState(false);
-  const [filtroFunil, setFiltroFunil]     = useState('');
+  const [filtroProjeto, setFiltroProjeto] = useState('');
   const [filtroTipo, setFiltroTipo]       = useState('');
   const [filtroResp, setFiltroResp]       = useState('');
+  const [projetos, setProjetos]           = useState<{ id: string; nome: string }[]>([]);
   const [activeId, setActiveId]           = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -87,12 +88,14 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
   );
 
   const loadAux = useCallback(async () => {
-    const [{ data: fs }, { data: ps }] = await Promise.all([
-      supabase.from('funis').select('id,nome,produto,ativo').eq('ativo', true).order('nome'),
+    const [{ data: fs }, { data: ps }, { data: pr }] = await Promise.all([
+      supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('perfis').select('id,nome,is_admin').order('nome'),
+      supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
     ]);
     setFunis(fs ?? []);
     setPerfis(ps ?? []);
+    setProjetos(pr ?? []);
   }, []);
 
   const loadCriativos = useCallback(async () => {
@@ -119,14 +122,14 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       .order('data_prazo', { ascending: false, nullsFirst: false });
 
     if (responsavelFilter?.length) q = q.in('responsavel_id', responsavelFilter);
-    if (filtroFunil) q = q.eq('funil_id', filtroFunil);
-    if (filtroTipo)  q = q.eq('tipo', filtroTipo);
-    if (filtroResp)  q = q.eq('responsavel_id', filtroResp);
+    if (filtroProjeto) q = q.eq('projeto_id', filtroProjeto);
+    if (filtroTipo)    q = q.eq('tipo', filtroTipo);
+    if (filtroResp)    q = q.eq('responsavel_id', filtroResp);
 
     const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
-  }, [nivel, setorId, userId, fixedResponsavelId, filtroFunil, filtroTipo, filtroResp]);
+  }, [nivel, setorId, userId, fixedResponsavelId, filtroProjeto, filtroTipo, filtroResp]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -201,11 +204,11 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       <div className="flex items-center gap-2 flex-wrap">
         {!fixedResponsavelId && (
           <>
-            <Select value={filtroFunil || '_'} onValueChange={v => setFiltroFunil(v === '_' ? '' : v)}>
-              <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Todos os funis" /></SelectTrigger>
+            <Select value={filtroProjeto || '_'} onValueChange={v => setFiltroProjeto(v === '_' ? '' : v)}>
+              <SelectTrigger className="h-8 w-44 text-xs"><SelectValue placeholder="Todos os projetos" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="_">Todos os funis</SelectItem>
-                {funis.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+                <SelectItem value="_">Todos os projetos</SelectItem>
+                {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
               </SelectContent>
             </Select>
 
