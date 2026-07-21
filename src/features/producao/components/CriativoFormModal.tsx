@@ -31,9 +31,11 @@ interface Props {
   defaultDate?: string;
 }
 
+type OfertaEditorOption = { id: string; nome: string };
+
 const EMPTY = {
   nome: '', tipo: 'criativo' as CriativoTipo,
-  funil_id: '', responsavel_id: '',
+  funil_id: '', responsavel_id: '', projeto_id: '', funil_video: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
   copy_url: '', video_gravado_url: '',
@@ -46,6 +48,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   const [form, setForm] = useState(EMPTY);
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
   const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
+  const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
 
   const funis  = funisProp  ?? internalFunis;
   const perfis = perfisProp ?? internalPerfis;
@@ -53,15 +56,15 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   useEffect(() => {
     if (open) {
       setForm({ ...EMPTY, data_prazo: defaultDate ?? '' });
-      if (!funisProp || !perfisProp) {
-        Promise.all([
-          supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
-          supabase.from('perfis').select('id,nome').order('nome'),
-        ]).then(([{ data: fs }, { data: ps }]) => {
-          if (fs) setInternalFunis(fs as Funil[]);
-          if (ps) setInternalPerfis(ps as Perfil[]);
-        });
-      }
+      Promise.all([
+        funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
+        perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').order('nome'),
+        supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
+      ]).then(([{ data: fs }, { data: ps }, { data: pj }]) => {
+        if (fs && !funisProp)  setInternalFunis(fs as Funil[]);
+        if (ps && !perfisProp) setInternalPerfis(ps as Perfil[]);
+        if (pj) setProjetos(pj as OfertaEditorOption[]);
+      });
     }
   }, [open, defaultDate, funisProp, perfisProp]);
 
@@ -79,6 +82,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       tipo: form.tipo,
       fase,
       funil_id:          form.funil_id          || null,
+      projeto_id:        form.projeto_id        || null,
+      funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
       formato:           form.formato           || null,
       plataforma:        form.plataforma        || null,
@@ -164,6 +169,17 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           </div>
 
           <div>
+            <Label className="text-xs">Projeto</Label>
+            <Select value={form.projeto_id || '_'} onValueChange={v => set('projeto_id', v === '_' ? '' : v)}>
+              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">Nenhum</SelectItem>
+                {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
             <Label className="text-xs">Responsável</Label>
             <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
               <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
@@ -177,8 +193,11 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           {form.tipo === 'criativo' && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Formato"    field="formato"    options={FORMATOS}   />
+                <Sel label="Funil de Vídeo" field="funil_video" options={['TSL', 'VSL', 'QUIZ', 'Vídeo', 'Estático']} />
                 <Sel label="Plataforma" field="plataforma" options={PLATAFORMAS} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Sel label="Formato" field="formato" options={FORMATOS} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Sel label="Tipo de Teste"       field="tipo_teste"        options={TIPOS_TESTE}          />

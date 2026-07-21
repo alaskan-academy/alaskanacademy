@@ -134,92 +134,92 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
                     {funilNome}
                   </p>
                 )}
-            <div className="flex flex-col gap-2">
-              {porFunil[funilNome].map(c => (
-                <div key={c.id} className="border border-border rounded-lg p-3 bg-card">
-                  {/* Card principal */}
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="flex-1 min-w-0 cursor-pointer"
-                      onClick={() => setSelectedId(c.id)}
-                    >
-                      <p className="text-sm font-medium truncate">{c.nome}</p>
-                      <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                        {c.funil && <span>{c.funil.nome}</span>}
-                        {c.funil && c.responsavel && <span>·</span>}
-                        {c.responsavel && <span>Editor: {c.responsavel.nome}</span>}
-                        {c.copy && <><span>·</span><span>Copy: {c.copy.nome}</span></>}
-                        {c.data_prazo && (
-                          <><span>·</span><span>Prazo: {new Date(c.data_prazo + 'T00:00:00').toLocaleDateString('pt-BR')}</span></>
+                <div className="flex flex-col gap-2">
+                  {porFunil[funilNome].map(c => (
+                    <div key={c.id} className="border border-border rounded-lg p-3 bg-card">
+                      {/* Card principal */}
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => setSelectedId(c.id)}
+                        >
+                          <p className="text-sm font-medium truncate">{c.nome}</p>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                            {c.funil && <span>{c.funil.nome}</span>}
+                            {c.funil && c.responsavel && <span>·</span>}
+                            {c.responsavel && <span>Editor: {c.responsavel.nome}</span>}
+                            {c.copy && <><span>·</span><span>Copy: {c.copy.nome}</span></>}
+                            {c.data_prazo && (
+                              <><span>·</span><span>Prazo: {new Date(c.data_prazo + 'T00:00:00').toLocaleDateString('pt-BR')}</span></>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Ações */}
+                        {devolvendoId !== c.id && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                              onClick={() => { setDevolvendoId(c.id); setNotaDevolucao(''); }}
+                            >
+                              <CornerDownLeft className="h-3.5 w-3.5" />
+                              Devolver
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs gap-1"
+                              disabled={saving}
+                              onClick={() => handleAprovar(c)}
+                            >
+                              <CheckCircle className="h-3.5 w-3.5" />
+                              Aprovar
+                            </Button>
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* Ações */}
-                    {devolvendoId !== c.id && (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
-                          onClick={() => { setDevolvendoId(c.id); setNotaDevolucao(''); }}
-                        >
-                          <CornerDownLeft className="h-3.5 w-3.5" />
-                          Devolver
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          disabled={saving}
-                          onClick={() => handleAprovar(c)}
-                        >
-                          <CheckCircle className="h-3.5 w-3.5" />
-                          Aprovar
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Formulário de devolução */}
-                  {devolvendoId === c.id && (
-                    <div className="mt-3 pt-3 border-t border-border flex flex-col gap-2">
-                      <p className="text-xs text-muted-foreground">Nota obrigatória para devolução:</p>
-                      <textarea
-                        autoFocus
-                        rows={2}
-                        value={notaDevolucao}
-                        onChange={e => setNotaDevolucao(e.target.value)}
-                        placeholder="Descreva o que precisa ser ajustado..."
-                        className={cn(
-                          'w-full text-sm rounded-md border border-input bg-background px-3 py-2 resize-none',
-                          'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
-                        )}
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs"
-                          onClick={() => { setDevolvendoId(null); setNotaDevolucao(''); }}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="h-7 text-xs gap-1"
-                          disabled={!notaDevolucao.trim() || saving}
-                          onClick={() => handleDevolver(c)}
-                        >
-                          <CornerDownLeft className="h-3.5 w-3.5" />
-                          Devolver com nota
-                        </Button>
-                      </div>
+                      {/* Formulário de devolução */}
+                      {devolvendoId === c.id && (
+                        <div className="mt-3 pt-3 border-t border-border flex flex-col gap-2">
+                          <p className="text-xs text-muted-foreground">Nota obrigatória para devolução:</p>
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            value={notaDevolucao}
+                            onChange={e => setNotaDevolucao(e.target.value)}
+                            placeholder="Descreva o que precisa ser ajustado..."
+                            className={cn(
+                              'w-full text-sm rounded-md border border-input bg-background px-3 py-2 resize-none',
+                              'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
+                            )}
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={() => { setDevolvendoId(null); setNotaDevolucao(''); }}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              className="h-7 text-xs gap-1"
+                              disabled={!notaDevolucao.trim() || saving}
+                              onClick={() => handleDevolver(c)}
+                            >
+                              <CornerDownLeft className="h-3.5 w-3.5" />
+                              Devolver com nota
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
               </div>
             ))}
           </div>

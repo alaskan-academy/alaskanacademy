@@ -9,6 +9,8 @@ export interface Criativo {
   tipo: CriativoTipo;
   fase: string;
   funil_id: string | null;
+  funil_video: string | null;
+  projeto_id: string | null;
   responsavel_id: string | null;       // editor
   editor_nome_historico: string | null;
   copy_id: string | null;
@@ -32,7 +34,8 @@ export interface Criativo {
   criado_em: string;
   atualizado_em: string;
   funil?: { id: string; nome: string; produto: string } | null;
-  responsavel?: { id: string; nome: string } | null; // editor join
+  projeto?: { id: string; nome: string } | null;
+  responsavel?: { id: string; nome: string } | null;
   copy?: { id: string; nome: string } | null;
   gestor?: { id: string; nome: string } | null;
 }

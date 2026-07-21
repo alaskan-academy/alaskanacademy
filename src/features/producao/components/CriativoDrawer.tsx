@@ -56,6 +56,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [opPlataforma, setOpPlataforma]           = useState<string[]>(FALLBACK_PLATAFORMAS);
   const [opTipoTeste, setOpTipoTeste]             = useState<string[]>(FALLBACK_TIPOS_TESTE);
   const [opNivelConsciencia, setOpNivelConsciencia] = useState<string[]>(FALLBACK_NIVEIS_CONSCIENCIA);
+  const [projetos, setProjetos]                   = useState<{ id: string; nome: string }[]>([]);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
   const [postando, setPostando]             = useState(false);
@@ -63,20 +64,22 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [novaResposta, setNovaResposta]     = useState('');
 
   const loadOpcoes = useCallback(async () => {
-    const { data } = await supabase
-      .from('criativo_campos_opcoes')
-      .select('campo,valor')
-      .order('ordem');
-    if (!data) return;
-    const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
-    const fmt = byField('formato');
-    const plt = byField('plataforma');
-    const tst = byField('tipo_teste');
-    const niv = byField('nivel_consciencia');
-    if (fmt.length)  setOpFormato(fmt);
-    if (plt.length)  setOpPlataforma(plt);
-    if (tst.length)  setOpTipoTeste(tst);
-    if (niv.length)  setOpNivelConsciencia(niv);
+    const [{ data }, { data: pj }] = await Promise.all([
+      supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
+      supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
+    ]);
+    if (data) {
+      const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
+      const fmt = byField('formato');
+      const plt = byField('plataforma');
+      const tst = byField('tipo_teste');
+      const niv = byField('nivel_consciencia');
+      if (fmt.length)  setOpFormato(fmt);
+      if (plt.length)  setOpPlataforma(plt);
+      if (tst.length)  setOpTipoTeste(tst);
+      if (niv.length)  setOpNivelConsciencia(niv);
+    }
+    if (pj) setProjetos(pj as { id: string; nome: string }[]);
   }, []);
 
   const loadComentarios = useCallback(async () => {
@@ -105,6 +108,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         .select([
           '*',
           'funil:funis(id,nome,produto)',
+          'projeto:ofertas_editores!projeto_id(id,nome)',
           'responsavel:perfis!responsavel_id(id,nome)',
           'copy:perfis!copy_id(id,nome)',
           'gestor:perfis!gestor_id(id,nome)',
@@ -342,16 +346,16 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           <div className="space-y-3">
             <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Informações</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <Field label="Funil" editing={editing}>
+              <Field label="Projeto" editing={editing}>
                 {editing ? (
-                  <Select value={val('funil_id') || '_'} onValueChange={v => ch('funil_id', v === '_' ? null : v)}>
+                  <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
                     <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="_">—</SelectItem>
-                      {funis.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+                      {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                     </SelectContent>
                   </Select>
-                ) : <span>{criativo.funil?.nome ?? '—'}</span>}
+                ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
               </Field>
               <Field label="Editor" editing={editing}>
                 {editing ? (
@@ -410,6 +414,19 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             <div className="space-y-3">
               <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Criativo</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <Field label="Funil de Vídeo" editing={editing}>
+                  {editing ? (
+                    <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
+                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_">—</SelectItem>
+                        {['TSL', 'VSL', 'QUIZ', 'Vídeo', 'Estático'].map(v => (
+                          <SelectItem key={v} value={v}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : <span>{criativo.funil_video ?? '—'}</span>}
+                </Field>
                 <Field label="Formato" editing={editing}>
                   {editing ? (
                     <div className="flex items-center gap-1 mt-0.5">

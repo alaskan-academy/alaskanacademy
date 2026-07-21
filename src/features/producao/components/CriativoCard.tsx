@@ -24,9 +24,14 @@ export function CriativoCard({ criativo, onClick }: Props) {
       </p>
       <div className="flex items-center gap-1 flex-wrap">
         <TipoBadge tipo={criativo.tipo} />
-        {criativo.funil && (
-          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded truncate max-w-[84px]">
-            {criativo.funil.nome}
+        {criativo.tipo === 'criativo' && criativo.funil_video && (
+          <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            {criativo.funil_video}
+          </span>
+        )}
+        {criativo.projeto && (
+          <span className="text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded truncate max-w-[90px]">
+            {criativo.projeto.nome}
           </span>
         )}
       </div>

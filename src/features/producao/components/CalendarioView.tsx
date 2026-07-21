@@ -132,6 +132,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       .select([
         '*',
         'funil:funis(id,nome,produto)',
+        'projeto:ofertas_editores!projeto_id(id,nome)',
         'responsavel:perfis!responsavel_id(id,nome)',
         'copy:perfis!copy_id(id,nome)',
         'gestor:perfis!gestor_id(id,nome)',
