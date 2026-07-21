@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
 interface Funil {
   id: string;
@@ -50,7 +51,7 @@ const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
   const { funilId, setFunilId } = useFilters();
-  const { canAccess, perfil, signOut } = useAuth();
+  const { user, canAccess, perfil, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [funis, setFunis] = useState<Funil[]>([]);
@@ -238,6 +239,7 @@ export function AppSidebar() {
               <p className="text-xs font-medium text-foreground truncate">{perfil?.nome}</p>
               {perfil?.is_admin && <p className="text-[10px] text-muted-foreground">Admin</p>}
             </div>
+            {user && <NotificacoesPopover userId={user.id} collapsed={false} />}
             <button onClick={handleSignOut} title="Sair" className="text-muted-foreground hover:text-foreground p-1 rounded">
               <LogOut className="h-4 w-4" />
             </button>
@@ -262,13 +264,16 @@ export function AppSidebar() {
         {/* Usuário + logout */}
         <div className={cn(
           "border-t border-sidebar-border flex items-center gap-2 px-3 py-2",
-          collapsed ? "justify-center" : "",
+          collapsed ? "justify-center flex-col" : "",
         )}>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-foreground truncate">{perfil?.nome}</p>
               {perfil?.is_admin && <p className="text-[10px] text-muted-foreground">Admin</p>}
             </div>
+          )}
+          {user && (
+            <NotificacoesPopover userId={user.id} collapsed={collapsed} />
           )}
           <button
             onClick={handleSignOut}

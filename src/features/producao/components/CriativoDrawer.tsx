@@ -169,6 +169,15 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       valor_anterior: criativo.fase,
       valor_novo:     novaFase,
     });
+    if (novaFase === 'aprovado' && criativo.responsavel_id && criativo.responsavel_id !== userId) {
+      await supabase.from('notificacoes').insert({
+        usuario_id:      criativo.responsavel_id,
+        tipo:            'criativo_aprovado',
+        mensagem:        `"${criativo.nome}" foi aprovado.`,
+        referencia_id:   criativo.id,
+        referencia_tipo: 'criativo',
+      });
+    }
     setMovingFase(false);
     load();
     onUpdate();
