@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ interface Props {
   userId: string;
   funis: Funil[];
   perfis: Perfil[];
+  defaultDate?: string;
 }
 
 const EMPTY = {
@@ -39,10 +40,14 @@ const EMPTY = {
   data_inicio: '', data_prazo: '', notas: '',
 };
 
-export function CriativoFormModal({ open, onClose, onCreated, userId, funis, perfis }: Props) {
+export function CriativoFormModal({ open, onClose, onCreated, userId, funis, perfis, defaultDate }: Props) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(EMPTY);
+
+  useEffect(() => {
+    if (open) setForm({ ...EMPTY, data_prazo: defaultDate ?? '' });
+  }, [open, defaultDate]);
 
   const set = (k: keyof typeof EMPTY, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
 import { FASES_MAP, TIPO_COR } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
+import { CriativoFormModal } from './CriativoFormModal';
 
 interface Props {
   nivel: ProducaoNivel;
@@ -108,6 +109,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const [filtroTipo, setFiltroTipo]   = useState('');
   const [filtroResp, setFiltroResp]   = useState('');
   const [popoverDay, setPopoverDay] = useState<string | null>(null);
+  const [createDate, setCreateDate] = useState<string | null>(null);
 
   const loadAux = useCallback(async () => {
     const [{ data: fs }, { data: ps }] = await Promise.all([
@@ -378,23 +380,34 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                         <div
                           key={dIdx}
                           className={cn(
-                            'p-1.5 flex flex-col gap-1',
+                            'p-1.5 flex flex-col gap-1 group/day',
                             !isCurrentMonth && 'bg-muted/10',
                           )}
                           style={{ minHeight: `${90 + spanOffset}px`, paddingTop: `${spanOffset + 6}px` }}
                         >
-                          <span className={cn(
-                            'text-[11px] font-semibold self-start px-1 rounded-full w-5 h-5 flex items-center justify-center',
-                            isToday
-                              ? 'bg-primary text-primary-foreground'
-                              : isPast
-                                ? 'text-muted-foreground/40'
-                                : isCurrentMonth
-                                  ? 'text-foreground'
-                                  : 'text-muted-foreground/30',
-                          )}>
-                            {day.getDate()}
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span className={cn(
+                              'text-[11px] font-semibold px-1 rounded-full w-5 h-5 flex items-center justify-center',
+                              isToday
+                                ? 'bg-primary text-primary-foreground'
+                                : isPast
+                                  ? 'text-muted-foreground/40'
+                                  : isCurrentMonth
+                                    ? 'text-foreground'
+                                    : 'text-muted-foreground/30',
+                            )}>
+                              {day.getDate()}
+                            </span>
+                            {nivel !== 'membro' && isCurrentMonth && (
+                              <button
+                                onClick={() => setCreateDate(ymd)}
+                                title="Novo criativo"
+                                className="opacity-0 group-hover/day:opacity-100 transition-opacity text-muted-foreground/50 hover:text-foreground h-4 w-4 flex items-center justify-center rounded hover:bg-accent"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
 
                           {visible.map(c => {
                             const isLate = isPast && c.fase !== 'postado' && c.fase !== 'aprovado';
@@ -475,6 +488,16 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
           </div>
         </div>
       )}
+
+      <CriativoFormModal
+        open={createDate !== null}
+        onClose={() => setCreateDate(null)}
+        onCreated={() => { loadCriativos(); setCreateDate(null); }}
+        userId={userId}
+        funis={funis}
+        perfis={perfis}
+        defaultDate={createDate ?? undefined}
+      />
 
       <CriativoDrawer
         criativoId={selectedId}
