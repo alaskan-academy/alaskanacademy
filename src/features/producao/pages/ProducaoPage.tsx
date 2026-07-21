@@ -8,7 +8,6 @@ import { MeuPainelView } from '../components/MeuPainelView';
 import { PorFunilView } from '../components/PorFunilView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
-
 // Tabs visíveis por nível
 const TABS_POR_NIVEL: Record<ProducaoNivel, readonly string[]> = {
   socio:  ['Meu Painel', 'Calendário Geral', 'Painel de Aprovação', 'Por Funil'],
@@ -53,14 +52,14 @@ export default function ProducaoPage() {
 
   if (!loaded) {
     return (
-      <DashboardLayout title="Produção">
+      <DashboardLayout title="Produção" hideFilters>
         <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout title="Produção">
+    <DashboardLayout title="Produção" hideFilters>
       {/* In-page tab nav */}
       <div className="flex gap-1 mb-6 flex-wrap">
         {tabs.map(tab => (

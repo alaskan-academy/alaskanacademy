@@ -18,12 +18,14 @@ import {
   FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, getAdjacentFases, formatFieldName,
 } from './constants';
 import { TipoBadge } from './CriativoCard';
+import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
 import type { Criativo, HistoricoEntry, Comentario, ProducaoNivel, Funil, Perfil, CriativoTipo } from './types';
 
-const FORMATOS = ['Carrossel', 'Vídeo', 'Estático'];
-const PLATAFORMAS = ['Meta Ads', 'TikTok', 'YouTube'];
-const TIPOS_TESTE = ['Hook', 'Copy', 'Ângulo', 'Oferta', 'Formato', 'Outro'];
-const NIVEIS_CONSCIENCIA = [
+// Fallback values used while DB options are loading or if table is empty
+const FALLBACK_FORMATOS           = ['Carrossel', 'Vídeo', 'Estático'];
+const FALLBACK_PLATAFORMAS        = ['Meta Ads', 'TikTok', 'YouTube'];
+const FALLBACK_TIPOS_TESTE        = ['Hook', 'Copy', 'Ângulo', 'Oferta', 'Formato', 'Outro'];
+const FALLBACK_NIVEIS_CONSCIENCIA = [
   'Inconsciente', 'Consciente do Problema', 'Consciente da Solução',
   'Consciente do Produto', 'Totalmente Consciente',
 ];
@@ -47,11 +49,33 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [editing, setEditing]           = useState(false);
   const [changes, setChanges]           = useState<Record<string, string | null>>({});
   const [movingFase, setMovingFase]     = useState(false);
+  // Dynamic select options from DB
+  const [opFormato, setOpFormato]                 = useState<string[]>(FALLBACK_FORMATOS);
+  const [opPlataforma, setOpPlataforma]           = useState<string[]>(FALLBACK_PLATAFORMAS);
+  const [opTipoTeste, setOpTipoTeste]             = useState<string[]>(FALLBACK_TIPOS_TESTE);
+  const [opNivelConsciencia, setOpNivelConsciencia] = useState<string[]>(FALLBACK_NIVEIS_CONSCIENCIA);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
   const [postando, setPostando]             = useState(false);
   const [respondendoId, setRespondendoId]   = useState<string | null>(null);
   const [novaResposta, setNovaResposta]     = useState('');
+
+  const loadOpcoes = useCallback(async () => {
+    const { data } = await supabase
+      .from('criativo_campos_opcoes')
+      .select('campo,valor')
+      .order('ordem');
+    if (!data) return;
+    const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
+    const fmt = byField('formato');
+    const plt = byField('plataforma');
+    const tst = byField('tipo_teste');
+    const niv = byField('nivel_consciencia');
+    if (fmt.length)  setOpFormato(fmt);
+    if (plt.length)  setOpPlataforma(plt);
+    if (tst.length)  setOpTipoTeste(tst);
+    if (niv.length)  setOpNivelConsciencia(niv);
+  }, []);
 
   const loadComentarios = useCallback(async () => {
     if (!criativoId) return;
@@ -93,6 +117,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setHistorico(h ?? []);
     setLoading(false);
   }, [criativoId]);
+
+  useEffect(() => { loadOpcoes(); }, [loadOpcoes]);
 
   useEffect(() => {
     load();
@@ -359,46 +385,58 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <Field label="Formato" editing={editing}>
                   {editing ? (
-                    <Select value={val('formato') || '_'} onValueChange={v => ch('formato', v === '_' ? null : v)}>
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {FORMATOS.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select value={val('formato') || '_'} onValueChange={v => ch('formato', v === '_' ? null : v)}>
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opFormato.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="formato" label="Formato" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : <span>{criativo.formato ?? '—'}</span>}
                 </Field>
                 <Field label="Plataforma" editing={editing}>
                   {editing ? (
-                    <Select value={val('plataforma') || '_'} onValueChange={v => ch('plataforma', v === '_' ? null : v)}>
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {PLATAFORMAS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select value={val('plataforma') || '_'} onValueChange={v => ch('plataforma', v === '_' ? null : v)}>
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opPlataforma.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="plataforma" label="Plataforma" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : <span>{criativo.plataforma ?? '—'}</span>}
                 </Field>
                 <Field label="Tipo de Teste" editing={editing}>
                   {editing ? (
-                    <Select value={val('tipo_teste') || '_'} onValueChange={v => ch('tipo_teste', v === '_' ? null : v)}>
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {TIPOS_TESTE.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select value={val('tipo_teste') || '_'} onValueChange={v => ch('tipo_teste', v === '_' ? null : v)}>
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opTipoTeste.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="tipo_teste" label="Tipo de Teste" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : <span>{criativo.tipo_teste ?? '—'}</span>}
                 </Field>
                 <Field label="Nível de Consciência" editing={editing}>
                   {editing ? (
-                    <Select value={val('nivel_consciencia') || '_'} onValueChange={v => ch('nivel_consciencia', v === '_' ? null : v)}>
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {NIVEIS_CONSCIENCIA.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select value={val('nivel_consciencia') || '_'} onValueChange={v => ch('nivel_consciencia', v === '_' ? null : v)}>
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opNivelConsciencia.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="nivel_consciencia" label="Nível de Consciência" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : <span>{criativo.nivel_consciencia ?? '—'}</span>}
                 </Field>
               </div>

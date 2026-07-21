@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { Criativo, CriativoTipo } from './types';
-import { TIPOS_LABEL, getUrgency } from './constants';
+import { TIPOS_LABEL, TIPO_COR, getUrgency } from './constants';
 
 interface Props {
   criativo: Criativo;
@@ -51,15 +51,10 @@ export function CriativoCard({ criativo, onClick }: Props) {
 }
 
 export function TipoBadge({ tipo }: { tipo: string }) {
-  const colors: Record<string, string> = {
-    criativo: 'bg-blue-500/10 text-blue-400',
-    vsl:      'bg-amber-500/10 text-amber-400',
-    aula:     'bg-green-500/10 text-green-400',
-  };
   return (
     <span className={cn(
-      'text-[10px] font-semibold px-1.5 py-0.5 rounded',
-      colors[tipo] ?? 'bg-muted text-muted-foreground',
+      'text-[10px] font-semibold px-1.5 py-0.5 rounded border',
+      TIPO_COR[tipo] ?? 'bg-muted text-muted-foreground border-transparent',
     )}>
       {TIPOS_LABEL[tipo as CriativoTipo] ?? tipo}
     </span>

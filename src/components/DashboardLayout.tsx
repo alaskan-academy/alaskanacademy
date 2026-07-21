@@ -5,7 +5,15 @@ import { useSidebarState } from '@/contexts/SidebarContext';
 import { useFilters } from '@/contexts/FilterContext';
 import { Menu } from 'lucide-react';
 
-export function DashboardLayout({ children, title }: { children: ReactNode; title: string }) {
+export function DashboardLayout({
+  children,
+  title,
+  hideFilters,
+}: {
+  children: ReactNode;
+  title: string;
+  hideFilters?: boolean;
+}) {
   const { collapsed, isMobile, toggle } = useSidebarState();
   const { funilId } = useFilters();
 
@@ -24,7 +32,7 @@ export function DashboardLayout({ children, title }: { children: ReactNode; titl
               )}
               <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">{title}</h1>
             </div>
-            <GlobalFilters />
+            {!hideFilters && <GlobalFilters />}
           </div>
         </header>
         <main className="p-4 md:p-6 animate-fade-in">
