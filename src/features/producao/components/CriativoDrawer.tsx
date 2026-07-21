@@ -311,6 +311,22 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 <ChevronRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
+            {(nivel === 'head' || nivel === 'socio') && (
+              <Select
+                value={criativo.fase}
+                onValueChange={fase => fase !== criativo.fase && handleFaseChange(fase)}
+                disabled={movingFase}
+              >
+                <SelectTrigger className="mt-2 h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(FASES_POR_TIPO[criativo.tipo] ?? []).map(f => (
+                    <SelectItem key={f} value={f}>{FASES_MAP[f] ?? f}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {isRevisaoFase && !canAdvance && (
               <p className="text-[11px] text-amber-400 mt-1.5">
                 Aguardando aprovação do líder ou sócio para avançar.

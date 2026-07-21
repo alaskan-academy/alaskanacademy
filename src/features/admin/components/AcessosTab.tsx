@@ -49,7 +49,6 @@ export function AcessosTab() {
   const [nome, setNome]         = useState('');
   const [email, setEmail]       = useState('');
   const [senha, setSenha]       = useState('');
-  const [editorId, setEditorId] = useState('');
   const [newPerms, setNewPerms] = useState<PermMap>(defaultPerms());
   const [saving, setSaving]     = useState(false);
 
@@ -128,10 +127,9 @@ export function AcessosTab() {
     const userId = data.user.id;
     const rows = PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true }));
     await supabase.from('permissoes_paginas').upsert(rows, { onConflict: 'usuario_id,pagina' });
-    if (editorId) await supabase.from('editores').update({ usuario_id: userId }).eq('id', editorId);
     toast({ title: 'Usuário criado' });
     setSaving(false); setOpen(false);
-    setNome(''); setEmail(''); setSenha(''); setEditorId(''); setNewPerms(defaultPerms());
+    setNome(''); setEmail(''); setSenha(''); setNewPerms(defaultPerms());
     load();
   };
 
@@ -283,8 +281,8 @@ export function AcessosTab() {
 
               {!u.is_admin && (
                 <div className="border-t border-border/50 pt-3 space-y-3">
-                  {/* Setor + Cargo + Editor */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Setor + Cargo */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1.5">Setor</p>
                       <select
@@ -307,17 +305,6 @@ export function AcessosTab() {
                         {cargos
                           .filter(c => !setorMap[u.id] || c.setor_id === setorMap[u.id])
                           .map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1.5">Editor vinculado</p>
-                      <select
-                        value={editorMap[u.id] ?? ''}
-                        onChange={e => handleEditorChange(u.id, e.target.value)}
-                        className="bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
-                      >
-                        <option value="">— Nenhum —</option>
-                        {editores.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
                       </select>
                     </div>
                   </div>
@@ -380,13 +367,6 @@ export function AcessosTab() {
             <div><Label className="text-xs">Nome</Label><Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do usuário" className="mt-1" /></div>
             <div><Label className="text-xs">Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@exemplo.com" className="mt-1" /></div>
             <div><Label className="text-xs">Senha inicial</Label><Input type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Mínimo 6 caracteres" className="mt-1" /></div>
-            <div>
-              <Label className="text-xs">Editor vinculado (opcional)</Label>
-              <select value={editorId} onChange={e => setEditorId(e.target.value)} className="w-full mt-1 bg-secondary border border-border rounded-md px-3 py-2 text-sm">
-                <option value="">— Nenhum —</option>
-                {editores.map(ed => <option key={ed.id} value={ed.id}>{ed.nome}</option>)}
-              </select>
-            </div>
             <div>
               <Label className="text-xs mb-2 block">Páginas visíveis</Label>
               <div className="flex flex-wrap gap-2">

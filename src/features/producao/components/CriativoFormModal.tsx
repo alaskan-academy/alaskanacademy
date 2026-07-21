@@ -26,8 +26,8 @@ interface Props {
   onClose: () => void;
   onCreated: () => void;
   userId: string;
-  funis: Funil[];
-  perfis: Perfil[];
+  funis?: Funil[];
+  perfis?: Perfil[];
   defaultDate?: string;
 }
 
@@ -40,14 +40,30 @@ const EMPTY = {
   data_inicio: '', data_prazo: '', notas: '',
 };
 
-export function CriativoFormModal({ open, onClose, onCreated, userId, funis, perfis, defaultDate }: Props) {
+export function CriativoFormModal({ open, onClose, onCreated, userId, funis: funisProp, perfis: perfisProp, defaultDate }: Props) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
+  const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
+
+  const funis  = funisProp  ?? internalFunis;
+  const perfis = perfisProp ?? internalPerfis;
 
   useEffect(() => {
-    if (open) setForm({ ...EMPTY, data_prazo: defaultDate ?? '' });
-  }, [open, defaultDate]);
+    if (open) {
+      setForm({ ...EMPTY, data_prazo: defaultDate ?? '' });
+      if (!funisProp || !perfisProp) {
+        Promise.all([
+          supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
+          supabase.from('perfis').select('id,nome').order('nome'),
+        ]).then(([{ data: fs }, { data: ps }]) => {
+          if (fs) setInternalFunis(fs as Funil[]);
+          if (ps) setInternalPerfis(ps as Perfil[]);
+        });
+      }
+    }
+  }, [open, defaultDate, funisProp, perfisProp]);
 
   const set = (k: keyof typeof EMPTY, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
