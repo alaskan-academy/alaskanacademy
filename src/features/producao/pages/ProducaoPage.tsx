@@ -10,10 +10,9 @@ import { PorFunilView } from '../components/PorFunilView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
 import { CriativoFormModal } from '../components/CriativoFormModal';
-import { ConfiguracaoProducaoTab } from '../components/ConfiguracaoProducaoTab';
 // Tabs visíveis por nível
 const TABS_POR_NIVEL: Record<ProducaoNivel, readonly string[]> = {
-  socio:  ['Meu Painel', 'Calendário Geral', 'Painel de Aprovação', 'Por Funil', 'Configuração'],
+  socio:  ['Meu Painel', 'Calendário Geral', 'Painel de Aprovação', 'Por Funil'],
   head:   ['Meu Painel', 'Calendário do Setor', 'Painel de Aprovação'],
   membro: ['Meu Painel'],
 };
@@ -113,9 +112,6 @@ export default function ProducaoPage() {
       )}
       {activeTab === 'Por Funil' && (
         <PorFunilView nivel={nivel} />
-      )}
-      {activeTab === 'Configuração' && (
-        <ConfiguracaoProducaoTab />
       )}
     </DashboardLayout>
   );

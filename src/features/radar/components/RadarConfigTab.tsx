@@ -40,7 +40,7 @@ const blankArea = () => ({ nome: '', slug: '', categoria: 'trafego', icone: '�
 
 // ─── Seção Áreas ─────────────────────────────────────────────────────────────
 
-function AreasSection() {
+export function AreasSection() {
   const confirm = useConfirm();
   const [areas, setAreas]         = useState<Area[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -198,11 +198,6 @@ export function RadarConfigTab() {
   return (
     <div className="max-w-xl">
       <AreasSection />
-      <p className="text-xs text-muted-foreground mt-4">
-        Os <span className="font-medium">Projetos</span> do Radar são gerenciados em{' '}
-        <span className="font-medium">Empresas e Ofertas</span> — a mesma lista de ofertas cadastradas lá
-        aparece na seleção de projeto ao criar ou editar um teste.
-      </p>
     </div>
   );
 }

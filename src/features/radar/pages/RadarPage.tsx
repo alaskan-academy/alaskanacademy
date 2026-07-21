@@ -16,8 +16,9 @@ import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
   FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle,
-  Sheet, Loader2, BookMarked
+  Sheet, Loader2, BookMarked, Settings2,
 } from 'lucide-react';
+import { AreasSection } from '../components/RadarConfigTab';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -155,6 +156,7 @@ export function RadarContent() {
 
   // detalhe dialog
   const [detalhe, setDetalhe]       = useState<Teste | null>(null);
+  const [gerenciarAreas, setGerenciarAreas] = useState(false);
 
   // sync sheets
   const [syncing, setSyncing] = useState(false);
@@ -694,7 +696,18 @@ export function RadarContent() {
 
             {/* Área */}
             <div>
-              <Label>Área</Label>
+              <div className="flex items-center justify-between">
+                <Label>Área</Label>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setGerenciarAreas(true)}
+                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Settings2 className="h-3 w-3" />Gerenciar
+                  </button>
+                )}
+              </div>
               <Select value={form.area_id} onValueChange={v => setForm({ ...form, area_id: v })}>
                 <SelectTrigger className="mt-1"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
@@ -836,6 +849,14 @@ export function RadarContent() {
               {saving ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar teste'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Gerenciar Áreas ── */}
+      <Dialog open={gerenciarAreas} onOpenChange={v => { if (!v) { setGerenciarAreas(false); load(); } }}>
+        <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Gerenciar Áreas</DialogTitle></DialogHeader>
+          <AreasSection />
         </DialogContent>
       </Dialog>
     </>

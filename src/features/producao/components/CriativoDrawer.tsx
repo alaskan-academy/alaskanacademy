@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -203,12 +203,27 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const handlePostComment = async () => {
     if (!criativo || !novoComentario.trim()) return;
     setPostando(true);
+    const texto = novoComentario.trim();
     await supabase.from('criativo_comentarios').insert({
       criativo_id: criativo.id,
       autor_id:    userId,
-      texto:       novoComentario.trim(),
+      texto,
       tipo:        'comentario',
     });
+    // Notificar menções
+    const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
+    const mentioned = perfis.filter(p => mentions.includes(p.nome.toLowerCase()) && p.id !== userId);
+    if (mentioned.length) {
+      await supabase.from('notificacoes').insert(
+        mentioned.map(p => ({
+          usuario_id:      p.id,
+          tipo:            'mencao_comentario',
+          mensagem:        `Você foi mencionado em um comentário em "${criativo.nome}".`,
+          referencia_id:   criativo.id,
+          referencia_tipo: 'criativo',
+        }))
+      );
+    }
     setNovoComentario('');
     setPostando(false);
     loadComentarios();
@@ -217,13 +232,28 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const handlePostReply = async (parentId: string) => {
     if (!criativo || !novaResposta.trim()) return;
     setPostando(true);
+    const texto = novaResposta.trim();
     await supabase.from('criativo_comentarios').insert({
       criativo_id: criativo.id,
       autor_id:    userId,
-      texto:       novaResposta.trim(),
+      texto,
       tipo:        'comentario',
       resposta_a:  parentId,
     });
+    // Notificar menções
+    const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
+    const mentioned = perfis.filter(p => mentions.includes(p.nome.toLowerCase()) && p.id !== userId);
+    if (mentioned.length) {
+      await supabase.from('notificacoes').insert(
+        mentioned.map(p => ({
+          usuario_id:      p.id,
+          tipo:            'mencao_comentario',
+          mensagem:        `Você foi mencionado em uma resposta em "${criativo.nome}".`,
+          referencia_id:   criativo.id,
+          referencia_tipo: 'criativo',
+        }))
+      );
+    }
     setNovaResposta('');
     setRespondendoId(null);
     setPostando(false);
@@ -578,6 +608,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                     respondendoId={respondendoId}
                     novaResposta={novaResposta}
                     postando={postando}
+                    perfis={perfis}
                     onReply={() => { setRespondendoId(c.id); setNovaResposta(''); }}
                     onCancelReply={() => setRespondendoId(null)}
                     onNovaRespostaChange={setNovaResposta}
@@ -589,15 +620,13 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
             {/* Nova mensagem */}
             <div className="flex gap-2 items-end">
-              <Textarea
-                rows={2}
+              <MentionTextarea
                 value={novoComentario}
-                onChange={e => setNovoComentario(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handlePostComment();
-                }}
-                placeholder="Escreva um comentário... (Ctrl+Enter para enviar)"
-                className="text-xs resize-none flex-1"
+                onChange={setNovoComentario}
+                onSubmit={handlePostComment}
+                perfis={perfis}
+                placeholder="Escreva um comentário... (Ctrl+Enter para enviar, @ para mencionar)"
+                rows={2}
               />
               <Button
                 size="sm"
@@ -623,13 +652,14 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 // ─── sub-components ───────────────────────────────────────────────────────────
 
 function ComentarioItem({
-  comentario, respondendoId, novaResposta, postando,
+  comentario, respondendoId, novaResposta, postando, perfis,
   onReply, onCancelReply, onNovaRespostaChange, onPostReply,
 }: {
   comentario: Comentario;
   respondendoId: string | null;
   novaResposta: string;
   postando: boolean;
+  perfis: Perfil[];
   onReply: () => void;
   onCancelReply: () => void;
   onNovaRespostaChange: (v: string) => void;
@@ -666,7 +696,7 @@ function ComentarioItem({
             })}
           </span>
         </div>
-        <p className="leading-relaxed whitespace-pre-wrap">{comentario.texto}</p>
+        <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={comentario.texto} /></p>
       </div>
 
       {/* Respostas */}
@@ -683,7 +713,7 @@ function ComentarioItem({
                   })}
                 </span>
               </div>
-              <p className="leading-relaxed whitespace-pre-wrap">{r.texto}</p>
+              <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={r.texto} /></p>
             </div>
           ))}
         </div>
@@ -693,14 +723,14 @@ function ComentarioItem({
       {!isSistema && (
         respondendoId === comentario.id ? (
           <div className="ml-4 flex gap-2 items-end">
-            <Textarea
+            <MentionTextarea
               autoFocus
               rows={2}
               value={novaResposta}
-              onChange={e => onNovaRespostaChange(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onPostReply(); }}
-              placeholder="Responder... (Ctrl+Enter para enviar)"
-              className="text-xs resize-none flex-1"
+              onChange={onNovaRespostaChange}
+              onSubmit={onPostReply}
+              perfis={perfis}
+              placeholder="Responder... (Ctrl+Enter para enviar, @ para mencionar)"
             />
             <div className="flex flex-col gap-1">
               <Button size="sm" className="h-7 px-2 gap-1 text-xs" disabled={!novaResposta.trim() || postando} onClick={onPostReply}>
@@ -719,6 +749,123 @@ function ComentarioItem({
             <CornerDownLeft className="h-2.5 w-2.5" />Responder
           </button>
         )
+      )}
+    </div>
+  );
+}
+
+function TextWithMentions({ text }: { text: string }) {
+  const parts = text.split(/(@\S+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith('@') ? (
+          <span key={i} className="text-blue-400 font-medium">{part}</span>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
+function MentionTextarea({
+  value, onChange, onSubmit, perfis, placeholder, rows = 2, className, autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  perfis: Perfil[];
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+  autoFocus?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [dropdown, setDropdown] = useState<Perfil[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const getMentionRange = (text: string, cursor: number) => {
+    const before = text.slice(0, cursor);
+    const match = before.match(/@(\w*)$/);
+    if (!match) return null;
+    return { start: cursor - match[0].length, query: match[1] };
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value;
+    onChange(v);
+    const cursor = e.target.selectionStart ?? v.length;
+    const range = getMentionRange(v, cursor);
+    if (range) {
+      const q = range.query.toLowerCase();
+      const filtered = perfis.filter(p => !q || p.nome.toLowerCase().includes(q));
+      setDropdown(filtered.slice(0, 6));
+      setSelectedIdx(0);
+    } else {
+      setDropdown([]);
+    }
+  };
+
+  const selectMention = (perfil: Perfil) => {
+    const textarea = ref.current;
+    if (!textarea) return;
+    const cursor = textarea.selectionStart;
+    const range = getMentionRange(value, cursor);
+    if (!range) return;
+    const before = value.slice(0, range.start);
+    const after = value.slice(cursor);
+    onChange(`${before}@${perfil.nome} ${after}`);
+    setDropdown([]);
+    setTimeout(() => {
+      const pos = range.start + perfil.nome.length + 2;
+      textarea.focus();
+      textarea.setSelectionRange(pos, pos);
+    }, 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (dropdown.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, dropdown.length - 1)); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setSelectedIdx(i => Math.max(i - 1, 0)); return; }
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (dropdown[selectedIdx]) selectMention(dropdown[selectedIdx]);
+        return;
+      }
+      if (e.key === 'Escape') { setDropdown([]); return; }
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onSubmit();
+  };
+
+  return (
+    <div className="relative flex-1">
+      <Textarea
+        ref={ref}
+        rows={rows}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className={cn('text-xs resize-none', className)}
+        autoFocus={autoFocus}
+      />
+      {dropdown.length > 0 && (
+        <div className="absolute left-0 right-0 bottom-full mb-1 z-50 bg-popover border border-border rounded-md shadow-lg overflow-hidden">
+          {dropdown.map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); selectMention(p); }}
+              className={cn(
+                'w-full text-left px-3 py-1.5 text-xs transition-colors',
+                i === selectedIdx ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50',
+              )}
+            >
+              @{p.nome}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
