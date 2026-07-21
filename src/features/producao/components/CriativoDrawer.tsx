@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, getAdjacentFases, formatFieldName,
+  STATUS_VEICULACAO_LABEL, AVALIACAO_LABEL,
 } from './constants';
 import { TipoBadge } from './CriativoCard';
 import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
@@ -572,6 +573,51 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               );
             })}
           </div>
+
+          {/* Veiculação — só para criativo e VSL */}
+          {criativo.tipo !== 'aula' && (
+            <div className="space-y-3">
+              <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Veiculação</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                <Field label="Status" editing={editing}>
+                  {editing ? (
+                    <Select
+                      value={val('status_veiculacao') || '_'}
+                      onValueChange={v => ch('status_veiculacao', v === '_' ? null : v)}
+                    >
+                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_">—</SelectItem>
+                        {Object.entries(STATUS_VEICULACAO_LABEL).map(([k, l]) => (
+                          <SelectItem key={k} value={k}>{l}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span>{criativo.status_veiculacao ? (STATUS_VEICULACAO_LABEL[criativo.status_veiculacao] ?? criativo.status_veiculacao) : '—'}</span>
+                  )}
+                </Field>
+                <Field label="Avaliação" editing={editing}>
+                  {editing ? (
+                    <Select
+                      value={val('avaliacao') || '_'}
+                      onValueChange={v => ch('avaliacao', v === '_' ? null : v)}
+                    >
+                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_">—</SelectItem>
+                        {Object.entries(AVALIACAO_LABEL).map(([k, l]) => (
+                          <SelectItem key={k} value={k}>{l}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <span>{criativo.avaliacao ? (AVALIACAO_LABEL[criativo.avaliacao] ?? criativo.avaliacao) : '—'}</span>
+                  )}
+                </Field>
+              </div>
+            </div>
+          )}
 
           {/* Notas */}
           <div>

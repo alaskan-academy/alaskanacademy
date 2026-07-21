@@ -11,6 +11,7 @@ import {
 import { DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+import { FASES_MAP } from '@/features/producao/components/constants';
 
 const PAGES = [
   { path: '/',              label: 'Resumo',        icon: LayoutDashboard },
@@ -34,17 +35,6 @@ const TIPO_DOT: Record<string, string> = {
   aula:     'bg-green-400',
 };
 
-const FASE_LABEL: Record<string, string> = {
-  producao_copy:      'Produção Copy',
-  revisao_copy:       'Revisão Copy',
-  gravacao:           'Gravação',
-  gravacao_concluida: 'Gravação Concluída',
-  edicao:             'Edição',
-  revisao_edicao:     'Revisão Edição',
-  aprovado:           'Aprovado',
-  programado:         'Programado',
-  postado:            'Postado',
-};
 
 type CriativoResult = { id: string; nome: string; tipo: string; fase: string };
 
@@ -124,7 +114,7 @@ export function CommandPalette() {
                   <span className={cn('w-2 h-2 rounded-full shrink-0', TIPO_DOT[c.tipo] ?? 'bg-primary')} />
                   <span className="flex-1 truncate">{c.nome}</span>
                   <span className="text-[10px] text-muted-foreground shrink-0">
-                    {FASE_LABEL[c.fase] ?? c.fase}
+                    {FASES_MAP[c.fase] ?? c.fase}
                   </span>
                 </CommandItem>
               ))}

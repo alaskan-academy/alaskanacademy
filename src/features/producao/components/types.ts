@@ -1,6 +1,6 @@
 export type ProducaoNivel = 'socio' | 'head' | 'membro';
 export type CriativoTipo = 'criativo' | 'vsl' | 'aula';
-export type StatusVeiculacao = 'rodando' | 'pausado' | 'encerrado';
+export type StatusVeiculacao = 'rodando' | 'pausado' | 'encerrado' | 'bloqueado';
 export type AvaliacaoStatus = 'sem_dados' | 'validado' | 'nao_validado' | 'arquivado';
 
 export interface Criativo {

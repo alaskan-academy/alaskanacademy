@@ -58,7 +58,7 @@ export function EquipeView({ nivel, setor }: Props) {
 
     const rows: MembroRow[] = membros.map(m => {
       const mcs = (criativos ?? []).filter(c => c.responsavel_id === m.perfil_id);
-      const done = ['aprovado', 'programado', 'postado'];
+      const done = ['aprovado', 'esteira_teste', 'postado', 'na_plataforma', 'programado'];
       const active = mcs.filter(c => !done.includes(c.fase));
       return {
         id:         m.id,

@@ -7,23 +7,29 @@ export type FaseItem = {
 };
 
 export const FASES: FaseItem[] = [
-  { key: 'producao_copy',      label: 'Produção Copy'      },
-  { key: 'revisao_copy',       label: 'Revisão Copy',       revisao: true },
-  { key: 'gravacao',           label: 'Gravação'           },
-  { key: 'gravacao_concluida', label: 'Gravação Concluída' },
-  { key: 'edicao',             label: 'Edição'             },
-  { key: 'revisao_edicao',     label: 'Revisão Edição',     revisao: true },
-  { key: 'aprovado',           label: 'Aprovado'           },
-  { key: 'programado',         label: 'Programado'         },
-  { key: 'postado',            label: 'Postado'            },
+  { key: 'producao_copy',  label: 'Produção Copy'    },
+  { key: 'revisao_copy',   label: 'Revisão Copy',    revisao: true },
+  { key: 'gravacao',       label: 'Gravação'         },
+  { key: 'edicao',         label: 'Edição'           },
+  { key: 'revisao_edicao', label: 'Revisão Edição',  revisao: true },
+  { key: 'alteracao',      label: 'Alteração'        },
+  { key: 'aprovado',       label: 'Aprovado'         },
+  { key: 'esteira_teste',  label: 'Esteira de Teste' },
+  { key: 'postado',        label: 'Postado'          },
+  { key: 'na_plataforma',  label: 'Na Plataforma'   },
 ];
 
-export const FASES_MAP: Record<string, string> = Object.fromEntries(FASES.map(f => [f.key, f.label]));
+export const FASES_MAP: Record<string, string> = {
+  ...Object.fromEntries(FASES.map(f => [f.key, f.label])),
+  // chaves legadas para retrocompatibilidade com dados existentes
+  programado:         'Programado',
+  gravacao_concluida: 'Gravação Concluída',
+};
 
 export const FASES_POR_TIPO: Record<CriativoTipo, string[]> = {
-  criativo: ['producao_copy','revisao_copy','gravacao','gravacao_concluida','edicao','revisao_edicao','aprovado','programado','postado'],
-  vsl:      ['producao_copy','revisao_copy','gravacao','gravacao_concluida','edicao','revisao_edicao','aprovado'],
-  aula:     ['gravacao','gravacao_concluida','edicao','revisao_edicao','aprovado'],
+  criativo: ['producao_copy','revisao_copy','gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
+  vsl:      ['producao_copy','revisao_copy','gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
+  aula:     ['gravacao','edicao','revisao_edicao','alteracao','aprovado','na_plataforma'],
 };
 
 export const TIPOS_LABEL: Record<CriativoTipo, string> = {
@@ -48,6 +54,7 @@ export const STATUS_VEICULACAO_LABEL: Record<string, string> = {
   rodando:   'Rodando',
   pausado:   'Pausado',
   encerrado: 'Encerrado',
+  bloqueado: 'Bloqueado',
 };
 
 export const AVALIACAO_LABEL: Record<string, string> = {
