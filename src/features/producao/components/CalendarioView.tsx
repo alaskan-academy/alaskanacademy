@@ -266,6 +266,11 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               title={`${c.nome} — ${FASES_MAP[c.fase] ?? c.fase}`}
                             >
                               <span className="font-medium truncate block leading-tight">{c.nome}</span>
+                              {(c.responsavel?.nome ?? c.editor_nome_historico) && (
+                                <span className="opacity-50 text-[9px] truncate block">
+                                  {c.responsavel?.nome ?? c.editor_nome_historico}
+                                </span>
+                              )}
                               <span className="opacity-60 text-[9.5px]">{FASES_MAP[c.fase] ?? c.fase}</span>
                             </button>
                           );

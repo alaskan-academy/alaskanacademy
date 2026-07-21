@@ -300,7 +300,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                   </Select>
                 ) : <span>{criativo.funil?.nome ?? '—'}</span>}
               </Field>
-              <Field label="Editor (responsável)" editing={editing}>
+              <Field label="Editor" editing={editing}>
                 {editing ? (
                   <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
                     <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
