@@ -102,7 +102,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       nome:              form.nome.trim(),
       tipo:              form.tipo,
       fase:              form.fase || getDefaultFase(form.tipo),
-      funil_id:          form.tipo === 'criativo' ? (form.funil_id || null) : null,
+      funil_id:          null,
       projeto_id:        form.projeto_id        || null,
       funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
@@ -193,19 +193,6 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </div>
           </div>
 
-          {form.tipo === 'criativo' && (
-            <div>
-              <Label className="text-xs">Funil</Label>
-              <Select value={form.funil_id || '_'} onValueChange={v => set('funil_id', v === '_' ? '' : v)}>
-                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Nenhum</SelectItem>
-                  {funis.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           <div>
             <Label className="text-xs">Projeto</Label>
             <Select value={form.projeto_id || '_'} onValueChange={v => set('projeto_id', v === '_' ? '' : v)}>
@@ -235,16 +222,16 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                 <Sel label="Plataforma"      field="plataforma"  options={opPlataforma} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Formato" field="formato" options={opFormato} />
+                <Sel label="Formato"       field="formato"     options={opFormato}    />
+                <Sel label="Tipo de Teste" field="tipo_teste"  options={opTipoTeste}  />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Tipo de Teste"        field="tipo_teste"        options={opTipoTeste}         />
-                <Sel label="Nível de Consciência" field="nivel_consciencia" options={opNivelConsciencia}  />
-              </div>
-              <div>
-                <Label className="text-xs">Ângulo de Teste</Label>
-                <Input className="mt-1 h-8 text-xs" placeholder="Ex: Dor + transformação"
-                  value={form.angulo_teste} onChange={e => set('angulo_teste', e.target.value)} />
+                <Sel label="Nível de Consciência" field="nivel_consciencia" options={opNivelConsciencia} />
+                <div>
+                  <Label className="text-xs">Ângulo de Teste</Label>
+                  <Input className="mt-1 h-8 text-xs" placeholder="Ex: Dor + transformação"
+                    value={form.angulo_teste} onChange={e => set('angulo_teste', e.target.value)} />
+                </div>
               </div>
             </>
           )}
