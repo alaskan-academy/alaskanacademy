@@ -29,8 +29,8 @@ export interface Criativo {
   data_inicio: string | null;
   data_prazo: string | null;
   notas: string | null;
-  status_veiculacao: StatusVeiculacao | null;
-  avaliacao: AvaliacaoStatus | null;
+  status_veiculacao: string | null;
+  avaliacao: string | null;
   criado_em: string;
   atualizado_em: string;
   funil?: { id: string; nome: string; produto: string } | null;

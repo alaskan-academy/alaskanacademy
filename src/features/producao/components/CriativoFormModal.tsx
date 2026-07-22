@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { getDefaultFase, TIPOS_LABEL } from './constants';
+import { getDefaultFase, TIPOS_LABEL, FASES_POR_TIPO, FASES_MAP } from './constants';
 import type { CriativoTipo, Funil, Perfil } from './types';
 
 const FALLBACK_FORMATOS           = ['Carrossel', 'Vídeo', 'Estático'];
@@ -31,19 +31,28 @@ interface Props {
 
 type OfertaEditorOption = { id: string; nome: string };
 
-const EMPTY = {
-  nome: '', tipo: 'criativo' as CriativoTipo,
+type FormState = {
+  nome: string; tipo: CriativoTipo; fase: string;
+  funil_id: string; responsavel_id: string; projeto_id: string; funil_video: string;
+  formato: string; plataforma: string; tipo_teste: string; nivel_consciencia: string; angulo_teste: string;
+  modulo: string; ordem: string;
+  copy_url: string; video_gravado_url: string; video_editado_url: string;
+  data_inicio: string; data_prazo: string; notas: string;
+};
+
+const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
+  nome: '', tipo, fase: getDefaultFase(tipo),
   funil_id: '', responsavel_id: '', projeto_id: '', funil_video: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
-  copy_url: '', video_gravado_url: '',
+  copy_url: '', video_gravado_url: '', video_editado_url: '',
   data_inicio: '', data_prazo: '', notas: '',
-};
+});
 
 export function CriativoFormModal({ open, onClose, onCreated, userId, funis: funisProp, perfis: perfisProp, defaultDate }: Props) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState<FormState>(makeEmpty());
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
   const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
   const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
@@ -58,7 +67,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
 
   useEffect(() => {
     if (open) {
-      setForm({ ...EMPTY, data_prazo: defaultDate ?? '' });
+      setForm({ ...makeEmpty(), data_prazo: defaultDate ?? '' });
       Promise.all([
         funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
         perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').order('nome'),
@@ -80,7 +89,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
     }
   }, [open, defaultDate, funisProp, perfisProp]);
 
-  const set = (k: keyof typeof EMPTY, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+  const set = (k: keyof FormState, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+  const setTipo = (v: CriativoTipo) => setForm(prev => ({ ...prev, tipo: v, fase: getDefaultFase(v) }));
 
   const handleSubmit = async () => {
     if (!form.nome.trim()) {
@@ -88,12 +98,11 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       return;
     }
     setLoading(true);
-    const fase = getDefaultFase(form.tipo);
     const payload = {
-      nome: form.nome.trim(),
-      tipo: form.tipo,
-      fase,
-      funil_id:          form.funil_id          || null,
+      nome:              form.nome.trim(),
+      tipo:              form.tipo,
+      fase:              form.fase || getDefaultFase(form.tipo),
+      funil_id:          form.tipo === 'criativo' ? (form.funil_id || null) : null,
       projeto_id:        form.projeto_id        || null,
       funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
@@ -106,6 +115,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       ordem:             form.ordem ? parseInt(form.ordem) : null,
       copy_url:          form.copy_url          || null,
       video_gravado_url: form.video_gravado_url || null,
+      video_editado_url: form.video_editado_url || null,
       data_inicio:       form.data_inicio       || null,
       data_prazo:        form.data_prazo        || null,
       notas:             form.notas             || null,
@@ -123,16 +133,18 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       valor_novo:     form.nome.trim(),
     });
     toast({ title: 'Criado com sucesso' });
-    setForm(EMPTY);
+    setForm(makeEmpty());
     setLoading(false);
     onCreated();
     onClose();
   };
 
-  const Sel = ({ label, field, options }: { label: string; field: keyof typeof EMPTY; options: string[] }) => (
+  const fasesDisponiveis = FASES_POR_TIPO[form.tipo] ?? [];
+
+  const Sel = ({ label, field, options }: { label: string; field: keyof FormState; options: string[] }) => (
     <div>
       <Label className="text-xs">{label}</Label>
-      <Select value={form[field] || '_'} onValueChange={v => set(field, v === '_' ? '' : v)}>
+      <Select value={(form[field] as string) || '_'} onValueChange={v => set(field, v === '_' ? '' : v)}>
         <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="_">—</SelectItem>
@@ -159,7 +171,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Tipo *</Label>
-              <Select value={form.tipo} onValueChange={v => set('tipo', v as CriativoTipo)}>
+              <Select value={form.tipo} onValueChange={v => setTipo(v as CriativoTipo)}>
                 <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(Object.entries(TIPOS_LABEL) as [CriativoTipo, string][]).map(([k, v]) =>
@@ -168,6 +180,20 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label className="text-xs">Fase</Label>
+              <Select value={form.fase} onValueChange={v => set('fase', v)}>
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {fasesDisponiveis.map(k =>
+                    <SelectItem key={k} value={k}>{FASES_MAP[k] ?? k}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {form.tipo === 'criativo' && (
             <div>
               <Label className="text-xs">Funil</Label>
               <Select value={form.funil_id || '_'} onValueChange={v => set('funil_id', v === '_' ? '' : v)}>
@@ -178,7 +204,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          )}
 
           <div>
             <Label className="text-xs">Projeto</Label>
@@ -192,7 +218,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           </div>
 
           <div>
-            <Label className="text-xs">Responsável</Label>
+            <Label className="text-xs">Editor</Label>
             <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
               <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
               <SelectContent>
@@ -205,15 +231,15 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           {form.tipo === 'criativo' && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Funil de Vídeo" field="funil_video" options={opFunilVideo} />
-                <Sel label="Plataforma" field="plataforma" options={opPlataforma} />
+                <Sel label="Funil de Vendas" field="funil_video" options={opFunilVideo} />
+                <Sel label="Plataforma"      field="plataforma"  options={opPlataforma} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Sel label="Formato" field="formato" options={opFormato} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Tipo de Teste"       field="tipo_teste"        options={opTipoTeste}          />
-                <Sel label="Nível de Consciência" field="nivel_consciencia" options={opNivelConsciencia}    />
+                <Sel label="Tipo de Teste"        field="tipo_teste"        options={opTipoTeste}         />
+                <Sel label="Nível de Consciência" field="nivel_consciencia" options={opNivelConsciencia}  />
               </div>
               <div>
                 <Label className="text-xs">Ângulo de Teste</Label>
@@ -249,6 +275,12 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
               <Input className="mt-1 h-8 text-xs" placeholder="https://..."
                 value={form.video_gravado_url} onChange={e => set('video_gravado_url', e.target.value)} />
             </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Vídeo Editado (link)</Label>
+            <Input className="mt-1 h-8 text-xs" placeholder="https://..."
+              value={form.video_editado_url} onChange={e => set('video_editado_url', e.target.value)} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

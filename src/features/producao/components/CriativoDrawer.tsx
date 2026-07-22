@@ -18,7 +18,6 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, getAdjacentFases, formatFieldName,
-  STATUS_VEICULACAO_LABEL, AVALIACAO_LABEL,
 } from './constants';
 import { TipoBadge } from './CriativoCard';
 import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
@@ -58,6 +57,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [opTipoTeste, setOpTipoTeste]             = useState<string[]>(FALLBACK_TIPOS_TESTE);
   const [opNivelConsciencia, setOpNivelConsciencia] = useState<string[]>(FALLBACK_NIVEIS_CONSCIENCIA);
   const [opFunilVideo, setOpFunilVideo]           = useState<string[]>(['TSL', 'VSL', 'QUIZ']);
+  const [opStatusVeiculacao, setOpStatusVeiculacao] = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
+  const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
   const [projetos, setProjetos]                   = useState<{ id: string; nome: string }[]>([]);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
@@ -77,11 +78,15 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       const tst = byField('tipo_teste');
       const niv = byField('nivel_consciencia');
       const fv  = byField('funil_video');
+      const sv  = byField('status_veiculacao');
+      const av  = byField('avaliacao');
       if (fmt.length)  setOpFormato(fmt);
       if (plt.length)  setOpPlataforma(plt);
       if (tst.length)  setOpTipoTeste(tst);
       if (niv.length)  setOpNivelConsciencia(niv);
       if (fv.length)   setOpFunilVideo(fv);
+      if (sv.length)   setOpStatusVeiculacao(sv);
+      if (av.length)   setOpAvaliacao(av);
     }
     if (pj) setProjetos(pj as { id: string; nome: string }[]);
   }, []);
@@ -352,20 +357,23 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               </Button>
             </div>
             {(nivel === 'head' || nivel === 'socio') && (
-              <Select
-                value={criativo.fase}
-                onValueChange={fase => fase !== criativo.fase && handleFaseChange(fase)}
-                disabled={movingFase}
-              >
-                <SelectTrigger className="mt-2 h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(FASES_POR_TIPO[criativo.tipo] ?? []).map(f => (
-                    <SelectItem key={f} value={f}>{FASES_MAP[f] ?? f}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-1 mt-2">
+                <Select
+                  value={criativo.fase}
+                  onValueChange={fase => fase !== criativo.fase && handleFaseChange(fase)}
+                  disabled={movingFase}
+                >
+                  <SelectTrigger className="h-7 text-xs flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(FASES_POR_TIPO[criativo.tipo] ?? []).map(f => (
+                      <SelectItem key={f} value={f}>{FASES_MAP[f] ?? f}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {nivel === 'socio' && <GerenciarOpcoesPopover campo="fase" label="Fases" onAtualizar={loadOpcoes} />}
+              </div>
             )}
             {isRevisaoFase && !canAdvance && (
               <p className="text-[11px] text-amber-400 mt-1.5">
@@ -448,7 +456,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             <div className="space-y-3">
               <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Criativo</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <Field label="Funil de Vídeo" editing={editing}>
+                <Field label="Funil de Vendas" editing={editing}>
                   {editing ? (
                     <div className="flex items-center gap-1 mt-0.5">
                       <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
@@ -460,7 +468,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                           ))}
                         </SelectContent>
                       </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vídeo" onAtualizar={loadOpcoes} />}
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vendas" onAtualizar={loadOpcoes} />}
                     </div>
                   ) : <span>{criativo.funil_video ?? '—'}</span>}
                 </Field>
@@ -581,38 +589,44 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 <Field label="Status" editing={editing}>
                   {editing ? (
-                    <Select
-                      value={val('status_veiculacao') || '_'}
-                      onValueChange={v => ch('status_veiculacao', v === '_' ? null : v)}
-                    >
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {Object.entries(STATUS_VEICULACAO_LABEL).map(([k, l]) => (
-                          <SelectItem key={k} value={k}>{l}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select
+                        value={val('status_veiculacao') || '_'}
+                        onValueChange={v => ch('status_veiculacao', v === '_' ? null : v)}
+                      >
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opStatusVeiculacao.map(v => (
+                            <SelectItem key={v} value={v}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="status_veiculacao" label="Status de Veiculação" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : (
-                    <span>{criativo.status_veiculacao ? (STATUS_VEICULACAO_LABEL[criativo.status_veiculacao] ?? criativo.status_veiculacao) : '—'}</span>
+                    <span>{criativo.status_veiculacao ?? '—'}</span>
                   )}
                 </Field>
                 <Field label="Avaliação" editing={editing}>
                   {editing ? (
-                    <Select
-                      value={val('avaliacao') || '_'}
-                      onValueChange={v => ch('avaliacao', v === '_' ? null : v)}
-                    >
-                      <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_">—</SelectItem>
-                        {Object.entries(AVALIACAO_LABEL).map(([k, l]) => (
-                          <SelectItem key={k} value={k}>{l}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Select
+                        value={val('avaliacao') || '_'}
+                        onValueChange={v => ch('avaliacao', v === '_' ? null : v)}
+                      >
+                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_">—</SelectItem>
+                          {opAvaliacao.map(v => (
+                            <SelectItem key={v} value={v}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="avaliacao" label="Avaliação" onAtualizar={loadOpcoes} />}
+                    </div>
                   ) : (
-                    <span>{criativo.avaliacao ? (AVALIACAO_LABEL[criativo.avaliacao] ?? criativo.avaliacao) : '—'}</span>
+                    <span>{criativo.avaliacao ?? '—'}</span>
                   )}
                 </Field>
               </div>
