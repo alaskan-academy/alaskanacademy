@@ -53,7 +53,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
       q1,
       q2,
       supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
-      supabase.from('perfis').select('id,nome,is_admin').order('nome'),
+      supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
     ]);
 
     const seen = new Set<string>();

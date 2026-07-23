@@ -206,7 +206,7 @@ export function RadarContent() {
     const [{ data: areasData }, { data: testesData }, { data: perfisData }, { data: projetosData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
       supabase.from('radar_testes').select('*').is('deletado_em', null).order('criado_em', { ascending: false }),
-      supabase.from('perfis').select('id, nome').order('nome'),
+      supabase.from('perfis').select('id, nome').eq('ativo', true).order('nome'),
       supabase.from('ofertas_editores').select('id, nome, ativo').eq('ativo', true).order('nome'),
     ]);
     setAreas(areasData || []);

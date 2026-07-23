@@ -50,7 +50,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const loadAux = useCallback(async () => {
     const [{ data: ps }, { data: perf }, { data: fs }, { data: op }] = await Promise.all([
       supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
-      supabase.from('perfis').select('id,nome,is_admin').order('nome'),
+      supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
       supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'avaliacao').order('ordem'),
     ]);

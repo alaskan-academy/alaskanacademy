@@ -45,7 +45,7 @@ export function EquipeView({ nivel, setor }: Props) {
     if (nivel === 'lider' && setor) qm = qm.eq('setor', setor);
     const { data: membros } = await qm;
 
-    const { data: allPerfis } = await supabase.from('perfis').select('id,nome,is_admin').order('nome');
+    const { data: allPerfis } = await supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome');
     setPerfis(allPerfis ?? []);
 
     if (!membros?.length) { setStats([]); setLoading(false); return; }

@@ -124,7 +124,7 @@ export function ReferenciasContent() {
     const [{ data: areasData }, { data: refsData }, { data: perfisData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
       supabase.from('referencias').select('*').is('deletado_em', null).order('criado_em', { ascending: false }),
-      supabase.from('perfis').select('id, nome').order('nome'),
+      supabase.from('perfis').select('id, nome').eq('ativo', true).order('nome'),
     ]);
     setAreas(areasData || []);
     setPerfis(perfisData || []);

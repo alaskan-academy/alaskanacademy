@@ -70,7 +70,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       setForm({ ...makeEmpty(), data_prazo: defaultDate ?? '' });
       Promise.all([
         funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
-        perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').order('nome'),
+        perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
       ]).then(([{ data: fs }, { data: ps }, { data: pj }, { data: op }]) => {

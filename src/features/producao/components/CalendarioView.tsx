@@ -270,7 +270,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const loadAux = useCallback(async () => {
     const [{ data: fs }, { data: ps }, { data: pr }] = await Promise.all([
       supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
-      supabase.from('perfis').select('id,nome,is_admin').order('nome'),
+      supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
       supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
     ]);
     setFunis(fs ?? []);

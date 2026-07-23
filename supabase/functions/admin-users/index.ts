@@ -68,6 +68,23 @@ Deno.serve(async (req) => {
     return ok({ ok: true });
   }
 
+  if (action === 'deactivate') {
+    const { userId } = body;
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { ban_duration: '876600h' });
+    // Placeholder users don't exist in Auth — ignore "not found", still update perfis
+    if (authErr && !authErr.message.toLowerCase().includes('not found')) return ok({ error: authErr.message });
+    await supabaseAdmin.from('perfis').update({ ativo: false }).eq('id', userId);
+    return ok({ ok: true });
+  }
+
+  if (action === 'reactivate') {
+    const { userId } = body;
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { ban_duration: 'none' });
+    if (authErr && !authErr.message.toLowerCase().includes('not found')) return ok({ error: authErr.message });
+    await supabaseAdmin.from('perfis').update({ ativo: true }).eq('id', userId);
+    return ok({ ok: true });
+  }
+
   return ok({ error: 'Ação desconhecida' });
 });
 

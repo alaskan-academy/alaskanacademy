@@ -251,7 +251,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <DashboardLayout title="Configurações">
+    <DashboardLayout title="Configurações" hideFilters>
       <div className="flex gap-6 min-h-[600px]">
 
         {/* Nav lateral */}

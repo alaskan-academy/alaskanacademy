@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Trash2, Plus, Shield, KeyRound, Check } from 'lucide-react';
+import { Trash2, Plus, Shield, KeyRound, Check, UserX, UserCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PAGINAS } from '@/contexts/AuthContext';
 import { useConfirm } from '@/hooks/use-confirm';
 
-type Usuario   = { id: string; email: string; nome: string; is_admin: boolean; created_at: string };
+type Usuario   = { id: string; email: string; nome: string; is_admin: boolean; ativo: boolean; created_at: string };
 type Cargo     = { id: string; nome: string; multiplicador: string; cor: string; ordem: number; setor_id: string | null };
 type Setor     = { id: string; nome: string; cor: string | null };
 type PermMap   = Record<string, boolean>;
@@ -33,6 +33,8 @@ const fnError = async (error: unknown, data: Record<string, string> | null): Pro
 export function AcessosTab() {
   const confirm = useConfirm();
   const [usuarios, setUsuarios]   = useState<Usuario[]>([]);
+  const [arquivados, setArquivados] = useState<Usuario[]>([]);
+  const [showArquivados, setShowArquivados] = useState(false);
   const [editores, setEditores]   = useState<EditorOpt[]>([]);
   const [cargos, setCargos]       = useState<Cargo[]>([]);
   const [setores, setSetores]     = useState<Setor[]>([]);
@@ -64,12 +66,24 @@ export function AcessosTab() {
       supabase.from('editores').select('id, nome, usuario_id').order('nome'),
       supabase.from('cargos').select('id, nome, multiplicador, cor, ordem, setor_id').order('ordem'),
       supabase.from('setores').select('id, nome, cor').order('ordem'),
-      supabase.from('perfis').select('id, cargo_id, setor_id'),
+      supabase.from('perfis').select('id, cargo_id, setor_id, ativo'),
       supabase.from('setor_permissoes').select('setor_id, pagina'),
     ]);
     if (error) { toast({ title: 'Erro ao carregar usuários', variant: 'destructive' }); setLoading(false); return; }
 
-    setUsuarios(users ?? []);
+    // listar_usuarios não inclui ativo — usar perfis como fonte de verdade
+    const ativoById: Record<string, boolean> = {};
+    const cm: Record<string, string> = {};
+    const sm: Record<string, string> = {};
+    for (const p of perfsData ?? []) {
+      ativoById[p.id] = p.ativo !== false;
+      cm[p.id] = p.cargo_id ?? '';
+      sm[p.id] = p.setor_id ?? '';
+    }
+    const ativos = (users ?? []).filter((u: Usuario) => ativoById[u.id] !== false);
+    const inativos = (users ?? []).filter((u: Usuario) => ativoById[u.id] === false);
+    setUsuarios(ativos);
+    setArquivados(inativos);
     setEditores((eds ?? []).map((e: { id: string; nome: string }) => ({ id: e.id, nome: e.nome })));
     setCargos(crgs ?? []);
     setSetores(ss ?? []);
@@ -79,13 +93,6 @@ export function AcessosTab() {
       if ((ed as { usuario_id?: string }).usuario_id) em[(ed as { usuario_id: string }).usuario_id] = ed.id;
     }
     setEditorMap(em);
-
-    const cm: Record<string, string> = {};
-    const sm: Record<string, string> = {};
-    for (const p of perfsData ?? []) {
-      cm[p.id] = p.cargo_id ?? '';
-      sm[p.id] = p.setor_id ?? '';
-    }
     setCargoMap(cm);
     setSetorMap(sm);
 
@@ -159,6 +166,21 @@ export function AcessosTab() {
     const err = await fnError(error, data);
     if (err) return toast({ title: err, variant: 'destructive' });
     toast({ title: 'Usuário removido' }); load();
+  };
+
+  const handleDeactivate = async (u: Usuario) => {
+    if (!(await confirm({ title: `Desativar ${u.nome}?`, description: 'O usuário perderá acesso imediatamente e ficará arquivado.' }))) return;
+    const { data, error } = await supabase.functions.invoke('admin-users', { body: { action: 'deactivate', userId: u.id } });
+    const err = await fnError(error, data);
+    if (err) return toast({ title: err, variant: 'destructive' });
+    toast({ title: `${u.nome} desativado` }); load();
+  };
+
+  const handleReactivate = async (u: Usuario) => {
+    const { data, error } = await supabase.functions.invoke('admin-users', { body: { action: 'reactivate', userId: u.id } });
+    const err = await fnError(error, data);
+    if (err) return toast({ title: err, variant: 'destructive' });
+    toast({ title: `${u.nome} reativado` }); load();
   };
 
   const handleChangePassword = async () => {
@@ -274,6 +296,9 @@ export function AcessosTab() {
                 <Button size="sm" variant="ghost" title="Trocar senha" onClick={() => { setPwUser(u); setNewPw(''); }}>
                   <KeyRound className="h-4 w-4 text-muted-foreground" />
                 </Button>
+                <Button size="sm" variant="ghost" title="Desativar usuário" onClick={() => handleDeactivate(u)}>
+                  <UserX className="h-4 w-4 text-muted-foreground hover:text-amber-500" />
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => handleDelete(u)}>
                   <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                 </Button>
@@ -355,6 +380,41 @@ export function AcessosTab() {
           ))}
           {usuarios.length === 0 && (
             <div className="text-center py-8 text-muted-foreground text-sm">Nenhum usuário cadastrado</div>
+          )}
+        </div>
+      )}
+
+      {/* Arquivados */}
+      {arquivados.length > 0 && (
+        <div className="border border-border rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowArquivados(v => !v)}
+            className="w-full flex items-center gap-2 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+          >
+            {showArquivados
+              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+            <span className="text-sm font-medium text-muted-foreground flex-1">Arquivados</span>
+            <span className="text-xs text-muted-foreground">{arquivados.length}</span>
+          </button>
+          {showArquivados && (
+            <div className="border-t border-border divide-y divide-border/50">
+              {arquivados.map(u => (
+                <div key={u.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-muted-foreground">{u.nome}</p>
+                    <p className="text-xs text-muted-foreground/60">{u.email}</p>
+                  </div>
+                  <Button size="sm" variant="outline" title="Reativar usuário" onClick={() => handleReactivate(u)} className="gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5" />
+                    <span className="text-xs">Reativar</span>
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => handleDelete(u)}>
+                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

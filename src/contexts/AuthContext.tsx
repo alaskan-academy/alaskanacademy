@@ -34,6 +34,7 @@ interface Setor {
 export interface Perfil {
   nome: string;
   is_admin: boolean;
+  ativo: boolean;
   radar_pode_criar: boolean;
   cargo_id: string | null;
   setor_id: string | null;
@@ -62,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadPerfil = async (uid: string) => {
     const { data } = await supabase
       .from('perfis')
-      .select('nome, is_admin, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
+      .select('nome, is_admin, ativo, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
       .eq('id', uid)
       .single();
     setPerfil(data ?? null);
@@ -96,6 +97,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
     if (!u) { setPerfil(null); setLoading(false); return; }
     const p = await loadPerfil(u.id);
+    if (p?.ativo === false) {
+      await supabase.auth.signOut();
+      return;
+    }
     await loadPermissions(u.id, p?.is_admin ?? false);
     setLoading(false);
   };
