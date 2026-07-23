@@ -68,7 +68,7 @@ export function CommandPalette() {
     setLoading(true);
     const t = setTimeout(async () => {
       const { data } = await supabase
-        .from('criativos')
+        .from('producoes')
         .select('id,nome,tipo,fase')
         .ilike('nome', `%${query}%`)
         .limit(8);

@@ -40,7 +40,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
   const loadCriativos = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
-      .from('criativos')
+      .from('producoes')
       .select('*, funil:funis(id,nome,produto), responsavel:perfis!responsavel_id(id,nome), copy:perfis!copy_id(id,nome), gestor:perfis!gestor_id(id,nome)')
       .in('fase', fasesVisiveis)
       .order('data_prazo', { ascending: true, nullsFirst: false });
@@ -55,7 +55,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     const { next } = getAdjacentFases(c.tipo, c.fase);
     if (!next) return;
     setSaving(true);
-    await supabase.from('criativos').update({ fase: next, atualizado_em: new Date().toISOString() }).eq('id', c.id);
+    await supabase.from('producoes').update({ fase: next, atualizado_em: new Date().toISOString() }).eq('id', c.id);
     // activity log
     await supabase.from('criativo_comentarios').insert({
       criativo_id: c.id,
@@ -69,10 +69,8 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
 
   const handleDevolver = async (c: Criativo) => {
     if (!notaDevolucao.trim()) return;
-    const { prev } = getAdjacentFases(c.tipo, c.fase);
-    if (!prev) return;
     setSaving(true);
-    await supabase.from('criativos').update({ fase: prev, atualizado_em: new Date().toISOString() }).eq('id', c.id);
+    await supabase.from('producoes').update({ fase: 'alteracao', atualizado_em: new Date().toISOString() }).eq('id', c.id);
     await supabase.from('criativo_comentarios').insert({
       criativo_id: c.id,
       autor_id: userId,

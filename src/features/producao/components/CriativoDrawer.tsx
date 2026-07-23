@@ -113,7 +113,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     if (!criativoId) return;
     setLoading(true);
     const [{ data: c }, { data: h }] = await Promise.all([
-      supabase.from('criativos')
+      supabase.from('producoes')
         .select([
           '*',
           'funil:funis(id,nome,produto)',
@@ -150,7 +150,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   const handleSave = async () => {
     if (!criativo || Object.keys(changes).length === 0) { setEditing(false); return; }
-    const { error } = await supabase.from('criativos').update(changes).eq('id', criativo.id);
+    const { error } = await supabase.from('producoes').update(changes).eq('id', criativo.id);
     if (error) { toast({ title: 'Erro ao salvar', variant: 'destructive' }); return; }
     const entries = Object.entries(changes).map(([campo, valor_novo]) => ({
       criativo_id:    criativo.id,
@@ -175,7 +175,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       return;
     }
     setMovingFase(true);
-    await supabase.from('criativos').update({ fase: novaFase }).eq('id', criativo.id);
+    await supabase.from('producoes').update({ fase: novaFase }).eq('id', criativo.id);
     await supabase.from('criativo_historico').insert({
       criativo_id:    criativo.id,
       usuario_id:     userId,
@@ -201,7 +201,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const handleDelete = async () => {
     if (!criativo) return;
     if (!confirm(`Excluir "${criativo.nome}"? Esta ação não pode ser desfeita.`)) return;
-    await supabase.from('criativos').delete().eq('id', criativo.id);
+    await supabase.from('producoes').delete().eq('id', criativo.id);
     onUpdate();
     onClose();
   };

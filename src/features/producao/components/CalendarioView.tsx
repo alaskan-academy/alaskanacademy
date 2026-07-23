@@ -285,7 +285,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     let q = supabase
-      .from('criativos')
+      .from('producoes')
       .select([
         '*',
         'funil:funis(id,nome,produto)',
@@ -361,7 +361,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         return p ? { ...c, ...p.patch } : c;
       }));
       await Promise.all(patches.map(({ id, patch }) =>
-        supabase.from('criativos').update(patch).eq('id', id),
+        supabase.from('producoes').update(patch).eq('id', id),
       ));
       return;
     }
@@ -371,7 +371,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (criativo.data_inicio) patch.data_inicio = addDays(criativo.data_inicio, delta);
 
     setCriativos(prev => prev.map(c => c.id === criativoId ? { ...c, ...patch } : c));
-    const { error } = await supabase.from('criativos').update(patch).eq('id', criativoId);
+    const { error } = await supabase.from('producoes').update(patch).eq('id', criativoId);
     if (error) {
       toast({ title: 'Erro ao mover criativo', variant: 'destructive' });
       setCriativos(prev => prev.map(c =>
@@ -400,7 +400,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
 
     setCriativos(prev => prev.map(c => c.id === criativo.id ? { ...c, ...patch } : c));
-    const { error } = await supabase.from('criativos').update(patch).eq('id', criativo.id);
+    const { error } = await supabase.from('producoes').update(patch).eq('id', criativo.id);
     if (error) {
       toast({ title: 'Erro ao salvar datas', variant: 'destructive' });
       setCriativos(prev => prev.map(c =>
@@ -466,7 +466,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (bulkResp) patch.responsavel_id = bulkResp;
 
     setCriativos(prev => prev.map(c => ids.includes(c.id) ? { ...c, ...patch } : c));
-    const { error } = await supabase.from('criativos').update(patch).in('id', ids);
+    const { error } = await supabase.from('producoes').update(patch).in('id', ids);
     if (error) {
       toast({ title: 'Erro ao aplicar alterações', variant: 'destructive' });
       loadCriativos();

@@ -120,7 +120,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       data_prazo:        form.data_prazo        || null,
       notas:             form.notas             || null,
     };
-    const { data, error } = await supabase.from('criativos').insert(payload).select('id').single();
+    const { data, error } = await supabase.from('producoes').insert(payload).select('id').single();
     if (error || !data) {
       toast({ title: 'Erro ao criar', variant: 'destructive' });
       setLoading(false);

@@ -117,7 +117,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
     }
 
     let q = supabase
-      .from('criativos')
+      .from('producoes')
       .select('*, funil:funis(id,nome,produto), projeto:ofertas_editores!projeto_id(id,nome), responsavel:perfis!responsavel_id(id,nome)')
       .order('data_prazo', { ascending: false, nullsFirst: false });
 
@@ -166,7 +166,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
     setCriativos(prev => prev.map(c => c.id === criativoId ? { ...c, fase: novaFase } : c));
 
     const { error } = await supabase
-      .from('criativos')
+      .from('producoes')
       .update({ fase: novaFase })
       .eq('id', criativoId);
 

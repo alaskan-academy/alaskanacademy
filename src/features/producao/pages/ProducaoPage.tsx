@@ -111,7 +111,7 @@ export default function ProducaoPage() {
         <PainelAprovacaoView nivel={nivel} setor={setor} userId={userId} />
       )}
       {activeTab === 'Por Projeto' && (
-        <PorProjetoView nivel={nivel} />
+        <PorProjetoView nivel={nivel} userId={userId} />
       )}
     </DashboardLayout>
   );

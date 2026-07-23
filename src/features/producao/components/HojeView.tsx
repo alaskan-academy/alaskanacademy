@@ -38,7 +38,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     ].join(',');
 
     const buildQ = () => {
-      let q = supabase.from('criativos').select(sel);
+      let q = supabase.from('producoes').select(sel);
       if (fixedField && fixedValue) q = q.eq(fixedField, fixedValue);
       else if (nivel === 'membro') q = q.eq('responsavel_id', userId);
       return q;

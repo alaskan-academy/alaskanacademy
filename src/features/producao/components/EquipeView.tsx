@@ -52,7 +52,7 @@ export function EquipeView({ nivel, setor }: Props) {
 
     const ids = membros.map(m => m.perfil_id);
     const { data: criativos } = await supabase
-      .from('criativos')
+      .from('producoes')
       .select('responsavel_id,fase,data_prazo')
       .in('responsavel_id', ids);
 
