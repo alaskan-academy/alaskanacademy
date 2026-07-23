@@ -22,8 +22,15 @@ function getFieldForSetor(setorNome: string | null | undefined): 'responsavel_id
   return 'responsavel_id';
 }
 
+const FASES_MEUPAINEL: Record<string, string[]> = {
+  'Editor':             ['edicao', 'revisao_edicao', 'alteracao'],
+  'Copy':               ['producao_copy', 'revisao_copy'],
+  'Gestor de Tráfego':  ['aprovado', 'esteira_teste'],
+};
+
 export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
-  const fixedField = getFieldForSetor(setor?.nome);
+  const fixedField   = getFieldForSetor(setor?.nome);
+  const fasesDoSetor = setor?.nome ? (FASES_MEUPAINEL[setor.nome] ?? null) : null;
   const [hojeOpen, setHojeOpen] = useState(true);
 
   return (
@@ -46,6 +53,7 @@ export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
             userId={userId}
             fixedField={fixedField}
             fixedValue={userId}
+            fases={fasesDoSetor ?? undefined}
           />
         )}
       </div>
@@ -59,6 +67,7 @@ export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
           userId={userId}
           fixedField={fixedField}
           fixedValue={userId}
+          fasesVisiveis={fasesDoSetor ?? undefined}
         />
       </div>
     </div>

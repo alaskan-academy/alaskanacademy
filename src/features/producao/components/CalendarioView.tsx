@@ -30,6 +30,7 @@ interface Props {
   somenteSetor?: boolean;
   fixedField?: 'responsavel_id' | 'copy_id' | 'gestor_id';
   fixedValue?: string;
+  fasesVisiveis?: string[];
 }
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -226,7 +227,7 @@ function DroppableDay({ ymd, disabled, children }: { ymd: string; disabled?: boo
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedField, fixedValue }: Props) {
+export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis }: Props) {
   const { toast } = useToast();
   const now = new Date();
 
@@ -310,6 +311,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       if (ids.length) q = q.in('responsavel_id', ids);
     }
 
+    if (fasesVisiveis?.length) q = q.in('fase', fasesVisiveis);
     if (filtroProjeto) q = q.eq('projeto_id', filtroProjeto);
     if (filtroTipo)    q = q.eq('tipo', filtroTipo);
     if (filtroFase)    q = q.eq('fase', filtroFase);
@@ -318,7 +320,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
-  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp]);
+  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);

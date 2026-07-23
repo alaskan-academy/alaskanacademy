@@ -12,13 +12,14 @@ interface Props {
   userId: string;
   fixedField?: 'responsavel_id' | 'copy_id' | 'gestor_id';
   fixedValue?: string;
+  fases?: string[];
 }
 
 function toYMD(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedValue }: Props) {
+export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedValue, fases }: Props) {
   const [criativos, setCriativos] = useState<Criativo[]>([]);
   const [funis, setFunis]         = useState<Funil[]>([]);
   const [perfis, setPerfis]       = useState<Perfil[]>([]);
@@ -41,6 +42,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
       let q = supabase.from('producoes').select(sel);
       if (fixedField && fixedValue) q = q.eq(fixedField, fixedValue);
       else if (nivel === 'membro') q = q.eq('responsavel_id', userId);
+      if (fases?.length) q = q.in('fase', fases);
       return q;
     };
 
@@ -67,7 +69,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     setFunis(fs ?? []);
     setPerfis(ps ?? []);
     setLoading(false);
-  }, [nivel, userId, today, fixedField, fixedValue]);
+  }, [nivel, userId, today, fixedField, fixedValue, fases]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -1,6 +1,9 @@
+import { Link2Off } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Criativo, CriativoTipo } from './types';
-import { TIPOS_LABEL, TIPO_COR, getUrgency } from './constants';
+import { TIPOS_LABEL, TIPO_COR, FASES_MAP, getUrgency } from './constants';
+
+const FASES_REQUER_LINK = new Set(['edicao', 'revisao_edicao', 'alteracao', 'aprovado', 'esteira_teste', 'postado']);
 
 interface Props {
   criativo: Criativo;
@@ -8,7 +11,9 @@ interface Props {
 }
 
 export function CriativoCard({ criativo, onClick }: Props) {
-  const urgency = getUrgency(criativo.data_prazo);
+  const urgency    = getUrgency(criativo.data_prazo);
+  const missingLink = !criativo.video_editado_url && FASES_REQUER_LINK.has(criativo.fase);
+  const isVsl      = criativo.tipo === 'vsl';
 
   return (
     <button
@@ -19,11 +24,21 @@ export function CriativoCard({ criativo, onClick }: Props) {
         urgency === 'warn' && 'border-l-2 border-l-amber-500',
       )}
     >
-      <p className="text-[12.5px] font-medium text-foreground leading-tight line-clamp-2 mb-2">
-        {criativo.nome}
-      </p>
+      <div className="flex items-start gap-1 mb-2">
+        <p className="text-[12.5px] font-medium text-foreground leading-tight line-clamp-2 flex-1">
+          {criativo.nome}
+        </p>
+        {missingLink && (
+          <Link2Off className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" title="Sem link de vídeo editado" />
+        )}
+      </div>
       <div className="flex items-center gap-1 flex-wrap">
         <TipoBadge tipo={criativo.tipo} />
+        {isVsl && (
+          <span className="text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+            {FASES_MAP[criativo.fase] ?? criativo.fase}
+          </span>
+        )}
         {criativo.tipo === 'criativo' && criativo.funil_video && (
           <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             {criativo.funil_video}
@@ -35,7 +50,7 @@ export function CriativoCard({ criativo, onClick }: Props) {
           </span>
         )}
       </div>
-      {(criativo.responsavel || criativo.data_prazo) && (
+      {(criativo.responsavel || criativo.data_prazo || isVsl) && (
         <div className="flex items-center justify-between mt-1.5">
           <span className="text-[10.5px] text-muted-foreground truncate flex-1">
             {criativo.responsavel?.nome ?? '—'}

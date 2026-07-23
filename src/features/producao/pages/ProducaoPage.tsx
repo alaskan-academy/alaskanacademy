@@ -10,6 +10,13 @@ import { PorProjetoView } from '../components/PorProjetoView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
 import { CriativoFormModal } from '../components/CriativoFormModal';
+// Fases visíveis no Calendário do Setor por setor (mapear com usuário para Copy e Gestor)
+const FASES_CALENDARIO_SETOR: Record<string, string[]> = {
+  'Editor':            ['edicao', 'revisao_edicao', 'alteracao', 'aprovado'],
+  // 'Copy':           a mapear
+  // 'Gestor de Tráfego': a mapear
+};
+
 // Tabs visíveis por nível
 const TABS_POR_NIVEL: Record<ProducaoNivel, readonly string[]> = {
   socio:  ['Meu Painel', 'Calendário Geral', 'Painel de Aprovação', 'Por Projeto'],
@@ -105,7 +112,13 @@ export default function ProducaoPage() {
         <CalendarioView nivel={nivel} setorId={setorId} userId={userId} />
       )}
       {activeTab === 'Calendário do Setor' && (
-        <CalendarioView nivel={nivel} setorId={setorId} userId={userId} somenteSetor />
+        <CalendarioView
+          nivel={nivel}
+          setorId={setorId}
+          userId={userId}
+          somenteSetor
+          fasesVisiveis={FASES_CALENDARIO_SETOR[setor?.nome ?? ''] ?? undefined}
+        />
       )}
       {activeTab === 'Painel de Aprovação' && (
         <PainelAprovacaoView nivel={nivel} setor={setor} userId={userId} />

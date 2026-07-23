@@ -156,6 +156,12 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       return;
     }
 
+    // Valida link de vídeo editado ao sair da edição
+    if (criativo.fase === 'edicao' && novaFase === 'revisao_edicao' && !criativo.video_editado_url) {
+      toast({ title: 'Adicione o link do vídeo editado antes de enviar para revisão', variant: 'destructive' });
+      return;
+    }
+
     // Valida permissão para sair da fase atual
     if (!canMoveFaseOut(criativo.fase, nivel)) {
       toast({ title: 'Esta fase requer aprovação de um administrador', variant: 'destructive' });
