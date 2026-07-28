@@ -15,10 +15,9 @@ interface CriativoRow {
   fase: string;
   avaliacao: string | null;
   projeto_id: string | null;
-  funil_id: string | null;
+  funil_ids: string[];
   funil_video: string | null;
   responsavel: { nome: string } | null;
-  funil: { nome: string } | null;
 }
 
 interface Projeto {
@@ -65,7 +64,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
     setLoading(true);
     let q = supabase
       .from('producoes')
-      .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_id,funil_video,responsavel:perfis!responsavel_id(nome),funil:funis!funil_id(nome)')
+      .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(nome)')
       .order('nome');
 
     if (filtroTipo) q = q.eq('tipo', filtroTipo);
@@ -172,7 +171,8 @@ export function PorProjetoView({ nivel, userId }: Props) {
                 {isExpanded && (
                   <div className="border-t border-border">
                     {section.items.map(c => {
-                      const funil = c.funil?.nome ?? c.funil_video ?? null;
+                      const funisNomes = funis.filter(f => (c.funil_ids ?? []).includes(f.id)).map(f => f.nome);
+                      const funil = funisNomes.length > 0 ? funisNomes.join(', ') : (c.funil_video ?? null);
                       return (
                         <button
                           key={c.id}

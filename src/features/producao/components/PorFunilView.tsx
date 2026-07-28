@@ -16,7 +16,7 @@ interface CriativoRow {
   nome: string;
   tipo: string;
   fase: string;
-  funil_id: string | null;
+  funil_ids: string[];
   responsavel: { nome: string } | null;
 }
 
@@ -44,7 +44,7 @@ export function PorFunilView({ nivel }: Props) {
       supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('funis_producao').select('*'),
       supabase.from('producoes')
-        .select('id,nome,tipo,fase,funil_id,responsavel:perfis!responsavel_id(nome)')
+        .select('id,nome,tipo,fase,funil_ids,responsavel:perfis!responsavel_id(nome)')
         .order('nome'),
     ]);
     setFunis(fs ?? []);
@@ -111,7 +111,7 @@ export function PorFunilView({ nivel }: Props) {
     <div className="space-y-2">
       {funis.map(funil => {
         const info = infos[funil.id];
-        const funilItems = criativos.filter(c => c.funil_id === funil.id);
+        const funilItems = criativos.filter(c => (c.funil_ids ?? []).includes(funil.id));
         const isExpanded = expanded === funil.id;
         const isEditing  = editingId === funil.id;
 

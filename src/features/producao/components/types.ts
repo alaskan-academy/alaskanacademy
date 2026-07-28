@@ -9,6 +9,7 @@ export interface Criativo {
   tipo: CriativoTipo;
   fase: string;
   funil_id: string | null;
+  funil_ids: string[];
   funil_video: string | null;
   projeto_id: string | null;
   responsavel_id: string | null;       // editor
@@ -26,6 +27,7 @@ export interface Criativo {
   copy_url: string | null;
   video_gravado_url: string | null;
   video_editado_url: string | null;
+  video_story_url: string | null;
   data_inicio: string | null;
   data_prazo: string | null;
   notas: string | null;

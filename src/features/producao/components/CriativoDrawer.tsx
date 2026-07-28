@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -49,7 +51,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [comentarios, setComentarios]   = useState<Comentario[]>([]);
   const [loading, setLoading]           = useState(false);
   const [editing, setEditing]           = useState(false);
-  const [changes, setChanges]           = useState<Record<string, string | null>>({});
+  const [changes, setChanges]           = useState<Record<string, string | null | string[]>>({});
   const [movingFase, setMovingFase]     = useState(false);
   // Dynamic select options from DB
   const [opFormato, setOpFormato]                 = useState<string[]>(FALLBACK_FORMATOS);
@@ -142,23 +144,33 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setChanges({});
   }, [load, loadComentarios]);
 
-  const ch  = (k: string, v: string | null) => setChanges(prev => ({ ...prev, [k]: v }));
-  const val = (k: string): string => {
-    if (k in changes) return changes[k] ?? '';
+  const ch     = (k: string, v: string | null | string[]) => setChanges(prev => ({ ...prev, [k]: v }));
+  const val    = (k: string): string => {
+    if (k in changes) return (changes[k] as string | null) ?? '';
     return ((criativo as Record<string, unknown> | null)?.[k] as string | null) ?? '';
+  };
+  const valArr = (k: string): string[] => {
+    if (k in changes) return (changes[k] as string[]) ?? [];
+    return ((criativo as Record<string, unknown> | null)?.[k] as string[] | null) ?? [];
+  };
+  const toggleFunilId = (id: string) => {
+    const current = valArr('funil_ids');
+    ch('funil_ids', current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
   };
 
   const handleSave = async () => {
     if (!criativo || Object.keys(changes).length === 0) { setEditing(false); return; }
     const { error } = await supabase.from('producoes').update(changes).eq('id', criativo.id);
     if (error) { toast({ title: 'Erro ao salvar', variant: 'destructive' }); return; }
+    const stringify = (v: unknown): string | null =>
+      Array.isArray(v) ? (v as string[]).join(',') : (v as string | null | undefined)?.toString() ?? null;
     const entries = Object.entries(changes).map(([campo, valor_novo]) => ({
       criativo_id:    criativo.id,
       usuario_id:     userId,
       tipo_alteracao: 'campo' as const,
       campo_alterado: campo,
-      valor_anterior: ((criativo as Record<string, unknown>)[campo] as string | null | undefined)?.toString() ?? null,
-      valor_novo:     valor_novo?.toString() ?? null,
+      valor_anterior: stringify((criativo as Record<string, unknown>)[campo]),
+      valor_novo:     stringify(valor_novo),
     }));
     if (entries.length) await supabase.from('criativo_historico').insert(entries);
     toast({ title: 'Salvo' });
@@ -432,6 +444,34 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                   </Select>
                 ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
               </Field>
+              <Field label="Funis" editing={editing}>
+                {editing ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="mt-0.5 h-7 text-xs w-full flex items-center px-2 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
+                        {valArr('funil_ids').length === 0
+                          ? <span className="text-muted-foreground">—</span>
+                          : <span className="truncate">{funis.filter(f => valArr('funil_ids').includes(f.id)).map(f => f.nome).join(', ')}</span>}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-2" align="start">
+                      {funis.map(f => (
+                        <div key={f.id} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => toggleFunilId(f.id)}>
+                          <Checkbox checked={valArr('funil_ids').includes(f.id)} onCheckedChange={() => toggleFunilId(f.id)} />
+                          <span className="text-xs">{f.nome}</span>
+                        </div>
+                      ))}
+                      {funis.length === 0 && <span className="text-xs text-muted-foreground px-1">Nenhum funil ativo</span>}
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <span>
+                    {funis.filter(f => (criativo.funil_ids ?? []).includes(f.id)).map(f => f.nome).join(', ') || '—'}
+                  </span>
+                )}
+              </Field>
+
               <Field label="Início" editing={editing}>
                 {editing ? (
                   <Input type="date" className="h-7 text-xs mt-0.5"
@@ -561,8 +601,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           {/* Links */}
           <div className="space-y-2">
             <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Links</p>
-            {(['copy_url', 'video_gravado_url', 'video_editado_url'] as const).map(field => {
-              const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_editado_url: 'Vídeo Editado' };
+            {(['copy_url', 'video_gravado_url', 'video_story_url'] as const).map(field => {
+              const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_story_url: 'Vídeo Story' };
               const raw = criativo[field];
               return (
                 <div key={field} className="flex items-center gap-2">

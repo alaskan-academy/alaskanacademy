@@ -10,11 +10,10 @@ import { PorProjetoView } from '../components/PorProjetoView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
 import { CriativoFormModal } from '../components/CriativoFormModal';
-// Fases visíveis no Calendário do Setor por setor (mapear com usuário para Copy e Gestor)
 const FASES_CALENDARIO_SETOR: Record<string, string[]> = {
-  'Editor':            ['edicao', 'revisao_edicao', 'alteracao', 'aprovado'],
-  // 'Copy':           a mapear
-  // 'Gestor de Tráfego': a mapear
+  'Editor':             ['edicao', 'revisao_edicao', 'alteracao', 'aprovado'],
+  'Copy':               ['producao_copy', 'revisao_copy', 'gravacao'],
+  'Gestor de Tráfego':  ['aprovado', 'esteira_teste', 'postado'],
 };
 
 // Tabs visíveis por nível
