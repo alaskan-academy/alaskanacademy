@@ -17,6 +17,8 @@ export const FASES: FaseItem[] = [
   { key: 'esteira_teste',  label: 'Esteira de Teste' },
   { key: 'postado',        label: 'Postado'          },
   { key: 'na_plataforma',  label: 'Na Plataforma'   },
+  { key: 'bloqueado',      label: 'Bloqueado'        },
+  { key: 'arquivado',      label: 'Arquivado'        },
 ];
 
 export const FASES_MAP: Record<string, string> = {
