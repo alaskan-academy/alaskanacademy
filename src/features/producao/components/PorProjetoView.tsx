@@ -62,18 +62,26 @@ export function PorProjetoView({ nivel, userId }: Props) {
 
   const loadCriativos = useCallback(async () => {
     setLoading(true);
-    let q = supabase
-      .from('producoes')
-      .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(nome)')
-      .order('nome');
-
-    if (filtroTipo) q = q.eq('tipo', filtroTipo);
-    if (filtroFase) q = q.eq('fase', filtroFase);
-    if (filtroResp) q = q.eq('responsavel_id', filtroResp);
-    if (filtroAval) q = q.eq('avaliacao', filtroAval);
-
-    const { data } = await q;
-    setCriativos((data ?? []) as CriativoRow[]);
+    const PAGE = 1000;
+    let all: CriativoRow[] = [];
+    let from = 0;
+    while (true) {
+      let q = supabase
+        .from('producoes')
+        .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(nome)')
+        .order('nome')
+        .range(from, from + PAGE - 1);
+      if (filtroTipo) q = q.eq('tipo', filtroTipo);
+      if (filtroFase) q = q.eq('fase', filtroFase);
+      if (filtroResp) q = q.eq('responsavel_id', filtroResp);
+      if (filtroAval) q = q.eq('avaliacao', filtroAval);
+      const { data } = await q;
+      if (!data || data.length === 0) break;
+      all = all.concat(data as CriativoRow[]);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    setCriativos(all);
     setLoading(false);
   }, [filtroTipo, filtroFase, filtroResp, filtroAval]);
 

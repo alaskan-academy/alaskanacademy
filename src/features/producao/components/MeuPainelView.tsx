@@ -29,7 +29,7 @@ const FASES_MEUPAINEL: Record<string, string[]> = {
 };
 
 export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
-  const fixedField   = getFieldForSetor(setor?.nome);
+  const fixedField   = setor?.nome ? getFieldForSetor(setor.nome) : undefined;
   const fasesDoSetor = setor?.nome ? (FASES_MEUPAINEL[setor.nome] ?? null) : null;
   const [hojeOpen, setHojeOpen] = useState(true);
 
