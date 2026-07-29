@@ -315,10 +315,12 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   if (!criativoId) return null;
 
+  const sheetStyle = expanded ? { width: '100vw', maxWidth: '100vw' } : undefined;
+
   if (loading || !criativo) {
     return (
       <Sheet open onOpenChange={v => !v && onClose()}>
-        <SheetContent side="right" className={cn('p-0 flex flex-col', expanded ? 'w-screen max-w-none' : 'w-full max-w-2xl')}>
+        <SheetContent side="right" className="w-full max-w-2xl p-0 flex flex-col" style={sheetStyle}>
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
         </SheetContent>
       </Sheet>
@@ -334,7 +336,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   return (
     <Sheet open onOpenChange={v => !v && onClose()}>
-      <SheetContent side="right" className={cn('overflow-y-auto p-0 flex flex-col', expanded ? 'w-screen max-w-none' : 'w-full max-w-2xl')}>
+      <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto p-0 flex flex-col" style={sheetStyle}>
         {/* Header */}
         <div className="sticky top-0 bg-background border-b px-5 py-3 flex items-start gap-3 z-10">
           <div className="flex-1 min-w-0">

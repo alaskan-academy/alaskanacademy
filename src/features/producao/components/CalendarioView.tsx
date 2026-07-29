@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronLeft, ChevronRight, Plus, MousePointer2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
@@ -419,7 +419,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   // ── Rubber band ──────────────────────────────────────────────────────────
 
   const handleCalPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!selectMode) return;
     if ((e.target as Element).closest('[data-criativo-id]')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     rubberStartRef.current = { x: e.clientX, y: e.clientY };
@@ -428,7 +427,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         display: 'block', left: `${e.clientX}px`, top: `${e.clientY}px`, width: '0px', height: '0px',
       });
     }
-  }, [selectMode]);
+  }, []);
 
   const handleCalPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!rubberStartRef.current) return;
@@ -451,8 +450,19 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
     const minX = Math.min(sx, e.clientX), maxX = Math.max(sx, e.clientX);
     const minY = Math.min(sy, e.clientY), maxY = Math.max(sy, e.clientY);
-    if (maxX - minX < 4 && maxY - minY < 4) return;
 
+    // Small click on empty space → cancel selection
+    if (maxX - minX < 4 && maxY - minY < 4) {
+      if (selectedIds.size > 0 || selectMode) {
+        setSelectedIds(new Set());
+        setSelectMode(false);
+        setBulkFase('');
+        setBulkResp('');
+      }
+      return;
+    }
+
+    // Rubber-band drag → add cards in rect to selection and enter selectMode
     const next = new Set(selectedIds);
     document.querySelectorAll('[data-criativo-id]').forEach(el => {
       const r = el.getBoundingClientRect();
@@ -460,8 +470,9 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         next.add((el as HTMLElement).dataset.criativoId!);
       }
     });
+    if (next.size > 0) setSelectMode(true);
     setSelectedIds(next);
-  }, [selectedIds]);
+  }, [selectedIds, selectMode]);
 
   // ── Bulk apply ────────────────────────────────────────────────────────────
 
@@ -484,6 +495,31 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       setBulkResp('');
     }
   }, [selectedIds, bulkFase, bulkResp, toast, loadCriativos]);
+
+  const handleBulkDuplicate = useCallback(async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    const { data: originals } = await supabase
+      .from('producoes')
+      .select('id,nome,tipo,funil_ids,projeto_id,funil_video,responsavel_id,copy_id,gestor_id,formato,plataforma,tipo_teste,nivel_consciencia,angulo_teste,modulo,ordem,notas')
+      .in('id', ids);
+    if (!originals?.length) return;
+    const copies = originals.map(c => ({
+      nome: `${c.nome} (cópia)`, tipo: c.tipo, fase: 'briefing',
+      funil_ids: c.funil_ids ?? [], projeto_id: c.projeto_id,
+      funil_video: c.funil_video, responsavel_id: c.responsavel_id,
+      copy_id: c.copy_id, gestor_id: c.gestor_id,
+      formato: c.formato, plataforma: c.plataforma,
+      tipo_teste: c.tipo_teste, nivel_consciencia: c.nivel_consciencia,
+      angulo_teste: c.angulo_teste, modulo: c.modulo, ordem: c.ordem, notas: c.notas,
+    }));
+    const { error } = await supabase.from('producoes').insert(copies);
+    if (error) { toast({ title: 'Erro ao duplicar', variant: 'destructive' }); return; }
+    toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} duplicado${ids.length !== 1 ? 's' : ''}` });
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    loadCriativos();
+  }, [selectedIds, toast, loadCriativos]);
 
   // ── Calendar data ─────────────────────────────────────────────────────────
 
@@ -575,17 +611,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
             <div className="w-6 h-2 rounded-sm bg-blue-500/20 border border-blue-500/30" />Período
           </div>
         </div>
-
-        {/* Select mode toggle */}
-        <Button
-          size="sm"
-          variant={selectMode ? 'secondary' : 'outline'}
-          className="h-8 gap-1.5"
-          onClick={() => { setSelectMode(s => !s); setSelectedIds(new Set()); }}
-        >
-          <MousePointer2 className="h-3.5 w-3.5" />
-          {selectMode ? 'Cancelar' : 'Selecionar'}
-        </Button>
 
         <div className="flex items-center gap-1 border-l border-border/40 pl-2">
           <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={prevMonth}>
@@ -785,7 +810,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               )}>
                                 {day.getDate()}
                               </span>
-                              {nivel !== 'membro' && isCurrentMonth && !selectMode && (
+                              {nivel !== 'membro' && isCurrentMonth && selectedIds.size === 0 && (
                                 <button
                                   onClick={() => setCreateDate(ymd)}
                                   title="Novo criativo"
@@ -870,10 +895,11 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
           <Button size="sm" className="h-7 text-xs" onClick={applyBulk} disabled={!bulkFase && !bulkResp}>
             Aplicar
           </Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs"
-            onClick={() => { setSelectedIds(new Set()); setBulkFase(''); setBulkResp(''); setSelectMode(false); }}>
-            Limpar
-          </Button>
+          {nivel === 'socio' && (
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleBulkDuplicate}>
+              <Copy className="h-3 w-3" />Duplicar
+            </Button>
+          )}
         </div>
       )}
 
