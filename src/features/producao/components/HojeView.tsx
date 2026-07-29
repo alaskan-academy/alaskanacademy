@@ -50,17 +50,20 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     const q1 = buildQ().eq('data_prazo', today);
     // Tasks spanning through today but not ending today
     const q2 = buildQ().lte('data_inicio', today).gt('data_prazo', today);
+    // Tasks with only data_inicio = today (no data_prazo) — visible in calendar via fallback
+    const q3 = buildQ().eq('data_inicio', today).is('data_prazo', null);
 
-    const [{ data: d1 }, { data: d2 }, { data: fs }, { data: ps }] = await Promise.all([
+    const [{ data: d1 }, { data: d2 }, { data: d3 }, { data: fs }, { data: ps }] = await Promise.all([
       q1,
       q2,
+      q3,
       supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
     ]);
 
     const seen = new Set<string>();
     const merged: Criativo[] = [];
-    for (const c of [...(d1 ?? []), ...(d2 ?? [])]) {
+    for (const c of [...(d1 ?? []), ...(d2 ?? []), ...(d3 ?? [])]) {
       if (!seen.has(c.id)) { seen.add(c.id); merged.push(c as Criativo); }
     }
     merged.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' }));
