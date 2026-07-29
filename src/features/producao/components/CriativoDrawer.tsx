@@ -340,21 +340,448 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const canEdit   = nivel === 'socio';
   const canDelete = nivel === 'socio';
 
+  // ─── layout helpers ──────────────────────────────────────────────────────────
+
+  const slLabel = (txt: string, icon?: ReactNode) => (
+    <p className={cn(
+      'font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5',
+      expanded ? 'text-[13px] mb-3' : 'text-[10.5px] mb-2',
+    )}>
+      {icon}{txt}
+    </p>
+  );
+
+  const fieldsPane = (
+    <div className="space-y-5">
+      {/* Phase navigation */}
+      <div>
+        {slLabel('Fase')}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline"
+            className={cn(expanded ? 'text-sm h-9 px-4' : 'text-xs h-7')}
+            disabled={!prevFase || movingFase}
+            onClick={() => prevFase && handleFaseChange(prevFase)}>
+            <ChevronLeft className={cn(expanded ? 'h-4 w-4 mr-1.5' : 'h-3.5 w-3.5 mr-1')} />
+            {prevFase ? (FASES_MAP[prevFase] ?? prevFase) : 'Início'}
+          </Button>
+          <span className={cn('flex-1 text-center font-semibold text-foreground px-1', expanded ? 'text-base' : 'text-xs')}>
+            {FASES_MAP[criativo.fase] ?? criativo.fase}
+          </span>
+          <Button size="sm"
+            className={cn(expanded ? 'text-sm h-9 px-4' : 'text-xs h-7')}
+            disabled={!nextFase || !canAdvance || movingFase}
+            onClick={() => nextFase && canAdvance && handleFaseChange(nextFase)}>
+            {nextFase ? (FASES_MAP[nextFase] ?? nextFase) : 'Fim'}
+            <ChevronRight className={cn(expanded ? 'h-4 w-4 ml-1.5' : 'h-3.5 w-3.5 ml-1')} />
+          </Button>
+        </div>
+        {isRevisaoFase && !canAdvance && (
+          <p className={cn('text-amber-400 mt-1.5', expanded ? 'text-sm' : 'text-[11px]')}>
+            Aguardando aprovação do líder ou sócio para avançar.
+          </p>
+        )}
+      </div>
+
+      <Separator />
+
+      {/* Core fields */}
+      <div className="space-y-3">
+        {slLabel('Informações')}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <Field label="Projeto" editing={editing}>
+            {editing ? (
+              <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
+          </Field>
+          <Field label="Funis" editing={editing}>
+            {editing ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="mt-0.5 h-7 text-xs w-full flex items-center px-2 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
+                    {valArr('funil_ids').length === 0
+                      ? <span className="text-muted-foreground">—</span>
+                      : <span className="truncate">{funis.filter(f => valArr('funil_ids').includes(f.id)).map(f => f.nome).join(', ')}</span>}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-52 p-2" align="start">
+                  {funis.map(f => (
+                    <div key={f.id} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                      onClick={() => toggleFunilId(f.id)}>
+                      <Checkbox checked={valArr('funil_ids').includes(f.id)} onCheckedChange={() => toggleFunilId(f.id)} />
+                      <span className="text-xs">{f.nome}</span>
+                    </div>
+                  ))}
+                  {funis.length === 0 && <span className="text-xs text-muted-foreground px-1">Nenhum funil ativo</span>}
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <span>
+                {funis.filter(f => (criativo.funil_ids ?? []).includes(f.id)).map(f => f.nome).join(', ') || '—'}
+              </span>
+            )}
+          </Field>
+          <Field label="Copy" editing={editing}>
+            {editing ? (
+              <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.copy?.nome ?? '—'}</span>}
+          </Field>
+          <Field label="Editor" editing={editing}>
+            {editing ? (
+              <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
+          </Field>
+          <Field label="Gestor de Tráfego" editing={editing}>
+            {editing ? (
+              <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
+          </Field>
+          <Field label="Início" editing={editing}>
+            {editing ? (
+              <Input type="date" className="h-7 text-xs mt-0.5"
+                value={val('data_inicio')} onChange={e => ch('data_inicio', e.target.value || null)} />
+            ) : <span>{criativo.data_inicio
+              ? new Date(criativo.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR')
+              : '—'}</span>}
+          </Field>
+          <Field label="Prazo (fim)" editing={editing}>
+            {editing ? (
+              <Input type="date" className="h-7 text-xs mt-0.5"
+                value={val('data_prazo')} onChange={e => ch('data_prazo', e.target.value || null)} />
+            ) : <span>{criativo.data_prazo
+              ? new Date(criativo.data_prazo + 'T00:00:00').toLocaleDateString('pt-BR')
+              : '—'}</span>}
+          </Field>
+        </div>
+      </div>
+
+      {/* Type-specific fields */}
+      {criativo.tipo === 'criativo' && (
+        <div className="space-y-3">
+          {slLabel('Criativo')}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="Funil de Vendas" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opFunilVideo.map(v => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vendas" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : <span>{criativo.funil_video ?? '—'}</span>}
+            </Field>
+            <Field label="Formato" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select value={val('formato') || '_'} onValueChange={v => ch('formato', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opFormato.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="formato" label="Formato" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : <span>{criativo.formato ?? '—'}</span>}
+            </Field>
+            <Field label="Plataforma" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select value={val('plataforma') || '_'} onValueChange={v => ch('plataforma', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opPlataforma.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="plataforma" label="Plataforma" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : <span>{criativo.plataforma ?? '—'}</span>}
+            </Field>
+            <Field label="Tipo de Teste" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select value={val('tipo_teste') || '_'} onValueChange={v => ch('tipo_teste', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opTipoTeste.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="tipo_teste" label="Tipo de Teste" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : <span>{criativo.tipo_teste ?? '—'}</span>}
+            </Field>
+            <Field label="Nível de Consciência" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select value={val('nivel_consciencia') || '_'} onValueChange={v => ch('nivel_consciencia', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opNivelConsciencia.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="nivel_consciencia" label="Nível de Consciência" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : <span>{criativo.nivel_consciencia ?? '—'}</span>}
+            </Field>
+          </div>
+          <Field label="Ângulo de Teste" editing={editing}>
+            {editing ? (
+              <Input className="h-7 text-xs mt-0.5"
+                value={val('angulo_teste')} onChange={e => ch('angulo_teste', e.target.value || null)} />
+            ) : <span>{criativo.angulo_teste ?? '—'}</span>}
+          </Field>
+        </div>
+      )}
+
+      {criativo.tipo === 'aula' && (
+        <div className="space-y-3">
+          {slLabel('Aula')}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="Módulo" editing={editing}>
+              {editing ? (
+                <Input className="h-7 text-xs mt-0.5"
+                  value={val('modulo')} onChange={e => ch('modulo', e.target.value || null)} />
+              ) : <span>{criativo.modulo ?? '—'}</span>}
+            </Field>
+            <Field label="Ordem" editing={editing}>
+              {editing ? (
+                <Input type="number" className="h-7 text-xs mt-0.5"
+                  value={val('ordem')} onChange={e => ch('ordem', e.target.value || null)} />
+              ) : <span>{criativo.ordem ?? '—'}</span>}
+            </Field>
+          </div>
+        </div>
+      )}
+
+      {/* Links — always editable inline */}
+      <div className="space-y-2">
+        {slLabel('Links')}
+        {(['copy_url', 'video_gravado_url', 'video_story_url'] as const).map(field => {
+          const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_story_url: 'Vídeo Story' };
+          const raw = (field in changes ? changes[field] as string | null : criativo[field]) ?? '';
+          return (
+            <div key={field} className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground w-28 shrink-0">{labelMap[field]}</span>
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <Input
+                  className="h-6 text-xs flex-1"
+                  placeholder="https://..."
+                  value={raw}
+                  onChange={e => ch(field, e.target.value || null)}
+                  onBlur={async () => {
+                    const newVal = (field in changes ? changes[field] as string | null : null);
+                    if (newVal === undefined || newVal === (criativo[field] ?? null)) return;
+                    await supabase.from('producoes').update({ [field]: newVal || null }).eq('id', criativo.id);
+                    await supabase.from('criativo_historico').insert({
+                      criativo_id:    criativo.id,
+                      usuario_id:     userId,
+                      tipo_alteracao: 'campo',
+                      campo_alterado: field,
+                      valor_anterior: criativo[field] ?? null,
+                      valor_novo:     newVal || null,
+                    });
+                    setChanges(prev => { const n = { ...prev }; delete n[field]; return n; });
+                    load();
+                    onUpdate();
+                  }}
+                />
+                {raw && (
+                  <a href={raw} target="_blank" rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-primary shrink-0">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Veiculação — só para criativo e VSL */}
+      {criativo.tipo !== 'aula' && (
+        <div className="space-y-3">
+          {slLabel('Veiculação')}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="Status" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select
+                    value={val('status_veiculacao') || '_'}
+                    onValueChange={v => ch('status_veiculacao', v === '_' ? null : v)}
+                  >
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opStatusVeiculacao.map(v => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="status_veiculacao" label="Status de Veiculação" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : (
+                <span>{criativo.status_veiculacao ?? '—'}</span>
+              )}
+            </Field>
+            <Field label="Avaliação" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select
+                    value={val('avaliacao') || '_'}
+                    onValueChange={v => ch('avaliacao', v === '_' ? null : v)}
+                  >
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opAvaliacao.map(v => (
+                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="avaliacao" label="Avaliação" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : (
+                <span>{criativo.avaliacao ?? '—'}</span>
+              )}
+            </Field>
+          </div>
+        </div>
+      )}
+
+      {/* Notas */}
+      <div>
+        {slLabel('Notas')}
+        {editing ? (
+          <Textarea className="text-xs resize-none" rows={3}
+            value={val('notas')} onChange={e => ch('notas', e.target.value || null)} />
+        ) : (
+          <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+            {criativo.notas || '—'}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
+  const sidePane = (
+    <div className="space-y-5">
+      {/* Comentários */}
+      <div>
+        <p className={cn(
+          'font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5',
+          expanded ? 'text-[13px] mb-3' : 'text-[10.5px] mb-3',
+        )}>
+          <MessageSquare className={expanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+          Comentários
+          {comentarios.length > 0 && (
+            <span className="ml-1 font-normal text-muted-foreground/60">({comentarios.length})</span>
+          )}
+        </p>
+
+        {comentarios.length === 0 ? (
+          <p className="text-xs text-muted-foreground/60 mb-3">Nenhum comentário ainda.</p>
+        ) : (
+          <div className="space-y-3 mb-4">
+            {comentarios.map(c => (
+              <ComentarioItem
+                key={c.id}
+                comentario={c}
+                respondendoId={respondendoId}
+                novaResposta={novaResposta}
+                postando={postando}
+                perfis={perfis}
+                onReply={() => { setRespondendoId(c.id); setNovaResposta(''); }}
+                onCancelReply={() => setRespondendoId(null)}
+                onNovaRespostaChange={setNovaResposta}
+                onPostReply={() => handlePostReply(c.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Nova mensagem */}
+        <div className="flex gap-2 items-end">
+          <MentionTextarea
+            value={novoComentario}
+            onChange={setNovoComentario}
+            onSubmit={handlePostComment}
+            perfis={perfis}
+            placeholder="Escreva um comentário... (Ctrl+Enter para enviar, @ para mencionar)"
+            rows={expanded ? 4 : 2}
+          />
+          <Button
+            size="sm"
+            className="h-9 px-3 gap-1"
+            disabled={!novoComentario.trim() || postando}
+            onClick={handlePostComment}
+          >
+            <Send className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Histórico */}
+      <HistoricoSection historico={historico} />
+    </div>
+  );
+
   return (
     <Sheet open onOpenChange={v => !v && onClose()}>
-      <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto p-0 flex flex-col" style={sheetStyle}>
+      <SheetContent side="right" className="w-full max-w-2xl p-0 flex flex-col" style={sheetStyle}>
         {/* Header */}
-        <div className="sticky top-0 bg-background border-b px-5 py-3 flex items-start gap-3 z-10">
+        <div className={cn(
+          'sticky top-0 bg-background border-b flex items-start gap-3 z-10',
+          expanded ? 'px-7 py-4' : 'px-5 py-3',
+        )}>
           <div className="flex-1 min-w-0">
             {editing ? (
-              <Input className="h-7 text-sm font-semibold"
-                value={val('nome')} onChange={e => ch('nome', e.target.value)} />
+              <Input
+                className={cn('font-semibold', expanded ? 'h-9 text-base' : 'h-7 text-sm')}
+                value={val('nome')}
+                onChange={e => ch('nome', e.target.value)}
+              />
             ) : (
-              <h2 className="text-sm font-semibold text-foreground leading-snug">{criativo.nome}</h2>
+              <h2 className={cn('font-semibold text-foreground leading-snug', expanded ? 'text-xl' : 'text-sm')}>
+                {criativo.nome}
+              </h2>
             )}
-            <div className="flex items-center gap-1.5 mt-1">
+            <div className="flex items-center gap-1.5 mt-1.5">
               <TipoBadge tipo={criativo.tipo} />
-              <Badge variant="outline" className="text-[10px] h-4 px-1.5 font-normal">
+              <Badge variant="outline" className={cn('font-normal', expanded ? 'text-xs h-5 px-2' : 'text-[10px] h-4 px-1.5')}>
                 {FASES_MAP[criativo.fase] ?? criativo.fase}
               </Badge>
             </div>
@@ -404,404 +831,23 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* Phase navigation */}
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Fase</p>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="text-xs h-7"
-                disabled={!prevFase || movingFase}
-                onClick={() => prevFase && handleFaseChange(prevFase)}>
-                <ChevronLeft className="h-3.5 w-3.5 mr-1" />
-                {prevFase ? (FASES_MAP[prevFase] ?? prevFase) : 'Início'}
-              </Button>
-              <span className="flex-1 text-center text-xs font-semibold text-foreground px-1">
-                {FASES_MAP[criativo.fase] ?? criativo.fase}
-              </span>
-              <Button size="sm" className="text-xs h-7"
-                disabled={!nextFase || !canAdvance || movingFase}
-                onClick={() => nextFase && canAdvance && handleFaseChange(nextFase)}>
-                {nextFase ? (FASES_MAP[nextFase] ?? nextFase) : 'Fim'}
-                <ChevronRight className="h-3.5 w-3.5 ml-1" />
-              </Button>
+        {/* Body — two-column when expanded, single-column otherwise */}
+        {expanded ? (
+          <div className="flex-1 overflow-hidden flex">
+            <div className="flex-[0_0_60%] overflow-y-auto px-7 py-6 border-r border-border/40">
+              {fieldsPane}
             </div>
-            {isRevisaoFase && !canAdvance && (
-              <p className="text-[11px] text-amber-400 mt-1.5">
-                Aguardando aprovação do líder ou sócio para avançar.
-              </p>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Core fields */}
-          <div className="space-y-3">
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Informações</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <Field label="Projeto" editing={editing}>
-                {editing ? (
-                  <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
-              </Field>
-              <Field label="Funis" editing={editing}>
-                {editing ? (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button className="mt-0.5 h-7 text-xs w-full flex items-center px-2 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
-                        {valArr('funil_ids').length === 0
-                          ? <span className="text-muted-foreground">—</span>
-                          : <span className="truncate">{funis.filter(f => valArr('funil_ids').includes(f.id)).map(f => f.nome).join(', ')}</span>}
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-52 p-2" align="start">
-                      {funis.map(f => (
-                        <div key={f.id} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
-                          onClick={() => toggleFunilId(f.id)}>
-                          <Checkbox checked={valArr('funil_ids').includes(f.id)} onCheckedChange={() => toggleFunilId(f.id)} />
-                          <span className="text-xs">{f.nome}</span>
-                        </div>
-                      ))}
-                      {funis.length === 0 && <span className="text-xs text-muted-foreground px-1">Nenhum funil ativo</span>}
-                    </PopoverContent>
-                  </Popover>
-                ) : (
-                  <span>
-                    {funis.filter(f => (criativo.funil_ids ?? []).includes(f.id)).map(f => f.nome).join(', ') || '—'}
-                  </span>
-                )}
-              </Field>
-              <Field label="Copy" editing={editing}>
-                {editing ? (
-                  <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.copy?.nome ?? '—'}</span>}
-              </Field>
-              <Field label="Editor" editing={editing}>
-                {editing ? (
-                  <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
-              </Field>
-              <Field label="Gestor de Tráfego" editing={editing}>
-                {editing ? (
-                  <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
-              </Field>
-
-              <Field label="Início" editing={editing}>
-                {editing ? (
-                  <Input type="date" className="h-7 text-xs mt-0.5"
-                    value={val('data_inicio')} onChange={e => ch('data_inicio', e.target.value || null)} />
-                ) : <span>{criativo.data_inicio
-                  ? new Date(criativo.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR')
-                  : '—'}</span>}
-              </Field>
-              <Field label="Prazo (fim)" editing={editing}>
-                {editing ? (
-                  <Input type="date" className="h-7 text-xs mt-0.5"
-                    value={val('data_prazo')} onChange={e => ch('data_prazo', e.target.value || null)} />
-                ) : <span>{criativo.data_prazo
-                  ? new Date(criativo.data_prazo + 'T00:00:00').toLocaleDateString('pt-BR')
-                  : '—'}</span>}
-              </Field>
+            <div className="flex-1 overflow-y-auto px-6 py-6 bg-muted/5">
+              {sidePane}
             </div>
           </div>
-
-          {/* Type-specific fields */}
-          {criativo.tipo === 'criativo' && (
-            <div className="space-y-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Criativo</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <Field label="Funil de Vendas" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opFunilVideo.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vendas" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : <span>{criativo.funil_video ?? '—'}</span>}
-                </Field>
-                <Field label="Formato" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select value={val('formato') || '_'} onValueChange={v => ch('formato', v === '_' ? null : v)}>
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opFormato.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="formato" label="Formato" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : <span>{criativo.formato ?? '—'}</span>}
-                </Field>
-                <Field label="Plataforma" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select value={val('plataforma') || '_'} onValueChange={v => ch('plataforma', v === '_' ? null : v)}>
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opPlataforma.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="plataforma" label="Plataforma" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : <span>{criativo.plataforma ?? '—'}</span>}
-                </Field>
-                <Field label="Tipo de Teste" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select value={val('tipo_teste') || '_'} onValueChange={v => ch('tipo_teste', v === '_' ? null : v)}>
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opTipoTeste.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="tipo_teste" label="Tipo de Teste" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : <span>{criativo.tipo_teste ?? '—'}</span>}
-                </Field>
-                <Field label="Nível de Consciência" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select value={val('nivel_consciencia') || '_'} onValueChange={v => ch('nivel_consciencia', v === '_' ? null : v)}>
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opNivelConsciencia.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="nivel_consciencia" label="Nível de Consciência" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : <span>{criativo.nivel_consciencia ?? '—'}</span>}
-                </Field>
-              </div>
-              <Field label="Ângulo de Teste" editing={editing}>
-                {editing ? (
-                  <Input className="h-7 text-xs mt-0.5"
-                    value={val('angulo_teste')} onChange={e => ch('angulo_teste', e.target.value || null)} />
-                ) : <span>{criativo.angulo_teste ?? '—'}</span>}
-              </Field>
-            </div>
-          )}
-
-          {criativo.tipo === 'aula' && (
-            <div className="space-y-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Aula</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <Field label="Módulo" editing={editing}>
-                  {editing ? (
-                    <Input className="h-7 text-xs mt-0.5"
-                      value={val('modulo')} onChange={e => ch('modulo', e.target.value || null)} />
-                  ) : <span>{criativo.modulo ?? '—'}</span>}
-                </Field>
-                <Field label="Ordem" editing={editing}>
-                  {editing ? (
-                    <Input type="number" className="h-7 text-xs mt-0.5"
-                      value={val('ordem')} onChange={e => ch('ordem', e.target.value || null)} />
-                  ) : <span>{criativo.ordem ?? '—'}</span>}
-                </Field>
-              </div>
-            </div>
-          )}
-
-          {/* Links — always editable inline */}
-          <div className="space-y-2">
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Links</p>
-            {(['copy_url', 'video_gravado_url', 'video_story_url'] as const).map(field => {
-              const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_story_url: 'Vídeo Story' };
-              const raw = (field in changes ? changes[field] as string | null : criativo[field]) ?? '';
-              return (
-                <div key={field} className="flex items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground w-28 shrink-0">{labelMap[field]}</span>
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <Input
-                      className="h-6 text-xs flex-1"
-                      placeholder="https://..."
-                      value={raw}
-                      onChange={e => ch(field, e.target.value || null)}
-                      onBlur={async () => {
-                        const newVal = (field in changes ? changes[field] as string | null : null);
-                        if (newVal === undefined || newVal === (criativo[field] ?? null)) return;
-                        await supabase.from('producoes').update({ [field]: newVal || null }).eq('id', criativo.id);
-                        await supabase.from('criativo_historico').insert({
-                          criativo_id:    criativo.id,
-                          usuario_id:     userId,
-                          tipo_alteracao: 'campo',
-                          campo_alterado: field,
-                          valor_anterior: criativo[field] ?? null,
-                          valor_novo:     newVal || null,
-                        });
-                        setChanges(prev => { const n = { ...prev }; delete n[field]; return n; });
-                        load();
-                        onUpdate();
-                      }}
-                    />
-                    {raw && (
-                      <a href={raw} target="_blank" rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-primary shrink-0">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+        ) : (
+          <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+            {fieldsPane}
+            <Separator />
+            {sidePane}
           </div>
-
-          {/* Veiculação — só para criativo e VSL */}
-          {criativo.tipo !== 'aula' && (
-            <div className="space-y-3">
-              <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Veiculação</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                <Field label="Status" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select
-                        value={val('status_veiculacao') || '_'}
-                        onValueChange={v => ch('status_veiculacao', v === '_' ? null : v)}
-                      >
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opStatusVeiculacao.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="status_veiculacao" label="Status de Veiculação" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : (
-                    <span>{criativo.status_veiculacao ?? '—'}</span>
-                  )}
-                </Field>
-                <Field label="Avaliação" editing={editing}>
-                  {editing ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Select
-                        value={val('avaliacao') || '_'}
-                        onValueChange={v => ch('avaliacao', v === '_' ? null : v)}
-                      >
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_">—</SelectItem>
-                          {opAvaliacao.map(v => (
-                            <SelectItem key={v} value={v}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {nivel === 'socio' && <GerenciarOpcoesPopover campo="avaliacao" label="Avaliação" onAtualizar={loadOpcoes} />}
-                    </div>
-                  ) : (
-                    <span>{criativo.avaliacao ?? '—'}</span>
-                  )}
-                </Field>
-              </div>
-            </div>
-          )}
-
-          {/* Notas */}
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Notas</p>
-            {editing ? (
-              <Textarea className="text-xs resize-none" rows={3}
-                value={val('notas')} onChange={e => ch('notas', e.target.value || null)} />
-            ) : (
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                {criativo.notas || '—'}
-              </p>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Comentários */}
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-              <MessageSquare className="h-3 w-3" />Comentários
-              {comentarios.length > 0 && (
-                <span className="ml-1 font-normal text-muted-foreground/60">({comentarios.length})</span>
-              )}
-            </p>
-
-            {comentarios.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 mb-3">Nenhum comentário ainda.</p>
-            ) : (
-              <div className="space-y-3 mb-4">
-                {comentarios.map(c => (
-                  <ComentarioItem
-                    key={c.id}
-                    comentario={c}
-                    respondendoId={respondendoId}
-                    novaResposta={novaResposta}
-                    postando={postando}
-                    perfis={perfis}
-                    onReply={() => { setRespondendoId(c.id); setNovaResposta(''); }}
-                    onCancelReply={() => setRespondendoId(null)}
-                    onNovaRespostaChange={setNovaResposta}
-                    onPostReply={() => handlePostReply(c.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Nova mensagem */}
-            <div className="flex gap-2 items-end">
-              <MentionTextarea
-                value={novoComentario}
-                onChange={setNovoComentario}
-                onSubmit={handlePostComment}
-                perfis={perfis}
-                placeholder="Escreva um comentário... (Ctrl+Enter para enviar, @ para mencionar)"
-                rows={2}
-              />
-              <Button
-                size="sm"
-                className="h-9 px-3 gap-1"
-                disabled={!novoComentario.trim() || postando}
-                onClick={handlePostComment}
-              >
-                <Send className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Histórico */}
-          <HistoricoSection historico={historico} />
-        </div>
+        )}
       </SheetContent>
     </Sheet>
   );
