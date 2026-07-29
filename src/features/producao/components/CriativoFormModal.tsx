@@ -251,8 +251,37 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           {form.tipo === 'criativo' && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Funil de Vendas" field="funil_video" options={opFunilVideo} />
-                <Sel label="Plataforma"      field="plataforma"  options={opPlataforma} />
+                <div>
+                  <Label className="text-xs">Funil de Vendas</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="mt-1 h-8 text-xs w-full flex items-center px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
+                        {!form.funil_video || form.funil_video.trim() === ''
+                          ? <span className="text-muted-foreground">—</span>
+                          : <span className="truncate">{form.funil_video.split(',').map(s => s.trim()).filter(Boolean).join(', ')}</span>}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-36 p-2" align="start">
+                      {opFunilVideo.map(v => {
+                        const selected = form.funil_video.split(',').map(s => s.trim()).filter(Boolean);
+                        const toggle = () => {
+                          const next = selected.includes(v)
+                            ? selected.filter(x => x !== v)
+                            : [...selected, v];
+                          set('funil_video', next.join(','));
+                        };
+                        return (
+                          <div key={v} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                            onClick={toggle}>
+                            <Checkbox checked={selected.includes(v)} onCheckedChange={toggle} />
+                            <span className="text-xs">{v}</span>
+                          </div>
+                        );
+                      })}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Sel label="Plataforma" field="plataforma" options={opPlataforma} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Sel label="Formato"       field="formato"     options={opFormato}    />

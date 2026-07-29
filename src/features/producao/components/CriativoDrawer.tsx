@@ -64,6 +64,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [opStatusVeiculacao, setOpStatusVeiculacao] = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
   const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
   const [projetos, setProjetos]                   = useState<{ id: string; nome: string }[]>([]);
+  const [editores, setEditores]                   = useState<{ id: string; nome: string }[]>([]);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
   const [postando, setPostando]             = useState(false);
@@ -93,6 +94,18 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       if (av.length)   setOpAvaliacao(av);
     }
     setProjetos(pj as { id: string; nome: string }[]);
+    // load editors (perfis from 'Editor' setor)
+    const { data: edData } = await supabase
+      .from('perfis')
+      .select('id,nome,setor:setores(nome)')
+      .eq('ativo', true)
+      .order('nome');
+    if (edData) {
+      const filtered = (edData as { id: string; nome: string; setor: { nome: string } | null }[])
+        .filter(p => p.setor?.nome === 'Editor')
+        .map(p => ({ id: p.id, nome: p.nome }));
+      setEditores(filtered.length > 0 ? filtered : (edData as { id: string; nome: string }[]));
+    }
   }, []);
 
   const loadComentarios = useCallback(async () => {
@@ -160,6 +173,15 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     const current = valArr('funil_ids');
     ch('funil_ids', current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
   };
+  const valFunilVideoArr = (): string[] => {
+    const raw = val('funil_video');
+    return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  };
+  const toggleFunilVideoItem = (item: string) => {
+    const current = valFunilVideoArr();
+    const next = current.includes(item) ? current.filter(x => x !== item) : [...current, item];
+    ch('funil_video', next.length > 0 ? next.join(',') : null);
+  };
 
   const handleSave = async () => {
     if (!criativo || Object.keys(changes).length === 0) { setEditing(false); return; }
@@ -180,7 +202,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setEditing(nivel === 'socio');
     setChanges({});
     load();
-    onUpdate();
   };
 
   const handleFaseChange = async (novaFase: string) => {
@@ -210,7 +231,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     }
     setMovingFase(false);
     load();
-    onUpdate();
   };
 
   const handleDelete = async () => {
@@ -443,7 +463,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_">—</SelectItem>
-                  {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
@@ -486,18 +506,33 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             <Field label="Funil de Vendas" editing={editing}>
               {editing ? (
                 <div className="flex items-center gap-1 mt-0.5">
-                  <Select value={val('funil_video') || '_'} onValueChange={v => ch('funil_video', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="h-7 text-xs flex-1 flex items-center px-2 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left min-w-0">
+                        {valFunilVideoArr().length === 0
+                          ? <span className="text-muted-foreground">—</span>
+                          : <span className="truncate">{valFunilVideoArr().join(', ')}</span>}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-36 p-2" align="start">
                       {opFunilVideo.map(v => (
-                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                        <div key={v} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => toggleFunilVideoItem(v)}>
+                          <Checkbox checked={valFunilVideoArr().includes(v)} onCheckedChange={() => toggleFunilVideoItem(v)} />
+                          <span className="text-xs">{v}</span>
+                        </div>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </PopoverContent>
+                  </Popover>
                   {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vendas" onAtualizar={loadOpcoes} />}
                 </div>
-              ) : <span>{criativo.funil_video ?? '—'}</span>}
+              ) : (
+                <span>
+                  {criativo.funil_video
+                    ? criativo.funil_video.split(',').map(s => s.trim()).filter(Boolean).join(', ')
+                    : '—'}
+                </span>
+              )}
             </Field>
             <Field label="Formato" editing={editing}>
               {editing ? (
@@ -614,7 +649,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                     });
                     setChanges(prev => { const n = { ...prev }; delete n[field]; return n; });
                     load();
-                    onUpdate();
                   }}
                 />
                 {raw && (

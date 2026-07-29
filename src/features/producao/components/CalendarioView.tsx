@@ -411,6 +411,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
   const handleCalPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as Element).closest('[data-criativo-id]')) return;
+    if ((e.target as Element).closest('button')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     rubberStartRef.current = { x: e.clientX, y: e.clientY };
     if (rubberElRef.current) {
