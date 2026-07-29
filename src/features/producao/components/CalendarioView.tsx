@@ -665,7 +665,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                 const laneCount   = spanEntries.length > 0
                   ? spanEntries.reduce((m, e) => Math.max(m, e.lane), 0) + 1
                   : 0;
-                const LANE_H    = 22;
+                const LANE_H    = 62;
                 const spanOffset = laneCount > 0 ? laneCount * LANE_H + 4 : 0;
 
                 return (
@@ -730,7 +730,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               key={`${e.criativo.id}-w${wIdx}`}
                               data-criativo-id={e.criativo.id}
                               className={cn(
-                                'relative flex items-center text-[10.5px] border h-[18px] self-center overflow-visible',
+                                'relative flex items-center text-[10.5px] border h-[58px] self-center overflow-hidden',
                                 tipoCor,
                                 e.isFirst ? 'rounded-l-[3px] ml-0.5' : 'rounded-l-none border-l-0 ml-0',
                                 e.isLast  ? 'rounded-r-[3px] mr-0.5' : 'rounded-r-none border-r-0 mr-0',
@@ -748,14 +748,19 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               {/* Content */}
                               <button
                                 onClick={() => setSelectedId(e.criativo.id)}
-                                className="flex-1 flex items-center gap-1 px-1.5 overflow-hidden hover:opacity-75 h-full"
-                                title={`${e.criativo.nome} · ${effInicio} → ${effPrazo}${editorName ? ` · ${editorName}` : ''}`}
+                                className="flex-1 flex flex-col justify-center px-1.5 overflow-hidden hover:opacity-75 h-full gap-px"
+                                title={[e.criativo.nome, FASES_MAP[e.criativo.fase] ?? e.criativo.fase, e.criativo.projeto?.nome, e.criativo.funil?.nome ?? e.criativo.funil_video, editorName].filter(Boolean).join(' · ')}
                               >
-                                {e.isFirst && (
-                                  <span className="font-medium truncate leading-none">{e.criativo.nome}</span>
-                                )}
-                                {!e.isFirst && editorName && (
-                                  <span className="opacity-60 truncate leading-none text-[9px]">{editorName}</span>
+                                {e.isFirst ? (
+                                  <>
+                                    <span className="font-medium text-[10.5px] truncate leading-tight">{e.criativo.nome}</span>
+                                    <span className="text-[9.5px] opacity-70 truncate leading-tight">{FASES_MAP[e.criativo.fase] ?? e.criativo.fase}</span>
+                                    {e.criativo.projeto?.nome && <span className="text-[9.5px] opacity-60 truncate leading-tight">{e.criativo.projeto.nome}</span>}
+                                    {(e.criativo.funil?.nome ?? e.criativo.funil_video) && <span className="text-[9.5px] opacity-55 truncate leading-tight">{e.criativo.funil?.nome ?? e.criativo.funil_video}</span>}
+                                    {editorName && <span className="text-[9.5px] opacity-50 truncate leading-tight">{editorName}</span>}
+                                  </>
+                                ) : (
+                                  editorName && <span className="text-[9px] opacity-60 truncate leading-tight">{editorName}</span>
                                 )}
                               </button>
 
