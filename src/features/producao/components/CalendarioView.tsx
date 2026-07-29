@@ -338,19 +338,27 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     const criativoId = (active.id as string).replace('cal-', '');
     const targetYmd  = (over.id as string).replace('day-', '');
     const criativo   = criativos.find(c => c.id === criativoId);
-    if (!criativo || !targetYmd || criativo.data_prazo === targetYmd) return;
+    if (!criativo || !targetYmd) return;
 
-    const oldPrazo = criativo.data_prazo ?? targetYmd;
-    const delta    = daysDiff(oldPrazo, targetYmd);
+    // Use data_prazo if it exists, otherwise data_inicio as the reference date
+    const cardDate = criativo.data_prazo ?? criativo.data_inicio;
+    if (!cardDate || cardDate === targetYmd) return;
+
+    const delta = daysDiff(cardDate, targetYmd);
     if (delta === 0) return;
 
     // Bulk move: drag a selected card → move all selected by the same delta
     if (selectMode && selectedIds.has(criativoId)) {
       const patches = criativos
-        .filter(c => selectedIds.has(c.id) && c.data_prazo)
+        .filter(c => selectedIds.has(c.id) && (c.data_prazo || c.data_inicio))
         .map(c => {
-          const p: Record<string, string> = { data_prazo: addDays(c.data_prazo!, delta) };
-          if (c.data_inicio) p.data_inicio = addDays(c.data_inicio, delta);
+          const p: Record<string, string> = {};
+          if (c.data_prazo) {
+            p.data_prazo = addDays(c.data_prazo, delta);
+            if (c.data_inicio) p.data_inicio = addDays(c.data_inicio, delta);
+          } else if (c.data_inicio) {
+            p.data_inicio = addDays(c.data_inicio, delta);
+          }
           return { id: c.id, patch: p };
         });
 
@@ -364,9 +372,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       return;
     }
 
-    // Single card move
-    const patch: Record<string, string> = { data_prazo: targetYmd };
-    if (criativo.data_inicio) patch.data_inicio = addDays(criativo.data_inicio, delta);
+    // Single card move — only update the field(s) that already exist
+    const patch: Record<string, string> = {};
+    if (criativo.data_prazo) {
+      patch.data_prazo = targetYmd;
+      if (criativo.data_inicio) patch.data_inicio = addDays(criativo.data_inicio, delta);
+    } else {
+      patch.data_inicio = targetYmd;
+    }
 
     setCriativos(prev => prev.map(c => c.id === criativoId ? { ...c, ...patch } : c));
     const { error } = await supabase.from('producoes').update(patch).eq('id', criativoId);
@@ -862,7 +875,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
             Aplicar
           </Button>
           <Button size="sm" variant="ghost" className="h-7 text-xs"
-            onClick={() => { setSelectedIds(new Set()); setBulkFase(''); setBulkResp(''); }}>
+            onClick={() => { setSelectedIds(new Set()); setBulkFase(''); setBulkResp(''); setSelectMode(false); }}>
             Limpar
           </Button>
         </div>
