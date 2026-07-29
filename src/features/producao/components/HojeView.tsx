@@ -128,8 +128,8 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
               </div>
               <div className="flex items-center gap-1.5 mt-0.5 text-[11px] opacity-70 flex-wrap">
                 <span>{fase}</span>
-                {funil   && <><span className="opacity-40">·</span><span className="truncate">{funil}</span></>}
                 {projeto && <><span className="opacity-40">·</span><span className="truncate">{projeto}</span></>}
+                {funil   && <><span className="opacity-40">·</span><span className="truncate">{funil}</span></>}
                 {editor  && <><span className="opacity-40">·</span><span className="truncate">{editor}</span></>}
               </div>
             </div>

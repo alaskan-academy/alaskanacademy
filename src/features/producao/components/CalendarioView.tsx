@@ -185,20 +185,11 @@ function DraggableCalCard({
           tipoCor,
         )}
       >
-        {/* Nome */}
         <span className="font-medium text-[11px] leading-tight truncate block pr-1">{criativo.nome}</span>
-        {/* Fase */}
         <span className="text-[10px] opacity-70 leading-tight truncate block">{fase}</span>
-        {/* Funil + Projeto */}
-        {(funil || projeto) && (
-          <span className="text-[10px] opacity-60 leading-tight truncate block">
-            {[funil, projeto].filter(Boolean).join(' · ')}
-          </span>
-        )}
-        {/* Editor */}
-        {editor && (
-          <span className="text-[10px] opacity-55 leading-tight truncate block">{editor}</span>
-        )}
+        {projeto && <span className="text-[10px] opacity-60 leading-tight truncate block">{projeto}</span>}
+        {funil   && <span className="text-[10px] opacity-55 leading-tight truncate block">{funil}</span>}
+        {editor  && <span className="text-[10px] opacity-50 leading-tight truncate block">{editor}</span>}
       </button>
       {/* Right edge resize handle — visible on hover */}
       <div
