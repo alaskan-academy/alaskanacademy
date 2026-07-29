@@ -257,7 +257,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       valor_novo:     `${criativo.nome} (cópia)`,
     });
     toast({ title: 'Duplicado com sucesso' });
-    onUpdate();
   };
 
   const handlePostComment = async () => {
