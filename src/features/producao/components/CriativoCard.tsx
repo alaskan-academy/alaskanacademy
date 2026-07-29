@@ -50,10 +50,10 @@ export function CriativoCard({ criativo, onClick }: Props) {
           </span>
         )}
       </div>
-      {(criativo.responsavel || criativo.data_prazo || isVsl) && (
+      {(criativo.responsavel || criativo.editor_nome_historico || criativo.data_prazo || isVsl) && (
         <div className="flex items-center justify-between mt-1.5">
           <span className="text-[10.5px] text-muted-foreground truncate flex-1">
-            {criativo.responsavel?.nome ?? '—'}
+            {criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}
           </span>
           {criativo.data_prazo && (
             <span className={cn(

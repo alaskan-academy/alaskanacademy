@@ -295,10 +295,9 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         'copy:perfis!copy_id(id,nome)',
         'gestor:perfis!gestor_id(id,nome)',
       ].join(','))
-      .not('data_prazo', 'is', null)
-      .gte('data_prazo', fmt(windowStart))
-      .lte('data_prazo', fmt(windowEnd))
-      .order('data_prazo')
+      .or(`data_prazo.gte.${fmt(windowStart)},and(data_prazo.is.null,data_inicio.gte.${fmt(windowStart)})`)
+      .or(`data_prazo.lte.${fmt(windowEnd)},and(data_prazo.is.null,data_inicio.lte.${fmt(windowEnd)})`)
+      .order('data_inicio', { nullsFirst: false })
       .limit(2000);
 
     if (fixedField && fixedValue) {

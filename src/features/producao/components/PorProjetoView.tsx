@@ -92,7 +92,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
       key:   p.id,
       label: p.nome,
       items: filtered.filter(c => c.projeto_id === p.id),
-    })).filter(s => s.items.length > 0),
+    })),
     ...(semProjeto.length > 0 ? [{ key: '__sem_projeto__', label: 'Sem projeto', items: semProjeto }] : []),
   ];
 
@@ -170,6 +170,9 @@ export function PorProjetoView({ nivel, userId }: Props) {
 
                 {isExpanded && (
                   <div className="border-t border-border">
+                    {section.items.length === 0 && (
+                      <p className="text-xs text-muted-foreground py-3 px-4 italic">Nenhum item vinculado a este projeto.</p>
+                    )}
                     {section.items.map(c => {
                       const funisNomes = funis.filter(f => (c.funil_ids ?? []).includes(f.id)).map(f => f.nome);
                       const funil = funisNomes.length > 0 ? funisNomes.join(', ') : (c.funil_video ?? null);
