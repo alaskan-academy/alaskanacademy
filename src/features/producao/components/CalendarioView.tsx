@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronLeft, ChevronRight, Plus, Copy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Copy, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
@@ -516,6 +516,18 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     loadCriativos();
   }, [selectedIds, toast, loadCriativos]);
 
+  const handleBulkDelete = useCallback(async () => {
+    const ids = [...selectedIds];
+    if (!ids.length) return;
+    if (!confirm(`Excluir ${ids.length} criativo${ids.length !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('producoes').delete().in('id', ids);
+    if (error) { toast({ title: 'Erro ao excluir', variant: 'destructive' }); return; }
+    toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} excluído${ids.length !== 1 ? 's' : ''}` });
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    loadCriativos();
+  }, [selectedIds, toast, loadCriativos]);
+
   // ── Calendar data ─────────────────────────────────────────────────────────
 
   const days     = buildCalendarGrid(year, month);
@@ -896,9 +908,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
             Aplicar
           </Button>
           {nivel === 'socio' && (
-            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleBulkDuplicate}>
-              <Copy className="h-3 w-3" />Duplicar
-            </Button>
+            <>
+              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleBulkDuplicate}>
+                <Copy className="h-3 w-3" />Duplicar
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-red-400 hover:text-red-300" onClick={handleBulkDelete}>
+                <Trash2 className="h-3 w-3" />Excluir
+              </Button>
+            </>
           )}
         </div>
       )}
