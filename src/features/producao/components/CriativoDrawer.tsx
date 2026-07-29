@@ -419,33 +419,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               </Select>
             ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
           </Field>
-          <Field label="Funis" editing={editing}>
-            {editing ? (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="mt-0.5 h-7 text-xs w-full flex items-center px-2 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
-                    {valArr('funil_ids').length === 0
-                      ? <span className="text-muted-foreground">—</span>
-                      : <span className="truncate">{funis.filter(f => valArr('funil_ids').includes(f.id)).map(f => f.nome).join(', ')}</span>}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-52 p-2" align="start">
-                  {funis.map(f => (
-                    <div key={f.id} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
-                      onClick={() => toggleFunilId(f.id)}>
-                      <Checkbox checked={valArr('funil_ids').includes(f.id)} onCheckedChange={() => toggleFunilId(f.id)} />
-                      <span className="text-xs">{f.nome}</span>
-                    </div>
-                  ))}
-                  {funis.length === 0 && <span className="text-xs text-muted-foreground px-1">Nenhum funil ativo</span>}
-                </PopoverContent>
-              </Popover>
-            ) : (
-              <span>
-                {funis.filter(f => (criativo.funil_ids ?? []).includes(f.id)).map(f => f.nome).join(', ') || '—'}
-              </span>
-            )}
-          </Field>
           <Field label="Copy" editing={editing}>
             {editing ? (
               <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
@@ -829,12 +802,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             </Button>
             {editing ? (
               <>
-                {nivel === 'socio' && (
-                  <Button size="sm" variant="ghost" className="h-7 px-2"
-                    onClick={() => { setEditing(false); setChanges({}); }}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
                 <Button size="sm" className="h-7 px-3" onClick={handleSave}>
                   <Save className="h-3.5 w-3.5 mr-1" />Salvar
                 </Button>

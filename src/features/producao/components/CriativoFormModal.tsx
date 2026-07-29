@@ -224,29 +224,6 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </Select>
           </div>
 
-          {funis.length > 0 && (
-            <div>
-              <Label className="text-xs">Funis</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="mt-1 h-8 text-xs w-full flex items-center px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
-                    {form.funil_ids.length === 0
-                      ? <span className="text-muted-foreground">—</span>
-                      : <span className="truncate">{funis.filter(f => form.funil_ids.includes(f.id)).map(f => f.nome).join(', ')}</span>}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-56 p-2" align="start">
-                  {funis.map(f => (
-                    <div key={f.id} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
-                      onClick={() => toggleFunil(f.id)}>
-                      <Checkbox checked={form.funil_ids.includes(f.id)} onCheckedChange={() => toggleFunil(f.id)} />
-                      <span className="text-xs">{f.nome}</span>
-                    </div>
-                  ))}
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
 
           {form.tipo === 'criativo' && (
             <>
