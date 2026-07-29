@@ -368,25 +368,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 <ChevronRight className="h-3.5 w-3.5 ml-1" />
               </Button>
             </div>
-            {(nivel === 'head' || nivel === 'socio') && (
-              <div className="flex items-center gap-1 mt-2">
-                <Select
-                  value={criativo.fase}
-                  onValueChange={fase => fase !== criativo.fase && handleFaseChange(fase)}
-                  disabled={movingFase}
-                >
-                  <SelectTrigger className="h-7 text-xs flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(FASES_POR_TIPO[criativo.tipo] ?? []).map(f => (
-                      <SelectItem key={f} value={f}>{FASES_MAP[f] ?? f}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {nivel === 'socio' && <GerenciarOpcoesPopover campo="fase" label="Fases" onAtualizar={loadOpcoes} />}
-              </div>
-            )}
             {isRevisaoFase && !canAdvance && (
               <p className="text-[11px] text-amber-400 mt-1.5">
                 Aguardando aprovação do líder ou sócio para avançar.
@@ -410,39 +391,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                     </SelectContent>
                   </Select>
                 ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
-              </Field>
-              <Field label="Editor" editing={editing}>
-                {editing ? (
-                  <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
-              </Field>
-              <Field label="Copy" editing={editing}>
-                {editing ? (
-                  <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.copy?.nome ?? '—'}</span>}
-              </Field>
-              <Field label="Gestor de Tráfego" editing={editing}>
-                {editing ? (
-                  <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
               </Field>
               <Field label="Funis" editing={editing}>
                 {editing ? (
@@ -470,6 +418,39 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                     {funis.filter(f => (criativo.funil_ids ?? []).includes(f.id)).map(f => f.nome).join(', ') || '—'}
                   </span>
                 )}
+              </Field>
+              <Field label="Copy" editing={editing}>
+                {editing ? (
+                  <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : <span>{criativo.copy?.nome ?? '—'}</span>}
+              </Field>
+              <Field label="Editor" editing={editing}>
+                {editing ? (
+                  <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
+              </Field>
+              <Field label="Gestor de Tráfego" editing={editing}>
+                {editing ? (
+                  <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
               </Field>
 
               <Field label="Início" editing={editing}>
@@ -598,25 +579,45 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             </div>
           )}
 
-          {/* Links */}
+          {/* Links — always editable inline */}
           <div className="space-y-2">
             <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Links</p>
             {(['copy_url', 'video_gravado_url', 'video_story_url'] as const).map(field => {
               const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_story_url: 'Vídeo Story' };
-              const raw = criativo[field];
+              const raw = (field in changes ? changes[field] as string | null : criativo[field]) ?? '';
               return (
                 <div key={field} className="flex items-center gap-2">
                   <span className="text-[11px] text-muted-foreground w-28 shrink-0">{labelMap[field]}</span>
-                  {editing ? (
-                    <Input className="h-6 text-xs flex-1" placeholder="https://..."
-                      value={val(field)} onChange={e => ch(field, e.target.value || null)} />
-                  ) : raw ? (
-                    <a href={raw} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline flex items-center gap-1 truncate flex-1">
-                      <ExternalLink className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{raw}</span>
-                    </a>
-                  ) : <span className="text-xs text-muted-foreground">—</span>}
+                  <div className="flex items-center gap-1 flex-1 min-w-0">
+                    <Input
+                      className="h-6 text-xs flex-1"
+                      placeholder="https://..."
+                      value={raw}
+                      onChange={e => ch(field, e.target.value || null)}
+                      onBlur={async () => {
+                        const newVal = (field in changes ? changes[field] as string | null : null);
+                        if (newVal === undefined || newVal === (criativo[field] ?? null)) return;
+                        await supabase.from('producoes').update({ [field]: newVal || null }).eq('id', criativo.id);
+                        await supabase.from('criativo_historico').insert({
+                          criativo_id:    criativo.id,
+                          usuario_id:     userId,
+                          tipo_alteracao: 'campo',
+                          campo_alterado: field,
+                          valor_anterior: criativo[field] ?? null,
+                          valor_novo:     newVal || null,
+                        });
+                        setChanges(prev => { const n = { ...prev }; delete n[field]; return n; });
+                        load();
+                        onUpdate();
+                      }}
+                    />
+                    {raw && (
+                      <a href={raw} target="_blank" rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-primary shrink-0">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
               );
             })}

@@ -45,6 +45,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const [filtroFase, setFiltroFase]   = useState('');
   const [filtroResp, setFiltroResp]   = useState('');
   const [filtroAval, setFiltroAval]   = useState('');
+  const [mostrarInativos, setMostrarInativos] = useState(false);
 
   const loadAux = useCallback(async () => {
     const [{ data: ps }, { data: perf }, { data: fs }, { data: op }] = await Promise.all([
@@ -71,6 +72,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
         .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(nome)')
         .order('nome')
         .range(from, from + PAGE - 1);
+      if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
       if (filtroTipo) q = q.eq('tipo', filtroTipo);
       if (filtroFase) q = q.eq('fase', filtroFase);
       if (filtroResp) q = q.eq('responsavel_id', filtroResp);
@@ -83,7 +85,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
     }
     setCriativos(all);
     setLoading(false);
-  }, [filtroTipo, filtroFase, filtroResp, filtroAval]);
+  }, [filtroTipo, filtroFase, filtroResp, filtroAval, mostrarInativos]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -152,6 +154,18 @@ export function PorProjetoView({ nivel, userId }: Props) {
             {opAvaliacao.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
           </SelectContent>
         </Select>
+
+        <button
+          onClick={() => setMostrarInativos(v => !v)}
+          className={cn(
+            'h-8 px-3 rounded-md border text-xs transition-colors',
+            mostrarInativos
+              ? 'bg-muted border-border text-foreground'
+              : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50',
+          )}
+        >
+          {mostrarInativos ? 'Ocultar arquivados' : 'Ver arquivados'}
+        </button>
       </div>
 
       {/* Sections */}

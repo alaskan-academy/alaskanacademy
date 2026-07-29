@@ -278,22 +278,21 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
   const loadCriativos = useCallback(async () => {
     setLoading(true);
-    const windowStart = new Date(year, month - 2, 1);
-    const windowEnd   = new Date(year, month + 3, 0);
+    const windowStart = new Date(year, month - 1, 1);
+    const windowEnd   = new Date(year, month + 2, 0);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     let q = supabase
       .from('producoes')
       .select([
-        '*',
+        'id,nome,tipo,fase,funil_video,data_inicio,data_prazo,editor_nome_historico,funil_ids',
         'funil:funis(id,nome,produto)',
         'projeto:ofertas_editores!projeto_id(id,nome)',
         'responsavel:perfis!responsavel_id(id,nome)',
-        'copy:perfis!copy_id(id,nome)',
-        'gestor:perfis!gestor_id(id,nome)',
       ].join(','))
       .or(`data_prazo.gte.${fmt(windowStart)},and(data_prazo.is.null,data_inicio.gte.${fmt(windowStart)})`)
       .or(`data_prazo.lte.${fmt(windowEnd)},and(data_prazo.is.null,data_inicio.lte.${fmt(windowEnd)})`)
+      .not('fase', 'in', '(arquivado,bloqueado)')
       .order('data_inicio', { nullsFirst: false })
       .limit(2000);
 
