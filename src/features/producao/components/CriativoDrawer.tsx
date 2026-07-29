@@ -226,7 +226,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     const { data, error } = await supabase.from('producoes').insert({
       nome:              `${criativo.nome} (cópia)`,
       tipo:              criativo.tipo,
-      fase:              'briefing',
+      fase:              criativo.fase,
       funil_ids:         criativo.funil_ids ?? [],
       projeto_id:        criativo.projeto_id,
       funil_video:       criativo.funil_video,
@@ -241,6 +241,13 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       modulo:            criativo.modulo,
       ordem:             criativo.ordem,
       notas:             criativo.notas,
+      data_inicio:       criativo.data_inicio,
+      data_prazo:        criativo.data_prazo,
+      copy_url:          criativo.copy_url,
+      video_gravado_url: criativo.video_gravado_url,
+      video_story_url:   criativo.video_story_url,
+      status_veiculacao: criativo.status_veiculacao,
+      avaliacao:         criativo.avaliacao,
     }).select('id').single();
     if (error || !data) { toast({ title: 'Erro ao duplicar', variant: 'destructive' }); return; }
     await supabase.from('criativo_historico').insert({
