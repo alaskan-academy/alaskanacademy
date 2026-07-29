@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from 'react';
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
@@ -29,49 +29,42 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
   const [customEnd, setCustomEnd] = useState<Date>(new Date());
   const [funilId, setFunilId] = useState<string | null>(null);
 
-  const getDates = (): { start: Date | null; end: Date | null } => {
+  const { start, end } = useMemo(() => {
     const now = new Date();
     switch (datePreset) {
-      case 'all':
-        return { start: null, end: null };
-      case 'today':
-        return { start: startOfDay(now), end: endOfDay(now) };
-      case 'yesterday': {
-        const y = subDays(now, 1);
-        return { start: startOfDay(y), end: endOfDay(y) };
-      }
-      case '7d':
-        return { start: startOfDay(subDays(now, 7)), end: endOfDay(now) };
-      case '30d':
-        return { start: startOfDay(subDays(now, 30)), end: endOfDay(now) };
-      case 'custom':
-        return { start: startOfDay(customStart), end: endOfDay(customEnd) };
+      case 'all':       return { start: null, end: null };
+      case 'today':     return { start: startOfDay(now), end: endOfDay(now) };
+      case 'yesterday': { const y = subDays(now, 1); return { start: startOfDay(y), end: endOfDay(y) }; }
+      case '7d':        return { start: startOfDay(subDays(now, 7)), end: endOfDay(now) };
+      case '30d':       return { start: startOfDay(subDays(now, 30)), end: endOfDay(now) };
+      case 'custom':    return { start: startOfDay(customStart), end: endOfDay(customEnd) };
     }
-  };
+  }, [datePreset, customStart, customEnd]);
 
-  const { start, end } = getDates();
+  const startDateStr = useMemo(() => start ? format(start, 'yyyy-MM-dd') : null, [start]);
+  const endDateStr   = useMemo(() => end   ? format(end,   'yyyy-MM-dd') : null, [end]);
 
-  const setDatePreset = (p: DatePreset) => setDatePresetState(p);
-  const setCustomRange = (s: Date, e: Date) => {
+  const setDatePreset  = useCallback((p: DatePreset) => setDatePresetState(p), []);
+  const setCustomRange = useCallback((s: Date, e: Date) => {
     setCustomStart(s);
     setCustomEnd(e);
     setDatePresetState('custom');
-  };
+  }, []);
+
+  const value = useMemo(() => ({
+    datePreset,
+    setDatePreset,
+    startDate: start,
+    endDate: end,
+    setCustomRange,
+    startDateStr,
+    endDateStr,
+    funilId,
+    setFunilId,
+  }), [datePreset, start, end, startDateStr, endDateStr, funilId, setDatePreset, setCustomRange]);
 
   return (
-    <FilterContext.Provider
-      value={{
-        datePreset,
-        setDatePreset,
-        startDate: start,
-        endDate: end,
-        setCustomRange,
-        startDateStr: start ? format(start, 'yyyy-MM-dd') : null,
-        endDateStr: end ? format(end, 'yyyy-MM-dd') : null,
-        funilId,
-        setFunilId,
-      }}
-    >
+    <FilterContext.Provider value={value}>
       {children}
     </FilterContext.Provider>
   );

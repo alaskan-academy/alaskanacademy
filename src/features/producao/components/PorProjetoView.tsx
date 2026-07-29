@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
+import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import { FASES_MAP, FASES } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
@@ -48,15 +49,15 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const [mostrarInativos, setMostrarInativos] = useState(false);
 
   const loadAux = useCallback(async () => {
-    const [{ data: ps }, { data: perf }, { data: fs }, { data: op }] = await Promise.all([
-      supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
-      supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
-      supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
+    const [ps, perf, fs, { data: op }] = await Promise.all([
+      fetchProjetos(),
+      fetchPerfis(),
+      fetchFunis(),
       supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'avaliacao').order('ordem'),
     ]);
-    setProjetos(ps ?? []);
-    setPerfis((perf ?? []) as Perfil[]);
-    setFunis((fs ?? []) as Funil[]);
+    setProjetos(ps);
+    setPerfis(perf as Perfil[]);
+    setFunis(fs as Funil[]);
     if (op && op.length > 0) setOpAvaliacao(op.map(d => d.valor as string));
     else setOpAvaliacao(['Sem dados', 'Validado', 'Não validado']);
   }, []);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
 import { FASES_MAP, TIPO_COR } from './constants';
@@ -53,12 +54,8 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     // Tasks with only data_inicio = today (no data_prazo) — visible in calendar via fallback
     const q3 = buildQ().eq('data_inicio', today).is('data_prazo', null);
 
-    const [{ data: d1 }, { data: d2 }, { data: d3 }, { data: fs }, { data: ps }] = await Promise.all([
-      q1,
-      q2,
-      q3,
-      supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
-      supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
+    const [{ data: d1 }, { data: d2 }, { data: d3 }, fs, ps] = await Promise.all([
+      q1, q2, q3, fetchFunis(), fetchPerfis(),
     ]);
 
     const seen = new Set<string>();
@@ -69,8 +66,8 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     merged.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' }));
 
     setCriativos(merged);
-    setFunis(fs ?? []);
-    setPerfis(ps ?? []);
+    setFunis(fs);
+    setPerfis(ps);
     setLoading(false);
   }, [nivel, userId, today, fixedField, fixedValue, fases]);
 

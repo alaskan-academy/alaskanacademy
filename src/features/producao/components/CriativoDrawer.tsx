@@ -16,6 +16,7 @@ import {
   Clock, MessageSquare, CornerDownLeft, Send,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { fetchProjetos } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
@@ -69,9 +70,9 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [novaResposta, setNovaResposta]     = useState('');
 
   const loadOpcoes = useCallback(async () => {
-    const [{ data }, { data: pj }] = await Promise.all([
+    const [{ data }, pj] = await Promise.all([
       supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
-      supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
+      fetchProjetos(),
     ]);
     if (data) {
       const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
@@ -90,7 +91,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       if (sv.length)   setOpStatusVeiculacao(sv);
       if (av.length)   setOpAvaliacao(av);
     }
-    if (pj) setProjetos(pj as { id: string; nome: string }[]);
+    setProjetos(pj as { id: string; nome: string }[]);
   }, []);
 
   const loadComentarios = useCallback(async () => {

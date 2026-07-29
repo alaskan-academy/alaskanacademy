@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight, Plus, MousePointer2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
+import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
@@ -266,14 +267,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   // ── Data loading ─────────────────────────────────────────────────────────
 
   const loadAux = useCallback(async () => {
-    const [{ data: fs }, { data: ps }, { data: pr }] = await Promise.all([
-      supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
-      supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
-      supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
-    ]);
-    setFunis(fs ?? []);
-    setPerfis(ps ?? []);
-    setProjetos(pr ?? []);
+    const [fs, ps, pr] = await Promise.all([fetchFunis(), fetchPerfis(), fetchProjetos()]);
+    setFunis(fs);
+    setPerfis(ps);
+    setProjetos(pr);
   }, []);
 
   const loadCriativos = useCallback(async () => {
