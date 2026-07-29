@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   ChevronLeft, ChevronRight, Pencil, Save, X, ExternalLink,
-  Clock, MessageSquare, CornerDownLeft, Send,
+  Clock, MessageSquare, CornerDownLeft, Send, Maximize2, Minimize2, Copy,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchProjetos } from '@/lib/dataCache';
@@ -54,6 +54,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [editing, setEditing]           = useState(false);
   const [changes, setChanges]           = useState<Record<string, string | null | string[]>>({});
   const [movingFase, setMovingFase]     = useState(false);
+  const [expanded, setExpanded]         = useState(false);
   // Dynamic select options from DB
   const [opFormato, setOpFormato]                 = useState<string[]>(FALLBACK_FORMATOS);
   const [opPlataforma, setOpPlataforma]           = useState<string[]>(FALLBACK_PLATAFORMAS);
@@ -141,9 +142,10 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   useEffect(() => {
     load();
     loadComentarios();
-    setEditing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setEditing(nivel === 'socio');
     setChanges({});
-  }, [load, loadComentarios]);
+  }, [load, loadComentarios]); // nivel is intentionally excluded — it doesn't change independently
 
   const ch     = (k: string, v: string | null | string[]) => setChanges(prev => ({ ...prev, [k]: v }));
   const val    = (k: string): string => {
@@ -175,7 +177,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     }));
     if (entries.length) await supabase.from('criativo_historico').insert(entries);
     toast({ title: 'Salvo' });
-    setEditing(false);
+    setEditing(nivel === 'socio');
     setChanges({});
     load();
     onUpdate();
@@ -217,6 +219,38 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     await supabase.from('producoes').delete().eq('id', criativo.id);
     onUpdate();
     onClose();
+  };
+
+  const handleDuplicate = async () => {
+    if (!criativo) return;
+    const { data, error } = await supabase.from('producoes').insert({
+      nome:              `${criativo.nome} (cópia)`,
+      tipo:              criativo.tipo,
+      fase:              'briefing',
+      funil_ids:         criativo.funil_ids ?? [],
+      projeto_id:        criativo.projeto_id,
+      funil_video:       criativo.funil_video,
+      responsavel_id:    criativo.responsavel_id,
+      copy_id:           criativo.copy_id,
+      gestor_id:         criativo.gestor_id,
+      formato:           criativo.formato,
+      plataforma:        criativo.plataforma,
+      tipo_teste:        criativo.tipo_teste,
+      nivel_consciencia: criativo.nivel_consciencia,
+      angulo_teste:      criativo.angulo_teste,
+      modulo:            criativo.modulo,
+      ordem:             criativo.ordem,
+      notas:             criativo.notas,
+    }).select('id').single();
+    if (error || !data) { toast({ title: 'Erro ao duplicar', variant: 'destructive' }); return; }
+    await supabase.from('criativo_historico').insert({
+      criativo_id:    data.id,
+      usuario_id:     userId,
+      tipo_alteracao: 'criacao',
+      valor_novo:     `${criativo.nome} (cópia)`,
+    });
+    toast({ title: 'Duplicado com sucesso' });
+    onUpdate();
   };
 
   const handlePostComment = async () => {
@@ -284,7 +318,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   if (loading || !criativo) {
     return (
       <Sheet open onOpenChange={v => !v && onClose()}>
-        <SheetContent side="right" className="w-full max-w-2xl">
+        <SheetContent side="right" className={cn('p-0 flex flex-col', expanded ? 'w-screen max-w-none' : 'w-full max-w-2xl')}>
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
         </SheetContent>
       </Sheet>
@@ -300,7 +334,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   return (
     <Sheet open onOpenChange={v => !v && onClose()}>
-      <SheetContent side="right" className="w-full max-w-2xl overflow-y-auto p-0 flex flex-col">
+      <SheetContent side="right" className={cn('overflow-y-auto p-0 flex flex-col', expanded ? 'w-screen max-w-none' : 'w-full max-w-2xl')}>
         {/* Header */}
         <div className="sticky top-0 bg-background border-b px-5 py-3 flex items-start gap-3 z-10">
           <div className="flex-1 min-w-0">
@@ -318,12 +352,20 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <Button size="sm" variant="ghost" className="h-7 px-2"
+              onClick={() => setExpanded(e => !e)}>
+              {expanded
+                ? <Minimize2 className="h-3.5 w-3.5" />
+                : <Maximize2 className="h-3.5 w-3.5" />}
+            </Button>
             {editing ? (
               <>
-                <Button size="sm" variant="ghost" className="h-7 px-2"
-                  onClick={() => { setEditing(false); setChanges({}); }}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                {nivel === 'socio' && (
+                  <Button size="sm" variant="ghost" className="h-7 px-2"
+                    onClick={() => { setEditing(false); setChanges({}); }}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
                 <Button size="sm" className="h-7 px-3" onClick={handleSave}>
                   <Save className="h-3.5 w-3.5 mr-1" />Salvar
                 </Button>
@@ -337,11 +379,17 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                   </Button>
                 )}
                 {canDelete && (
-                  <Button size="sm" variant="ghost"
-                    className="h-7 px-2 text-xs text-red-400 hover:text-red-300"
-                    onClick={handleDelete}>
-                    Excluir
-                  </Button>
+                  <>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                      onClick={handleDuplicate}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost"
+                      className="h-7 px-2 text-xs text-red-400 hover:text-red-300"
+                      onClick={handleDelete}>
+                      Excluir
+                    </Button>
+                  </>
                 )}
               </>
             )}
