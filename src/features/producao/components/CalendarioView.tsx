@@ -14,7 +14,6 @@ import { CSS } from '@dnd-kit/utilities';
 import { ChevronLeft, ChevronRight, Plus, MousePointer2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -66,7 +65,6 @@ function daysDiff(from: string, to: string): number {
   );
 }
 
-const MAX_PER_DAY = 5;
 
 type SpanEntry = {
   criativo: Criativo;
@@ -243,7 +241,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const [filtroResp, setFiltroResp]       = useState('');
   const [filtroFase, setFiltroFase]       = useState('');
   const [projetos, setProjetos]           = useState<{ id: string; nome: string }[]>([]);
-  const [popoverDay, setPopoverDay]   = useState<string | null>(null);
   const [createDate, setCreateDate]   = useState<string | null>(null);
 
   // DnD single-day
@@ -757,9 +754,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                         const isCurrentMonth = day.getMonth() === month;
                         const isToday        = ymd === todayYMD;
                         const isPast         = ymd < todayYMD;
-                        const items   = byDate[ymd] ?? [];
-                        const visible = items.slice(0, MAX_PER_DAY);
-                        const hidden  = items.length - MAX_PER_DAY;
+                        const items = byDate[ymd] ?? [];
 
                         return (
                           <div
@@ -793,7 +788,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                             </div>
 
                             <DroppableDay ymd={ymd}>
-                              {visible.map(c => (
+                              {items.map(c => (
                                 <DraggableCalCard
                                   key={c.id}
                                   criativo={c}
@@ -817,46 +812,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               ))}
                             </DroppableDay>
 
-                            {hidden > 0 && (
-                              <Popover open={popoverDay === ymd} onOpenChange={open => setPopoverDay(open ? ymd : null)}>
-                                <PopoverTrigger asChild>
-                                  <button className="w-full text-center text-[10px] text-muted-foreground hover:text-foreground py-0.5 hover:bg-accent/50 rounded transition-colors mt-1">
-                                    +{hidden} mais
-                                  </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-64 p-0" side="right" align="start">
-                                  <div className="px-3 py-2 border-b border-border">
-                                    <p className="text-xs font-semibold capitalize">
-                                      {day.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground">{items.length} criativos</p>
-                                  </div>
-                                  <div className="max-h-72 overflow-y-auto py-1">
-                                    {items.map(c => {
-                                      const cLate  = isPast && c.fase !== 'postado' && c.fase !== 'aprovado';
-                                      const dotCls = cLate ? 'bg-red-400' :
-                                        c.tipo === 'vsl' ? 'bg-purple-400' :
-                                        c.tipo === 'aula' ? 'bg-green-400' : 'bg-blue-400';
-                                      return (
-                                        <button
-                                          key={c.id}
-                                          onClick={() => { setSelectedId(c.id); setPopoverDay(null); }}
-                                          className="w-full text-left px-3 py-1.5 hover:bg-accent transition-colors flex items-start gap-2"
-                                        >
-                                          <span className={cn('w-1.5 h-1.5 rounded-full mt-[5px] shrink-0', dotCls)} />
-                                          <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-medium truncate leading-tight">{c.nome}</p>
-                                            <p className="text-[10px] text-muted-foreground truncate">
-                                              {c.responsavel?.nome ?? c.editor_nome_historico ?? '—'} · {FASES_MAP[c.fase] ?? c.fase}
-                                            </p>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            )}
                           </div>
                         );
                       })}
