@@ -136,7 +136,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       fase:              form.fase || getDefaultFase(form.tipo),
       funil_ids:         form.funil_ids,
       projeto_id:        form.projeto_id        || null,
-      funil_video:       isAdType ? (form.funil_video || null) : null,
+      funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
       copy_id:           form.copy_id           || null,
       gestor_id:         form.gestor_id         || null,
@@ -274,7 +274,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </div>
           </div>
 
-          {(form.tipo === 'criativo' || form.tipo === 'vsl') && (
+          {form.tipo === 'criativo' && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
