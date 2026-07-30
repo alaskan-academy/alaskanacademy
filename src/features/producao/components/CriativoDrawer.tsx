@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,6 +59,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [changes, setChanges]           = useState<Record<string, string | null | string[]>>({});
   const [movingFase, setMovingFase]     = useState(false);
   const [expanded, setExpanded]         = useState(false);
+  const [showCloseWarning, setShowCloseWarning] = useState(false);
   // Dynamic select options from DB
   const [opFormato, setOpFormato]                 = useState<string[]>(FALLBACK_FORMATOS);
   const [opPlataforma, setOpPlataforma]           = useState<string[]>(FALLBACK_PLATAFORMAS);
@@ -164,9 +169,9 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   useEffect(() => {
     load();
     loadComentarios();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    setEditing(nivel === 'socio');
+    setEditing(false);
     setChanges({});
+    setShowCloseWarning(false);
   }, [load, loadComentarios]); // nivel is intentionally excluded — it doesn't change independently
 
   const ch     = (k: string, v: string | null | string[]) => setChanges(prev => ({ ...prev, [k]: v }));
@@ -208,7 +213,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     }));
     if (entries.length) await supabase.from('criativo_historico').insert(entries);
     toast({ title: 'Salvo' });
-    setEditing(nivel === 'socio');
+    setEditing(false);
     setChanges({});
     load();
   };
@@ -273,8 +278,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       data_inicio:       criativo.data_inicio,
       data_prazo:        criativo.data_prazo,
       copy_url:          criativo.copy_url,
-      video_gravado_url: criativo.video_gravado_url,
-      video_story_url:   criativo.video_story_url,
+      video_gravado_url:  criativo.video_gravado_url,
+      video_editado_url:  criativo.video_editado_url,
       status_veiculacao: criativo.status_veiculacao,
       avaliacao:         criativo.avaliacao,
     }).select('id').single();
@@ -348,13 +353,28 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     loadComentarios();
   };
 
+  const handleAttemptClose = () => {
+    if (editing && Object.keys(changes).length > 0) {
+      setShowCloseWarning(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const handleDiscardAndClose = () => {
+    setShowCloseWarning(false);
+    setChanges({});
+    setEditing(false);
+    onClose();
+  };
+
   if (!criativoId) return null;
 
   const sheetStyle = expanded ? { width: '100vw', maxWidth: '100vw' } : { width: '40vw', maxWidth: '40vw' };
 
   if (loading || !criativo) {
     return (
-      <Sheet open onOpenChange={v => !v && onClose()}>
+      <Sheet open onOpenChange={v => !v && handleAttemptClose()}>
         <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
         </SheetContent>
@@ -605,8 +625,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       {/* Links — always editable inline */}
       <div className="space-y-2">
         {slLabel('Links')}
-        {(['copy_url', 'video_gravado_url', 'video_story_url'] as const).map(field => {
-          const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_story_url: 'Vídeo Story' };
+        {(['copy_url', 'video_gravado_url', 'video_editado_url'] as const).map(field => {
+          const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_editado_url: 'Vídeo Editado' };
           const raw = (field in changes ? changes[field] as string | null : criativo[field]) ?? '';
           return (
             <div key={field} className="flex items-center gap-2">
@@ -776,7 +796,32 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   );
 
   return (
-    <Sheet open onOpenChange={v => !v && onClose()}>
+    <>
+    <AlertDialog open={showCloseWarning} onOpenChange={setShowCloseWarning}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Alterações não salvas</AlertDialogTitle>
+          <AlertDialogDescription>
+            Você tem alterações que ainda não foram salvas. O que deseja fazer?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setShowCloseWarning(false)}>
+            Continuar editando
+          </AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-transparent text-foreground border border-border hover:bg-accent"
+            onClick={handleDiscardAndClose}
+          >
+            Descartar e fechar
+          </AlertDialogAction>
+          <AlertDialogAction onClick={async () => { setShowCloseWarning(false); await handleSave(); onClose(); }}>
+            Salvar e fechar
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    <Sheet open onOpenChange={v => !v && handleAttemptClose()}>
       <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
         {/* Header */}
         <div className={cn(
@@ -860,6 +905,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         )}
       </SheetContent>
     </Sheet>
+    </>
   );
 }
 

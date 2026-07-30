@@ -493,7 +493,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (!ids.length) return;
     const { data: originals } = await supabase
       .from('producoes')
-      .select('id,nome,tipo,fase,funil_ids,projeto_id,funil_video,responsavel_id,copy_id,gestor_id,formato,plataforma,tipo_teste,nivel_consciencia,angulo_teste,modulo,ordem,notas,data_inicio,data_prazo,copy_url,video_gravado_url,video_story_url,status_veiculacao,avaliacao')
+      .select('id,nome,tipo,fase,funil_ids,projeto_id,funil_video,responsavel_id,copy_id,gestor_id,formato,plataforma,tipo_teste,nivel_consciencia,angulo_teste,modulo,ordem,notas,data_inicio,data_prazo,copy_url,video_gravado_url,video_editado_url,status_veiculacao,avaliacao')
       .in('id', ids);
     if (!originals?.length) return;
     const copies = originals.map(c => ({
@@ -506,7 +506,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       angulo_teste: c.angulo_teste, modulo: c.modulo, ordem: c.ordem, notas: c.notas,
       data_inicio: c.data_inicio, data_prazo: c.data_prazo,
       copy_url: c.copy_url, video_gravado_url: c.video_gravado_url,
-      video_story_url: c.video_story_url, status_veiculacao: c.status_veiculacao,
+      video_editado_url: c.video_editado_url, status_veiculacao: c.status_veiculacao,
       avaliacao: c.avaliacao,
     }));
     const { error } = await supabase.from('producoes').insert(copies);

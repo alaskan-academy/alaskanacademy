@@ -35,19 +35,21 @@ type OfertaEditorOption = { id: string; nome: string };
 
 type FormState = {
   nome: string; tipo: CriativoTipo; fase: string;
-  funil_ids: string[]; responsavel_id: string; projeto_id: string; funil_video: string;
+  funil_ids: string[]; responsavel_id: string; copy_id: string; gestor_id: string; projeto_id: string; funil_video: string;
   formato: string; plataforma: string; tipo_teste: string; nivel_consciencia: string; angulo_teste: string;
   modulo: string; ordem: string;
   copy_url: string; video_gravado_url: string; video_editado_url: string;
+  status_veiculacao: string; avaliacao: string;
   data_inicio: string; data_prazo: string; notas: string;
 };
 
 const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
   nome: '', tipo, fase: getDefaultFase(tipo),
-  funil_ids: [], responsavel_id: '', projeto_id: '', funil_video: '',
+  funil_ids: [], responsavel_id: '', copy_id: '', gestor_id: '', projeto_id: '', funil_video: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
   copy_url: '', video_gravado_url: '', video_editado_url: '',
+  status_veiculacao: '', avaliacao: '',
   data_inicio: '', data_prazo: '', notas: '',
 });
 
@@ -58,7 +60,11 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
   const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
   const [editores, setEditores] = useState<{ id: string; nome: string }[]>([]);
+  const [copys, setCopys]       = useState<{ id: string; nome: string }[]>([]);
+  const [gestores, setGestores] = useState<{ id: string; nome: string }[]>([]);
   const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
+  const [opStatusVeiculacao, setOpStatusVeiculacao] = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
+  const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
   const [opFunilVideo, setOpFunilVideo] = useState<string[]>(FALLBACK_FUNIL_VIDEO);
   const [opFormato, setOpFormato] = useState<string[]>(FALLBACK_FORMATOS);
   const [opPlataforma, setOpPlataforma] = useState<string[]>(FALLBACK_PLATAFORMAS);
@@ -88,12 +94,20 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           const pl = by('plataforma');  if (pl.length) setOpPlataforma(pl);
           const tt = by('tipo_teste');  if (tt.length) setOpTipoTeste(tt);
           const nc = by('nivel_consciencia'); if (nc.length) setOpNivelConsciencia(nc);
+          const sv = by('status_veiculacao'); if (sv.length) setOpStatusVeiculacao(sv);
+          const av = by('avaliacao');         if (av.length) setOpAvaliacao(av);
         }
         if (edData) {
-          const filtered = (edData as { id: string; nome: string; setor: { nome: string } | null }[])
-            .filter(p => p.setor?.nome === 'Editor')
-            .map(p => ({ id: p.id, nome: p.nome }));
-          setEditores(filtered.length > 0 ? filtered : (edData as { id: string; nome: string }[]));
+          type PerfComSetor = { id: string; nome: string; setor: { nome: string } | null };
+          const all = edData as PerfComSetor[];
+          const filterBy = (s: string) => all.filter(p => p.setor?.nome === s).map(p => ({ id: p.id, nome: p.nome }));
+          const allSimple = all.map(p => ({ id: p.id, nome: p.nome }));
+          const eds = filterBy('Editor');
+          setEditores(eds.length > 0 ? eds : allSimple);
+          const cps = filterBy('Copy');
+          setCopys(cps.length > 0 ? cps : allSimple);
+          const gsts = filterBy('Gestor de Tráfego');
+          setGestores(gsts.length > 0 ? gsts : allSimple);
         }
       });
     }
@@ -115,14 +129,17 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       return;
     }
     setLoading(true);
+    const isAdType = form.tipo === 'criativo' || form.tipo === 'vsl';
     const payload = {
       nome:              form.nome.trim(),
       tipo:              form.tipo,
       fase:              form.fase || getDefaultFase(form.tipo),
       funil_ids:         form.funil_ids,
       projeto_id:        form.projeto_id        || null,
-      funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
+      funil_video:       isAdType ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
+      copy_id:           form.copy_id           || null,
+      gestor_id:         form.gestor_id         || null,
       formato:           form.formato           || null,
       plataforma:        form.plataforma        || null,
       tipo_teste:        form.tipo_teste        || null,
@@ -133,6 +150,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       copy_url:          form.copy_url          || null,
       video_gravado_url: form.video_gravado_url || null,
       video_editado_url: form.video_editado_url || null,
+      status_veiculacao: isAdType ? (form.status_veiculacao || null) : null,
+      avaliacao:         isAdType ? (form.avaliacao         || null) : null,
       data_inicio:       form.data_inicio       || null,
       data_prazo:        form.data_prazo        || null,
       notas:             form.notas             || null,
@@ -232,6 +251,29 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </Select>
           </div>
 
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Copy</Label>
+              <Select value={form.copy_id || '_'} onValueChange={v => set('copy_id', v === '_' ? '' : v)}>
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {copys.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Gestor de Tráfego</Label>
+              <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {(form.tipo === 'criativo' || form.tipo === 'vsl') && (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -278,6 +320,10 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                   <Input className="mt-1 h-8 text-xs" placeholder="Ex: Dor + transformação"
                     value={form.angulo_teste} onChange={e => set('angulo_teste', e.target.value)} />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Sel label="Status de Veiculação" field="status_veiculacao" options={opStatusVeiculacao} />
+                <Sel label="Avaliação"            field="avaliacao"         options={opAvaliacao}        />
               </div>
             </>
           )}
