@@ -472,30 +472,32 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
         </Field>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          <Field label="Copy" editing={editing}>
-            {editing ? (
-              <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {copys.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.copy?.nome ?? '—'}</span>}
-          </Field>
-          <Field label="Gestor de Tráfego" editing={editing}>
-            {editing ? (
-              <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
-          </Field>
-        </div>
+        {criativo.tipo !== 'aula' && (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <Field label="Copy" editing={editing}>
+              {editing ? (
+                <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
+                  <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">—</SelectItem>
+                    {copys.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : <span>{criativo.copy?.nome ?? '—'}</span>}
+            </Field>
+            <Field label="Gestor de Tráfego" editing={editing}>
+              {editing ? (
+                <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
+                  <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">—</SelectItem>
+                    {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
+            </Field>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <Field label="Início" editing={editing}>
