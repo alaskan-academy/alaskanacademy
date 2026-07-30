@@ -13,7 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { ChevronLeft, ChevronRight, Plus, Copy, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiFilter } from './MultiFilter';
 import { supabase } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
@@ -228,10 +228,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const [perfis, setPerfis]           = useState<Perfil[]>([]);
   const [loading, setLoading]         = useState(true);
   const [selectedId, setSelectedId]   = useState<string | null>(null);
-  const [filtroProjeto, setFiltroProjeto] = useState('');
-  const [filtroTipo, setFiltroTipo]       = useState('');
-  const [filtroResp, setFiltroResp]       = useState('');
-  const [filtroFase, setFiltroFase]       = useState('');
+  const [filtroProjeto, setFiltroProjeto] = useState<string[]>([]);
+  const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
+  const [filtroResp, setFiltroResp]       = useState<string[]>([]);
+  const [filtroFase, setFiltroFase]       = useState<string[]>([]);
   const [projetos, setProjetos]           = useState<{ id: string; nome: string }[]>([]);
   const [createDate, setCreateDate]   = useState<string | null>(null);
 
@@ -295,10 +295,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
 
     if (fasesVisiveis?.length) q = q.in('fase', fasesVisiveis);
-    if (filtroProjeto) q = q.eq('projeto_id', filtroProjeto);
-    if (filtroTipo)    q = q.eq('tipo', filtroTipo);
-    if (filtroFase)    q = q.eq('fase', filtroFase);
-    if (filtroResp)    q = q.eq('responsavel_id', filtroResp);
+    if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
+    if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
+    if (filtroFase.length)    q = q.in('fase', filtroFase);
+    if (filtroResp.length)    q = q.in('responsavel_id', filtroResp);
 
     const { data } = await q;
     setCriativos(data ?? []);
@@ -571,40 +571,39 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Select value={filtroProjeto || '_'} onValueChange={v => setFiltroProjeto(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-44 text-xs"><SelectValue placeholder="Todos os projetos" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todos os projetos</SelectItem>
-            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        <Select value={filtroTipo || '_'} onValueChange={v => setFiltroTipo(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todos</SelectItem>
-            <SelectItem value="criativo">Criativo</SelectItem>
-            <SelectItem value="vsl">VSL</SelectItem>
-            <SelectItem value="aula">Aula</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={filtroFase || '_'} onValueChange={v => setFiltroFase(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Fase" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todas as fases</SelectItem>
-            {FASES.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
+        <MultiFilter
+          label="Todos os projetos"
+          options={projetos}
+          value={filtroProjeto}
+          onChange={setFiltroProjeto}
+          width="w-44"
+        />
+        <MultiFilter
+          label="Tipo"
+          options={[
+            { id: 'criativo', nome: 'Criativo' },
+            { id: 'vsl',      nome: 'VSL' },
+            { id: 'aula',     nome: 'Aula' },
+          ]}
+          value={filtroTipo}
+          onChange={setFiltroTipo}
+          width="w-32"
+        />
+        <MultiFilter
+          label="Fase"
+          options={FASES.map(f => ({ id: f.key, nome: f.label }))}
+          value={filtroFase}
+          onChange={setFiltroFase}
+          width="w-36"
+        />
         {nivel !== 'membro' && (
-          <Select value={filtroResp || '_'} onValueChange={v => setFiltroResp(v === '_' ? '' : v)}>
-            <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Responsável" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_">Todos</SelectItem>
-              {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <MultiFilter
+            label="Responsável"
+            options={perfis.map(p => ({ id: p.id, nome: p.nome }))}
+            value={filtroResp}
+            onChange={setFiltroResp}
+            width="w-40"
+          />
         )}
 
         <div className="flex-1" />
