@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Search } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { MultiFilter } from './MultiFilter';
 import { supabase } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
@@ -42,10 +42,10 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [busca, setBusca]             = useState('');
-  const [filtroTipo, setFiltroTipo]   = useState('');
-  const [filtroFase, setFiltroFase]   = useState('');
-  const [filtroResp, setFiltroResp]   = useState('');
-  const [filtroAval, setFiltroAval]   = useState('');
+  const [filtroTipo, setFiltroTipo]   = useState<string[]>([]);
+  const [filtroFase, setFiltroFase]   = useState<string[]>([]);
+  const [filtroResp, setFiltroResp]   = useState<string[]>([]);
+  const [filtroAval, setFiltroAval]   = useState<string[]>([]);
   const [mostrarInativos, setMostrarInativos] = useState(false);
 
   const loadAux = useCallback(async () => {
@@ -74,10 +74,10 @@ export function PorProjetoView({ nivel, userId }: Props) {
         .order('nome')
         .range(from, from + PAGE - 1);
       if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
-      if (filtroTipo) q = q.eq('tipo', filtroTipo);
-      if (filtroFase) q = q.eq('fase', filtroFase);
-      if (filtroResp) q = q.eq('responsavel_id', filtroResp);
-      if (filtroAval) q = q.eq('avaliacao', filtroAval);
+      if (filtroTipo.length) q = q.in('tipo', filtroTipo);
+      if (filtroFase.length) q = q.in('fase', filtroFase);
+      if (filtroResp.length) q = q.in('responsavel_id', filtroResp);
+      if (filtroAval.length) q = q.in('avaliacao', filtroAval);
       const { data } = await q;
       if (!data || data.length === 0) break;
       all = all.concat(data as CriativoRow[]);
@@ -122,39 +122,38 @@ export function PorProjetoView({ nivel, userId }: Props) {
           />
         </div>
 
-        <Select value={filtroTipo || '_'} onValueChange={v => setFiltroTipo(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todos</SelectItem>
-            <SelectItem value="criativo">Criativo</SelectItem>
-            <SelectItem value="vsl">VSL</SelectItem>
-            <SelectItem value="aula">Aula</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={filtroFase || '_'} onValueChange={v => setFiltroFase(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Fase" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todas as fases</SelectItem>
-            {FASES.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        <Select value={filtroResp || '_'} onValueChange={v => setFiltroResp(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Responsável" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todos</SelectItem>
-            {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        <Select value={filtroAval || '_'} onValueChange={v => setFiltroAval(v === '_' ? '' : v)}>
-          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Avaliação" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="_">Todas</SelectItem>
-            {opAvaliacao.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <MultiFilter
+          label="Tipo"
+          options={[
+            { id: 'criativo', nome: 'Criativo' },
+            { id: 'vsl',      nome: 'VSL' },
+            { id: 'aula',     nome: 'Aula' },
+          ]}
+          value={filtroTipo}
+          onChange={setFiltroTipo}
+          width="w-32"
+        />
+        <MultiFilter
+          label="Fase"
+          options={FASES.map(f => ({ id: f.key, nome: f.label }))}
+          value={filtroFase}
+          onChange={setFiltroFase}
+          width="w-36"
+        />
+        <MultiFilter
+          label="Responsável"
+          options={perfis.map(p => ({ id: p.id, nome: p.nome }))}
+          value={filtroResp}
+          onChange={setFiltroResp}
+          width="w-40"
+        />
+        <MultiFilter
+          label="Avaliação"
+          options={opAvaliacao.map(a => ({ id: a, nome: a }))}
+          value={filtroAval}
+          onChange={setFiltroAval}
+          width="w-36"
+        />
 
         <button
           onClick={() => setMostrarInativos(v => !v)}
