@@ -57,6 +57,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   const [form, setForm] = useState<FormState>(makeEmpty());
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
   const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
+  const [editores, setEditores] = useState<{ id: string; nome: string }[]>([]);
   const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
   const [opFunilVideo, setOpFunilVideo] = useState<string[]>(FALLBACK_FUNIL_VIDEO);
   const [opFormato, setOpFormato] = useState<string[]>(FALLBACK_FORMATOS);
@@ -75,7 +76,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
         perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
-      ]).then(([{ data: fs }, { data: ps }, { data: pj }, { data: op }]) => {
+        supabase.from('perfis').select('id,nome,setor:setores(nome)').eq('ativo', true).order('nome'),
+      ]).then(([{ data: fs }, { data: ps }, { data: pj }, { data: op }, { data: edData }]) => {
         if (fs && !funisProp)  setInternalFunis(fs as Funil[]);
         if (ps && !perfisProp) setInternalPerfis(ps as Perfil[]);
         if (pj) setProjetos(pj as OfertaEditorOption[]);
@@ -86,6 +88,12 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           const pl = by('plataforma');  if (pl.length) setOpPlataforma(pl);
           const tt = by('tipo_teste');  if (tt.length) setOpTipoTeste(tt);
           const nc = by('nivel_consciencia'); if (nc.length) setOpNivelConsciencia(nc);
+        }
+        if (edData) {
+          const filtered = (edData as { id: string; nome: string; setor: { nome: string } | null }[])
+            .filter(p => p.setor?.nome === 'Editor')
+            .map(p => ({ id: p.id, nome: p.nome }));
+          setEditores(filtered.length > 0 ? filtered : (edData as { id: string; nome: string }[]));
         }
       });
     }
@@ -219,13 +227,12 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
               <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="_">Nenhum</SelectItem>
-                {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
 
-
-          {form.tipo === 'criativo' && (
+          {(form.tipo === 'criativo' || form.tipo === 'vsl') && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>

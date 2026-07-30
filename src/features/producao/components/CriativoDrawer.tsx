@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  ChevronLeft, ChevronRight, Pencil, Save, X, ExternalLink,
+  Pencil, Save, X, ExternalLink,
   Clock, MessageSquare, CornerDownLeft, Send, Maximize2, Minimize2, Copy,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -20,7 +20,7 @@ import { fetchProjetos } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
-  FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, getAdjacentFases, formatFieldName,
+  FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, formatFieldName,
 } from './constants';
 import { TipoBadge } from './CriativoCard';
 import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
@@ -65,6 +65,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
   const [projetos, setProjetos]                   = useState<{ id: string; nome: string }[]>([]);
   const [editores, setEditores]                   = useState<{ id: string; nome: string }[]>([]);
+  const [copys, setCopys]                         = useState<{ id: string; nome: string }[]>([]);
+  const [gestores, setGestores]                   = useState<{ id: string; nome: string }[]>([]);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
   const [postando, setPostando]             = useState(false);
@@ -101,10 +103,17 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       .eq('ativo', true)
       .order('nome');
     if (edData) {
-      const filtered = (edData as { id: string; nome: string; setor: { nome: string } | null }[])
-        .filter(p => p.setor?.nome === 'Editor')
-        .map(p => ({ id: p.id, nome: p.nome }));
-      setEditores(filtered.length > 0 ? filtered : (edData as { id: string; nome: string }[]));
+      type PerfComSetor = { id: string; nome: string; setor: { nome: string } | null };
+      const all = edData as PerfComSetor[];
+      const filterBy = (s: string) => all.filter(p => p.setor?.nome === s).map(p => ({ id: p.id, nome: p.nome }));
+      const allSimple = all.map(p => ({ id: p.id, nome: p.nome }));
+
+      const eds = filterBy('Editor');
+      setEditores(eds.length > 0 ? eds : allSimple);
+      const cps = filterBy('Copy');
+      setCopys(cps.length > 0 ? cps : allSimple);
+      const gsts = filterBy('Gestor de Tráfego');
+      setGestores(gsts.length > 0 ? gsts : allSimple);
     }
   }, []);
 
@@ -341,20 +350,19 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   if (!criativoId) return null;
 
-  const sheetStyle = expanded ? { width: '100vw', maxWidth: '100vw' } : undefined;
+  const sheetStyle = expanded ? { width: '100vw', maxWidth: '100vw' } : { width: '40vw', maxWidth: '40vw' };
 
   if (loading || !criativo) {
     return (
       <Sheet open onOpenChange={v => !v && onClose()}>
-        <SheetContent side="right" className="w-full max-w-2xl p-0 flex flex-col" style={sheetStyle}>
+        <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
           <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
         </SheetContent>
       </Sheet>
     );
   }
 
-  const { prev: prevFase, next: nextFase } = getAdjacentFases(criativo.tipo, criativo.fase);
-  const canAdvance   = !!(nextFase && canMoveFaseOut(criativo.fase, nivel));
+  const canAdvance    = canMoveFaseOut(criativo.fase, nivel);
   const isRevisaoFase = !!(FASES_POR_TIPO[criativo.tipo]?.includes(criativo.fase) &&
     ['revisao_copy', 'revisao_edicao'].includes(criativo.fase));
   const canEdit   = nivel === 'socio';
@@ -376,25 +384,22 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       {/* Phase navigation */}
       <div>
         {slLabel('Fase')}
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline"
-            className={cn(expanded ? 'text-sm h-9 px-4' : 'text-xs h-7')}
-            disabled={!prevFase || movingFase}
-            onClick={() => prevFase && handleFaseChange(prevFase)}>
-            <ChevronLeft className={cn(expanded ? 'h-4 w-4 mr-1.5' : 'h-3.5 w-3.5 mr-1')} />
-            {prevFase ? (FASES_MAP[prevFase] ?? prevFase) : 'Início'}
-          </Button>
-          <span className={cn('flex-1 text-center font-semibold text-foreground px-1', expanded ? 'text-base' : 'text-xs')}>
-            {FASES_MAP[criativo.fase] ?? criativo.fase}
-          </span>
-          <Button size="sm"
-            className={cn(expanded ? 'text-sm h-9 px-4' : 'text-xs h-7')}
-            disabled={!nextFase || !canAdvance || movingFase}
-            onClick={() => nextFase && canAdvance && handleFaseChange(nextFase)}>
-            {nextFase ? (FASES_MAP[nextFase] ?? nextFase) : 'Fim'}
-            <ChevronRight className={cn(expanded ? 'h-4 w-4 ml-1.5' : 'h-3.5 w-3.5 ml-1')} />
-          </Button>
-        </div>
+        <Select
+          value={criativo.fase}
+          onValueChange={v => { if (v !== criativo.fase) handleFaseChange(v); }}
+          disabled={movingFase}
+        >
+          <SelectTrigger className={cn(expanded ? 'h-9 text-sm' : 'h-8 text-xs')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(FASES_POR_TIPO[criativo.tipo] ?? []).map(k => (
+              <SelectItem key={k} value={k}>
+                {FASES_MAP[k] ?? k}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {isRevisaoFase && !canAdvance && (
           <p className={cn('text-amber-400 mt-1.5', expanded ? 'text-sm' : 'text-[11px]')}>
             Aguardando aprovação do líder ou sócio para avançar.
@@ -404,42 +409,43 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
       <Separator />
 
-      {/* Core fields */}
+      {/* Informações básicas — mesma ordem do form de criação */}
       <div className="space-y-3">
-        {slLabel('Informações')}
+        <Field label="Projeto" editing={editing}>
+          {editing ? (
+            <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
+              <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">—</SelectItem>
+                {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
+        </Field>
+
+        <Field label="Editor" editing={editing}>
+          {editing ? (
+            <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
+              <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">—</SelectItem>
+                {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
+        </Field>
+
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          <Field label="Projeto" editing={editing}>
-            {editing ? (
-              <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
-          </Field>
           <Field label="Copy" editing={editing}>
             {editing ? (
               <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
                 <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_">—</SelectItem>
-                  {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  {copys.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             ) : <span>{criativo.copy?.nome ?? '—'}</span>}
-          </Field>
-          <Field label="Editor" editing={editing}>
-            {editing ? (
-              <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
           </Field>
           <Field label="Gestor de Tráfego" editing={editing}>
             {editing ? (
@@ -447,11 +453,14 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_">—</SelectItem>
-                  {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
           </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <Field label="Início" editing={editing}>
             {editing ? (
               <Input type="date" className="h-7 text-xs mt-0.5"
@@ -471,10 +480,10 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         </div>
       </div>
 
-      {/* Type-specific fields */}
-      {criativo.tipo === 'criativo' && (
+      {/* Campos específicos por tipo — mesma ordem do form de criação */}
+      {(criativo.tipo === 'criativo' || criativo.tipo === 'vsl') && (
         <div className="space-y-3">
-          {slLabel('Criativo')}
+          {slLabel(criativo.tipo === 'vsl' ? 'VSL' : 'Criativo')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="Funil de Vendas" editing={editing}>
               {editing ? (
@@ -507,20 +516,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 </span>
               )}
             </Field>
-            <Field label="Formato" editing={editing}>
-              {editing ? (
-                <div className="flex items-center gap-1 mt-0.5">
-                  <Select value={val('formato') || '_'} onValueChange={v => ch('formato', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {opFormato.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="formato" label="Formato" onAtualizar={loadOpcoes} />}
-                </div>
-              ) : <span>{criativo.formato ?? '—'}</span>}
-            </Field>
             <Field label="Plataforma" editing={editing}>
               {editing ? (
                 <div className="flex items-center gap-1 mt-0.5">
@@ -534,6 +529,20 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                   {nivel === 'socio' && <GerenciarOpcoesPopover campo="plataforma" label="Plataforma" onAtualizar={loadOpcoes} />}
                 </div>
               ) : <span>{criativo.plataforma ?? '—'}</span>}
+            </Field>
+            <Field label="Formato" editing={editing}>
+              {editing ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Select value={val('formato') || '_'} onValueChange={v => ch('formato', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {opFormato.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="formato" label="Formato" onAtualizar={loadOpcoes} />}
+                </div>
+              ) : <span>{criativo.formato ?? '—'}</span>}
             </Field>
             <Field label="Tipo de Teste" editing={editing}>
               {editing ? (
@@ -563,13 +572,13 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 </div>
               ) : <span>{criativo.nivel_consciencia ?? '—'}</span>}
             </Field>
+            <Field label="Ângulo de Teste" editing={editing}>
+              {editing ? (
+                <Input className="h-7 text-xs mt-0.5"
+                  value={val('angulo_teste')} onChange={e => ch('angulo_teste', e.target.value || null)} />
+              ) : <span>{criativo.angulo_teste ?? '—'}</span>}
+            </Field>
           </div>
-          <Field label="Ângulo de Teste" editing={editing}>
-            {editing ? (
-              <Input className="h-7 text-xs mt-0.5"
-                value={val('angulo_teste')} onChange={e => ch('angulo_teste', e.target.value || null)} />
-            ) : <span>{criativo.angulo_teste ?? '—'}</span>}
-          </Field>
         </div>
       )}
 
@@ -768,7 +777,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   return (
     <Sheet open onOpenChange={v => !v && onClose()}>
-      <SheetContent side="right" className="w-full max-w-2xl p-0 flex flex-col" style={sheetStyle}>
+      <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
         {/* Header */}
         <div className={cn(
           'sticky top-0 bg-background border-b flex items-start gap-3 z-10',
