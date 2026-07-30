@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR } from './constants';
+import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 
 interface Props {
@@ -105,7 +105,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
         const tipoCor = TIPO_COR[c.tipo] ?? 'bg-primary/10 text-primary border-primary/20';
         const isSpan  = c.data_inicio && c.data_prazo && c.data_inicio !== c.data_prazo;
         const isPast  = (c.data_prazo ?? '') < today;
-        const isLate  = isPast && c.fase !== 'postado' && c.fase !== 'aprovado';
+        const isLate  = isPast && !FASES_CONCLUIDAS.has(c.fase);
         const cor     = isLate ? 'bg-red-500/20 text-red-300 border-red-500/30' : tipoCor;
 
         return (

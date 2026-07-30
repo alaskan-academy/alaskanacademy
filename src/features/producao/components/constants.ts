@@ -77,8 +77,14 @@ export function getDefaultFase(tipo: CriativoTipo): string {
   return tipo === 'aula' ? 'gravacao' : 'producao_copy';
 }
 
-export function getUrgency(data_prazo: string | null): 'ok' | 'warn' | 'late' | null {
+// Fases consideradas "concluídas" — prazo vencido não conta como atraso
+export const FASES_CONCLUIDAS = new Set([
+  'aprovado', 'esteira_teste', 'postado', 'na_plataforma', 'arquivado',
+]);
+
+export function getUrgency(data_prazo: string | null, fase?: string): 'ok' | 'warn' | 'late' | null {
   if (!data_prazo) return null;
+  if (fase && FASES_CONCLUIDAS.has(fase)) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const prazo = new Date(data_prazo + 'T00:00:00');

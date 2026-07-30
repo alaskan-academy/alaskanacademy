@@ -19,7 +19,7 @@ import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR, FASES } from './constants';
+import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 import { CriativoFormModal } from './CriativoFormModal';
 
@@ -133,7 +133,7 @@ function DraggableCalCard({
   });
 
   const isPast  = (criativo.data_prazo ?? '') < todayYMD;
-  const isLate  = isPast && criativo.fase !== 'postado' && criativo.fase !== 'aprovado';
+  const isLate  = isPast && !FASES_CONCLUIDAS.has(criativo.fase);
   const tipoCor = isLate
     ? 'bg-red-500/20 text-red-300 border-red-500/30'
     : (TIPO_COR[criativo.tipo] ?? 'bg-primary/10 text-primary border-primary/20');
@@ -698,9 +698,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                           const pm       = previewMap[e.criativo.id] ?? {};
                           const effPrazo  = pm.data_prazo  ?? e.criativo.data_prazo!;
                           const effInicio = pm.data_inicio ?? e.criativo.data_inicio!;
-                          const isLate   = effPrazo < todayYMD
-                            && e.criativo.fase !== 'postado'
-                            && e.criativo.fase !== 'aprovado';
+                          const isLate   = effPrazo < todayYMD && !FASES_CONCLUIDAS.has(e.criativo.fase);
                           const tipoCor  = isLate
                             ? 'bg-red-500/20 text-red-300 border-red-500/30'
                             : (TIPO_COR[e.criativo.tipo] ?? 'bg-primary/10 text-primary border-primary/20');

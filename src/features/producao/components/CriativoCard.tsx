@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function CriativoCard({ criativo, onClick }: Props) {
-  const urgency     = getUrgency(criativo.data_prazo);
+  const urgency     = getUrgency(criativo.data_prazo, criativo.fase);
   const missingLink = !criativo.video_editado_url && FASES_REQUER_LINK.has(criativo.fase);
   const fase        = FASES_MAP[criativo.fase] ?? criativo.fase;
   const funil       = criativo.funil?.nome ?? criativo.funil_video ?? null;
