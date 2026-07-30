@@ -140,9 +140,9 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setComentarios(withReplies);
   }, [criativoId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!criativoId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     const [{ data: c }, { data: h }] = await Promise.all([
       supabase.from('producoes')
         .select([
@@ -215,7 +215,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     toast({ title: 'Salvo' });
     setEditing(false);
     setChanges({});
-    load();
+    load(true);
   };
 
   const handleFaseChange = async (novaFase: string) => {
@@ -244,7 +244,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       });
     }
     setMovingFase(false);
-    load();
+    load(true);
   };
 
   const handleDelete = async () => {
