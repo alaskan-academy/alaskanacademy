@@ -374,11 +374,26 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   if (loading || !criativo) {
     return (
-      <Sheet open onOpenChange={v => !v && handleAttemptClose()}>
-        <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
-          <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
-        </SheetContent>
-      </Sheet>
+      <>
+        <AlertDialog open={showCloseWarning} onOpenChange={setShowCloseWarning}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Alterações não salvas</AlertDialogTitle>
+              <AlertDialogDescription>Você tem alterações que ainda não foram salvas. O que deseja fazer?</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowCloseWarning(false)}>Continuar editando</AlertDialogCancel>
+              <AlertDialogAction className="bg-transparent text-foreground border border-border hover:bg-accent" onClick={handleDiscardAndClose}>Descartar e fechar</AlertDialogAction>
+              <AlertDialogAction onClick={async () => { setShowCloseWarning(false); await handleSave(); onClose(); }}>Salvar e fechar</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <Sheet open onOpenChange={v => !v && handleAttemptClose()}>
+          <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
+            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
+          </SheetContent>
+        </Sheet>
+      </>
     );
   }
 
