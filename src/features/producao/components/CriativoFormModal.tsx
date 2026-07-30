@@ -323,11 +323,14 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                     value={form.angulo_teste} onChange={e => set('angulo_teste', e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Sel label="Status de Veiculação" field="status_veiculacao" options={opStatusVeiculacao} />
-                <Sel label="Avaliação"            field="avaliacao"         options={opAvaliacao}        />
-              </div>
             </>
+          )}
+
+          {form.tipo !== 'aula' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Sel label="Status de Veiculação" field="status_veiculacao" options={opStatusVeiculacao} />
+              <Sel label="Avaliação"            field="avaliacao"         options={opAvaliacao}        />
+            </div>
           )}
 
           {form.tipo === 'aula' && (
