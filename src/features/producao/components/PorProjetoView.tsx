@@ -170,7 +170,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
       </div>
 
       {/* Sections */}
-      {loading ? (
+      {loading && criativos.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
       ) : sections.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8 text-center">Nenhum item encontrado.</p>

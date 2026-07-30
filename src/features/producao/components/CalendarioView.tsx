@@ -637,7 +637,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         </div>
       </div>
 
-      {loading ? (
+      {loading && criativos.length === 0 ? (
         <div className="border border-border rounded-lg overflow-hidden animate-pulse">
           <div className="grid grid-cols-7 bg-muted/30 border-b border-border">
             {DIAS_SEMANA.map(d => (

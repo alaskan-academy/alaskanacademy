@@ -246,7 +246,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       </div>
 
       {/* Board */}
-      {loading ? (
+      {loading && criativos.length === 0 ? (
         <div className="flex items-center justify-center h-40 text-muted-foreground text-sm gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />Carregando...
         </div>
