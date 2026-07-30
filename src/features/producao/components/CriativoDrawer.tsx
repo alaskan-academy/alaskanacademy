@@ -216,6 +216,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setEditing(false);
     setChanges({});
     load(true);
+    onUpdate();
   };
 
   const handleFaseChange = async (novaFase: string) => {
@@ -245,6 +246,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     }
     setMovingFase(false);
     load(true);
+    onUpdate();
   };
 
   const handleDelete = async () => {
