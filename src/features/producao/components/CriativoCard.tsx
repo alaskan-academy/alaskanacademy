@@ -44,7 +44,8 @@ export function CriativoCard({ criativo, onClick }: Props) {
       </div>
 
       {projeto && <p className="text-[10.5px] text-muted-foreground truncate mb-0.5">{projeto}</p>}
-      {funil   && <p className="text-[10.5px] text-muted-foreground/70 truncate mb-1">{funil}</p>}
+      {funil   && <p className="text-[10.5px] text-muted-foreground/70 truncate mb-0.5">{funil}</p>}
+      {criativo.tipo_teste && <p className="text-[10px] text-muted-foreground/50 truncate mb-1">{criativo.tipo_teste}</p>}
 
       {/* Editor + Prazo */}
       <div className="flex items-center justify-between">

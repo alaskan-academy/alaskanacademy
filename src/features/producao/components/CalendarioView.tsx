@@ -13,6 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { ChevronLeft, ChevronRight, Plus, Copy, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MultiFilter } from './MultiFilter';
 import { supabase } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
@@ -189,6 +190,7 @@ function DraggableCalCard({
         <span className="text-[10px] opacity-70 leading-tight truncate block">{fase}</span>
         {projeto && <span className="text-[10px] opacity-60 leading-tight truncate block">{projeto}</span>}
         {funil   && <span className="text-[10px] opacity-55 leading-tight truncate block">{funil}</span>}
+        {criativo.tipo_teste && <span className="text-[10px] opacity-50 leading-tight truncate block">{criativo.tipo_teste}</span>}
         {editor  && <span className="text-[10px] opacity-50 leading-tight truncate block">{editor}</span>}
       </button>
       {/* Right edge resize handle — visible on hover */}
@@ -273,7 +275,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     let q = supabase
       .from('producoes')
       .select([
-        'id,nome,tipo,fase,funil_video,data_inicio,data_prazo,editor_nome_historico,funil_ids',
+        'id,nome,tipo,fase,funil_video,data_inicio,data_prazo,editor_nome_historico,funil_ids,tipo_teste',
         'funil:funis(id,nome,produto)',
         'projeto:ofertas_editores!projeto_id(id,nome)',
         'responsavel:perfis!responsavel_id(id,nome)',
@@ -771,6 +773,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                     <span className="text-[9.5px] opacity-70 truncate leading-tight">{FASES_MAP[e.criativo.fase] ?? e.criativo.fase}</span>
                                     {e.criativo.projeto?.nome && <span className="text-[9.5px] opacity-60 truncate leading-tight">{e.criativo.projeto.nome}</span>}
                                     {(e.criativo.funil?.nome ?? e.criativo.funil_video) && <span className="text-[9.5px] opacity-55 truncate leading-tight">{e.criativo.funil?.nome ?? e.criativo.funil_video}</span>}
+                                    {e.criativo.tipo_teste && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.tipo_teste}</span>}
                                     {editorName && <span className="text-[9.5px] opacity-50 truncate leading-tight">{editorName}</span>}
                                   </>
                                 ) : (
