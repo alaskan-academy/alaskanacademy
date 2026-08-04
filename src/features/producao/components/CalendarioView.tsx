@@ -29,7 +29,7 @@ interface Props {
   setorId: string | null;
   userId: string;
   somenteSetor?: boolean;
-  fixedField?: 'responsavel_id' | 'copy_id' | 'gestor_id';
+  fixedField?: 'responsavel_id' | 'copy_id' | 'gestor_id' | 'especialista_id';
   fixedValue?: string;
   fasesVisiveis?: string[];
 }
@@ -495,14 +495,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (!ids.length) return;
     const { data: originals } = await supabase
       .from('producoes')
-      .select('id,nome,tipo,fase,funil_ids,projeto_id,funil_video,responsavel_id,copy_id,gestor_id,formato,plataforma,tipo_teste,nivel_consciencia,angulo_teste,modulo,ordem,notas,data_inicio,data_prazo,copy_url,video_gravado_url,video_editado_url,status_veiculacao,avaliacao')
+      .select('id,nome,tipo,fase,funil_ids,projeto_id,funil_video,responsavel_id,copy_id,gestor_id,especialista_id,formato,plataforma,tipo_teste,nivel_consciencia,angulo_teste,modulo,ordem,notas,data_inicio,data_prazo,copy_url,video_gravado_url,video_editado_url,status_veiculacao,avaliacao')
       .in('id', ids);
     if (!originals?.length) return;
     const copies = originals.map(c => ({
       nome: `${c.nome} (cópia)`, tipo: c.tipo, fase: c.fase,
       funil_ids: c.funil_ids ?? [], projeto_id: c.projeto_id,
       funil_video: c.funil_video, responsavel_id: c.responsavel_id,
-      copy_id: c.copy_id, gestor_id: c.gestor_id,
+      copy_id: c.copy_id, gestor_id: c.gestor_id, especialista_id: c.especialista_id,
       formato: c.formato, plataforma: c.plataforma,
       tipo_teste: c.tipo_teste, nivel_consciencia: c.nivel_consciencia,
       angulo_teste: c.angulo_teste, modulo: c.modulo, ordem: c.ordem, notas: c.notas,

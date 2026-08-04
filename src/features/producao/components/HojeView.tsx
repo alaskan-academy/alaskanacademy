@@ -11,7 +11,7 @@ interface Props {
   nivel: ProducaoNivel;
   setorId: string | null;
   userId: string;
-  fixedField?: 'responsavel_id' | 'copy_id' | 'gestor_id';
+  fixedField?: 'responsavel_id' | 'copy_id' | 'gestor_id' | 'especialista_id';
   fixedValue?: string;
   fases?: string[];
 }

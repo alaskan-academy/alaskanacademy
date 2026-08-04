@@ -72,6 +72,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [editores, setEditores]                   = useState<{ id: string; nome: string }[]>([]);
   const [copys, setCopys]                         = useState<{ id: string; nome: string }[]>([]);
   const [gestores, setGestores]                   = useState<{ id: string; nome: string }[]>([]);
+  const [especialistas, setEspecialistas]         = useState<{ id: string; nome: string }[]>([]);
   // comentários
   const [novoComentario, setNovoComentario] = useState('');
   const [postando, setPostando]             = useState(false);
@@ -119,6 +120,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       setCopys(cps.length > 0 ? cps : allSimple);
       const gsts = filterBy('Gestor de Tráfego');
       setGestores(gsts.length > 0 ? gsts : allSimple);
+      setEspecialistas(filterBy('Especialista'));
     }
   }, []);
 
@@ -152,6 +154,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           'responsavel:perfis!responsavel_id(id,nome)',
           'copy:perfis!copy_id(id,nome)',
           'gestor:perfis!gestor_id(id,nome)',
+          'especialista:perfis!especialista_id(id,nome)',
         ].join(','))
         .eq('id', criativoId).single(),
       supabase.from('criativo_historico')
@@ -284,6 +287,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       video_editado_url:  criativo.video_editado_url,
       status_veiculacao: criativo.status_veiculacao,
       avaliacao:         criativo.avaliacao,
+      especialista_id:   criativo.especialista_id ?? null,
     }).select('id').single();
     if (error || !data) { toast({ title: 'Erro ao duplicar', variant: 'destructive' }); return; }
     await supabase.from('criativo_historico').insert({
@@ -471,6 +475,20 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             </Select>
           ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
         </Field>
+
+        {(especialistas.length > 0 || criativo.especialista) && (
+          <Field label="Especialista" editing={editing}>
+            {editing ? (
+              <Select value={val('especialista_id') || '_'} onValueChange={v => ch('especialista_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.especialista?.nome ?? '—'}</span>}
+          </Field>
+        )}
 
         {criativo.tipo !== 'aula' && (
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">

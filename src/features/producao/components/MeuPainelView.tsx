@@ -16,9 +16,10 @@ interface Props {
   setor: SetorInfo | null;
 }
 
-function getFieldForSetor(setorNome: string | null | undefined): 'responsavel_id' | 'copy_id' | 'gestor_id' {
+function getFieldForSetor(setorNome: string | null | undefined): 'responsavel_id' | 'copy_id' | 'gestor_id' | 'especialista_id' {
   if (setorNome === 'Copy') return 'copy_id';
   if (setorNome === 'Gestor de Tráfego') return 'gestor_id';
+  if (setorNome === 'Especialista') return 'especialista_id';
   return 'responsavel_id';
 }
 
@@ -26,6 +27,7 @@ const FASES_MEUPAINEL: Record<string, string[]> = {
   'Editor':             ['edicao', 'revisao_edicao', 'alteracao'],
   'Copy':               ['producao_copy', 'revisao_copy'],
   'Gestor de Tráfego':  ['aprovado', 'esteira_teste'],
+  'Especialista':       ['gravacao'],
 };
 
 export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {

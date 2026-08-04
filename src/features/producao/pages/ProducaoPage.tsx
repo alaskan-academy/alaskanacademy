@@ -14,6 +14,7 @@ const FASES_CALENDARIO_SETOR: Record<string, string[]> = {
   'Editor':             ['edicao', 'revisao_edicao', 'alteracao', 'aprovado'],
   'Copy':               ['producao_copy', 'revisao_copy', 'gravacao'],
   'Gestor de Tráfego':  ['aprovado', 'esteira_teste', 'postado'],
+  'Especialista':       ['gravacao'],
 };
 
 // Tabs visíveis por nível

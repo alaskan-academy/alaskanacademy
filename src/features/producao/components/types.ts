@@ -40,6 +40,8 @@ export interface Criativo {
   responsavel?: { id: string; nome: string } | null;
   copy?: { id: string; nome: string } | null;
   gestor?: { id: string; nome: string } | null;
+  especialista_id?: string | null;
+  especialista?: { id: string; nome: string } | null;
 }
 
 export interface HistoricoEntry {
