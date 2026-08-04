@@ -244,19 +244,19 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </Select>
           </div>
 
-          <div>
-            <Label className="text-xs">Especialista</Label>
-            <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">—</SelectItem>
-                {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {form.tipo !== 'aula' && (
+          {/* Equipe — grid 2x2 */}
+          {form.tipo !== 'aula' ? (
             <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Especialista</Label>
+                <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
+                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">—</SelectItem>
+                    {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-xs">Copy</Label>
                 <Select value={form.copy_id || '_'} onValueChange={v => set('copy_id', v === '_' ? '' : v)}>
@@ -270,39 +270,46 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
               <div>
                 <Label className="text-xs">Editor</Label>
                 <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
+                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_">Nenhum</SelectItem>
+                    <SelectItem value="_">—</SelectItem>
                     {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label className="text-xs">Gestor de Tráfego</Label>
+                <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
+                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">—</SelectItem>
+                    {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          )}
-
-          {form.tipo === 'aula' && (
-            <div>
-              <Label className="text-xs">Editor</Label>
-              <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
-                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Nenhum</SelectItem>
-                  {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {form.tipo !== 'aula' && (
-            <div>
-              <Label className="text-xs">Gestor de Tráfego</Label>
-              <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
-                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Especialista</Label>
+                <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
+                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">—</SelectItem>
+                    {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Editor</Label>
+                <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
+                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_">—</SelectItem>
+                    {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 

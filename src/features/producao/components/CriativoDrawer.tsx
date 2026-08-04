@@ -465,23 +465,22 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       </Field>
 
       {/* Equipe */}
-      <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
         {slLabel('Equipe')}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <Field label="Especialista" editing={editing}>
+            {editing ? (
+              <Select value={val('especialista_id') || '_'} onValueChange={v => ch('especialista_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.especialista?.nome ?? '—'}</span>}
+          </Field>
 
-        <Field label="Especialista" editing={editing}>
-          {editing ? (
-            <Select value={val('especialista_id') || '_'} onValueChange={v => ch('especialista_id', v === '_' ? null : v)}>
-              <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">—</SelectItem>
-                {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : <span>{criativo.especialista?.nome ?? '—'}</span>}
-        </Field>
-
-        {criativo.tipo !== 'aula' && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          {criativo.tipo !== 'aula' ? (
             <Field label="Copy" editing={editing}>
               {editing ? (
                 <Select value={val('copy_id') || '_'} onValueChange={v => ch('copy_id', v === '_' ? null : v)}>
@@ -493,6 +492,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 </Select>
               ) : <span>{criativo.copy?.nome ?? '—'}</span>}
             </Field>
+          ) : (
             <Field label="Editor" editing={editing}>
               {editing ? (
                 <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
@@ -504,40 +504,39 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 </Select>
               ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
             </Field>
-          </div>
-        )}
+          )}
 
-        {criativo.tipo === 'aula' && (
-          <Field label="Editor" editing={editing}>
-            {editing ? (
-              <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
-          </Field>
-        )}
-
-        {criativo.tipo !== 'aula' && (
-          <Field label="Gestor de Tráfego" editing={editing}>
-            {editing ? (
-              <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
-          </Field>
-        )}
+          {criativo.tipo !== 'aula' && (
+            <>
+              <Field label="Editor" editing={editing}>
+                {editing ? (
+                  <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
+              </Field>
+              <Field label="Gestor de Tráfego" editing={editing}>
+                {editing ? (
+                  <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
+                    <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
+              </Field>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Cronograma */}
-      <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
         {slLabel('Cronograma')}
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <Field label="Início" editing={editing}>
@@ -561,7 +560,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
       {/* Campos específicos por tipo — mesma ordem do form de criação */}
       {criativo.tipo === 'criativo' && (
-        <div className="space-y-3">
+        <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
           {slLabel('Criativo')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="Funil de Vendas" editing={editing}>
@@ -662,7 +661,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       )}
 
       {criativo.tipo === 'aula' && (
-        <div className="space-y-3">
+        <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
           {slLabel('Aula')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="Módulo" editing={editing}>
@@ -682,7 +681,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       )}
 
       {/* Links — always editable inline */}
-      <div className="space-y-2">
+      <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
         {slLabel('Links')}
         {(['copy_url', 'video_gravado_url', 'video_editado_url'] as const).map(field => {
           const labelMap = { copy_url: 'Copy', video_gravado_url: 'Vídeo Gravado', video_editado_url: 'Vídeo Editado' };
@@ -726,7 +725,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
       {/* Veiculação — só para criativo e VSL */}
       {criativo.tipo !== 'aula' && (
-        <div className="space-y-3">
+        <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
           {slLabel('Veiculação')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="Status" editing={editing}>
@@ -776,7 +775,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       )}
 
       {/* Notas */}
-      <div>
+      <div className="rounded-lg border border-border bg-muted/50 p-3">
         {slLabel('Notas')}
         {editing ? (
           <Textarea className="text-xs resize-none" rows={3}
@@ -1193,8 +1192,8 @@ function MentionTextarea({
 function Field({ label, editing, children }: { label: string; editing: boolean; children: ReactNode }) {
   return (
     <div>
-      <Label className="text-[10.5px] text-muted-foreground">{label}</Label>
-      <div className={cn('text-xs text-foreground', editing ? '' : 'mt-0.5')}>{children}</div>
+      <Label className="text-[9.5px] uppercase tracking-wide text-muted-foreground/50 font-semibold">{label}</Label>
+      <div className={cn(editing ? 'text-xs text-foreground' : 'text-[13px] font-medium text-foreground mt-0.5')}>{children}</div>
     </div>
   );
 }
