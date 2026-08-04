@@ -35,7 +35,7 @@ type OfertaEditorOption = { id: string; nome: string };
 
 type FormState = {
   nome: string; tipo: CriativoTipo; fase: string;
-  funil_ids: string[]; responsavel_id: string; copy_id: string; gestor_id: string; projeto_id: string; funil_video: string;
+  funil_ids: string[]; responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; funil_video: string;
   formato: string; plataforma: string; tipo_teste: string; nivel_consciencia: string; angulo_teste: string;
   modulo: string; ordem: string;
   copy_url: string; video_gravado_url: string; video_editado_url: string;
@@ -45,7 +45,7 @@ type FormState = {
 
 const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
   nome: '', tipo, fase: getDefaultFase(tipo),
-  funil_ids: [], responsavel_id: '', copy_id: '', gestor_id: '', projeto_id: '', funil_video: '',
+  funil_ids: [], responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', funil_video: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
   copy_url: '', video_gravado_url: '', video_editado_url: '',
@@ -59,9 +59,10 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   const [form, setForm] = useState<FormState>(makeEmpty());
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
   const [internalPerfis, setInternalPerfis] = useState<Perfil[]>([]);
-  const [editores, setEditores] = useState<{ id: string; nome: string }[]>([]);
-  const [copys, setCopys]       = useState<{ id: string; nome: string }[]>([]);
-  const [gestores, setGestores] = useState<{ id: string; nome: string }[]>([]);
+  const [editores, setEditores]         = useState<{ id: string; nome: string }[]>([]);
+  const [copys, setCopys]               = useState<{ id: string; nome: string }[]>([]);
+  const [gestores, setGestores]         = useState<{ id: string; nome: string }[]>([]);
+  const [especialistas, setEspecialistas] = useState<{ id: string; nome: string }[]>([]);
   const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
   const [opStatusVeiculacao, setOpStatusVeiculacao] = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
   const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
@@ -108,6 +109,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           setCopys(cps.length > 0 ? cps : allSimple);
           const gsts = filterBy('Gestor de Tráfego');
           setGestores(gsts.length > 0 ? gsts : allSimple);
+          setEspecialistas(filterBy('Especialista'));
         }
       });
     }
@@ -138,8 +140,9 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       projeto_id:        form.projeto_id        || null,
       funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
-      copy_id:           form.tipo !== 'aula' ? (form.copy_id   || null) : null,
-      gestor_id:         form.tipo !== 'aula' ? (form.gestor_id || null) : null,
+      copy_id:           form.tipo !== 'aula' ? (form.copy_id        || null) : null,
+      gestor_id:         form.tipo !== 'aula' ? (form.gestor_id      || null) : null,
+      especialista_id:   form.especialista_id || null,
       formato:           form.formato           || null,
       plataforma:        form.plataforma        || null,
       tipo_teste:        form.tipo_teste        || null,
@@ -240,16 +243,18 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </Select>
           </div>
 
-          <div>
-            <Label className="text-xs">Editor</Label>
-            <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">Nenhum</SelectItem>
-                {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
+          {especialistas.length > 0 && (
+            <div>
+              <Label className="text-xs">Especialista</Label>
+              <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {form.tipo !== 'aula' && (
             <div className="grid grid-cols-2 gap-3">
@@ -264,15 +269,41 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">Gestor de Tráfego</Label>
-                <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                <Label className="text-xs">Editor</Label>
+                <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
+                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    <SelectItem value="_">Nenhum</SelectItem>
+                    {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          )}
+
+          {form.tipo === 'aula' && (
+            <div>
+              <Label className="text-xs">Editor</Label>
+              <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Nenhum</SelectItem>
+                  {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {form.tipo !== 'aula' && (
+            <div>
+              <Label className="text-xs">Gestor de Tráfego</Label>
+              <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
