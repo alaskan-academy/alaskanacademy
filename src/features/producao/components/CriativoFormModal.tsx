@@ -109,7 +109,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           setCopys(cps.length > 0 ? cps : allSimple);
           const gsts = filterBy('Gestor de Tráfego');
           setGestores(gsts.length > 0 ? gsts : allSimple);
-          setEspecialistas(filterBy('Especialista'));
+          const esps = filterBy('Especialista');
+          setEspecialistas(esps.length > 0 ? esps : allSimple);
         }
       });
     }
@@ -243,18 +244,16 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </Select>
           </div>
 
-          {especialistas.length > 0 && (
-            <div>
-              <Label className="text-xs">Especialista</Label>
-              <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
-                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div>
+            <Label className="text-xs">Especialista</Label>
+            <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
+              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_">—</SelectItem>
+                {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
 
           {form.tipo !== 'aula' && (
             <div className="grid grid-cols-2 gap-3">
