@@ -57,9 +57,10 @@ export function AcessosTab() {
   const [newIsAdmin, setNewIsAdmin] = useState(false);
   const [saving, setSaving]       = useState(false);
 
-  // Modal trocar senha
-  const [pwUser, setPwUser] = useState<Usuario | null>(null);
-  const [newPw, setNewPw]   = useState('');
+  // Modal editar acesso (email + senha)
+  const [pwUser, setPwUser]     = useState<Usuario | null>(null);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPw, setNewPw]       = useState('');
   const [pwSaving, setPwSaving] = useState(false);
 
   const load = async () => {
@@ -212,16 +213,19 @@ export function AcessosTab() {
     toast({ title: `${u.nome} reativado` }); load();
   };
 
-  const handleChangePassword = async () => {
-    if (!newPw || !pwUser) return;
+  const handleChangeCredentials = async () => {
+    if (!pwUser || (!newEmail && !newPw)) return;
     setPwSaving(true);
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'update_password', userId: pwUser.id, password: newPw },
+      body: { action: 'update_credentials', userId: pwUser.id, email: newEmail || undefined, password: newPw || undefined },
     });
     setPwSaving(false);
     const err = await fnError(error, data);
     if (err) return toast({ title: err, variant: 'destructive' });
-    toast({ title: 'Senha atualizada' }); setPwUser(null); setNewPw('');
+    const changed = [newEmail && 'email', newPw && 'senha'].filter(Boolean).join(' e ');
+    toast({ title: `${changed.charAt(0).toUpperCase() + changed.slice(1)} atualizado${changed.includes(' e ') ? 's' : ''}` });
+    setPwUser(null); setNewEmail(''); setNewPw('');
+    if (newEmail) load();
   };
 
   const handleEditorChange = async (userId: string, newEdId: string) => {
@@ -322,7 +326,7 @@ export function AcessosTab() {
                 <Button size="sm" variant="ghost" title={u.is_admin ? 'Remover admin' : 'Tornar sócio/admin'} onClick={() => toggleAdmin(u)}>
                   <Shield className={cn('h-4 w-4', u.is_admin ? 'text-primary' : 'text-muted-foreground')} />
                 </Button>
-                <Button size="sm" variant="ghost" title="Trocar senha" onClick={() => { setPwUser(u); setNewPw(''); }}>
+                <Button size="sm" variant="ghost" title="Editar email / senha" onClick={() => { setPwUser(u); setNewEmail(''); setNewPw(''); }}>
                   <KeyRound className="h-4 w-4 text-muted-foreground" />
                 </Button>
                 <Button size="sm" variant="ghost" title="Desativar usuário" onClick={() => handleDeactivate(u)}>
@@ -544,17 +548,29 @@ export function AcessosTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal trocar senha */}
-      <Dialog open={!!pwUser} onOpenChange={v => { if (!v) setPwUser(null); }}>
+      {/* Modal editar acesso */}
+      <Dialog open={!!pwUser} onOpenChange={v => { if (!v) { setPwUser(null); setNewEmail(''); setNewPw(''); } }}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Trocar senha — {pwUser?.nome}</DialogTitle></DialogHeader>
-          <div>
-            <Label className="text-xs">Nova senha</Label>
-            <Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Mínimo 6 caracteres" className="mt-1" />
+          <DialogHeader><DialogTitle>Editar acesso — {pwUser?.nome}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Preencha apenas os campos que deseja alterar.</p>
+            <div>
+              <Label className="text-xs">Novo email</Label>
+              <Input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder={pwUser?.email ?? 'email@exemplo.com'} className="mt-1" />
+            </div>
+            <div>
+              <Label className="text-xs">Nova senha</Label>
+              <Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Mínimo 6 caracteres" className="mt-1" />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPwUser(null)}>Cancelar</Button>
-            <Button onClick={handleChangePassword} disabled={pwSaving || newPw.length < 6}>{pwSaving ? 'Salvando...' : 'Salvar'}</Button>
+            <Button variant="outline" onClick={() => { setPwUser(null); setNewEmail(''); setNewPw(''); }}>Cancelar</Button>
+            <Button
+              onClick={handleChangeCredentials}
+              disabled={pwSaving || (!newEmail && newPw.length < 6 && newPw.length > 0) || (!newEmail && !newPw)}
+            >
+              {pwSaving ? 'Salvando...' : 'Salvar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

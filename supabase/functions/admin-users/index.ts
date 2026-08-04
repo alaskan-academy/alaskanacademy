@@ -68,6 +68,20 @@ Deno.serve(async (req) => {
     return ok({ ok: true });
   }
 
+  if (action === 'update_credentials') {
+    const { userId, email, password } = body;
+    const updates: { email?: string; password?: string } = {};
+    if (email)    updates.email    = email;
+    if (password) updates.password = password;
+    if (!Object.keys(updates).length) return ok({ error: 'Informe email ou senha para atualizar' });
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, updates);
+    if (error) return ok({ error: error.message });
+    if (email) {
+      await supabaseAdmin.from('perfis').update({ email }).eq('id', userId).throwOnError().then(() => {}).catch(() => {});
+    }
+    return ok({ ok: true });
+  }
+
   if (action === 'deactivate') {
     const { userId } = body;
     const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { ban_duration: '876600h' });
