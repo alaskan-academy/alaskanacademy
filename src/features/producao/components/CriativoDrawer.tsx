@@ -464,18 +464,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
         </Field>
 
-        <Field label="Editor" editing={editing}>
-          {editing ? (
-            <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
-              <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">—</SelectItem>
-                {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
-        </Field>
-
         {(especialistas.length > 0 || criativo.especialista) && (
           <Field label="Especialista" editing={editing}>
             {editing ? (
@@ -503,18 +491,46 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 </Select>
               ) : <span>{criativo.copy?.nome ?? '—'}</span>}
             </Field>
-            <Field label="Gestor de Tráfego" editing={editing}>
+            <Field label="Editor" editing={editing}>
               {editing ? (
-                <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
+                <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
                   <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_">—</SelectItem>
-                    {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
-              ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
+              ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
             </Field>
           </div>
+        )}
+
+        {criativo.tipo === 'aula' && (
+          <Field label="Editor" editing={editing}>
+            {editing ? (
+              <Select value={val('responsavel_id') || '_'} onValueChange={v => ch('responsavel_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.responsavel?.nome ?? criativo.editor_nome_historico ?? '—'}</span>}
+          </Field>
+        )}
+
+        {criativo.tipo !== 'aula' && (
+          <Field label="Gestor de Tráfego" editing={editing}>
+            {editing ? (
+              <Select value={val('gestor_id') || '_'} onValueChange={v => ch('gestor_id', v === '_' ? null : v)}>
+                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">—</SelectItem>
+                  {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
+          </Field>
         )}
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">

@@ -118,7 +118,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
 
     let q = supabase
       .from('producoes')
-      .select('*, funil:funis(id,nome,produto), projeto:ofertas_editores!projeto_id(id,nome), responsavel:perfis!responsavel_id(id,nome)')
+      .select('*, funil:funis(id,nome,produto), projeto:ofertas_editores!projeto_id(id,nome), responsavel:perfis!responsavel_id(id,nome), especialista:perfis!especialista_id(id,nome)')
       .order('data_prazo', { ascending: false, nullsFirst: false });
 
     if (responsavelFilter?.length) q = q.in('responsavel_id', responsavelFilter);

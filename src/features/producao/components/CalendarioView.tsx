@@ -191,6 +191,7 @@ function DraggableCalCard({
         {projeto && <span className="text-[10px] opacity-60 leading-tight truncate block">{projeto}</span>}
         {funil   && <span className="text-[10px] opacity-55 leading-tight truncate block">{funil}</span>}
         {criativo.tipo_teste && <span className="text-[10px] opacity-50 leading-tight truncate block">{criativo.tipo_teste}</span>}
+        {criativo.especialista?.nome && <span className="text-[10px] opacity-50 leading-tight truncate block">{criativo.especialista.nome}</span>}
         {editor  && <span className="text-[10px] opacity-50 leading-tight truncate block">{editor}</span>}
       </button>
       {/* Right edge resize handle — visible on hover */}
@@ -279,6 +280,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         'funil:funis(id,nome,produto)',
         'projeto:ofertas_editores!projeto_id(id,nome)',
         'responsavel:perfis!responsavel_id(id,nome)',
+        'especialista:perfis!especialista_id(id,nome)',
       ].join(','))
       .or(`data_prazo.gte.${fmt(windowStart)},and(data_prazo.is.null,data_inicio.gte.${fmt(windowStart)})`)
       .or(`data_prazo.lte.${fmt(windowEnd)},and(data_prazo.is.null,data_inicio.lte.${fmt(windowEnd)})`)
@@ -774,6 +776,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                     {e.criativo.projeto?.nome && <span className="text-[9.5px] opacity-60 truncate leading-tight">{e.criativo.projeto.nome}</span>}
                                     {(e.criativo.funil?.nome ?? e.criativo.funil_video) && <span className="text-[9.5px] opacity-55 truncate leading-tight">{e.criativo.funil?.nome ?? e.criativo.funil_video}</span>}
                                     {e.criativo.tipo_teste && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.tipo_teste}</span>}
+                                    {e.criativo.especialista?.nome && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.especialista.nome}</span>}
                                     {editorName && <span className="text-[9.5px] opacity-50 truncate leading-tight">{editorName}</span>}
                                   </>
                                 ) : (
