@@ -120,7 +120,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       setCopys(cps.length > 0 ? cps : allSimple);
       const gsts = filterBy('Gestor de Tráfego');
       setGestores(gsts.length > 0 ? gsts : allSimple);
-      setEspecialistas(filterBy('Especialista'));
+      const esps = filterBy('Especialista');
+      setEspecialistas(esps.length > 0 ? esps : allSimple);
     }
   }, []);
 
@@ -450,33 +451,34 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
       <Separator />
 
-      {/* Informações básicas — mesma ordem do form de criação */}
+      {/* Projeto */}
+      <Field label="Projeto" editing={editing}>
+        {editing ? (
+          <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
+            <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_">—</SelectItem>
+              {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
+      </Field>
+
+      {/* Equipe */}
       <div className="space-y-3">
-        <Field label="Projeto" editing={editing}>
+        {slLabel('Equipe')}
+
+        <Field label="Especialista" editing={editing}>
           {editing ? (
-            <Select value={val('projeto_id') || '_'} onValueChange={v => ch('projeto_id', v === '_' ? null : v)}>
+            <Select value={val('especialista_id') || '_'} onValueChange={v => ch('especialista_id', v === '_' ? null : v)}>
               <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="_">—</SelectItem>
-                {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
               </SelectContent>
             </Select>
-          ) : <span>{criativo.projeto?.nome ?? '—'}</span>}
+          ) : <span>{criativo.especialista?.nome ?? '—'}</span>}
         </Field>
-
-        {(especialistas.length > 0 || criativo.especialista) && (
-          <Field label="Especialista" editing={editing}>
-            {editing ? (
-              <Select value={val('especialista_id') || '_'} onValueChange={v => ch('especialista_id', v === '_' ? null : v)}>
-                <SelectTrigger className="h-7 text-xs mt-0.5"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">—</SelectItem>
-                  {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : <span>{criativo.especialista?.nome ?? '—'}</span>}
-          </Field>
-        )}
 
         {criativo.tipo !== 'aula' && (
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -532,7 +534,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             ) : <span>{criativo.gestor?.nome ?? '—'}</span>}
           </Field>
         )}
+      </div>
 
+      {/* Cronograma */}
+      <div className="space-y-3">
+        {slLabel('Cronograma')}
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <Field label="Início" editing={editing}>
             {editing ? (
