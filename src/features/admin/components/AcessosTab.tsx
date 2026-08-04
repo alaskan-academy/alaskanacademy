@@ -47,12 +47,15 @@ export function AcessosTab() {
   const [applyingSetor, setApplyingSetor] = useState<string | null>(null);
 
   // Modal novo usuário
-  const [open, setOpen]         = useState(false);
-  const [nome, setNome]         = useState('');
-  const [email, setEmail]       = useState('');
-  const [senha, setSenha]       = useState('');
-  const [newPerms, setNewPerms] = useState<PermMap>(defaultPerms());
-  const [saving, setSaving]     = useState(false);
+  const [open, setOpen]           = useState(false);
+  const [nome, setNome]           = useState('');
+  const [email, setEmail]         = useState('');
+  const [senha, setSenha]         = useState('');
+  const [newPerms, setNewPerms]   = useState<PermMap>(defaultPerms());
+  const [newSetorId, setNewSetorId] = useState('');
+  const [newCargoId, setNewCargoId] = useState('');
+  const [newIsAdmin, setNewIsAdmin] = useState(false);
+  const [saving, setSaving]       = useState(false);
 
   // Modal trocar senha
   const [pwUser, setPwUser] = useState<Usuario | null>(null);
@@ -123,6 +126,23 @@ export function AcessosTab() {
 
   useEffect(() => { load(); }, []);
 
+  const resetNewModal = () => {
+    setNome(''); setEmail(''); setSenha('');
+    setNewPerms(defaultPerms()); setNewSetorId(''); setNewCargoId(''); setNewIsAdmin(false);
+  };
+
+  const handleNewSetorChange = (setorId: string) => {
+    setNewSetorId(setorId);
+    setNewCargoId('');
+    if (setorId) {
+      const pages = setorPerms[setorId] ?? [];
+      const perms = Object.fromEntries(PAGINAS.map(p => [p.key, pages.includes(p.key)]));
+      setNewPerms(perms);
+    } else {
+      setNewPerms(defaultPerms());
+    }
+  };
+
   const handleCreate = async () => {
     if (!email || !senha) return toast({ title: 'Preencha email e senha', variant: 'destructive' });
     setSaving(true);
@@ -132,11 +152,20 @@ export function AcessosTab() {
     const err = await fnError(error, data);
     if (err) { toast({ title: err, variant: 'destructive' }); setSaving(false); return; }
     const userId = data.user.id;
-    const rows = PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true }));
-    await supabase.from('permissoes_paginas').upsert(rows, { onConflict: 'usuario_id,pagina' });
+    await Promise.all([
+      supabase.from('permissoes_paginas').upsert(
+        PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true })),
+        { onConflict: 'usuario_id,pagina' },
+      ),
+      supabase.from('perfis').update({
+        setor_id: newSetorId || null,
+        cargo_id: newCargoId || null,
+        is_admin: newIsAdmin,
+      }).eq('id', userId),
+    ]);
     toast({ title: 'Usuário criado' });
     setSaving(false); setOpen(false);
-    setNome(''); setEmail(''); setSenha(''); setNewPerms(defaultPerms());
+    resetNewModal();
     load();
   };
 
@@ -420,34 +449,96 @@ export function AcessosTab() {
       )}
 
       {/* Modal novo usuário */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={open} onOpenChange={v => { setOpen(v); if (!v) resetNewModal(); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Novo usuário</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div><Label className="text-xs">Nome</Label><Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do usuário" className="mt-1" /></div>
-            <div><Label className="text-xs">Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@exemplo.com" className="mt-1" /></div>
-            <div><Label className="text-xs">Senha inicial</Label><Input type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Mínimo 6 caracteres" className="mt-1" /></div>
-            <div>
-              <Label className="text-xs mb-2 block">Páginas visíveis</Label>
-              <div className="flex flex-wrap gap-2">
-                {PAGINAS.map(p => {
-                  const allowed = newPerms[p.key] ?? true;
-                  return (
-                    <button key={p.key} type="button"
-                      onClick={() => setNewPerms(prev => ({ ...prev, [p.key]: !allowed }))}
-                      className={cn('flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors',
-                        allowed ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-secondary border-border text-muted-foreground')}
-                    >
-                      {allowed && <Check className="h-3 w-3" />}
-                      {p.label}
-                    </button>
-                  );
-                })}
+          <div className="space-y-4">
+            {/* Dados de acesso */}
+            <div className="space-y-3">
+              <div><Label className="text-xs">Nome</Label><Input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do usuário" className="mt-1" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Email</Label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="email@exemplo.com" className="mt-1" /></div>
+                <div><Label className="text-xs">Senha inicial</Label><Input type="password" value={senha} onChange={e => setSenha(e.target.value)} placeholder="Mín. 6 caracteres" className="mt-1" /></div>
               </div>
             </div>
+
+            {/* Perfil */}
+            <div className="border-t border-border/50 pt-4 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Perfil</p>
+
+              {/* Sócio/Admin toggle */}
+              <button
+                type="button"
+                onClick={() => { setNewIsAdmin(v => !v); if (!newIsAdmin) { setNewSetorId(''); setNewCargoId(''); setNewPerms(defaultPerms()); } }}
+                className={cn(
+                  'flex items-center gap-2 text-xs px-3 py-1.5 rounded-md border transition-colors',
+                  newIsAdmin ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-secondary border-border text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Shield className="h-3.5 w-3.5" />
+                {newIsAdmin ? 'Sócio / Admin' : 'Marcar como sócio / admin'}
+              </button>
+
+              {!newIsAdmin && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Setor</Label>
+                    <select
+                      value={newSetorId}
+                      onChange={e => handleNewSetorChange(e.target.value)}
+                      className="mt-1 bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full"
+                    >
+                      <option value="">— Sem setor —</option>
+                      {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Cargo</Label>
+                    <select
+                      value={newCargoId}
+                      onChange={e => setNewCargoId(e.target.value)}
+                      disabled={!newSetorId}
+                      className="mt-1 bg-secondary border border-border rounded-md px-3 py-1.5 text-xs w-full disabled:opacity-50"
+                    >
+                      <option value="">— Sem cargo —</option>
+                      {cargos
+                        .filter(c => !newSetorId || c.setor_id === newSetorId)
+                        .map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Páginas visíveis */}
+            {!newIsAdmin && (
+              <div className="border-t border-border/50 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Páginas visíveis</Label>
+                  {newSetorId && (
+                    <span className="text-[10px] text-muted-foreground">Aplicadas do setor</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {PAGINAS.map(p => {
+                    const allowed = newPerms[p.key] ?? true;
+                    return (
+                      <button key={p.key} type="button"
+                        onClick={() => setNewPerms(prev => ({ ...prev, [p.key]: !allowed }))}
+                        className={cn('flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition-colors',
+                          allowed ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-secondary border-border text-muted-foreground')}
+                      >
+                        {allowed && <Check className="h-3 w-3" />}
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+          <DialogFooter className="mt-2">
+            <Button variant="outline" onClick={() => { setOpen(false); resetNewModal(); }}>Cancelar</Button>
             <Button onClick={handleCreate} disabled={saving}>{saving ? 'Criando...' : 'Criar usuário'}</Button>
           </DialogFooter>
         </DialogContent>
