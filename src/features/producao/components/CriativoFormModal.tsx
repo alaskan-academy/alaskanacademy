@@ -244,77 +244,82 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </Select>
           </div>
 
-          {/* Equipe — grid 2x2 */}
-          {form.tipo !== 'aula' ? (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Especialista</Label>
-                <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+          {/* Equipe */}
+          <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+            <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Equipe</p>
+            {form.tipo !== 'aula' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Especialista</Label>
+                  <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
+                    <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Copy</Label>
+                  <Select value={form.copy_id || '_'} onValueChange={v => set('copy_id', v === '_' ? '' : v)}>
+                    <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {copys.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Editor</Label>
+                  <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
+                    <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Gestor de Tráfego</Label>
+                  <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
+                    <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs">Copy</Label>
-                <Select value={form.copy_id || '_'} onValueChange={v => set('copy_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {copys.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Especialista</Label>
+                  <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
+                    <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Editor</Label>
+                  <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
+                    <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">—</SelectItem>
+                      {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div>
-                <Label className="text-xs">Editor</Label>
-                <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Gestor de Tráfego</Label>
-                <Select value={form.gestor_id || '_'} onValueChange={v => set('gestor_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {gestores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Especialista</Label>
-                <Select value={form.especialista_id || '_'} onValueChange={v => set('especialista_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {especialistas.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Editor</Label>
-                <Select value={form.responsavel_id || '_'} onValueChange={v => set('responsavel_id', v === '_' ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_">—</SelectItem>
-                    {editores.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
+          {/* Criativo */}
           {form.tipo === 'criativo' && (
-            <>
+            <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+              <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Criativo</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Funil de Vendas</Label>
@@ -360,66 +365,82 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                     value={form.angulo_teste} onChange={e => set('angulo_teste', e.target.value)} />
                 </div>
               </div>
-            </>
+            </div>
           )}
 
+          {/* Veiculação */}
           {form.tipo !== 'aula' && (
-            <div className="grid grid-cols-2 gap-3">
-              <Sel label="Status de Veiculação" field="status_veiculacao" options={opStatusVeiculacao} />
-              <Sel label="Avaliação"            field="avaliacao"         options={opAvaliacao}        />
+            <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+              <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Veiculação</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Sel label="Status de Veiculação" field="status_veiculacao" options={opStatusVeiculacao} />
+                <Sel label="Avaliação"            field="avaliacao"         options={opAvaliacao}        />
+              </div>
             </div>
           )}
 
+          {/* Aula */}
           {form.tipo === 'aula' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Módulo</Label>
-                <Input className="mt-1 h-8 text-xs" placeholder="Ex: Módulo 3"
-                  value={form.modulo} onChange={e => set('modulo', e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Ordem</Label>
-                <Input className="mt-1 h-8 text-xs" type="number" placeholder="Ex: 2"
-                  value={form.ordem} onChange={e => set('ordem', e.target.value)} />
+            <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+              <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Aula</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Módulo</Label>
+                  <Input className="mt-1 h-8 text-xs" placeholder="Ex: Módulo 3"
+                    value={form.modulo} onChange={e => set('modulo', e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Ordem</Label>
+                  <Input className="mt-1 h-8 text-xs" type="number" placeholder="Ex: 2"
+                    value={form.ordem} onChange={e => set('ordem', e.target.value)} />
+                </div>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Links */}
+          <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+            <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Links</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Copy</Label>
+                <Input className="mt-1 h-8 text-xs" placeholder="https://..."
+                  value={form.copy_url} onChange={e => set('copy_url', e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Vídeo Gravado</Label>
+                <Input className="mt-1 h-8 text-xs" placeholder="https://..."
+                  value={form.video_gravado_url} onChange={e => set('video_gravado_url', e.target.value)} />
+              </div>
+            </div>
             <div>
-              <Label className="text-xs">Copy (link)</Label>
+              <Label className="text-xs">Vídeo Editado</Label>
               <Input className="mt-1 h-8 text-xs" placeholder="https://..."
-                value={form.copy_url} onChange={e => set('copy_url', e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Vídeo Gravado (link)</Label>
-              <Input className="mt-1 h-8 text-xs" placeholder="https://..."
-                value={form.video_gravado_url} onChange={e => set('video_gravado_url', e.target.value)} />
+                value={form.video_editado_url} onChange={e => set('video_editado_url', e.target.value)} />
             </div>
           </div>
 
-          <div>
-            <Label className="text-xs">Vídeo Editado (link)</Label>
-            <Input className="mt-1 h-8 text-xs" placeholder="https://..."
-              value={form.video_editado_url} onChange={e => set('video_editado_url', e.target.value)} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Início</Label>
-              <Input className="mt-1 h-8 text-xs" type="date"
-                value={form.data_inicio} onChange={e => set('data_inicio', e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Prazo (fim)</Label>
-              <Input className="mt-1 h-8 text-xs" type="date"
-                value={form.data_prazo} onChange={e => set('data_prazo', e.target.value)} />
+          {/* Cronograma */}
+          <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+            <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Cronograma</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Início</Label>
+                <Input className="mt-1 h-8 text-xs" type="date"
+                  value={form.data_inicio} onChange={e => set('data_inicio', e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Prazo (fim)</Label>
+                <Input className="mt-1 h-8 text-xs" type="date"
+                  value={form.data_prazo} onChange={e => set('data_prazo', e.target.value)} />
+              </div>
             </div>
           </div>
 
-          <div>
-            <Label className="text-xs">Notas</Label>
-            <Textarea className="mt-1 text-xs resize-none" rows={2} placeholder="Observações..."
+          {/* Notas */}
+          <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
+            <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Notas</p>
+            <Textarea className="text-xs resize-none" rows={2} placeholder="Observações..."
               value={form.notas} onChange={e => set('notas', e.target.value)} />
           </div>
         </div>
