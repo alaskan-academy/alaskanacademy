@@ -254,7 +254,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="overflow-x-auto -mx-4 px-4 pb-1">
             <div className="flex gap-3 pb-4" style={{ minWidth: 'max-content' }}>
-              {FASES.map(fase => {
+              {FASES.filter(f => !f.somente_socio || nivel === 'socio').map(fase => {
                 const cards = criativos.filter(c => c.fase === fase.key);
                 return (
                   <div key={fase.key} className="w-52 flex-none">

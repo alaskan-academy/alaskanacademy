@@ -4,13 +4,15 @@ export type FaseItem = {
   key: string;
   label: string;
   revisao?: true;
+  somente_socio?: true;
 };
 
 export const FASES: FaseItem[] = [
-  { key: 'producao_copy',  label: 'Produção Copy'    },
-  { key: 'revisao_copy',   label: 'Revisão Copy',    revisao: true },
-  { key: 'gravacao',       label: 'Gravação'         },
-  { key: 'edicao',         label: 'Edição'           },
+  { key: 'producao_copy',      label: 'Produção Copy'                                           },
+  { key: 'revisao_copy',       label: 'Revisão Copy',      revisao: true                        },
+  { key: 'gravacao',           label: 'Gravação'                                                },
+  { key: 'revisao_gravacao',   label: 'Revisão Gravação',  revisao: true, somente_socio: true   },
+  { key: 'edicao',             label: 'Edição'                                                  },
   { key: 'revisao_edicao', label: 'Revisão Edição',  revisao: true },
   { key: 'alteracao',      label: 'Alteração'        },
   { key: 'aprovado',       label: 'Aprovado'         },
@@ -29,9 +31,9 @@ export const FASES_MAP: Record<string, string> = {
 };
 
 export const FASES_POR_TIPO: Record<CriativoTipo, string[]> = {
-  criativo: ['producao_copy','revisao_copy','gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
-  vsl:      ['producao_copy','revisao_copy','gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
-  aula:     ['gravacao','edicao','revisao_edicao','alteracao','aprovado','na_plataforma'],
+  criativo: ['producao_copy','revisao_copy','gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
+  vsl:      ['producao_copy','revisao_copy','gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
+  aula:     ['gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','na_plataforma'],
 };
 
 export const TIPOS_LABEL: Record<CriativoTipo, string> = {
