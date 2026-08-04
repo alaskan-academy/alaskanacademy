@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film,
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -29,13 +29,14 @@ const ALL_SUB_PAGES = [
 ];
 
 const ALL_FIXED_ITEMS = [
-  { path: '/laboratorio',   label: 'Laboratório',   icon: FlaskConical,  key: 'laboratorio',  adminOnly: false },
-  { path: '/processos',     label: 'Processos',     icon: GraduationCap, key: 'processos',    adminOnly: false },
-  { path: '/editores',      label: 'Editores',      icon: BarChart3,     key: 'editores',     adminOnly: false },
-  { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false },
-  { path: '/acessos',       label: 'Acessos',       icon: KeyRound,      key: 'acessos',      adminOnly: false },
-  { path: '/producao',      label: 'Produção',      icon: Film,          key: 'producao',     adminOnly: false },
-  { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true  },
+  { path: '/processos',     label: 'Processos',     icon: GraduationCap, key: 'processos',    adminOnly: false, sectorOnly: null },
+  { path: '/laboratorio',   label: 'Laboratório',   icon: FlaskConical,  key: 'laboratorio',  adminOnly: false, sectorOnly: null },
+  { path: '/acessos',       label: 'Acessos',       icon: KeyRound,      key: 'acessos',      adminOnly: false, sectorOnly: null },
+  { path: '/editores',      label: 'Editores',      icon: BarChart3,     key: 'editores',     adminOnly: false, sectorOnly: null },
+  { path: '/copywriters',   label: 'Copywriters',   icon: PenLine,       key: 'copywriters',  adminOnly: false, sectorOnly: 'Copy' },
+  { path: '/producao',      label: 'Produção',      icon: Film,          key: 'producao',     adminOnly: false, sectorOnly: null },
+  { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false, sectorOnly: null },
+  { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true, sectorOnly: null  },
 ];
 
 const prodColors: Record<string, string> = {
@@ -58,9 +59,11 @@ export function AppSidebar() {
   const [loadingFunis, setLoadingFunis] = useState(true);
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
-  const fixedItems = ALL_FIXED_ITEMS.filter(p =>
-    p.adminOnly ? perfil?.is_admin : canAccess(p.key),
-  );
+  const fixedItems = ALL_FIXED_ITEMS.filter(p => {
+    if (p.adminOnly) return perfil?.is_admin;
+    if (p.sectorOnly) return perfil?.is_admin || perfil?.setor?.nome === p.sectorOnly;
+    return canAccess(p.key);
+  });
 
   const handleSignOut = async () => {
     await signOut();

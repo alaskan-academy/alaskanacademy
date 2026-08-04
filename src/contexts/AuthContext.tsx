@@ -13,8 +13,9 @@ export const PAGINAS = [
   { key: 'configuracoes', path: '/configuracoes', label: 'Configurações' },
   { key: 'laboratorio',   path: '/laboratorio',   label: 'Laboratório' },
   { key: 'processos',     path: '/processos',     label: 'Processos' },
-  { key: 'acessos',    path: '/acessos',    label: 'Acessos'   },
-  { key: 'producao',   path: '/producao',   label: 'Produção'  },
+  { key: 'acessos',      path: '/acessos',      label: 'Acessos'      },
+  { key: 'producao',     path: '/producao',     label: 'Produção'     },
+  { key: 'copywriters',  path: '/copywriters',  label: 'Copywriters'  },
 ] as const;
 
 export type PaginaKey = (typeof PAGINAS)[number]['key'];

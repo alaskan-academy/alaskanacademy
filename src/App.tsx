@@ -37,6 +37,7 @@ const FinanceiroNotasFiscaisPage = lazy(() => import("./features/financeiro/page
 const FinanceiroCaixaPage      = lazy(() => import("./features/financeiro/pages/FinanceiroCaixaPage"));
 const AcessosPage              = lazy(() => import("./features/acessos/pages/AcessosPage"));
 const ProducaoPage             = lazy(() => import("./features/producao/pages/ProducaoPage"));
+const CopywritersPage          = lazy(() => import("./features/copywriters/pages/CopywritersPage"));
 const NotFound                 = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -90,6 +91,7 @@ const App = () => (
                     <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />
                     <Route path="/acessos"  element={<ProtectedRoute pageKey="acessos"><AcessosPage /></ProtectedRoute>} />
                     <Route path="/producao" element={<ProtectedRoute pageKey="producao"><ProducaoPage /></ProtectedRoute>} />
+                    <Route path="/copywriters" element={<ProtectedRoute pageKey="copywriters"><CopywritersPage /></ProtectedRoute>} />
                     <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                     <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
                     <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
