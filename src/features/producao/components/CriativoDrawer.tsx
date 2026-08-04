@@ -696,8 +696,9 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                   value={raw}
                   onChange={e => ch(field, e.target.value || null)}
                   onBlur={async () => {
-                    const newVal = (field in changes ? changes[field] as string | null : null);
-                    if (newVal === undefined || newVal === (criativo[field] ?? null)) return;
+                    if (!(field in changes)) return;
+                    const newVal = changes[field] as string | null;
+                    if (newVal === (criativo[field] ?? null)) return;
                     await supabase.from('producoes').update({ [field]: newVal || null }).eq('id', criativo.id);
                     await supabase.from('criativo_historico').insert({
                       criativo_id:    criativo.id,
@@ -707,8 +708,9 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                       valor_anterior: criativo[field] ?? null,
                       valor_novo:     newVal || null,
                     });
+                    setCriativo(prev => prev ? { ...prev, [field]: newVal } : prev);
                     setChanges(prev => { const n = { ...prev }; delete n[field]; return n; });
-                    load();
+                    load(true);
                   }}
                 />
                 {raw && (
