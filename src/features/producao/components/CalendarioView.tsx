@@ -302,7 +302,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
     if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
     if (filtroFase.length)    q = q.in('fase', filtroFase);
-    if (filtroResp.length)    q = q.in('responsavel_id', filtroResp);
+    if (filtroResp.length) {
+      const ids = filtroResp.join(',');
+      q = q.or(`responsavel_id.in.(${ids}),especialista_id.in.(${ids}),copy_id.in.(${ids}),gestor_id.in.(${ids})`);
+    }
 
     const { data } = await q;
     setCriativos(data ?? []);
