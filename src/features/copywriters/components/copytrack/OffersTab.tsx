@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
-  ExternalLink, ChevronDown, ChevronRight, Search, TrendingUp,
+  ExternalLink, ChevronDown, ChevronRight, Search, TrendingUp, TrendingDown,
   Archive, Globe, Plus, Pencil, Eye,
 } from 'lucide-react';
 import { OfferModal } from './OfferModal';
@@ -174,6 +174,9 @@ export function OffersTab() {
           {sorted.map(offer => {
             const open = expanded.has(offer.id);
             const lastTracking = offer.tracking.at(-1);
+            const prevTracking = offer.tracking.at(-2);
+            const trendUp = lastTracking && prevTracking && (lastTracking.active_ads_count ?? 0) > (prevTracking.active_ads_count ?? 0);
+            const trendDown = lastTracking && prevTracking && (lastTracking.active_ads_count ?? 0) < (prevTracking.active_ads_count ?? 0);
             const s = offer.status ?? 'ativo';
             const badge = STATUS_BADGE[s] ?? { label: s, cls: 'bg-muted text-muted-foreground' };
             const isHighlighted = HIGHLIGHT_STATUSES.has(s);
@@ -217,9 +220,16 @@ export function OffersTab() {
                   )}
 
                   {lastTracking && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground hidden md:flex">
-                      <TrendingUp className="h-3 w-3" />
-                      {lastTracking.active_ads_count ?? '—'} ads · Dia {lastTracking.day_number}
+                    <span className="flex items-center gap-1 text-xs hidden md:flex">
+                      {trendUp
+                        ? <TrendingUp className="h-3 w-3 text-emerald-500" />
+                        : trendDown
+                          ? <TrendingDown className="h-3 w-3 text-red-500" />
+                          : <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                      }
+                      <span className={trendUp ? 'text-emerald-500' : trendDown ? 'text-red-500' : 'text-muted-foreground'}>
+                        {lastTracking.active_ads_count ?? '—'} ads · Dia {lastTracking.day_number}
+                      </span>
                     </span>
                   )}
 
