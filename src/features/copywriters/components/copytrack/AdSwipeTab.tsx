@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CopyAdSwipe } from '@/features/copywriters/types';
 import { Badge } from '@/components/ui/badge';
@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
-  Search, Copy, Star, ChevronDown, ChevronUp, CheckCircle2, Check,
+  Search, Copy, Star, ChevronDown, ChevronUp, CheckCircle2, Check, Plus, Pencil,
 } from 'lucide-react';
+import { AdSwipeModal } from './AdSwipeModal';
 
 const FORMAT_BADGE: Record<string, string> = {
   VSL:       'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -18,27 +19,59 @@ const FORMAT_BADGE: Record<string, string> = {
   Depoimento:'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
 };
 
+const PAGE_SIZE = 30;
+
 export function AdSwipeTab() {
   const [ads, setAds] = useState<CopyAdSwipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterNiche, setFilterNiche] = useState('todos');
   const [filterFormat, setFilterFormat] = useState('todos');
   const [filterValidated, setFilterValidated] = useState(false);
   const [filterFavorite, setFilterFavorite] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editAd, setEditAd] = useState<CopyAdSwipe | null>(null);
+  const [modalKey, setModalKey] = useState(0);
 
-  useEffect(() => {
+  function loadAds() {
     supabase
       .from('copytrack_ad_swipe')
-      .select('*')
+      .select('id,created_at,updated_at,title,niche,source,body,headline,cta,format,angle,hook_type,notes,is_validated,is_favorite,ad_code')
       .order('created_at', { ascending: false })
       .then(({ data }) => {
-        setAds(data ?? []);
+        setAds((data as CopyAdSwipe[]) ?? []);
         setLoading(false);
       });
-  }, []);
+  }
+
+  useEffect(() => { loadAds(); }, []);
+
+  function openNew() {
+    setEditAd(null);
+    setModalKey(k => k + 1);
+    setModalOpen(true);
+  }
+
+  function openEdit(ad: CopyAdSwipe, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditAd(ad);
+    setModalKey(k => k + 1);
+    setModalOpen(true);
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+      setPage(1);
+    }, 250);
+  };
 
   const niches = useMemo(() => {
     const s = new Set(ads.map(a => a.niche).filter(Boolean) as string[]);
@@ -56,8 +89,8 @@ export function AdSwipeTab() {
       if (filterValidated && !a.is_validated) return false;
       if (filterNiche !== 'todos' && a.niche !== filterNiche) return false;
       if (filterFormat !== 'todos' && a.format !== filterFormat) return false;
-      if (search) {
-        const q = search.toLowerCase();
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
         return (
           (a.title ?? '').toLowerCase().includes(q) ||
           (a.headline ?? '').toLowerCase().includes(q) ||
@@ -67,7 +100,15 @@ export function AdSwipeTab() {
       }
       return true;
     });
-  }, [ads, search, filterNiche, filterFormat, filterValidated, filterFavorite]);
+  }, [ads, debouncedSearch, filterNiche, filterFormat, filterValidated, filterFavorite]);
+
+  const visible = filtered.slice(0, page * PAGE_SIZE);
+  const hasMore = visible.length < filtered.length;
+
+  const handleFilterChange = <T,>(setter: (v: T) => void) => (v: T) => {
+    setter(v);
+    setPage(1);
+  };
 
   function toggleExpand(id: string) {
     setExpanded(prev => {
@@ -108,12 +149,12 @@ export function AdSwipeTab() {
           <Input
             placeholder="Buscar por título, headline, código..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
             className="pl-8 h-9 text-sm"
           />
         </div>
 
-        <Select value={filterNiche} onValueChange={setFilterNiche}>
+        <Select value={filterNiche} onValueChange={handleFilterChange(setFilterNiche)}>
           <SelectTrigger className="h-9 text-sm w-40">
             <SelectValue placeholder="Nicho" />
           </SelectTrigger>
@@ -124,7 +165,7 @@ export function AdSwipeTab() {
           </SelectContent>
         </Select>
 
-        <Select value={filterFormat} onValueChange={setFilterFormat}>
+        <Select value={filterFormat} onValueChange={handleFilterChange(setFilterFormat)}>
           <SelectTrigger className="h-9 text-sm w-40">
             <SelectValue placeholder="Formato" />
           </SelectTrigger>
@@ -139,7 +180,7 @@ export function AdSwipeTab() {
           variant={filterValidated ? 'default' : 'outline'}
           size="sm"
           className="h-9 gap-1.5"
-          onClick={() => setFilterValidated(v => !v)}
+          onClick={() => { setFilterValidated(v => !v); setPage(1); }}
         >
           <CheckCircle2 className="h-3.5 w-3.5" />
           Validados
@@ -149,15 +190,20 @@ export function AdSwipeTab() {
           variant={filterFavorite ? 'default' : 'outline'}
           size="sm"
           className="h-9 gap-1.5"
-          onClick={() => setFilterFavorite(v => !v)}
+          onClick={() => { setFilterFavorite(v => !v); setPage(1); }}
         >
           <Star className={cn('h-3.5 w-3.5', filterFavorite && 'fill-current')} />
           Favoritos
         </Button>
 
-        <span className="text-xs text-muted-foreground ml-auto">
-          {filtered.length} ad{filtered.length !== 1 ? 's' : ''}
+        <span className="text-xs text-muted-foreground">
+          {visible.length} de {filtered.length} ad{filtered.length !== 1 ? 's' : ''}
         </span>
+        <div className="flex-1" />
+        <Button size="sm" className="h-9 gap-1.5" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" />
+          Novo ad
+        </Button>
       </div>
 
       {/* Cards */}
@@ -165,7 +211,7 @@ export function AdSwipeTab() {
         <div className="py-16 text-center text-sm text-muted-foreground">Nenhum ad encontrado.</div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(ad => {
+          {visible.map(ad => {
             const open = expanded.has(ad.id);
             const fmtCls = FORMAT_BADGE[ad.format ?? ''] ?? 'bg-muted text-muted-foreground';
 
@@ -230,6 +276,15 @@ export function AdSwipeTab() {
                       size="sm"
                       variant="ghost"
                       className="h-7 w-7 p-0"
+                      onClick={e => openEdit(ad, e)}
+                      title="Editar"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
                       onClick={() => toggleExpand(ad.id)}
                     >
                       {open
@@ -276,8 +331,23 @@ export function AdSwipeTab() {
               </div>
             );
           })}
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)}>
+                Carregar mais ({filtered.length - visible.length} restantes)
+              </Button>
+            </div>
+          )}
         </div>
       )}
+
+      <AdSwipeModal
+        key={modalKey}
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSaved={() => { setModalOpen(false); loadAds(); }}
+        ad={editAd}
+      />
     </div>
   );
 }
