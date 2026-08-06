@@ -8,6 +8,7 @@ import {
   Globe, ShoppingBag, FlaskConical,
 } from 'lucide-react';
 import { FunilModal } from './FunilModal';
+import { TesteModal } from './TesteModal';
 import {
   Funil, Projeto, FunilSuboferta, Dominio, TesteFunil,
   getStatusDisplay, StatusDisplay,
@@ -57,6 +58,9 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
   const [modalKey, setModalKey] = useState(0);
   const [presetProjeto, setPresetProjeto] = useState('');
+  const [testeModalOpen, setTesteModalOpen] = useState(false);
+  const [editTeste, setEditTeste] = useState<TesteFunil | null>(null);
+  const [testeModalKey, setTesteModalKey] = useState(0);
 
   function toggle(id: string) {
     setExpanded(prev => {
@@ -71,6 +75,13 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
     setPresetProjeto(projetoId);
     setModalKey(k => k + 1);
     setModalOpen(true);
+  }
+
+  function openTeste(t: TesteFunil, e: React.MouseEvent) {
+    e.stopPropagation();
+    setEditTeste(t);
+    setTesteModalKey(k => k + 1);
+    setTesteModalOpen(true);
   }
 
   function openEdit(funil: Funil, e: React.MouseEvent) {
@@ -340,11 +351,18 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                             </p>
                             <div className="space-y-1">
                               {testesAtivos.map(t => (
-                                <div key={t.id} className="flex items-center gap-2 text-xs">
+                                <div
+                                  key={t.id}
+                                  role="button"
+                                  tabIndex={0}
+                                  className="flex items-center gap-2 text-xs rounded px-1 -mx-1 py-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                                  onClick={e => openTeste(t, e)}
+                                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && openTeste(t, e as unknown as React.MouseEvent)}
+                                >
                                   <FlaskConical className="h-3 w-3 text-amber-400 shrink-0" />
-                                  <span className="text-foreground">{t.titulo}</span>
+                                  <span className="text-foreground flex-1 min-w-0 truncate">{t.titulo}</span>
                                   <Badge className={cn(
-                                    'text-[9px] border-0 px-1.5 py-0',
+                                    'text-[9px] border-0 px-1.5 py-0 shrink-0',
                                     t.tipo === 'funil_novo'
                                       ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                                       : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
@@ -379,6 +397,15 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
         projetos={projetos}
         funilSubofertas={funilSubofertas}
         dominios={dominios}
+      />
+
+      <TesteModal
+        key={`t-${testeModalKey}`}
+        open={testeModalOpen}
+        onClose={() => setTesteModalOpen(false)}
+        onSaved={() => { setTesteModalOpen(false); onReload(); }}
+        teste={editTeste}
+        funis={funis}
       />
     </div>
   );
