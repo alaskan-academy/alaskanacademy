@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import {
   Plus, Pencil, ChevronRight, ChevronLeft, ExternalLink,
-  Lightbulb, Hammer, BarChart2, CheckCircle2,
+  Lightbulb, Hammer,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
@@ -35,10 +35,8 @@ const COLUMNS: {
   borderCls: string;
   bgCls: string;
 }[] = [
-  { key: 'planejado',  label: 'Planejado',  Icon: Lightbulb,    headerCls: 'text-blue-400',   borderCls: 'border-blue-500/25',   bgCls: 'bg-blue-500/5'   },
-  { key: 'produzindo', label: 'Produzindo', Icon: Hammer,       headerCls: 'text-purple-400', borderCls: 'border-purple-500/25', bgCls: 'bg-purple-500/5' },
-  { key: 'rodando',    label: 'Rodando',    Icon: BarChart2,    headerCls: 'text-amber-400',  borderCls: 'border-amber-500/25',  bgCls: 'bg-amber-500/5'  },
-  { key: 'concluido',  label: 'Concluído',  Icon: CheckCircle2, headerCls: 'text-emerald-400',borderCls: 'border-emerald-500/25',bgCls: 'bg-emerald-500/5'},
+  { key: 'planejado',  label: 'Planejado',  Icon: Lightbulb, headerCls: 'text-blue-400',   borderCls: 'border-blue-500/25',   bgCls: 'bg-blue-500/5'   },
+  { key: 'produzindo', label: 'Produzindo', Icon: Hammer,    headerCls: 'text-purple-400', borderCls: 'border-purple-500/25', bgCls: 'bg-purple-500/5' },
 ];
 
 const PIPELINE_ORDER: PipelineStatus[] = ['planejado', 'produzindo', 'rodando', 'concluido'];
@@ -131,7 +129,8 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     setModalOpen(true);
   }
 
-  const totalAtivos = testes.filter(t => t.pipeline_status !== 'concluido').length;
+  const countPlanejado  = testes.filter(t => (t.pipeline_status ?? 'planejado') === 'planejado').length;
+  const countProduzindo = testes.filter(t => t.pipeline_status === 'produzindo').length;
 
   return (
     <div className="space-y-4">
@@ -148,7 +147,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
         </Select>
 
         <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-          <SelectTrigger className="h-9 text-sm w-40">
+          <SelectTrigger className="h-9 text-sm w-48">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -172,7 +171,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
         </Select>
 
         <span className="text-xs text-muted-foreground">
-          {totalAtivos} em andamento · {testes.filter(t => t.pipeline_status === 'concluido').length} concluídos
+          {countPlanejado} planejado{countPlanejado !== 1 ? 's' : ''} · {countProduzindo} produzindo
         </span>
 
         <div className="flex-1" />
@@ -184,9 +183,18 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
       </div>
 
       {/* Kanban board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
-        {COLUMNS.map((col, colIdx) => {
-          const cards = filtered.filter(t => (t.pipeline_status ?? 'planejado') === col.key);
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+        {COLUMNS.map((col) => {
+          const cards = filtered
+            .filter(t => (t.pipeline_status ?? 'planejado') === col.key)
+            .sort((a, b) => {
+              const sa = iceScore(a.impacto, a.dificuldade);
+              const sb = iceScore(b.impacto, b.dificuldade);
+              if (sa === null && sb === null) return 0;
+              if (sa === null) return 1;
+              if (sb === null) return -1;
+              return sb - sa;
+            });
           const ColIcon = col.Icon;
 
           return (
@@ -216,8 +224,15 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                   const score = iceScore(t.impacto, t.dificuldade);
                   const catCfg = t.categoria ? CATEGORIA_CFG[t.categoria] : null;
                   const isMoving = moving === t.id;
-                  const canGoBack = colIdx > 0;
-                  const canGoNext = colIdx < COLUMNS.length - 1;
+                  const pipeIdx = PIPELINE_ORDER.indexOf(t.pipeline_status ?? 'planejado');
+                  const canGoBack = pipeIdx > 0;
+                  const canGoNext = pipeIdx < PIPELINE_ORDER.length - 1;
+                  const DEST_LABEL: Record<string, string> = {
+                    planejado: 'Planejado', produzindo: 'Produzindo',
+                    rodando: 'Testes ↗', concluido: 'Concluídos',
+                  };
+                  const prevDest = canGoBack ? DEST_LABEL[PIPELINE_ORDER[pipeIdx - 1]] : '';
+                  const nextDest = canGoNext ? DEST_LABEL[PIPELINE_ORDER[pipeIdx + 1]] : '';
 
                   return (
                     <div
@@ -280,7 +295,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                           disabled={!canGoBack || isMoving}
                           onClick={() => moveCard(t, -1)}
                           className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title="Voltar etapa"
+                          title={canGoBack ? `← ${prevDest}` : ''}
                         >
                           <ChevronLeft className="h-3.5 w-3.5" />
                         </button>
@@ -290,7 +305,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                           disabled={!canGoNext || isMoving}
                           onClick={() => moveCard(t, 1)}
                           className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          title="Avançar etapa"
+                          title={canGoNext ? `${nextDest} →` : ''}
                         >
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>

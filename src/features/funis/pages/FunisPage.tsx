@@ -8,8 +8,9 @@ import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
 import { TestesTab } from '../components/TestesTab';
 import { EsteiraTab } from '../components/EsteiraTab';
+import { ConcluídosTab } from '../components/ConcluídosTab';
 
-type Tab = 'funis' | 'esteira' | 'dominios' | 'testes';
+type Tab = 'funis' | 'esteira' | 'testes' | 'concluidos' | 'dominios';
 
 interface State {
   funis: Funil[];
@@ -23,10 +24,11 @@ interface State {
 }
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'funis',    label: 'Funis' },
-  { key: 'esteira',  label: 'Esteira' },
-  { key: 'dominios', label: 'Domínios' },
-  { key: 'testes',   label: 'Testes' },
+  { key: 'funis',      label: 'Funis' },
+  { key: 'esteira',    label: 'Esteira' },
+  { key: 'testes',     label: 'Testes' },
+  { key: 'concluidos', label: 'Concluídos' },
+  { key: 'dominios',   label: 'Domínios' },
 ];
 
 export default function FunisPage() {
@@ -65,8 +67,9 @@ export default function FunisPage() {
     const s = getStatusDisplay(f, state.testes);
     return s === 'ativo' || s === 'em_teste';
   }).length;
-  const testesAtivos = state.testes.filter(t => t.pipeline_status !== 'concluido').length;
-  const esteiraAtivos = state.testes.filter(t => t.pipeline_status !== 'concluido').length;
+  const esteiraCount   = state.testes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo' || !t.pipeline_status).length;
+  const testesCount    = state.testes.filter(t => t.pipeline_status === 'rodando').length;
+  const concluidosCount = state.testes.filter(t => t.pipeline_status === 'concluido').length;
 
   if (state.loading) {
     return (
@@ -79,7 +82,7 @@ export default function FunisPage() {
   }
 
   return (
-    <DashboardLayout title="Funis">
+    <DashboardLayout title="Funis" hideFilters>
       <div className="space-y-4">
         {/* Alert banner */}
         <AlertaBanner
@@ -95,7 +98,7 @@ export default function FunisPage() {
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-            {testesAtivos} teste{testesAtivos !== 1 ? 's' : ''} em andamento
+            {testesCount} rodando · {esteiraCount} na esteira
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500" />
@@ -107,8 +110,9 @@ export default function FunisPage() {
         <div className="flex gap-1 border-b border-border">
           {TABS.map(tab => {
             const badge =
-              tab.key === 'testes'   && testesAtivos  > 0 ? testesAtivos  :
-              tab.key === 'esteira'  && esteiraAtivos > 0 ? esteiraAtivos :
+              tab.key === 'testes'     && testesCount    > 0 ? testesCount    :
+              tab.key === 'esteira'    && esteiraCount   > 0 ? esteiraCount   :
+              tab.key === 'concluidos' && concluidosCount > 0 ? concluidosCount :
               null;
             return (
               <button
@@ -163,6 +167,15 @@ export default function FunisPage() {
           )}
           {activeTab === 'testes' && (
             <TestesTab
+              testes={state.testes}
+              funis={state.funis}
+              projetos={state.projetos}
+              perfis={state.perfis}
+              onReload={load}
+            />
+          )}
+          {activeTab === 'concluidos' && (
+            <ConcluídosTab
               testes={state.testes}
               funis={state.funis}
               projetos={state.projetos}

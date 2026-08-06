@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Plus, Pencil, CheckCircle2, Clock, FlaskConical, Rocket } from 'lucide-react';
+import { Plus, Pencil, ChevronLeft, ChevronRight, ExternalLink, FlaskConical } from 'lucide-react';
 import { TesteModal } from './TesteModal';
 import { TesteFunil, Funil, Projeto, PerfilSimples } from '../types';
 import { supabase } from '@/lib/supabase';
@@ -23,56 +22,41 @@ const TIPO_CONFIG = {
   ad:         { label: 'AD',          cls: 'bg-sky-500/15 text-sky-400' },
 };
 
-const VENCEDOR_LABEL: Record<string, string> = {
-  a:            'Variante A',
-  b:            'Variante B',
-  inconclusivo: 'Inconclusivo',
-};
-
-function fmtDate(d: string | null) {
-  if (!d) return '—';
-  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+function diasRodando(d: string | null) {
+  if (!d) return null;
+  const diff = Math.floor((Date.now() - new Date(d + 'T00:00:00').getTime()) / 86_400_000);
+  if (diff === 0) return 'iniciou hoje';
+  if (diff === 1) return '1 dia rodando';
+  return `${diff} dias rodando`;
 }
 
 export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) {
   const perfilMap = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
+  const funilMap  = Object.fromEntries(funis.map(f => [f.id, f]));
+
   const [filterFunil, setFilterFunil] = useState('todos');
   const [filterTipo, setFilterTipo]   = useState('todos');
-  const [filterEtapa, setFilterEtapa] = useState('todos');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTeste, setEditTeste] = useState<TesteFunil | null>(null);
-  const [modalKey, setModalKey] = useState(0);
-  const [activating, setActivating] = useState<string | null>(null);
+  const [modalOpen, setModalOpen]     = useState(false);
+  const [editTeste, setEditTeste]     = useState<TesteFunil | null>(null);
+  const [modalKey, setModalKey]       = useState(0);
+  const [moving, setMoving]           = useState<string | null>(null);
 
-  async function ativarFunil(funilId: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    setActivating(funilId);
+  const rodando = testes
+    .filter(t => t.pipeline_status === 'rodando')
+    .filter(t => filterFunil === 'todos' || t.funil_id === filterFunil)
+    .filter(t => filterTipo  === 'todos' || t.tipo     === filterTipo)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  async function mover(t: TesteFunil, status: 'produzindo' | 'concluido') {
+    setMoving(t.id);
     const { error } = await supabase
-      .from('funis')
-      .update({ status: 'ativo', ativo: true })
-      .eq('id', funilId);
-    setActivating(null);
-    if (error) {
-      toast({ title: 'Erro ao ativar funil', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: 'Funil ativado com sucesso' });
-      onReload();
-    }
+      .from('testes_funis')
+      .update({ pipeline_status: status })
+      .eq('id', t.id);
+    setMoving(null);
+    if (error) toast({ title: 'Erro ao mover', description: error.message, variant: 'destructive' });
+    else onReload();
   }
-
-  const funilMap = Object.fromEntries(funis.map(f => [f.id, f]));
-  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
-
-  const filtered = testes.filter(t => {
-    if (filterFunil !== 'todos' && t.funil_id !== filterFunil) return false;
-    if (filterTipo !== 'todos' && t.tipo !== filterTipo) return false;
-    if (filterEtapa !== 'todos' && t.pipeline_status !== filterEtapa) return false;
-    return true;
-  });
-
-  const sorted = [...filtered].sort((a, b) =>
-    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
 
   function openNew() {
     setEditTeste(null);
@@ -87,27 +71,20 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
     setModalOpen(true);
   }
 
-
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <Select value={filterFunil} onValueChange={setFilterFunil}>
-          <SelectTrigger className="h-9 text-sm w-48">
-            <SelectValue placeholder="Funil" />
-          </SelectTrigger>
+          <SelectTrigger className="h-9 text-sm w-48"><SelectValue placeholder="Funil" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os funis</SelectItem>
-            {funis.map(f => (
-              <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-            ))}
+            {funis.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
           </SelectContent>
         </Select>
 
         <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="h-9 text-sm w-40">
-            <SelectValue />
-          </SelectTrigger>
+          <SelectTrigger className="h-9 text-sm w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os tipos</SelectItem>
             <SelectItem value="funil_novo">Funil novo</SelectItem>
@@ -116,156 +93,100 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
           </SelectContent>
         </Select>
 
-        <Select value={filterEtapa} onValueChange={setFilterEtapa}>
-          <SelectTrigger className="h-9 text-sm w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todas as etapas</SelectItem>
-            <SelectItem value="planejado">💡 Planejado</SelectItem>
-            <SelectItem value="produzindo">🔨 Produzindo</SelectItem>
-            <SelectItem value="rodando">📊 Rodando</SelectItem>
-            <SelectItem value="concluido">✅ Concluído</SelectItem>
-          </SelectContent>
-        </Select>
-
         <span className="text-xs text-muted-foreground">
-          {sorted.length} teste{sorted.length !== 1 ? 's' : ''}
+          {rodando.length} rodando
         </span>
         <div className="flex-1" />
         <Button size="sm" className="h-9 gap-1.5" onClick={openNew}>
           <Plus className="h-3.5 w-3.5" />
-          Registrar teste
+          Novo teste
         </Button>
       </div>
 
-      {sorted.length === 0 ? (
-        <div className="py-16 text-center text-sm text-muted-foreground">Nenhum teste encontrado.</div>
+      {rodando.length === 0 ? (
+        <div className="py-16 text-center text-sm text-muted-foreground">
+          Nenhum teste rodando no momento.
+        </div>
       ) : (
-        <div className="space-y-3">
-          {sorted.map(t => {
-            const funil = t.funil_id ? funilMap[t.funil_id] : null;
-            const projeto = funil?.oferta_id ? projetoMap[funil.oferta_id] : null;
-            const emAndamento = t.pipeline_status !== 'concluido';
+        <div className="space-y-2">
+          {rodando.map(t => {
+            const funil   = t.funil_id ? funilMap[t.funil_id] : null;
             const tipoCfg = TIPO_CONFIG[t.tipo];
+            const isMoving = moving === t.id;
 
             return (
               <div
                 key={t.id}
-                className={cn(
-                  'rounded-lg border bg-card p-4 space-y-3',
-                  emAndamento ? 'border-amber-500/40' : 'border-border',
-                )}
+                className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 flex items-center gap-3"
               >
-                {/* Header */}
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <Badge className={cn('text-[10px] border-0 font-medium', tipoCfg.cls)}>
-                        <FlaskConical className="h-2.5 w-2.5 mr-1" />
-                        {tipoCfg.label}
-                      </Badge>
-                      {emAndamento ? (
-                        <Badge className="text-[10px] border-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                          <Clock className="h-2.5 w-2.5 mr-1" />
-                          Em andamento
-                        </Badge>
-                      ) : (
-                        <Badge className="text-[10px] border-0 bg-muted text-muted-foreground">
-                          Concluído
-                        </Badge>
-                      )}
-                      {t.validado && (
-                        <Badge className="text-[10px] border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                          <CheckCircle2 className="h-2.5 w-2.5 mr-1" />
-                          Validado
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium text-foreground">{t.titulo}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
-                      {funil && <span>{funil.nome}</span>}
-                      {projeto && <><span>·</span><span>{projeto.nome}</span></>}
-                    </div>
+                {/* Tipo badge */}
+                <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0', tipoCfg.cls)}>
+                  <FlaskConical className="h-2.5 w-2.5 inline mr-0.5" />
+                  {tipoCfg.label}
+                </span>
+
+                {/* Main content */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{t.titulo}</p>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                    {funil && <span className="truncate">{funil.nome}</span>}
+                    {t.data_inicio && (
+                      <>
+                        <span>·</span>
+                        <span>{diasRodando(t.data_inicio)}</span>
+                      </>
+                    )}
+                    {t.criado_por && perfilMap[t.criado_por] && (
+                      <>
+                        <span>·</span>
+                        <span>{perfilMap[t.criado_por]}</span>
+                      </>
+                    )}
                   </div>
+                </div>
+
+                {/* AD link */}
+                {t.link_ad && (
+                  <a
+                    href={t.link_ad}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="text-muted-foreground hover:text-primary shrink-0"
+                    title="Ver anúncio"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    disabled={isMoving}
+                    onClick={() => mover(t, 'produzindo')}
+                    className="p-1.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                    title="Voltar para Produzindo"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isMoving}
+                    onClick={() => mover(t, 'concluido')}
+                    className="p-1.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                    title="Mover para Concluído"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={e => openEdit(t, e)}
-                    className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    className="p-1.5 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
                     title="Editar"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-3 w-3" />
                   </button>
-                </div>
-
-                {/* Variantes */}
-                {(t.variante_a || t.variante_b) && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className={cn(
-                      'rounded p-2.5 border text-xs',
-                      t.vencedor === 'a'
-                        ? 'border-emerald-500/50 bg-emerald-500/5'
-                        : 'border-border bg-muted/30',
-                    )}>
-                      <p className="font-semibold text-muted-foreground mb-1">Variante A {t.vencedor === 'a' && '🏆'}</p>
-                      <p className="text-foreground leading-snug">{t.variante_a ?? '—'}</p>
-                      {t.resultado_a && (
-                        <p className="mt-1 font-mono font-medium text-foreground">{t.resultado_a}</p>
-                      )}
-                    </div>
-                    <div className={cn(
-                      'rounded p-2.5 border text-xs',
-                      t.vencedor === 'b'
-                        ? 'border-emerald-500/50 bg-emerald-500/5'
-                        : 'border-border bg-muted/30',
-                    )}>
-                      <p className="font-semibold text-muted-foreground mb-1">Variante B {t.vencedor === 'b' && '🏆'}</p>
-                      <p className="text-foreground leading-snug">{t.variante_b ?? '—'}</p>
-                      {t.resultado_b && (
-                        <p className="mt-1 font-mono font-medium text-foreground">{t.resultado_b}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Footer */}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1 border-t border-border/60">
-                  {t.metrica && <span>Métrica: <span className="text-foreground">{t.metrica}</span></span>}
-                  {t.vencedor && t.vencedor !== 'inconclusivo' && (
-                    <span>Vencedor: <span className="text-emerald-400 font-medium">{VENCEDOR_LABEL[t.vencedor]}</span></span>
-                  )}
-                  {t.vencedor === 'inconclusivo' && (
-                    <span className="text-muted-foreground">Inconclusivo</span>
-                  )}
-                  <div className="flex-1" />
-                  {t.tipo === 'funil_novo' && !emAndamento && t.validado && t.funil_id && (
-                    <button
-                      type="button"
-                      onClick={e => ativarFunil(t.funil_id!, e)}
-                      disabled={activating === t.funil_id}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors font-medium disabled:opacity-50"
-                      title="Mover funil para Ativo"
-                    >
-                      <Rocket className="h-3 w-3" />
-                      {activating === t.funil_id ? 'Ativando...' : 'Ativar funil'}
-                    </button>
-                  )}
-                  <span>
-                    {fmtDate(t.data_inicio)}
-                    {t.data_fim && ` → ${fmtDate(t.data_fim)}`}
-                    {emAndamento && !t.data_inicio && 'Sem data'}
-                  </span>
-                </div>
-
-                {t.notas && (
-                  <p className="text-xs text-muted-foreground italic border-t border-border/60 pt-2">{t.notas}</p>
-                )}
-
-                <div className="text-[11px] text-muted-foreground/60 border-t border-border/40 pt-1.5">
-                  Criado em {new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                  {t.criado_por && perfilMap[t.criado_por] && (
-                    <span> por {perfilMap[t.criado_por]}</span>
-                  )}
                 </div>
               </div>
             );
@@ -280,6 +201,7 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
         onSaved={() => { setModalOpen(false); onReload(); }}
         teste={editTeste}
         funis={funis}
+        presetPipelineStatus="rodando"
       />
     </div>
   );
