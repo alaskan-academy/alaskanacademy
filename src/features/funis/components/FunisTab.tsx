@@ -266,13 +266,34 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                           </a>
                         )}
 
-                        {mySubofertas.length > 0 && (
+                        {mySubofertas.filter(fs => fs.tipo === 'checkout').length > 0 && (
                           <div>
                             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                              Upsells & Order Bumps
+                              Preços e Checkout
                             </p>
                             <div className="flex flex-wrap gap-1.5">
-                              {mySubofertas.map(fs => (
+                              {mySubofertas.filter(fs => fs.tipo === 'checkout').map(fs => (
+                                <Badge
+                                  key={fs.id}
+                                  className="text-[10px] font-medium border-0 gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                >
+                                  {fs.nome ?? '—'}
+                                  {fs.preco != null && (
+                                    <span className="opacity-60 font-mono">{formatCurrency(fs.preco)}</span>
+                                  )}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {mySubofertas.filter(fs => fs.tipo === 'orderbump' || fs.tipo === 'upsell').length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                              Order Bumps & Upsells
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {mySubofertas.filter(fs => fs.tipo === 'orderbump' || fs.tipo === 'upsell').map(fs => (
                                 <Badge
                                   key={fs.id}
                                   className={cn(

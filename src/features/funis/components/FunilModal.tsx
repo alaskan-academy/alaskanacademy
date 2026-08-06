@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
 
@@ -21,7 +21,95 @@ function formatPreco(raw: string): string {
   return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-type SubItem = { id?: string; nome: string; tipo: 'upsell' | 'orderbump'; preco: string; link: string };
+type SubTipo = 'upsell' | 'orderbump' | 'checkout';
+type SubItem = { id?: string; nome: string; tipo: SubTipo; preco: string; link: string };
+
+/* ─── SubList fora do modal para manter referência estável (evita remount em inputs) ─── */
+interface SubListProps {
+  tipo: SubTipo;
+  subofertas: SubItem[];
+  onAdd: (tipo: SubTipo) => void;
+  onRemove: (idx: number) => void;
+  onUpdate: (idx: number, field: keyof SubItem, value: string) => void;
+}
+
+function SubList({ tipo, subofertas, onAdd, onRemove, onUpdate }: SubListProps) {
+  const isCheckout = tipo === 'checkout';
+  const isUp = tipo === 'upsell';
+  const items = subofertas.map((s, idx) => ({ s, idx })).filter(({ s }) => s.tipo === tipo);
+
+  const accentCls = isCheckout
+    ? 'border-emerald-500/30 bg-emerald-500/5'
+    : isUp
+      ? 'border-violet-500/30 bg-violet-500/5'
+      : 'border-blue-500/30 bg-blue-500/5';
+
+  const label = isCheckout ? 'Preços e Links de Checkout' : isUp ? 'Upsells' : 'Order Bumps';
+  const nomePlaceholder = isCheckout
+    ? 'Descrição (ex: À vista, 12x R$97...)'
+    : isUp ? 'Nome do upsell...' : 'Nome do order bump...';
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-xs">{label}</Label>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground px-2"
+          onClick={() => onAdd(tipo)}
+        >
+          <Plus className="h-3 w-3" />
+          Adicionar
+        </Button>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground/60 italic px-0.5">Nenhum cadastrado</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map(({ s, idx }) => (
+            <div key={idx} className={cn('rounded-lg border p-2.5 space-y-2', accentCls)}>
+              <div className="flex items-center gap-2">
+                <Input
+                  className="flex-1 h-7 text-sm"
+                  placeholder={nomePlaceholder}
+                  value={s.nome}
+                  onChange={e => onUpdate(idx, 'nome', e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemove(idx)}
+                  className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground shrink-0">R$</span>
+                  <Input
+                    className="h-7 text-sm"
+                    placeholder="0,00"
+                    value={s.preco}
+                    onChange={e => onUpdate(idx, 'preco', e.target.value)}
+                    onBlur={() => onUpdate(idx, 'preco', s.preco ? formatPreco(s.preco) : s.preco)}
+                  />
+                </div>
+                <Input
+                  className="h-7 text-sm"
+                  placeholder="Link checkout..."
+                  value={s.link}
+                  onChange={e => onUpdate(idx, 'link', e.target.value)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -36,61 +124,97 @@ interface Props {
 
 export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubofertas, dominios, metodos = [] }: Props) {
   const { user } = useAuth();
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [nome, setNome]               = useState('');
-  const [ofertaId, setOfertaId]       = useState('');
-  const [metodo, setMetodo]           = useState('');
-  const [status, setStatus]           = useState<'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
-  const [preco, setPreco]             = useState('');
-  const [linkCheckout, setLinkCheckout] = useState('');
-  const [urlPage, setUrlPage]         = useState('');
-  const [dominioId, setDominioId]     = useState('');
-  const [notas, setNotas]             = useState('');
-  const [ativo, setAtivo]             = useState(true);
-  const [subofertas, setSubofertas]   = useState<SubItem[]>([]);
+
+  const [nome, setNome]           = useState('');
+  const [ofertaId, setOfertaId]   = useState('');
+  const [status, setStatus]       = useState<'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
+  const [urlPage, setUrlPage]     = useState('');
+  const [dominioId, setDominioId] = useState('');
+  const [notas, setNotas]         = useState('');
+  const [ativo, setAtivo]         = useState(true);
+  const [subofertas, setSubofertas] = useState<SubItem[]>([]);
+
+  // Método de venda
+  const [metodo, setMetodo]               = useState('');
+  const [metodosList, setMetodosList]     = useState<string[]>([]);
+  const [newMetodoInput, setNewMetodoInput] = useState('');
 
   useEffect(() => {
     if (!open) return;
+
     setNome(funil?.nome ?? '');
     setOfertaId(funil?.oferta_id ?? '');
     setMetodo(funil?.metodo ?? '');
     setStatus((funil?.status ?? 'ativo') as typeof status);
-    setPreco(funil?.preco != null ? String(funil.preco) : '');
-    setLinkCheckout(funil?.link_checkout ?? '');
     setUrlPage(funil?.url_page ?? '');
     setNotas(funil?.notas ?? '');
     setAtivo(funil?.ativo ?? true);
     setConfirmDelete(false);
+    setNewMetodoInput('');
 
     const dominioAtual = dominios.find(d => d.funil_id === funil?.id);
     setDominioId(dominioAtual?.id ?? '');
 
-    setSubofertas(
-      funil
-        ? funilSubofertas
-            .filter(fs => fs.funil_id === funil.id)
-            .map(fs => ({
-              id:    fs.id,
-              nome:  fs.nome ?? '',
-              tipo:  (fs.tipo ?? 'upsell') as 'upsell' | 'orderbump',
-              preco: fs.preco != null ? formatPreco(String(fs.preco)) : '',
-              link:  fs.link ?? '',
-            }))
-        : [],
-    );
-  }, [open, funil, funilSubofertas, dominios]);
+    // Subofertas existentes
+    const existing: SubItem[] = funil
+      ? funilSubofertas
+          .filter(fs => fs.funil_id === funil.id)
+          .map(fs => ({
+            id:    fs.id,
+            nome:  fs.nome ?? '',
+            tipo:  (fs.tipo ?? 'upsell') as SubTipo,
+            preco: fs.preco != null ? formatPreco(String(fs.preco)) : '',
+            link:  fs.link ?? '',
+          }))
+      : [];
 
-  function addSub(tipo: 'upsell' | 'orderbump') {
+    // Migração legada: se funil tem preco/link_checkout mas ainda sem checkout suboferta
+    const hasCheckout = existing.some(s => s.tipo === 'checkout');
+    if (!hasCheckout && funil && (funil.preco != null || funil.link_checkout)) {
+      existing.unshift({
+        nome:  '',
+        tipo:  'checkout',
+        preco: funil.preco != null ? formatPreco(String(funil.preco)) : '',
+        link:  funil.link_checkout ?? '',
+      });
+    }
+    setSubofertas(existing);
+
+    // Carregar lista de métodos salva
+    supabase.from('configuracoes')
+      .select('valor')
+      .eq('chave', 'metodos_venda')
+      .maybeSingle()
+      .then(({ data }) => {
+        const saved: string[] = data?.valor ? JSON.parse(data.valor) : [];
+        const combined = [...new Set([...METODOS_BASE, ...saved, ...metodos])].sort();
+        setMetodosList(combined);
+      });
+  }, [open, funil, funilSubofertas, dominios, metodos]);
+
+  /* ── Subofertas ── */
+  function addSub(tipo: SubTipo) {
     setSubofertas(prev => [...prev, { nome: '', tipo, preco: '', link: '' }]);
   }
-
   function removeSub(idx: number) {
     setSubofertas(prev => prev.filter((_, i) => i !== idx));
   }
-
   function updateSub(idx: number, field: keyof SubItem, value: string) {
     setSubofertas(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  }
+
+  /* ── Métodos ── */
+  function addMetodo() {
+    const val = newMetodoInput.trim().toUpperCase();
+    if (!val || metodosList.includes(val)) return;
+    setMetodosList(prev => [...prev, val].sort());
+    setNewMetodoInput('');
+  }
+  function removeMetodo(m: string) {
+    setMetodosList(prev => prev.filter(x => x !== m));
+    if (metodo === m) setMetodo('');
   }
 
   async function handleSave() {
@@ -100,13 +224,15 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     }
     setSaving(true);
 
+    // Sincroniza primeiro checkout com colunas legadas (compatibilidade com outras páginas)
+    const firstCheckout = subofertas.find(s => s.tipo === 'checkout');
     const payload: Record<string, unknown> = {
       nome:          nome.trim(),
       oferta_id:     ofertaId || null,
       metodo:        metodo || null,
       status,
-      preco:         preco ? parseFloat(preco.replace(',', '.')) : null,
-      link_checkout: linkCheckout.trim() || null,
+      preco:         firstCheckout?.preco ? parseFloat(firstCheckout.preco.replace(',', '.')) : null,
+      link_checkout: firstCheckout?.link?.trim() || null,
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
       ativo:         status === 'arquivado' ? false : ativo,
@@ -134,15 +260,21 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     if (subofertas.length > 0) {
       await supabase.from('funil_subofertas').insert(
         subofertas.map(s => ({
-          funil_id: funilId,
+          funil_id:  funilId,
           oferta_id: null,
-          nome:     s.nome.trim() || null,
-          tipo:     s.tipo,
-          preco:    s.preco ? parseFloat(s.preco.replace(',', '.')) : null,
-          link:     s.link.trim() || null,
+          nome:      s.nome.trim() || null,
+          tipo:      s.tipo,
+          preco:     s.preco ? parseFloat(s.preco.replace(',', '.')) : null,
+          link:      s.link.trim() || null,
         })),
       );
     }
+
+    // Salvar lista de métodos gerenciada
+    await supabase.from('configuracoes').upsert(
+      { chave: 'metodos_venda', valor: JSON.stringify(metodosList) },
+      { onConflict: 'chave' },
+    );
 
     // Sync domínio
     if (funil) {
@@ -172,84 +304,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     onClose();
   }
 
-  const allMetodos = [...new Set([...METODOS_BASE, ...metodos])].sort();
   const dominiosDisponiveis = dominios.filter(d => !d.funil_id || d.funil_id === funil?.id);
-
-  const upsells    = subofertas.filter(s => s.tipo === 'upsell');
-  const orderbumps = subofertas.filter(s => s.tipo === 'orderbump');
-
-  function SubList({ tipo }: { tipo: 'upsell' | 'orderbump' }) {
-    const isUp = tipo === 'upsell';
-    const items = subofertas
-      .map((s, idx) => ({ s, idx }))
-      .filter(({ s }) => s.tipo === tipo);
-    const accentCls = isUp
-      ? 'border-violet-500/30 bg-violet-500/5'
-      : 'border-blue-500/30 bg-blue-500/5';
-
-    return (
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <Label className="text-xs">{isUp ? 'Upsells' : 'Order Bumps'}</Label>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground px-2"
-            onClick={() => addSub(tipo)}
-          >
-            <Plus className="h-3 w-3" />
-            Adicionar
-          </Button>
-        </div>
-        {items.length === 0 ? (
-          <p className="text-xs text-muted-foreground/60 italic px-0.5">Nenhum cadastrado</p>
-        ) : (
-          <div className="space-y-2">
-            {items.map(({ s, idx }) => (
-              <div key={idx} className={cn('rounded-lg border p-2.5 space-y-2', accentCls)}>
-                <div className="flex items-center gap-2">
-                  <Input
-                    className="flex-1 h-7 text-sm"
-                    placeholder={isUp ? 'Nome do upsell...' : 'Nome do order bump...'}
-                    value={s.nome}
-                    onChange={e => updateSub(idx, 'nome', e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeSub(idx)}
-                    className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <div className={cn('grid gap-2', isUp ? 'grid-cols-2' : 'grid-cols-1')}>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground shrink-0">R$</span>
-                    <Input
-                      className="h-7 text-sm"
-                      placeholder="0,00"
-                      value={s.preco}
-                      onChange={e => updateSub(idx, 'preco', e.target.value)}
-                      onBlur={() => updateSub(idx, 'preco', s.preco ? formatPreco(s.preco) : s.preco)}
-                    />
-                  </div>
-                  {isUp && (
-                    <Input
-                      className="h-7 text-sm"
-                      placeholder="Link checkout..."
-                      value={s.link}
-                      onChange={e => updateSub(idx, 'link', e.target.value)}
-                    />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -270,7 +325,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             />
           </div>
 
-          {/* Projeto + Método */}
+          {/* Projeto + Status */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Projeto</Label>
@@ -287,23 +342,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
               </Select>
             </div>
             <div>
-              <Label>Método de venda</Label>
-              <Input
-                list="metodos-datalist"
-                className="mt-1 h-8 text-sm"
-                placeholder="TSL, VSL, QUIZ..."
-                value={metodo}
-                onChange={e => setMetodo(e.target.value)}
-              />
-              <datalist id="metodos-datalist">
-                {allMetodos.map(m => <option key={m} value={m} />)}
-              </datalist>
-            </div>
-          </div>
-
-          {/* Status + Preço */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <Label>Status</Label>
               <Select value={status} onValueChange={v => setStatus(v as typeof status)}>
                 <SelectTrigger className="mt-1 h-8 text-sm">
@@ -317,16 +355,57 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Preço (R$)</Label>
-              <Input
-                className="mt-1 h-8 text-sm"
-                placeholder="197,00"
-                value={preco}
-                onChange={e => setPreco(e.target.value)}
-                onBlur={() => setPreco(v => v ? formatPreco(v) : v)}
-              />
+          </div>
+
+          {/* Método de venda — chips gerenciáveis */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label>Método de venda</Label>
+              <div className="flex items-center gap-1">
+                <Input
+                  className="h-6 text-xs w-28"
+                  placeholder="Novo..."
+                  value={newMetodoInput}
+                  onChange={e => setNewMetodoInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMetodo(); } }}
+                />
+                <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={addMetodo}>
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
+            {metodosList.length === 0 ? (
+              <p className="text-xs text-muted-foreground/60 italic">Nenhum método cadastrado</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {metodosList.map(m => (
+                  <div
+                    key={m}
+                    className={cn(
+                      'flex items-center gap-0.5 pl-2.5 pr-1 py-0.5 rounded-full text-xs border transition-colors',
+                      metodo === m
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-border text-muted-foreground hover:border-foreground/40',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="leading-none pr-0.5"
+                      onClick={() => setMetodo(m === metodo ? '' : m)}
+                    >
+                      {m}
+                    </button>
+                    <button
+                      type="button"
+                      className="leading-none opacity-40 hover:opacity-100 hover:text-destructive transition-colors"
+                      onClick={() => removeMetodo(m)}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Domínio */}
@@ -345,33 +424,25 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             </Select>
           </div>
 
-          {/* URLs */}
-          <div className="grid grid-cols-1 gap-3">
-            <div>
-              <Label>URL da landing page</Label>
-              <Input
-                className="mt-1 h-8 text-sm"
-                placeholder="https://..."
-                value={urlPage}
-                onChange={e => setUrlPage(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Link de checkout</Label>
-              <Input
-                className="mt-1 h-8 text-sm"
-                placeholder="https://..."
-                value={linkCheckout}
-                onChange={e => setLinkCheckout(e.target.value)}
-              />
-            </div>
+          {/* URL da landing page */}
+          <div>
+            <Label>URL da landing page</Label>
+            <Input
+              className="mt-1 h-8 text-sm"
+              placeholder="https://..."
+              value={urlPage}
+              onChange={e => setUrlPage(e.target.value)}
+            />
           </div>
 
-          {/* Upsells */}
-          <SubList tipo="upsell" />
+          {/* Preços e Checkouts */}
+          <SubList tipo="checkout" subofertas={subofertas} onAdd={addSub} onRemove={removeSub} onUpdate={updateSub} />
 
-          {/* Order Bumps */}
-          <SubList tipo="orderbump" />
+          {/* Order Bumps — acima de upsells */}
+          <SubList tipo="orderbump" subofertas={subofertas} onAdd={addSub} onRemove={removeSub} onUpdate={updateSub} />
+
+          {/* Upsells */}
+          <SubList tipo="upsell" subofertas={subofertas} onAdd={addSub} onRemove={removeSub} onUpdate={updateSub} />
 
           {/* Notas */}
           <div>
