@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
 
@@ -137,9 +137,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
   const [subofertas, setSubofertas] = useState<SubItem[]>([]);
 
   // Método de venda
-  const [metodo, setMetodo]               = useState('');
-  const [metodosList, setMetodosList]     = useState<string[]>([]);
-  const [newMetodoInput, setNewMetodoInput] = useState('');
+  const [metodo, setMetodo] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -152,7 +150,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setNotas(funil?.notas ?? '');
     setAtivo(funil?.ativo ?? true);
     setConfirmDelete(false);
-    setNewMetodoInput('');
 
     const dominioAtual = dominios.find(d => d.funil_id === funil?.id);
     setDominioId(dominioAtual?.id ?? '');
@@ -182,16 +179,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     }
     setSubofertas(existing);
 
-    // Carregar lista de métodos salva
-    supabase.from('configuracoes')
-      .select('valor')
-      .eq('chave', 'metodos_venda')
-      .maybeSingle()
-      .then(({ data }) => {
-        const saved: string[] = data?.valor ? JSON.parse(data.valor) : [];
-        const combined = [...new Set([...METODOS_BASE, ...saved, ...metodos])].sort();
-        setMetodosList(combined);
-      });
   }, [open, funil, funilSubofertas, dominios, metodos]);
 
   /* ── Subofertas ── */
@@ -203,18 +190,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
   }
   function updateSub(idx: number, field: keyof SubItem, value: string) {
     setSubofertas(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
-  }
-
-  /* ── Métodos ── */
-  function addMetodo() {
-    const val = newMetodoInput.trim().toUpperCase();
-    if (!val || metodosList.includes(val)) return;
-    setMetodosList(prev => [...prev, val].sort());
-    setNewMetodoInput('');
-  }
-  function removeMetodo(m: string) {
-    setMetodosList(prev => prev.filter(x => x !== m));
-    if (metodo === m) setMetodo('');
   }
 
   async function handleSave() {
@@ -270,12 +245,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       );
     }
 
-    // Salvar lista de métodos gerenciada
-    await supabase.from('configuracoes').upsert(
-      { chave: 'metodos_venda', valor: JSON.stringify(metodosList) },
-      { onConflict: 'chave' },
-    );
-
     // Sync domínio
     if (funil) {
       const prev = dominios.find(d => d.funil_id === funil.id && d.id !== dominioId);
@@ -304,6 +273,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     onClose();
   }
 
+  const allMetodos = [...new Set([...METODOS_BASE, ...metodos])].sort();
   const dominiosDisponiveis = dominios.filter(d => !d.funil_id || d.funil_id === funil?.id);
 
   return (
@@ -357,55 +327,19 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             </div>
           </div>
 
-          {/* Método de venda — chips gerenciáveis */}
+          {/* Método de venda */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label>Método de venda</Label>
-              <div className="flex items-center gap-1">
-                <Input
-                  className="h-6 text-xs w-28"
-                  placeholder="Novo..."
-                  value={newMetodoInput}
-                  onChange={e => setNewMetodoInput(e.target.value.toUpperCase())}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addMetodo(); } }}
-                />
-                <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={addMetodo}>
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-            {metodosList.length === 0 ? (
-              <p className="text-xs text-muted-foreground/60 italic">Nenhum método cadastrado</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {metodosList.map(m => (
-                  <div
-                    key={m}
-                    className={cn(
-                      'flex items-center gap-0.5 pl-2.5 pr-1 py-0.5 rounded-full text-xs border transition-colors',
-                      metodo === m
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'border-border text-muted-foreground hover:border-foreground/40',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      className="leading-none pr-0.5"
-                      onClick={() => setMetodo(m === metodo ? '' : m)}
-                    >
-                      {m}
-                    </button>
-                    <button
-                      type="button"
-                      className="leading-none opacity-40 hover:opacity-100 hover:text-destructive transition-colors"
-                      onClick={() => removeMetodo(m)}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <Label>Método de venda</Label>
+            <Input
+              list="metodos-datalist"
+              className="mt-1 h-8 text-sm"
+              placeholder="TSL, VSL, QUIZ..."
+              value={metodo}
+              onChange={e => setMetodo(e.target.value)}
+            />
+            <datalist id="metodos-datalist">
+              {allMetodos.map(m => <option key={m} value={m} />)}
+            </datalist>
           </div>
 
           {/* Domínio */}
