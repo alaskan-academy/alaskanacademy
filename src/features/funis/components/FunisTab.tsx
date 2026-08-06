@@ -52,7 +52,6 @@ function StatusBadge({ status }: { status: StatusDisplay }) {
 }
 
 export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
-  const metodos = [...new Set(funis.map(f => f.metodo).filter(Boolean))] as string[];
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
@@ -125,8 +124,6 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
 
           funilSubofertas={funilSubofertas}
           dominios={dominios}
-          metodos={metodos}
-
         />
       </div>
     );

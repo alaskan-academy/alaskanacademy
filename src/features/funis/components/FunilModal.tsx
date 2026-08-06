@@ -120,10 +120,9 @@ interface Props {
   projetos: Projeto[];
   funilSubofertas: FunilSuboferta[];
   dominios: Dominio[];
-  metodos?: string[];
 }
 
-export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubofertas, dominios, metodos = [] }: Props) {
+export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubofertas, dominios }: Props) {
   const { user } = useAuth();
   const [saving, setSaving]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -190,7 +189,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
         setOpMetodos(data?.map(d => d.valor as string) ?? []);
       });
 
-  }, [open, funil, funilSubofertas, dominios, metodos]);
+  }, [open, funil, funilSubofertas, dominios]);
 
   /* ── Subofertas ── */
   function addSub(tipo: SubTipo) {
