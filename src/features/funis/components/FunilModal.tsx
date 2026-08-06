@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Funil, Projeto, SubOferta, FunilSuboferta } from '../types';
@@ -29,6 +30,7 @@ const TIPO_BADGE: Record<string, string> = {
 };
 
 export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas, funilSubofertas }: Props) {
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const [nome, setNome]               = useState('');
   const [ofertaId, setOfertaId]       = useState('');
@@ -96,7 +98,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
     if (funil) {
       ({ error } = await supabase.from('funis').update(payload).eq('id', funil.id));
     } else {
-      const res = await supabase.from('funis').insert(payload).select('id').single();
+      const res = await supabase.from('funis').insert({ ...payload, criado_por: user?.id }).select('id').single();
       error = res.error;
       funilId = res.data?.id;
     }

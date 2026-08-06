@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { Funil, Projeto, SubOferta, FunilSuboferta, Dominio, TesteFunil, getStatusDisplay } from '../types';
+import { Funil, Projeto, SubOferta, FunilSuboferta, Dominio, TesteFunil, PerfilSimples, getStatusDisplay } from '../types';
 import { AlertaBanner } from '../components/AlertaBanner';
 import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
@@ -18,6 +18,7 @@ interface State {
   funilSubofertas: FunilSuboferta[];
   dominios: Dominio[];
   testes: TesteFunil[];
+  perfis: PerfilSimples[];
   loading: boolean;
 }
 
@@ -32,17 +33,18 @@ export default function FunisPage() {
   const [activeTab, setActiveTab] = useState<Tab>('funis');
   const [state, setState] = useState<State>({
     funis: [], projetos: [], subOfertas: [], funilSubofertas: [],
-    dominios: [], testes: [], loading: true,
+    dominios: [], testes: [], perfis: [], loading: true,
   });
 
   const load = useCallback(async () => {
-    const [f, p, s, fs, d, t] = await Promise.all([
+    const [f, p, s, fs, d, t, pf] = await Promise.all([
       supabase.from('funis').select('*').order('nome'),
       supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').order('nome'),
       supabase.from('ofertas').select('id,nome,tipo').order('nome'),
       supabase.from('funil_subofertas').select('*'),
       supabase.from('dominios').select('*').order('nome'),
       supabase.from('testes_funis').select('*').order('created_at', { ascending: false }),
+      supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
     ]);
     setState({
       funis:           (f.data ?? []) as Funil[],
@@ -51,6 +53,7 @@ export default function FunisPage() {
       funilSubofertas: (fs.data ?? []) as FunilSuboferta[],
       dominios:        (d.data ?? []) as Dominio[],
       testes:          (t.data ?? []) as TesteFunil[],
+      perfis:          (pf.data ?? []) as PerfilSimples[],
       loading:         false,
     });
   }, []);
@@ -147,6 +150,7 @@ export default function FunisPage() {
               testes={state.testes}
               funis={state.funis}
               projetos={state.projetos}
+              perfis={state.perfis}
               onReload={load}
             />
           )}
@@ -162,6 +166,7 @@ export default function FunisPage() {
               testes={state.testes}
               funis={state.funis}
               projetos={state.projetos}
+              perfis={state.perfis}
               onReload={load}
             />
           )}

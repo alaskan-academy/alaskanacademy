@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { TesteFunil, Funil, PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest } from '../types';
 import { cn } from '@/lib/utils';
 
@@ -145,6 +146,7 @@ async function syncToRadar(opts: {
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId, presetPipelineStatus }: Props) {
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
   const [funilId, setFunilId]         = useState('');
@@ -244,7 +246,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
     if (teste) {
       ({ error } = await supabase.from('testes_funis').update(payload).eq('id', teste.id));
     } else {
-      const res = await supabase.from('testes_funis').insert(payload).select('id').single();
+      const res = await supabase.from('testes_funis').insert({ ...payload, criado_por: user?.id }).select('id').single();
       error = res.error;
       funisTesteId = res.data?.id ?? null;
     }

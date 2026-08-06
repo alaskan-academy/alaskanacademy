@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { Plus, Pencil, CheckCircle2, Clock, FlaskConical, Rocket } from 'lucide-react';
 import { TesteModal } from './TesteModal';
-import { TesteFunil, Funil, Projeto } from '../types';
+import { TesteFunil, Funil, Projeto, PerfilSimples } from '../types';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 
@@ -13,6 +13,7 @@ interface Props {
   testes: TesteFunil[];
   funis: Funil[];
   projetos: Projeto[];
+  perfis: PerfilSimples[];
   onReload: () => void;
 }
 
@@ -33,7 +34,8 @@ function fmtDate(d: string | null) {
   return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-export function TestesTab({ testes, funis, projetos, onReload }: Props) {
+export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) {
+  const perfilMap = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
   const [filterFunil, setFilterFunil] = useState('todos');
   const [filterTipo, setFilterTipo]   = useState('todos');
   const [filterEtapa, setFilterEtapa] = useState('todos');
@@ -258,6 +260,13 @@ export function TestesTab({ testes, funis, projetos, onReload }: Props) {
                 {t.notas && (
                   <p className="text-xs text-muted-foreground italic border-t border-border/60 pt-2">{t.notas}</p>
                 )}
+
+                <div className="text-[11px] text-muted-foreground/60 border-t border-border/40 pt-1.5">
+                  Criado em {new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                  {t.criado_por && perfilMap[t.criado_por] && (
+                    <span> por {perfilMap[t.criado_por]}</span>
+                  )}
+                </div>
               </div>
             );
           })}

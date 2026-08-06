@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { TesteModal } from './TesteModal';
 import {
-  TesteFunil, Funil, Projeto,
+  TesteFunil, Funil, Projeto, PerfilSimples,
   PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest,
 } from '../types';
 
@@ -21,6 +21,7 @@ interface Props {
   testes: TesteFunil[];
   funis: Funil[];
   projetos: Projeto[];
+  perfis: PerfilSimples[];
   onReload: () => void;
 }
 
@@ -79,7 +80,8 @@ function IceBadge({ score }: { score: number | null }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function EsteiraTab({ testes, funis, projetos, onReload }: Props) {
+export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props) {
+  const perfilMap = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
   const [filterFunil, setFilterFunil]         = useState('todos');
   const [filterCategoria, setFilterCategoria] = useState('todos');
   const [filterTipo, setFilterTipo]           = useState<TipoFilter>('todos');
@@ -260,6 +262,14 @@ export function EsteiraTab({ testes, funis, projetos, onReload }: Props) {
                             <span className="shrink-0">·</span>
                             <span className="shrink-0 font-medium text-foreground/70">{t.kpi}</span>
                           </>
+                        )}
+                      </div>
+
+                      {/* Criação */}
+                      <div className="text-[10px] text-muted-foreground/60">
+                        {new Date(t.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                        {t.criado_por && perfilMap[t.criado_por] && (
+                          <span> · {perfilMap[t.criado_por]}</span>
                         )}
                       </div>
 

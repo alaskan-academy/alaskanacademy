@@ -23,6 +23,12 @@ export interface Funil {
   metodo: string | null;
   notas: string | null;
   criado_em: string | null;
+  criado_por: string | null;
+}
+
+export interface PerfilSimples {
+  id: string;
+  nome: string;
 }
 
 export interface FunilSuboferta {
@@ -77,6 +83,7 @@ export interface TesteFunil {
   data_prevista: string | null;
   // Sync Radar
   radar_teste_id: string | null;
+  criado_por: string | null;
 }
 
 export type StatusDisplay = 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';
