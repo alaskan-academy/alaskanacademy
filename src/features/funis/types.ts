@@ -16,7 +16,7 @@ export interface Funil {
   nome: string;
   produto: string | null;
   ativo: boolean;
-  status: 'ativo' | 'pausado' | 'arquivado';
+  status: 'ativo' | 'pausado' | 'pausado_analise' | 'arquivado';
   oferta_id: string | null;
   preco: number | null;
   link_checkout: string | null;
@@ -29,6 +29,7 @@ export interface FunilSuboferta {
   id: string;
   funil_id: string;
   oferta_id: string;
+  preco: number | null;
 }
 
 export interface Dominio {
@@ -43,11 +44,16 @@ export interface Dominio {
   updated_at: string;
 }
 
+export type PipelineStatus = 'planejado' | 'produzindo' | 'rodando' | 'concluido';
+export type CategoriaTest = 'ad' | 'pagina' | 'oferta' | 'upsell' | 'ticket' | 'whatsapp' | 'outro';
+export type ImpactoTest = 'alto' | 'medio' | 'baixo';
+export type DificuldadeTest = 'facil' | 'media' | 'dificil';
+
 export interface TesteFunil {
   id: string;
-  funil_id: string;
+  funil_id: string | null;
   titulo: string;
-  tipo: 'funil_novo' | 'ab_interno';
+  tipo: 'funil_novo' | 'ab_interno' | 'ad';
   variante_a: string | null;
   variante_b: string | null;
   metrica: string | null;
@@ -59,16 +65,28 @@ export interface TesteFunil {
   data_fim: string | null;
   notas: string | null;
   created_at: string;
+  // Esteira
+  pipeline_status: PipelineStatus;
+  categoria: CategoriaTest | null;
+  impacto: ImpactoTest | null;
+  dificuldade: DificuldadeTest | null;
+  kpi: string | null;
+  link_ad: string | null;
+  comentario_ad: string | null;
+  nome_ad: string | null;
+  data_prevista: string | null;
+  // Sync Radar
+  radar_teste_id: string | null;
 }
 
-export type StatusDisplay = 'ativo' | 'em_teste' | 'pausado' | 'arquivado';
+export type StatusDisplay = 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';
 
 export function getStatusDisplay(funil: Funil, testes: TesteFunil[]): StatusDisplay {
   const emTeste = testes.some(
     t => t.funil_id === funil.id && t.tipo === 'funil_novo' && !t.data_fim,
   );
   if (emTeste) return 'em_teste';
-  return funil.status ?? 'ativo';
+  return (funil.status ?? 'ativo') as StatusDisplay;
 }
 
 export function daysUntilExpiry(vencimento: string | null): number | null {

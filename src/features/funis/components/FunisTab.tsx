@@ -24,10 +24,11 @@ interface Props {
 }
 
 const STATUS_CONFIG: Record<StatusDisplay, { label: string; cls: string }> = {
-  ativo:     { label: 'Ativo',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-  em_teste:  { label: 'Em teste',  cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
-  pausado:   { label: 'Pausado',   cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-  arquivado: { label: 'Arquivado', cls: 'bg-muted text-muted-foreground' },
+  ativo:          { label: 'Ativo',            cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  em_teste:       { label: 'Em teste',         cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  pausado:        { label: 'Pausado',          cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  pausado_analise:{ label: 'Pausado p/ análise', cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
+  arquivado:      { label: 'Arquivado',        cls: 'bg-muted text-muted-foreground' },
 };
 
 function StatusBadge({ status }: { status: StatusDisplay }) {
@@ -38,6 +39,12 @@ function StatusBadge({ status }: { status: StatusDisplay }) {
         <span className="relative flex h-2 w-2 shrink-0">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+        </span>
+      )}
+      {status === 'pausado_analise' && (
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-60" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
         </span>
       )}
       <Badge className={cn('text-xs font-semibold border-0', cfg.cls)}>{cfg.label}</Badge>
@@ -174,9 +181,13 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
                 const testesAtivos = funilTestes.filter(t => !t.data_fim);
                 const mySubofertas = funilSubofertas
                   .filter(fs => fs.funil_id === funil.id)
-                  .map(fs => subofertaMap[fs.oferta_id])
-                  .filter(Boolean);
+                  .map(fs => {
+                    const oferta = subofertaMap[fs.oferta_id];
+                    return oferta ? { ...oferta, preco: fs.preco } : null;
+                  })
+                  .filter(Boolean) as (SubOferta & { preco: number | null })[];
                 const isHighlighted = statusDisplay === 'em_teste';
+                const isPausadoAnalise = statusDisplay === 'pausado_analise';
 
                 return (
                   <div
@@ -185,7 +196,9 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
                       'rounded-lg overflow-hidden transition-all',
                       isHighlighted
                         ? 'border-2 border-amber-500/60 bg-amber-500/5 shadow-[0_0_10px_2px_rgba(245,158,11,0.1)]'
-                        : 'border border-border bg-card',
+                        : isPausadoAnalise
+                          ? 'border-2 border-orange-500/70 bg-orange-500/5 shadow-[0_0_8px_2px_rgba(249,115,22,0.12)]'
+                          : 'border border-border bg-card',
                     )}
                   >
                     <div
@@ -200,7 +213,11 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
                         : <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                       }
 
-                      <span className={cn('font-medium text-sm flex-1 min-w-0 truncate', isHighlighted && 'text-amber-200')}>
+                      <span className={cn(
+                        'font-medium text-sm flex-1 min-w-0 truncate',
+                        isHighlighted && 'text-amber-200',
+                        isPausadoAnalise && 'text-orange-300',
+                      )}>
                         {funil.nome}
                       </span>
 
@@ -264,13 +281,16 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
                                 <Badge
                                   key={o.id}
                                   className={cn(
-                                    'text-[10px] font-medium border-0',
+                                    'text-[10px] font-medium border-0 gap-1',
                                     o.tipo === 'upsell'
                                       ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
                                       : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                                   )}
                                 >
                                   {o.tipo === 'upsell' ? '↑' : '●'} {o.nome}
+                                  {o.preco != null && (
+                                    <span className="opacity-60 font-mono">{formatCurrency(o.preco)}</span>
+                                  )}
                                 </Badge>
                               ))}
                             </div>

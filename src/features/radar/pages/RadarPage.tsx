@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
   FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle,
-  Sheet, Loader2, BookMarked, Settings2,
+  Sheet, Loader2, BookMarked, Settings2, Layers, Lock,
 } from 'lucide-react';
 import { AreasSection } from '../components/RadarConfigTab';
 
@@ -51,6 +51,8 @@ type Teste = {
   responsavel_nome?: string;
   criado_por: string | null;
   criado_em: string;
+  fonte: string | null;
+  fonte_id: string | null;
 };
 
 type Projeto = { id: string; nome: string; ativo: boolean };
@@ -524,9 +526,17 @@ export function RadarContent() {
             >
               {/* área + status */}
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs text-muted-foreground">
-                  {t.area ? `${t.area.icone} ${t.area.nome}` : '—'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">
+                    {t.area ? `${t.area.icone} ${t.area.nome}` : '—'}
+                  </span>
+                  {t.fonte === 'funis' && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded border bg-indigo-500/10 text-indigo-400 border-indigo-500/30">
+                      <Layers className="h-2.5 w-2.5" />
+                      Funis
+                    </span>
+                  )}
+                </div>
                 <StatusBadge status={t.status} />
               </div>
 
@@ -588,11 +598,24 @@ export function RadarContent() {
                   {detalhe.area && (
                     <span className="text-xs text-muted-foreground">{detalhe.area.icone} {detalhe.area.nome}</span>
                   )}
+                  {detalhe.fonte === 'funis' && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded border bg-indigo-500/10 text-indigo-400 border-indigo-500/30">
+                      <Layers className="h-2.5 w-2.5" />
+                      Funis
+                    </span>
+                  )}
                   <StatusBadge status={detalhe.status} />
                   {detalhe.resultado && <ResultadoBadge resultado={detalhe.resultado} />}
                 </div>
                 <DialogTitle className="text-base leading-snug text-left">{detalhe.titulo}</DialogTitle>
               </DialogHeader>
+
+              {detalhe.fonte === 'funis' && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
+                  <Lock className="h-3 w-3 shrink-0" />
+                  Sincronizado via módulo Funis — edite o teste lá para alterar título, hipótese, datas e resultado.
+                </div>
+              )}
 
               <div className="space-y-4 text-sm mt-2">
 
@@ -685,13 +708,29 @@ export function RadarContent() {
             </DialogTitle>
           </DialogHeader>
 
+          {/* Lock notice for Funis-synced tests */}
+          {editingId && testes.find(t => t.id === editingId)?.fonte === 'funis' && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md px-3 py-2 mb-2">
+              <Lock className="h-3 w-3 shrink-0" />
+              Campos marcados com 🔒 são gerenciados pelo módulo Funis. Edite o teste lá para atualizá-los.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
             {/* Título */}
             <div className="col-span-2">
-              <Label>Título <span className="text-destructive">*</span></Label>
-              <Input value={form.titulo} onChange={e => setForm({ ...form, titulo: e.target.value })}
-                placeholder="Ex: Teste de hook com pergunta direta nos 3s" className="mt-1" />
+              <Label>
+                {editingId && testes.find(t => t.id === editingId)?.fonte === 'funis' ? '🔒 ' : ''}
+                Título <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={form.titulo}
+                onChange={e => setForm({ ...form, titulo: e.target.value })}
+                placeholder="Ex: Teste de hook com pergunta direta nos 3s"
+                className="mt-1"
+                disabled={!!(editingId && testes.find(t => t.id === editingId)?.fonte === 'funis')}
+              />
             </div>
 
             {/* Área */}
@@ -743,49 +782,48 @@ export function RadarContent() {
             </div>
 
             {/* Datas */}
-            <div>
-              <Label>Data de início</Label>
-              <Input type="date" value={form.data_inicio} onChange={e => setForm({ ...form, data_inicio: e.target.value })} className="mt-1" />
-            </div>
-            <div>
-              <Label>Data de fim</Label>
-              <Input type="date" value={form.data_fim} onChange={e => setForm({ ...form, data_fim: e.target.value })} className="mt-1" />
-            </div>
-
-            {/* Status */}
-            <div>
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={v => setForm({ ...form, status: v as Teste['status'] })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(STATUS_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Resultado — só se concluído */}
-            <div>
-              <Label>Resultado</Label>
-              <Select
-                value={form.resultado || ''}
-                onValueChange={v => setForm({ ...form, resultado: v as Teste['resultado'] })}
-                disabled={form.status !== 'concluido'}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder={form.status !== 'concluido' ? 'Apenas para concluídos' : 'Selecione...'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(RESULTADO_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Hipótese */}
-            <div className="col-span-2">
-              <Label>Hipótese</Label>
-              <Textarea value={form.hipotese} onChange={e => setForm({ ...form, hipotese: e.target.value })}
-                placeholder="O que você acredita que vai acontecer e por quê?" className="mt-1 min-h-[80px]" />
-            </div>
+            {(() => {
+              const isFunis = !!(editingId && testes.find(t => t.id === editingId)?.fonte === 'funis');
+              return (<>
+                <div>
+                  <Label>{isFunis ? '🔒 ' : ''}Data de início</Label>
+                  <Input type="date" value={form.data_inicio} onChange={e => setForm({ ...form, data_inicio: e.target.value })} className="mt-1" disabled={isFunis} />
+                </div>
+                <div>
+                  <Label>{isFunis ? '🔒 ' : ''}Data de fim</Label>
+                  <Input type="date" value={form.data_fim} onChange={e => setForm({ ...form, data_fim: e.target.value })} className="mt-1" disabled={isFunis} />
+                </div>
+                <div>
+                  <Label>{isFunis ? '🔒 ' : ''}Status</Label>
+                  <Select value={form.status} onValueChange={v => setForm({ ...form, status: v as Teste['status'] })} disabled={isFunis}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(STATUS_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>{isFunis ? '🔒 ' : ''}Resultado</Label>
+                  <Select
+                    value={form.resultado || ''}
+                    onValueChange={v => setForm({ ...form, resultado: v as Teste['resultado'] })}
+                    disabled={isFunis || form.status !== 'concluido'}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder={form.status !== 'concluido' ? 'Apenas para concluídos' : 'Selecione...'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(RESULTADO_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2">
+                  <Label>{isFunis ? '🔒 ' : ''}Hipótese</Label>
+                  <Textarea value={form.hipotese} onChange={e => setForm({ ...form, hipotese: e.target.value })}
+                    placeholder="O que você acredita que vai acontecer e por quê?" className="mt-1 min-h-[80px]" disabled={isFunis} />
+                </div>
+              </>);
+            })()}
 
             {/* Metodologia */}
             <div className="col-span-2">

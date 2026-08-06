@@ -3,9 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Plus, Pencil, CheckCircle2, Clock, FlaskConical } from 'lucide-react';
+import { Plus, Pencil, CheckCircle2, Clock, FlaskConical, Rocket } from 'lucide-react';
 import { TesteModal } from './TesteModal';
 import { TesteFunil, Funil, Projeto } from '../types';
+import { supabase } from '@/lib/supabase';
+import { toast } from '@/hooks/use-toast';
 
 interface Props {
   testes: TesteFunil[];
@@ -17,6 +19,7 @@ interface Props {
 const TIPO_CONFIG = {
   funil_novo: { label: 'Funil novo',  cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   ab_interno: { label: 'A/B interno', cls: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' },
+  ad:         { label: 'AD',          cls: 'bg-sky-500/15 text-sky-400' },
 };
 
 const VENCEDOR_LABEL: Record<string, string> = {
@@ -33,10 +36,27 @@ function fmtDate(d: string | null) {
 export function TestesTab({ testes, funis, projetos, onReload }: Props) {
   const [filterFunil, setFilterFunil] = useState('todos');
   const [filterTipo, setFilterTipo]   = useState('todos');
-  const [filterStatus, setFilterStatus] = useState('todos');
+  const [filterEtapa, setFilterEtapa] = useState('todos');
   const [modalOpen, setModalOpen] = useState(false);
   const [editTeste, setEditTeste] = useState<TesteFunil | null>(null);
   const [modalKey, setModalKey] = useState(0);
+  const [activating, setActivating] = useState<string | null>(null);
+
+  async function ativarFunil(funilId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setActivating(funilId);
+    const { error } = await supabase
+      .from('funis')
+      .update({ status: 'ativo', ativo: true })
+      .eq('id', funilId);
+    setActivating(null);
+    if (error) {
+      toast({ title: 'Erro ao ativar funil', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Funil ativado com sucesso' });
+      onReload();
+    }
+  }
 
   const funilMap = Object.fromEntries(funis.map(f => [f.id, f]));
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
@@ -44,19 +64,13 @@ export function TestesTab({ testes, funis, projetos, onReload }: Props) {
   const filtered = testes.filter(t => {
     if (filterFunil !== 'todos' && t.funil_id !== filterFunil) return false;
     if (filterTipo !== 'todos' && t.tipo !== filterTipo) return false;
-    if (filterStatus === 'andamento' && t.data_fim) return false;
-    if (filterStatus === 'concluido' && !t.data_fim) return false;
+    if (filterEtapa !== 'todos' && t.pipeline_status !== filterEtapa) return false;
     return true;
   });
 
-  // Sort: em andamento first, then by created_at desc
-  const sorted = [...filtered].sort((a, b) => {
-    const aAtivo = !a.data_fim;
-    const bAtivo = !b.data_fim;
-    if (aAtivo && !bAtivo) return -1;
-    if (!aAtivo && bAtivo) return 1;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  const sorted = [...filtered].sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 
   function openNew() {
     setEditTeste(null);
@@ -71,7 +85,6 @@ export function TestesTab({ testes, funis, projetos, onReload }: Props) {
     setModalOpen(true);
   }
 
-  const emAndamentoCount = testes.filter(t => !t.data_fim).length;
 
   return (
     <div className="space-y-4">
@@ -97,23 +110,25 @@ export function TestesTab({ testes, funis, projetos, onReload }: Props) {
             <SelectItem value="todos">Todos os tipos</SelectItem>
             <SelectItem value="funil_novo">Funil novo</SelectItem>
             <SelectItem value="ab_interno">A/B interno</SelectItem>
+            <SelectItem value="ad">AD</SelectItem>
           </SelectContent>
         </Select>
 
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
+        <Select value={filterEtapa} onValueChange={setFilterEtapa}>
           <SelectTrigger className="h-9 text-sm w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="andamento">Em andamento</SelectItem>
-            <SelectItem value="concluido">Concluídos</SelectItem>
+            <SelectItem value="todos">Todas as etapas</SelectItem>
+            <SelectItem value="planejado">💡 Planejado</SelectItem>
+            <SelectItem value="produzindo">🔨 Produzindo</SelectItem>
+            <SelectItem value="rodando">📊 Rodando</SelectItem>
+            <SelectItem value="concluido">✅ Concluído</SelectItem>
           </SelectContent>
         </Select>
 
         <span className="text-xs text-muted-foreground">
           {sorted.length} teste{sorted.length !== 1 ? 's' : ''}
-          {emAndamentoCount > 0 && ` · ${emAndamentoCount} em andamento`}
         </span>
         <div className="flex-1" />
         <Button size="sm" className="h-9 gap-1.5" onClick={openNew}>
@@ -127,9 +142,9 @@ export function TestesTab({ testes, funis, projetos, onReload }: Props) {
       ) : (
         <div className="space-y-3">
           {sorted.map(t => {
-            const funil = funilMap[t.funil_id];
+            const funil = t.funil_id ? funilMap[t.funil_id] : null;
             const projeto = funil?.oferta_id ? projetoMap[funil.oferta_id] : null;
-            const emAndamento = !t.data_fim;
+            const emAndamento = t.pipeline_status !== 'concluido';
             const tipoCfg = TIPO_CONFIG[t.tipo];
 
             return (
@@ -221,6 +236,18 @@ export function TestesTab({ testes, funis, projetos, onReload }: Props) {
                     <span className="text-muted-foreground">Inconclusivo</span>
                   )}
                   <div className="flex-1" />
+                  {t.tipo === 'funil_novo' && !emAndamento && t.validado && t.funil_id && (
+                    <button
+                      type="button"
+                      onClick={e => ativarFunil(t.funil_id!, e)}
+                      disabled={activating === t.funil_id}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors font-medium disabled:opacity-50"
+                      title="Mover funil para Ativo"
+                    >
+                      <Rocket className="h-3 w-3" />
+                      {activating === t.funil_id ? 'Ativando...' : 'Ativar funil'}
+                    </button>
+                  )}
                   <span>
                     {fmtDate(t.data_inicio)}
                     {t.data_fim && ` → ${fmtDate(t.data_fim)}`}

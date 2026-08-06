@@ -33,12 +33,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
   const [nome, setNome]               = useState('');
   const [ofertaId, setOfertaId]       = useState('');
   const [metodo, setMetodo]           = useState('');
-  const [status, setStatus]           = useState<'ativo' | 'pausado' | 'arquivado'>('ativo');
+  const [status, setStatus]           = useState<'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
   const [preco, setPreco]             = useState('');
   const [linkCheckout, setLinkCheckout] = useState('');
   const [notas, setNotas]             = useState('');
   const [ativo, setAtivo]             = useState(true);
-  const [selectedSubofertas, setSelectedSubofertas] = useState<string[]>([]);
+  const [selectedSubofertas, setSelectedSubofertas] = useState<{ id: string; preco: string }[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +52,9 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
     setAtivo(funil?.ativo ?? true);
     if (funil) {
       setSelectedSubofertas(
-        funilSubofertas.filter(fs => fs.funil_id === funil.id).map(fs => fs.oferta_id),
+        funilSubofertas
+          .filter(fs => fs.funil_id === funil.id)
+          .map(fs => ({ id: fs.oferta_id, preco: fs.preco != null ? String(fs.preco) : '' })),
       );
     } else {
       setSelectedSubofertas([]);
@@ -60,9 +62,14 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
   }, [open, funil, funilSubofertas]);
 
   function toggleSuboferta(id: string) {
-    setSelectedSubofertas(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
-    );
+    setSelectedSubofertas(prev => {
+      const exists = prev.find(s => s.id === id);
+      return exists ? prev.filter(s => s.id !== id) : [...prev, { id, preco: '' }];
+    });
+  }
+
+  function setSubofertaPreco(id: string, valor: string) {
+    setSelectedSubofertas(prev => prev.map(s => s.id === id ? { ...s, preco: valor } : s));
   }
 
   async function handleSave() {
@@ -104,7 +111,11 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
     await supabase.from('funil_subofertas').delete().eq('funil_id', funilId);
     if (selectedSubofertas.length > 0) {
       await supabase.from('funil_subofertas').insert(
-        selectedSubofertas.map(oid => ({ funil_id: funilId, oferta_id: oid })),
+        selectedSubofertas.map(s => ({
+          funil_id: funilId,
+          oferta_id: s.id,
+          preco: s.preco ? parseFloat(s.preco.replace(',', '.')) : null,
+        })),
       );
     }
 
@@ -114,8 +125,9 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
     onClose();
   }
 
-  const upsells   = subOfertas.filter(o => o.tipo === 'upsell');
+  const upsells    = subOfertas.filter(o => o.tipo === 'upsell');
   const orderbumps = subOfertas.filter(o => o.tipo === 'orderbump');
+  const subofertaMap = Object.fromEntries(subOfertas.map(o => [o.id, o]));
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -171,6 +183,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
                 <SelectContent>
                   <SelectItem value="ativo">Ativo</SelectItem>
                   <SelectItem value="pausado">Pausado</SelectItem>
+                  <SelectItem value="pausado_analise">Pausado p/ análise</SelectItem>
                   <SelectItem value="arquivado">Arquivado</SelectItem>
                 </SelectContent>
               </Select>
@@ -202,7 +215,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
               <Label className="mb-2 block">Upsells neste funil</Label>
               <div className="flex flex-wrap gap-2">
                 {upsells.map(o => {
-                  const sel = selectedSubofertas.includes(o.id);
+                  const sel = selectedSubofertas.some(s => s.id === o.id);
                   return (
                     <button
                       key={o.id}
@@ -230,7 +243,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
               <Label className="mb-2 block">Order Bumps neste funil</Label>
               <div className="flex flex-wrap gap-2">
                 {orderbumps.map(o => {
-                  const sel = selectedSubofertas.includes(o.id);
+                  const sel = selectedSubofertas.some(s => s.id === o.id);
                   return (
                     <button
                       key={o.id}
@@ -246,6 +259,40 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
                       {sel && <X className="h-2.5 w-2.5" />}
                       {o.nome}
                     </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Preços dos selecionados */}
+          {selectedSubofertas.length > 0 && (
+            <div>
+              <Label className="mb-2 block text-muted-foreground text-xs">Preços neste funil</Label>
+              <div className="space-y-2">
+                {selectedSubofertas.map(s => {
+                  const oferta = subofertaMap[s.id];
+                  if (!oferta) return null;
+                  return (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <span className={cn(
+                        'text-xs px-2 py-0.5 rounded-full border font-medium shrink-0',
+                        oferta.tipo === 'upsell'
+                          ? 'border-violet-500/30 text-violet-400 bg-violet-500/10'
+                          : 'border-blue-500/30 text-blue-400 bg-blue-500/10',
+                      )}>
+                        {oferta.tipo === 'upsell' ? '↑' : '●'} {oferta.nome}
+                      </span>
+                      <div className="flex items-center gap-1 ml-auto">
+                        <span className="text-xs text-muted-foreground">R$</span>
+                        <Input
+                          className="h-7 w-28 text-sm"
+                          placeholder="0,00"
+                          value={s.preco}
+                          onChange={e => setSubofertaPreco(s.id, e.target.value)}
+                        />
+                      </div>
+                    </div>
                   );
                 })}
               </div>

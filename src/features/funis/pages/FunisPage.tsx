@@ -7,8 +7,9 @@ import { AlertaBanner } from '../components/AlertaBanner';
 import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
 import { TestesTab } from '../components/TestesTab';
+import { EsteiraTab } from '../components/EsteiraTab';
 
-type Tab = 'funis' | 'dominios' | 'testes';
+type Tab = 'funis' | 'esteira' | 'dominios' | 'testes';
 
 interface State {
   funis: Funil[];
@@ -22,6 +23,7 @@ interface State {
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'funis',    label: 'Funis' },
+  { key: 'esteira',  label: 'Esteira' },
   { key: 'dominios', label: 'Domínios' },
   { key: 'testes',   label: 'Testes' },
 ];
@@ -56,11 +58,12 @@ export default function FunisPage() {
   useEffect(() => { load(); }, [load]);
 
   // Summary counts for tab badges
-  const ativosCount   = state.funis.filter(f => {
+  const ativosCount  = state.funis.filter(f => {
     const s = getStatusDisplay(f, state.testes);
     return s === 'ativo' || s === 'em_teste';
   }).length;
-  const testesAtivos  = state.testes.filter(t => !t.data_fim).length;
+  const testesAtivos = state.testes.filter(t => t.pipeline_status !== 'concluido').length;
+  const esteiraAtivos = state.testes.filter(t => t.pipeline_status !== 'concluido').length;
 
   if (state.loading) {
     return (
@@ -100,7 +103,10 @@ export default function FunisPage() {
         {/* Tab nav */}
         <div className="flex gap-1 border-b border-border">
           {TABS.map(tab => {
-            const badge = tab.key === 'testes' && testesAtivos > 0 ? testesAtivos : null;
+            const badge =
+              tab.key === 'testes'   && testesAtivos  > 0 ? testesAtivos  :
+              tab.key === 'esteira'  && esteiraAtivos > 0 ? esteiraAtivos :
+              null;
             return (
               <button
                 key={tab.key}
@@ -133,6 +139,14 @@ export default function FunisPage() {
               funilSubofertas={state.funilSubofertas}
               dominios={state.dominios}
               testes={state.testes}
+              onReload={load}
+            />
+          )}
+          {activeTab === 'esteira' && (
+            <EsteiraTab
+              testes={state.testes}
+              funis={state.funis}
+              projetos={state.projetos}
               onReload={load}
             />
           )}
