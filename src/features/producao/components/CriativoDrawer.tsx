@@ -80,17 +80,14 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [novaResposta, setNovaResposta]     = useState('');
 
   const loadOpcoes = useCallback(async () => {
-    const [{ data }, pj, funisMet] = await Promise.all([
+    const [{ data }, pj] = await Promise.all([
       supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
       fetchProjetos(),
-      supabase.from('funis').select('metodo').not('metodo', 'is', null),
     ]);
-    if (funisMet.data) {
-      const metodos = [...new Set(funisMet.data.map(f => f.metodo as string).filter(Boolean))].sort();
-      if (metodos.length) setOpFunilVideo(metodos);
-    }
     if (data) {
       const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
+      const fv = byField('funil_video');
+      if (fv.length) setOpFunilVideo(fv);
       const fmt = byField('formato');
       const plt = byField('plataforma');
       const tst = byField('tipo_teste');
@@ -587,6 +584,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                       ))}
                     </PopoverContent>
                   </Popover>
+                  <GerenciarOpcoesPopover campo="funil_video" label="Métodos de Venda" onAtualizar={loadOpcoes} />
                 </div>
               ) : (
                 <span>

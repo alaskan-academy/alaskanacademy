@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
@@ -12,8 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
-
-const METODOS_BASE = ['TSL', 'VSL', 'QUIZ'];
+import { GerenciarOpcoesPopover } from '@/features/producao/components/GerenciarOpcoesPopover';
 
 function formatPreco(raw: string): string {
   const num = parseFloat(raw.replace(',', '.'));
@@ -137,7 +138,8 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
   const [subofertas, setSubofertas] = useState<SubItem[]>([]);
 
   // Método de venda
-  const [metodo, setMetodo] = useState('');
+  const [metodo, setMetodo]       = useState('');
+  const [opMetodos, setOpMetodos] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -178,6 +180,15 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       });
     }
     setSubofertas(existing);
+
+    // Carregar opções de método de venda da mesma tabela do Funil de Vendas
+    supabase.from('criativo_campos_opcoes')
+      .select('valor')
+      .eq('campo', 'funil_video')
+      .order('ordem')
+      .then(({ data }) => {
+        setOpMetodos(data?.map(d => d.valor as string) ?? []);
+      });
 
   }, [open, funil, funilSubofertas, dominios, metodos]);
 
@@ -273,7 +284,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     onClose();
   }
 
-  const allMetodos = [...new Set([...METODOS_BASE, ...metodos])].sort();
   const dominiosDisponiveis = dominios.filter(d => !d.funil_id || d.funil_id === funil?.id);
 
   return (
@@ -327,19 +337,55 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             </div>
           </div>
 
-          {/* Método de venda */}
+          {/* Método de venda — mesmo visual do Funil de Vendas + gerenciar */}
           <div>
             <Label>Método de venda</Label>
-            <Input
-              list="metodos-datalist"
-              className="mt-1 h-8 text-sm"
-              placeholder="TSL, VSL, QUIZ..."
-              value={metodo}
-              onChange={e => setMetodo(e.target.value)}
-            />
-            <datalist id="metodos-datalist">
-              {allMetodos.map(m => <option key={m} value={m} />)}
-            </datalist>
+            <div className="flex items-center gap-1 mt-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="h-8 text-sm flex-1 flex items-center px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left min-w-0"
+                  >
+                    {metodo
+                      ? <span className="truncate">{metodo}</span>
+                      : <span className="text-muted-foreground text-sm">—</span>}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-40 p-2" align="start">
+                  {opMetodos.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-1 py-1">
+                      Nenhum método. Clique em ⚙ para adicionar.
+                    </p>
+                  ) : (
+                    opMetodos.map(v => (
+                      <div
+                        key={v}
+                        className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                        onClick={() => setMetodo(v === metodo ? '' : v)}
+                      >
+                        <Checkbox
+                          checked={v === metodo}
+                          onCheckedChange={() => setMetodo(v === metodo ? '' : v)}
+                        />
+                        <span className="text-xs">{v}</span>
+                      </div>
+                    ))
+                  )}
+                </PopoverContent>
+              </Popover>
+              <GerenciarOpcoesPopover
+                campo="funil_video"
+                label="Métodos de Venda"
+                onAtualizar={() =>
+                  supabase.from('criativo_campos_opcoes')
+                    .select('valor')
+                    .eq('campo', 'funil_video')
+                    .order('ordem')
+                    .then(({ data }) => setOpMetodos(data?.map(d => d.valor as string) ?? []))
+                }
+              />
+            </div>
           </div>
 
           {/* Domínio */}
