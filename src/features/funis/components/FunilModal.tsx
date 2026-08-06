@@ -6,13 +6,22 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { X } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Funil, Projeto, SubOferta, FunilSuboferta } from '../types';
+import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
+
+const METODOS_BASE = ['TSL', 'VSL', 'QUIZ'];
+
+function formatPreco(raw: string): string {
+  const num = parseFloat(raw.replace(',', '.'));
+  if (isNaN(num)) return raw;
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+type SubItem = { id?: string; nome: string; tipo: 'upsell' | 'orderbump'; preco: string; link: string };
 
 interface Props {
   open: boolean;
@@ -20,58 +29,68 @@ interface Props {
   onSaved: () => void;
   funil?: Funil | null;
   projetos: Projeto[];
-  subOfertas: SubOferta[];
   funilSubofertas: FunilSuboferta[];
+  dominios: Dominio[];
+  metodos?: string[];
 }
 
-const TIPO_BADGE: Record<string, string> = {
-  upsell:     'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
-  orderbump:  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-};
-
-export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas, funilSubofertas }: Props) {
+export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubofertas, dominios, metodos = [] }: Props) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [nome, setNome]               = useState('');
   const [ofertaId, setOfertaId]       = useState('');
   const [metodo, setMetodo]           = useState('');
   const [status, setStatus]           = useState<'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
   const [preco, setPreco]             = useState('');
   const [linkCheckout, setLinkCheckout] = useState('');
+  const [urlPage, setUrlPage]         = useState('');
+  const [dominioId, setDominioId]     = useState('');
   const [notas, setNotas]             = useState('');
   const [ativo, setAtivo]             = useState(true);
-  const [selectedSubofertas, setSelectedSubofertas] = useState<{ id: string; preco: string }[]>([]);
+  const [subofertas, setSubofertas]   = useState<SubItem[]>([]);
 
   useEffect(() => {
     if (!open) return;
     setNome(funil?.nome ?? '');
     setOfertaId(funil?.oferta_id ?? '');
     setMetodo(funil?.metodo ?? '');
-    setStatus((funil?.status ?? 'ativo') as 'ativo' | 'pausado' | 'arquivado');
+    setStatus((funil?.status ?? 'ativo') as typeof status);
     setPreco(funil?.preco != null ? String(funil.preco) : '');
     setLinkCheckout(funil?.link_checkout ?? '');
+    setUrlPage(funil?.url_page ?? '');
     setNotas(funil?.notas ?? '');
     setAtivo(funil?.ativo ?? true);
-    if (funil) {
-      setSelectedSubofertas(
-        funilSubofertas
-          .filter(fs => fs.funil_id === funil.id)
-          .map(fs => ({ id: fs.oferta_id, preco: fs.preco != null ? String(fs.preco) : '' })),
-      );
-    } else {
-      setSelectedSubofertas([]);
-    }
-  }, [open, funil, funilSubofertas]);
+    setConfirmDelete(false);
 
-  function toggleSuboferta(id: string) {
-    setSelectedSubofertas(prev => {
-      const exists = prev.find(s => s.id === id);
-      return exists ? prev.filter(s => s.id !== id) : [...prev, { id, preco: '' }];
-    });
+    const dominioAtual = dominios.find(d => d.funil_id === funil?.id);
+    setDominioId(dominioAtual?.id ?? '');
+
+    setSubofertas(
+      funil
+        ? funilSubofertas
+            .filter(fs => fs.funil_id === funil.id)
+            .map(fs => ({
+              id:    fs.id,
+              nome:  fs.nome ?? '',
+              tipo:  (fs.tipo ?? 'upsell') as 'upsell' | 'orderbump',
+              preco: fs.preco != null ? formatPreco(String(fs.preco)) : '',
+              link:  fs.link ?? '',
+            }))
+        : [],
+    );
+  }, [open, funil, funilSubofertas, dominios]);
+
+  function addSub(tipo: 'upsell' | 'orderbump') {
+    setSubofertas(prev => [...prev, { nome: '', tipo, preco: '', link: '' }]);
   }
 
-  function setSubofertaPreco(id: string, valor: string) {
-    setSelectedSubofertas(prev => prev.map(s => s.id === id ? { ...s, preco: valor } : s));
+  function removeSub(idx: number) {
+    setSubofertas(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateSub(idx: number, field: keyof SubItem, value: string) {
+    setSubofertas(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   }
 
   async function handleSave() {
@@ -84,10 +103,11 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
     const payload: Record<string, unknown> = {
       nome:          nome.trim(),
       oferta_id:     ofertaId || null,
-      metodo:        metodo.trim() || null,
+      metodo:        metodo || null,
       status,
       preco:         preco ? parseFloat(preco.replace(',', '.')) : null,
       link_checkout: linkCheckout.trim() || null,
+      url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
       ativo:         status === 'arquivado' ? false : ativo,
     };
@@ -111,15 +131,25 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
 
     // Sync subofertas
     await supabase.from('funil_subofertas').delete().eq('funil_id', funilId);
-    if (selectedSubofertas.length > 0) {
+    if (subofertas.length > 0) {
       await supabase.from('funil_subofertas').insert(
-        selectedSubofertas.map(s => ({
+        subofertas.map(s => ({
           funil_id: funilId,
-          oferta_id: s.id,
-          preco: s.preco ? parseFloat(s.preco.replace(',', '.')) : null,
+          oferta_id: null,
+          nome:     s.nome.trim() || null,
+          tipo:     s.tipo,
+          preco:    s.preco ? parseFloat(s.preco.replace(',', '.')) : null,
+          link:     s.link.trim() || null,
         })),
       );
     }
+
+    // Sync domínio
+    if (funil) {
+      const prev = dominios.find(d => d.funil_id === funil.id && d.id !== dominioId);
+      if (prev) await supabase.from('dominios').update({ funil_id: null }).eq('id', prev.id);
+    }
+    if (dominioId) await supabase.from('dominios').update({ funil_id: funilId }).eq('id', dominioId);
 
     setSaving(false);
     toast({ title: funil ? 'Funil atualizado' : 'Funil criado' });
@@ -127,9 +157,99 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
     onClose();
   }
 
-  const upsells    = subOfertas.filter(o => o.tipo === 'upsell');
-  const orderbumps = subOfertas.filter(o => o.tipo === 'orderbump');
-  const subofertaMap = Object.fromEntries(subOfertas.map(o => [o.id, o]));
+  async function handleDelete() {
+    if (!funil) return;
+    setSaving(true);
+    await supabase.from('funil_subofertas').delete().eq('funil_id', funil.id);
+    const { error } = await supabase.from('funis').delete().eq('id', funil.id);
+    setSaving(false);
+    if (error) {
+      toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Funil excluído' });
+    onSaved();
+    onClose();
+  }
+
+  const allMetodos = [...new Set([...METODOS_BASE, ...metodos])].sort();
+  const dominiosDisponiveis = dominios.filter(d => !d.funil_id || d.funil_id === funil?.id);
+
+  const upsells    = subofertas.filter(s => s.tipo === 'upsell');
+  const orderbumps = subofertas.filter(s => s.tipo === 'orderbump');
+
+  function SubList({ tipo }: { tipo: 'upsell' | 'orderbump' }) {
+    const isUp = tipo === 'upsell';
+    const items = subofertas
+      .map((s, idx) => ({ s, idx }))
+      .filter(({ s }) => s.tipo === tipo);
+    const accentCls = isUp
+      ? 'border-violet-500/30 bg-violet-500/5'
+      : 'border-blue-500/30 bg-blue-500/5';
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <Label className="text-xs">{isUp ? 'Upsells' : 'Order Bumps'}</Label>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground px-2"
+            onClick={() => addSub(tipo)}
+          >
+            <Plus className="h-3 w-3" />
+            Adicionar
+          </Button>
+        </div>
+        {items.length === 0 ? (
+          <p className="text-xs text-muted-foreground/60 italic px-0.5">Nenhum cadastrado</p>
+        ) : (
+          <div className="space-y-2">
+            {items.map(({ s, idx }) => (
+              <div key={idx} className={cn('rounded-lg border p-2.5 space-y-2', accentCls)}>
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="flex-1 h-7 text-sm"
+                    placeholder={isUp ? 'Nome do upsell...' : 'Nome do order bump...'}
+                    value={s.nome}
+                    onChange={e => updateSub(idx, 'nome', e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSub(idx)}
+                    className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className={cn('grid gap-2', isUp ? 'grid-cols-2' : 'grid-cols-1')}>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground shrink-0">R$</span>
+                    <Input
+                      className="h-7 text-sm"
+                      placeholder="0,00"
+                      value={s.preco}
+                      onChange={e => updateSub(idx, 'preco', e.target.value)}
+                      onBlur={() => updateSub(idx, 'preco', s.preco ? formatPreco(s.preco) : s.preco)}
+                    />
+                  </div>
+                  {isUp && (
+                    <Input
+                      className="h-7 text-sm"
+                      placeholder="Link checkout..."
+                      value={s.link}
+                      onChange={e => updateSub(idx, 'link', e.target.value)}
+                    />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -139,6 +259,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
         </DialogHeader>
 
         <div className="space-y-4 py-1">
+          {/* Nome */}
           <div>
             <Label>Nome do funil *</Label>
             <Input
@@ -149,6 +270,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
             />
           </div>
 
+          {/* Projeto + Método */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Projeto</Label>
@@ -167,14 +289,19 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
             <div>
               <Label>Método de venda</Label>
               <Input
+                list="metodos-datalist"
                 className="mt-1 h-8 text-sm"
-                placeholder="VSL, TSL, Carta, Webinar..."
+                placeholder="TSL, VSL, QUIZ..."
                 value={metodo}
                 onChange={e => setMetodo(e.target.value)}
               />
+              <datalist id="metodos-datalist">
+                {allMetodos.map(m => <option key={m} value={m} />)}
+              </datalist>
             </div>
           </div>
 
+          {/* Status + Preço */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Status</Label>
@@ -197,110 +324,56 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
                 placeholder="197,00"
                 value={preco}
                 onChange={e => setPreco(e.target.value)}
+                onBlur={() => setPreco(v => v ? formatPreco(v) : v)}
               />
             </div>
           </div>
 
+          {/* Domínio */}
           <div>
-            <Label>Link de checkout</Label>
-            <Input
-              className="mt-1 h-8 text-sm"
-              placeholder="https://..."
-              value={linkCheckout}
-              onChange={e => setLinkCheckout(e.target.value)}
-            />
+            <Label>Domínio</Label>
+            <Select value={dominioId} onValueChange={setDominioId}>
+              <SelectTrigger className="mt-1 h-8 text-sm">
+                <SelectValue placeholder="Selecionar domínio..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none_">Sem domínio</SelectItem>
+                {dominiosDisponiveis.map(d => (
+                  <SelectItem key={d.id} value={d.id}>{d.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* URLs */}
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <Label>URL da landing page</Label>
+              <Input
+                className="mt-1 h-8 text-sm"
+                placeholder="https://..."
+                value={urlPage}
+                onChange={e => setUrlPage(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Link de checkout</Label>
+              <Input
+                className="mt-1 h-8 text-sm"
+                placeholder="https://..."
+                value={linkCheckout}
+                onChange={e => setLinkCheckout(e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Upsells */}
-          {upsells.length > 0 && (
-            <div>
-              <Label className="mb-2 block">Upsells neste funil</Label>
-              <div className="flex flex-wrap gap-2">
-                {upsells.map(o => {
-                  const sel = selectedSubofertas.some(s => s.id === o.id);
-                  return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => toggleSuboferta(o.id)}
-                      className={cn(
-                        'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
-                        sel
-                          ? 'bg-violet-500/20 border-violet-500/50 text-violet-300'
-                          : 'border-border text-muted-foreground hover:border-violet-500/40',
-                      )}
-                    >
-                      {sel && <X className="h-2.5 w-2.5" />}
-                      {o.nome}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <SubList tipo="upsell" />
 
           {/* Order Bumps */}
-          {orderbumps.length > 0 && (
-            <div>
-              <Label className="mb-2 block">Order Bumps neste funil</Label>
-              <div className="flex flex-wrap gap-2">
-                {orderbumps.map(o => {
-                  const sel = selectedSubofertas.some(s => s.id === o.id);
-                  return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => toggleSuboferta(o.id)}
-                      className={cn(
-                        'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
-                        sel
-                          ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
-                          : 'border-border text-muted-foreground hover:border-blue-500/40',
-                      )}
-                    >
-                      {sel && <X className="h-2.5 w-2.5" />}
-                      {o.nome}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <SubList tipo="orderbump" />
 
-          {/* Preços dos selecionados */}
-          {selectedSubofertas.length > 0 && (
-            <div>
-              <Label className="mb-2 block text-muted-foreground text-xs">Preços neste funil</Label>
-              <div className="space-y-2">
-                {selectedSubofertas.map(s => {
-                  const oferta = subofertaMap[s.id];
-                  if (!oferta) return null;
-                  return (
-                    <div key={s.id} className="flex items-center gap-2">
-                      <span className={cn(
-                        'text-xs px-2 py-0.5 rounded-full border font-medium shrink-0',
-                        oferta.tipo === 'upsell'
-                          ? 'border-violet-500/30 text-violet-400 bg-violet-500/10'
-                          : 'border-blue-500/30 text-blue-400 bg-blue-500/10',
-                      )}>
-                        {oferta.tipo === 'upsell' ? '↑' : '●'} {oferta.nome}
-                      </span>
-                      <div className="flex items-center gap-1 ml-auto">
-                        <span className="text-xs text-muted-foreground">R$</span>
-                        <Input
-                          className="h-7 w-28 text-sm"
-                          placeholder="0,00"
-                          value={s.preco}
-                          onChange={e => setSubofertaPreco(s.id, e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
+          {/* Notas */}
           <div>
             <Label>Notas</Label>
             <Textarea
@@ -311,17 +384,38 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, subOfertas
             />
           </div>
 
+          {/* Toggle visibilidade */}
           {status !== 'arquivado' && (
             <div className="flex items-center gap-2">
               <Switch id="funil-ativo" checked={ativo} onCheckedChange={setAtivo} />
               <label htmlFor="funil-ativo" className="text-sm cursor-pointer select-none">
-                Visível no filtro do dashboard
+                Aparece no seletor de funis (barra lateral)
               </label>
             </div>
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
+          {funil && (
+            confirmDelete ? (
+              <div className="flex items-center gap-2 mr-auto">
+                <span className="text-xs text-destructive">Confirmar exclusão?</span>
+                <Button variant="destructive" size="sm" onClick={handleDelete} disabled={saving}>Excluir</Button>
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)} disabled={saving}>Cancelar</Button>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-auto text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmDelete(true)}
+                disabled={saving}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Excluir funil
+              </Button>
+            )
+          )}
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? 'Salvando...' : funil ? 'Salvar' : 'Criar'}

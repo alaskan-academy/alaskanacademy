@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { Funil, Projeto, SubOferta, FunilSuboferta, Dominio, TesteFunil, PerfilSimples, getStatusDisplay } from '../types';
+import { Funil, Projeto, FunilSuboferta, Dominio, TesteFunil, PerfilSimples, getStatusDisplay } from '../types';
 import { AlertaBanner } from '../components/AlertaBanner';
 import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
@@ -15,7 +15,6 @@ type Tab = 'funis' | 'esteira' | 'testes' | 'concluidos' | 'dominios';
 interface State {
   funis: Funil[];
   projetos: Projeto[];
-  subOfertas: SubOferta[];
   funilSubofertas: FunilSuboferta[];
   dominios: Dominio[];
   testes: TesteFunil[];
@@ -34,15 +33,14 @@ const TABS: { key: Tab; label: string }[] = [
 export default function FunisPage() {
   const [activeTab, setActiveTab] = useState<Tab>('funis');
   const [state, setState] = useState<State>({
-    funis: [], projetos: [], subOfertas: [], funilSubofertas: [],
+    funis: [], projetos: [], funilSubofertas: [],
     dominios: [], testes: [], perfis: [], loading: true,
   });
 
   const load = useCallback(async () => {
-    const [f, p, s, fs, d, t, pf] = await Promise.all([
+    const [f, p, fs, d, t, pf] = await Promise.all([
       supabase.from('funis').select('*').order('nome'),
       supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').order('nome'),
-      supabase.from('ofertas').select('id,nome,tipo').order('nome'),
       supabase.from('funil_subofertas').select('*'),
       supabase.from('dominios').select('*').order('nome'),
       supabase.from('testes_funis').select('*').order('created_at', { ascending: false }),
@@ -51,7 +49,6 @@ export default function FunisPage() {
     setState({
       funis:           (f.data ?? []) as Funil[],
       projetos:        (p.data ?? []) as Projeto[],
-      subOfertas:      (s.data ?? []) as SubOferta[],
       funilSubofertas: (fs.data ?? []) as FunilSuboferta[],
       dominios:        (d.data ?? []) as Dominio[],
       testes:          (t.data ?? []) as TesteFunil[],
@@ -142,7 +139,6 @@ export default function FunisPage() {
             <FunisTab
               funis={state.funis}
               projetos={state.projetos}
-              subOfertas={state.subOfertas}
               funilSubofertas={state.funilSubofertas}
               dominios={state.dominios}
               testes={state.testes}

@@ -5,18 +5,17 @@ import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
 import {
   ChevronDown, ChevronRight, ExternalLink, Plus, Pencil,
-  Globe, ShoppingBag, ArrowUpCircle, FlaskConical,
+  Globe, ShoppingBag, FlaskConical,
 } from 'lucide-react';
 import { FunilModal } from './FunilModal';
 import {
-  Funil, Projeto, SubOferta, FunilSuboferta, Dominio, TesteFunil,
+  Funil, Projeto, FunilSuboferta, Dominio, TesteFunil,
   getStatusDisplay, StatusDisplay,
 } from '../types';
 
 interface Props {
   funis: Funil[];
   projetos: Projeto[];
-  subOfertas: SubOferta[];
   funilSubofertas: FunilSuboferta[];
   dominios: Dominio[];
   testes: TesteFunil[];
@@ -52,7 +51,8 @@ function StatusBadge({ status }: { status: StatusDisplay }) {
   );
 }
 
-export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominios, testes, onReload }: Props) {
+export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
+  const metodos = [...new Set(funis.map(f => f.metodo).filter(Boolean))] as string[];
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
@@ -82,9 +82,7 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
     setModalOpen(true);
   }
 
-  // Group funis by projeto
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
-  const subofertaMap = Object.fromEntries(subOfertas.map(o => [o.id, o]));
 
   type Group = { projeto: Projeto | null; funis: Funil[] };
   const groups: Group[] = [];
@@ -124,8 +122,11 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
           onSaved={() => { setModalOpen(false); onReload(); }}
           funil={null}
           projetos={projetos}
-          subOfertas={subOfertas}
+
           funilSubofertas={funilSubofertas}
+          dominios={dominios}
+          metodos={metodos}
+
         />
       </div>
     );
@@ -179,13 +180,7 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
                 const funilDominios = dominios.filter(d => d.funil_id === funil.id);
                 const funilTestes = testes.filter(t => t.funil_id === funil.id);
                 const testesAtivos = funilTestes.filter(t => !t.data_fim);
-                const mySubofertas = funilSubofertas
-                  .filter(fs => fs.funil_id === funil.id)
-                  .map(fs => {
-                    const oferta = subofertaMap[fs.oferta_id];
-                    return oferta ? { ...oferta, preco: fs.preco } : null;
-                  })
-                  .filter(Boolean) as (SubOferta & { preco: number | null })[];
+                const mySubofertas = funilSubofertas.filter(fs => fs.funil_id === funil.id);
                 const isHighlighted = statusDisplay === 'em_teste';
                 const isPausadoAnalise = statusDisplay === 'pausado_analise';
 
@@ -277,19 +272,19 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
                               Upsells & Order Bumps
                             </p>
                             <div className="flex flex-wrap gap-1.5">
-                              {mySubofertas.map(o => (
+                              {mySubofertas.map(fs => (
                                 <Badge
-                                  key={o.id}
+                                  key={fs.id}
                                   className={cn(
                                     'text-[10px] font-medium border-0 gap-1',
-                                    o.tipo === 'upsell'
+                                    fs.tipo === 'upsell'
                                       ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
                                       : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                                   )}
                                 >
-                                  {o.tipo === 'upsell' ? '↑' : '●'} {o.nome}
-                                  {o.preco != null && (
-                                    <span className="opacity-60 font-mono">{formatCurrency(o.preco)}</span>
+                                  {fs.tipo === 'upsell' ? '↑' : '●'} {fs.nome ?? '—'}
+                                  {fs.preco != null && (
+                                    <span className="opacity-60 font-mono">{formatCurrency(fs.preco)}</span>
                                   )}
                                 </Badge>
                               ))}
@@ -364,8 +359,8 @@ export function FunisTab({ funis, projetos, subOfertas, funilSubofertas, dominio
         onSaved={() => { setModalOpen(false); onReload(); }}
         funil={editFunil}
         projetos={projetos}
-        subOfertas={subOfertas}
         funilSubofertas={funilSubofertas}
+        dominios={dominios}
       />
     </div>
   );

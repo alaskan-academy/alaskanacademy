@@ -84,13 +84,17 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
         supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
         supabase.from('perfis').select('id,nome,setor:setores(nome)').eq('ativo', true).order('nome'),
-      ]).then(([{ data: fs }, { data: ps }, { data: pj }, { data: op }, { data: edData }]) => {
+        supabase.from('funis').select('metodo').not('metodo', 'is', null),
+      ]).then(([{ data: fs }, { data: ps }, { data: pj }, { data: op }, { data: edData }, { data: funisMet }]) => {
         if (fs && !funisProp)  setInternalFunis(fs as Funil[]);
         if (ps && !perfisProp) setInternalPerfis(ps as Perfil[]);
+        if (funisMet) {
+          const metodos = [...new Set((funisMet as { metodo: string }[]).map(f => f.metodo).filter(Boolean))].sort();
+          if (metodos.length) setOpFunilVideo(metodos);
+        }
         if (pj) setProjetos(pj as OfertaEditorOption[]);
         if (op) {
           const by = (campo: string) => op.filter(d => d.campo === campo).map(d => d.valor as string);
-          const fv = by('funil_video'); if (fv.length) setOpFunilVideo(fv);
           const fm = by('formato');     if (fm.length) setOpFormato(fm);
           const pl = by('plataforma');  if (pl.length) setOpPlataforma(pl);
           const tt = by('tipo_teste');  if (tt.length) setOpTipoTeste(tt);

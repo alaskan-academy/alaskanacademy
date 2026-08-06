@@ -20,6 +20,7 @@ export interface Funil {
   oferta_id: string | null;
   preco: number | null;
   link_checkout: string | null;
+  url_page: string | null;
   metodo: string | null;
   notas: string | null;
   criado_em: string | null;
@@ -34,8 +35,11 @@ export interface PerfilSimples {
 export interface FunilSuboferta {
   id: string;
   funil_id: string;
-  oferta_id: string;
+  oferta_id: string | null;
+  nome: string | null;
+  tipo: string | null;
   preco: number | null;
+  link: string | null;
 }
 
 export interface Dominio {

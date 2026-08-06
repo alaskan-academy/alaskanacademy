@@ -80,24 +80,27 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [novaResposta, setNovaResposta]     = useState('');
 
   const loadOpcoes = useCallback(async () => {
-    const [{ data }, pj] = await Promise.all([
+    const [{ data }, pj, funisMet] = await Promise.all([
       supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
       fetchProjetos(),
+      supabase.from('funis').select('metodo').not('metodo', 'is', null),
     ]);
+    if (funisMet.data) {
+      const metodos = [...new Set(funisMet.data.map(f => f.metodo as string).filter(Boolean))].sort();
+      if (metodos.length) setOpFunilVideo(metodos);
+    }
     if (data) {
       const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
       const fmt = byField('formato');
       const plt = byField('plataforma');
       const tst = byField('tipo_teste');
       const niv = byField('nivel_consciencia');
-      const fv  = byField('funil_video');
       const sv  = byField('status_veiculacao');
       const av  = byField('avaliacao');
       if (fmt.length)  setOpFormato(fmt);
       if (plt.length)  setOpPlataforma(plt);
       if (tst.length)  setOpTipoTeste(tst);
       if (niv.length)  setOpNivelConsciencia(niv);
-      if (fv.length)   setOpFunilVideo(fv);
       if (sv.length)   setOpStatusVeiculacao(sv);
       if (av.length)   setOpAvaliacao(av);
     }
@@ -584,7 +587,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                       ))}
                     </PopoverContent>
                   </Popover>
-                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="funil_video" label="Funil de Vendas" onAtualizar={loadOpcoes} />}
                 </div>
               ) : (
                 <span>
