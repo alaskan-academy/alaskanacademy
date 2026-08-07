@@ -255,29 +255,30 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       );
     }
 
-    // Sync domínio — remove funil do domínio anterior e adiciona ao novo
+    // Sync domínio — busca valores frescos do banco para evitar sobrescrever outros funis
     if (funil) {
-      const prevDom = dominios.find(d =>
+      // Remove funil do domínio anterior (lê do banco para não sobrescrever)
+      const prevDomId = dominios.find(d =>
         (d.funil_ids ?? []).includes(funil.id) && d.id !== dominioId,
-      );
-      if (prevDom) {
-        const newIds = (prevDom.funil_ids ?? []).filter(id => id !== funil.id);
-        await supabase.from('dominios').update({
-          funil_id: newIds[0] ?? null,
-          funil_ids: newIds,
-        }).eq('id', prevDom.id);
+      )?.id;
+      if (prevDomId) {
+        const { data: fresh } = await supabase.from('dominios').select('funil_ids').eq('id', prevDomId).single();
+        const newIds = (fresh?.funil_ids ?? []).filter((id: string) => id !== funil.id);
+        await supabase.from('dominios').update({ funil_id: newIds[0] ?? null, funil_ids: newIds }).eq('id', prevDomId);
       }
     }
     if (dominioId && funilId) {
-      const dom = dominios.find(d => d.id === dominioId);
-      const newIds = [...new Set([...(dom?.funil_ids ?? []), funilId])];
+      // Lê valor atual do banco antes de fazer append para não sobrescrever outros funis
+      const { data: fresh } = await supabase.from('dominios').select('funil_ids').eq('id', dominioId).single();
+      const newIds = [...new Set([...(fresh?.funil_ids ?? []), funilId])];
       await supabase.from('dominios').update({ funil_id: funilId, funil_ids: newIds }).eq('id', dominioId);
     } else if (!dominioId && funil) {
-      // Funil removeu o domínio: garante que está fora de todos os arrays
-      const linked = dominios.filter(d => (d.funil_ids ?? []).includes(funil.id));
-      for (const dom of linked) {
-        const newIds = (dom.funil_ids ?? []).filter(id => id !== funil.id);
-        await supabase.from('dominios').update({ funil_id: newIds[0] ?? null, funil_ids: newIds }).eq('id', dom.id);
+      // Funil removeu o domínio: remove de todos os arrays onde aparece
+      const linkedIds = dominios.filter(d => (d.funil_ids ?? []).includes(funil.id)).map(d => d.id);
+      for (const domId of linkedIds) {
+        const { data: fresh } = await supabase.from('dominios').select('funil_ids').eq('id', domId).single();
+        const newIds = (fresh?.funil_ids ?? []).filter((id: string) => id !== funil.id);
+        await supabase.from('dominios').update({ funil_id: newIds[0] ?? null, funil_ids: newIds }).eq('id', domId);
       }
     }
 
