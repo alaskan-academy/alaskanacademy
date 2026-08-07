@@ -129,7 +129,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
 
   const [nome, setNome]           = useState('');
   const [ofertaId, setOfertaId]   = useState('');
-  const [status, setStatus]       = useState<'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
+  const [status, setStatus]       = useState<'planejado' | 'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
   const [urlPage, setUrlPage]     = useState('');
   const [dominioId, setDominioId] = useState('');
   const [notas, setNotas]         = useState('');
@@ -327,6 +327,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="planejado">Em planejamento</SelectItem>
                   <SelectItem value="ativo">Ativo</SelectItem>
                   <SelectItem value="pausado">Pausado</SelectItem>
                   <SelectItem value="pausado_analise">Pausado p/ análise</SelectItem>

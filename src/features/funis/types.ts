@@ -16,7 +16,7 @@ export interface Funil {
   nome: string;
   produto: string | null;
   ativo: boolean;
-  status: 'ativo' | 'pausado' | 'pausado_analise' | 'arquivado';
+  status: 'planejado' | 'ativo' | 'pausado' | 'pausado_analise' | 'arquivado';
   oferta_id: string | null;
   preco: number | null;
   link_checkout: string | null;
@@ -91,7 +91,7 @@ export interface TesteFunil {
   criado_por: string | null;
 }
 
-export type StatusDisplay = 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';
+export type StatusDisplay = 'planejado' | 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';
 
 export function getStatusDisplay(funil: Funil, testes: TesteFunil[]): StatusDisplay {
   const emTeste = testes.some(
@@ -100,6 +100,7 @@ export function getStatusDisplay(funil: Funil, testes: TesteFunil[]): StatusDisp
   if (emTeste) return 'em_teste';
   return (funil.status ?? 'ativo') as StatusDisplay;
 }
+
 
 export function daysUntilExpiry(vencimento: string | null): number | null {
   if (!vencimento) return null;
