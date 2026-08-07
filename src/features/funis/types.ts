@@ -95,7 +95,7 @@ export type StatusDisplay = 'planejado' | 'ativo' | 'em_teste' | 'pausado' | 'pa
 
 export function getStatusDisplay(funil: Funil, testes: TesteFunil[]): StatusDisplay {
   const emTeste = testes.some(
-    t => t.funil_id === funil.id && t.tipo === 'funil_novo' && !t.data_fim,
+    t => t.funil_id === funil.id && t.tipo === 'funil_novo' && t.pipeline_status === 'rodando',
   );
   if (emTeste) return 'em_teste';
   return (funil.status ?? 'ativo') as StatusDisplay;
