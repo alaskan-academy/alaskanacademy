@@ -347,6 +347,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
         onSaved={() => { setModalOpen(false); onReload(); }}
         teste={editTeste}
         funis={funis}
+        projetos={projetos}
         presetFunilId={presetFunilId}
         presetPipelineStatus={presetStatus}
       />

@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { TesteFunil, Funil, PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest } from '../types';
+import { TesteFunil, Funil, Projeto, PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest } from '../types';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -20,6 +20,7 @@ interface Props {
   onSaved: () => void;
   teste?: TesteFunil | null;
   funis: Funil[];
+  projetos?: Projeto[];
   presetFunilId?: string;
   presetPipelineStatus?: PipelineStatus;
 }
@@ -147,7 +148,8 @@ async function syncToRadar(opts: {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId, presetPipelineStatus }: Props) {
+export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = [], presetFunilId, presetPipelineStatus }: Props) {
+  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
@@ -352,23 +354,29 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
                 </PopoverTrigger>
                 <PopoverContent className="w-64 p-2" align="start">
                   <div className="max-h-52 overflow-y-auto space-y-0.5">
-                    {funis.map(f => (
-                      <div
-                        key={f.id}
-                        className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
-                        onClick={() => setFunilIds(prev =>
-                          prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
-                        )}
-                      >
-                        <Checkbox
-                          checked={funilIds.includes(f.id)}
-                          onCheckedChange={() => setFunilIds(prev =>
+                    {funis.map(f => {
+                      const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+                      return (
+                        <div
+                          key={f.id}
+                          className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => setFunilIds(prev =>
                             prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
                           )}
-                        />
-                        <span className="text-xs">{f.nome}</span>
-                      </div>
-                    ))}
+                        >
+                          <Checkbox
+                            checked={funilIds.includes(f.id)}
+                            onCheckedChange={() => setFunilIds(prev =>
+                              prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
+                            )}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs truncate">{f.nome}</p>
+                            {proj && <p className="text-[10px] text-muted-foreground truncate">{proj.nome}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </PopoverContent>
               </Popover>

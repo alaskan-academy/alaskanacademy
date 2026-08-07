@@ -301,6 +301,7 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
         onSaved={() => { setModalOpen(false); onReload(); }}
         teste={editTeste}
         funis={funis}
+        projetos={projetos}
         presetPipelineStatus="concluido"
       />
     </div>

@@ -201,6 +201,7 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
         onSaved={() => { setModalOpen(false); onReload(); }}
         teste={editTeste}
         funis={funis}
+        projetos={projetos}
         presetPipelineStatus="rodando"
       />
     </div>

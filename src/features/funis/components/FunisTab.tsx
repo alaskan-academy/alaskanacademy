@@ -406,6 +406,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
         onSaved={() => { setTesteModalOpen(false); onReload(); }}
         teste={editTeste}
         funis={funis}
+        projetos={projetos}
       />
     </div>
   );
