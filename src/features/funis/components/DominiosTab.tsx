@@ -41,7 +41,8 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
   const [editDominio, setEditDominio] = useState<Dominio | null>(null);
   const [modalKey, setModalKey] = useState(0);
 
-  const funilMap = Object.fromEntries(funis.map(f => [f.id, f]));
+  const funilMap   = Object.fromEntries(funis.map(f => [f.id, f]));
+  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
   const filtered = dominios.filter(d => {
     if (filterAtivo === 'ativo' && !d.ativo) return false;
@@ -154,7 +155,16 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
                     <td className="py-2.5 pr-4">
                       {activeFunis.length > 0 ? (
                         <span className="text-xs text-foreground">
-                          {activeFunis.map(f => f.nome).join(', ')}
+                          {activeFunis.map((f, i) => {
+                            const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+                            return (
+                              <span key={f.id}>
+                                {i > 0 && <span className="text-muted-foreground">, </span>}
+                                {f.nome}
+                                {proj && <span className="text-muted-foreground"> · {proj.nome}</span>}
+                              </span>
+                            );
+                          })}
                           {inactiveCount > 0 && (
                             <span className="ml-1.5 text-muted-foreground">
                               +{inactiveCount} inativo{inactiveCount > 1 ? 's' : ''}
