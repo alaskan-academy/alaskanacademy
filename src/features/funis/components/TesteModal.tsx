@@ -402,29 +402,6 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-4">
               <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wide">Resultado do teste</p>
 
-              {!isAd && (
-                <div>
-                  <Label className="mb-2 block">Vencedor</Label>
-                  <div className="flex gap-2">
-                    {VENCEDORES.map(v => (
-                      <button
-                        key={v.value}
-                        type="button"
-                        onClick={() => setVencedor(prev => prev === v.value ? '' : v.value)}
-                        className={cn(
-                          'flex-1 px-2 py-1.5 rounded border text-xs font-medium transition-colors',
-                          vencedor === v.value
-                            ? 'border-emerald-500 bg-emerald-500/15 text-emerald-400'
-                            : 'border-border text-muted-foreground hover:border-emerald-500/40',
-                        )}
-                      >
-                        {v.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="flex items-center gap-3">
                 <Switch id="teste-validado-concluido" checked={validado} onCheckedChange={setValidado} />
                 <label htmlFor="teste-validado-concluido" className="text-sm cursor-pointer select-none">
