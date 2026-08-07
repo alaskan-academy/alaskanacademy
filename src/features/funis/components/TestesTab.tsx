@@ -31,8 +31,9 @@ function diasRodando(d: string | null) {
 }
 
 export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) {
-  const perfilMap = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
-  const funilMap  = Object.fromEntries(funis.map(f => [f.id, f]));
+  const perfilMap  = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
+  const funilMap   = Object.fromEntries(funis.map(f => [f.id, f]));
+  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
   const [filterFunil, setFilterFunil] = useState('todos');
   const [filterTipo, setFilterTipo]   = useState('todos');
@@ -111,6 +112,7 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
         <div className="space-y-2">
           {rodando.map(t => {
             const funisTeste = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+            const projetos = [...new Set(funisTeste.map(f => f.oferta_id).filter(Boolean))].map(id => projetoMap[id!]).filter(Boolean);
             const tipoCfg = TIPO_CONFIG[t.tipo];
             const isMoving = moving === t.id;
 
@@ -130,6 +132,12 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
                   <p className="text-sm font-medium truncate">{t.titulo}</p>
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
                     {funisTeste.length > 0 && <span className="truncate">{funisTeste.map(f => f.nome).join(', ')}</span>}
+                    {projetos.length > 0 && (
+                      <>
+                        <span>·</span>
+                        <span className="truncate">{projetos.map(p => p.nome).join(', ')}</span>
+                      </>
+                    )}
                     {t.data_inicio && (
                       <>
                         <span>·</span>
