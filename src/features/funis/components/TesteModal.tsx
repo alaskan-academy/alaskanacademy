@@ -153,6 +153,9 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [actioning, setActioning]         = useState(false);
+
   const [funilIds, setFunilIds]       = useState<string[]>([]);
   const [titulo, setTitulo]           = useState('');
   const [tipo, setTipo]               = useState<'funil_novo' | 'ab_interno' | 'ad'>('ab_interno');
@@ -210,6 +213,24 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
     setLinkAd(teste?.link_ad ?? '');
     setComentarioAd(teste?.comentario_ad ?? '');
   }, [open, teste, presetFunilId, presetPipelineStatus]);
+
+  async function handleDelete() {
+    if (!teste) return;
+    setActioning(true);
+    const { error } = await supabase.from('testes_funis').delete().eq('id', teste.id);
+    setActioning(false);
+    if (error) toast({ title: 'Erro ao excluir', description: error.message, variant: 'destructive' });
+    else { toast({ title: 'Teste excluído' }); onSaved(); onClose(); }
+  }
+
+  async function handleArchive() {
+    if (!teste) return;
+    setActioning(true);
+    const { error } = await supabase.from('testes_funis').update({ arquivado: true }).eq('id', teste.id);
+    setActioning(false);
+    if (error) toast({ title: 'Erro ao arquivar', description: error.message, variant: 'destructive' });
+    else { toast({ title: 'Teste arquivado' }); onSaved(); onClose(); }
+  }
 
   async function handleSave() {
     if (tipo !== 'ad' && funilIds.length === 0) {
@@ -681,9 +702,57 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
 
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>
+        <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
+          {teste && !confirmDelete && (
+            <div className="flex gap-2 mr-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                disabled={actioning || saving}
+                onClick={() => handleArchive()}
+              >
+                Arquivar
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                disabled={actioning || saving}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Excluir
+              </Button>
+            </div>
+          )}
+
+          {teste && confirmDelete && (
+            <div className="flex items-center gap-2 mr-auto">
+              <span className="text-sm text-muted-foreground">Excluir permanentemente?</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={actioning}
+                onClick={handleDelete}
+              >
+                {actioning ? 'Excluindo...' : 'Sim, excluir'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmDelete(false)}
+              >
+                Não
+              </Button>
+            </div>
+          )}
+
+          <Button variant="outline" onClick={onClose} disabled={saving || actioning}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving || actioning}>
             {saving ? 'Salvando...' : teste ? 'Salvar' : 'Registrar'}
           </Button>
         </DialogFooter>

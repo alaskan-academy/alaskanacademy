@@ -89,6 +89,7 @@ export interface TesteFunil {
   // Sync Radar
   radar_teste_id: string | null;
   criado_por: string | null;
+  arquivado: boolean;
 }
 
 export type StatusDisplay = 'planejado' | 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';

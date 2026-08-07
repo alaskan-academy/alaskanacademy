@@ -43,7 +43,7 @@ export default function FunisPage() {
       supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').order('nome'),
       supabase.from('funil_subofertas').select('*'),
       supabase.from('dominios').select('*').order('nome'),
-      supabase.from('testes_funis').select('*').order('created_at', { ascending: false }),
+      supabase.from('testes_funis').select('*').eq('arquivado', false).order('created_at', { ascending: false }),
       supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
     ]);
     setState({
