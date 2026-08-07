@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
+import { ChevronDown, X, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { Dominio, Funil, Projeto } from '../types';
@@ -22,22 +23,41 @@ interface Props {
 export function DominioModal({ open, onClose, onSaved, dominio, funis, projetos }: Props) {
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
   const [saving, setSaving] = useState(false);
-  const [nome, setNome]             = useState('');
-  const [funilId, setFunilId]       = useState('');
-  const [ativo, setAtivo]           = useState(true);
-  const [vencimento, setVencimento] = useState('');
+  const [nome, setNome]               = useState('');
+  const [funilIds, setFunilIds]       = useState<string[]>([]);
+  const [ativo, setAtivo]             = useState(true);
+  const [vencimento, setVencimento]   = useState('');
   const [registrador, setRegistrador] = useState('');
-  const [notas, setNotas]           = useState('');
+  const [notas, setNotas]             = useState('');
+  const [dropOpen, setDropOpen]       = useState(false);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setNome(dominio?.nome ?? '');
-    setFunilId(dominio?.funil_id ?? '');
+    const ids = dominio?.funil_ids?.length
+      ? dominio.funil_ids
+      : dominio?.funil_id ? [dominio.funil_id] : [];
+    setFunilIds(ids);
     setAtivo(dominio?.ativo ?? true);
     setVencimento(dominio?.vencimento ?? '');
     setRegistrador(dominio?.registrador ?? '');
     setNotas(dominio?.notas ?? '');
+    setDropOpen(false);
   }, [open, dominio]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setDropOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+
+  function toggleFunil(id: string) {
+    setFunilIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
 
   async function handleSave() {
     if (!nome.trim()) {
@@ -48,7 +68,8 @@ export function DominioModal({ open, onClose, onSaved, dominio, funis, projetos 
 
     const payload = {
       nome:        nome.trim().toLowerCase(),
-      funil_id:    funilId || null,
+      funil_id:    funilIds[0] ?? null,
+      funil_ids:   funilIds,
       ativo,
       vencimento:  vencimento || null,
       registrador: registrador.trim() || null,
@@ -73,7 +94,8 @@ export function DominioModal({ open, onClose, onSaved, dominio, funis, projetos 
     onClose();
   }
 
-  const funisAtivos = funis.filter(f => f.ativo || f.status !== 'arquivado');
+  const funisAtivos = funis.filter(f => f.ativo && f.status !== 'arquivado');
+  const funilMap    = Object.fromEntries(funis.map(f => [f.id, f]));
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -93,25 +115,67 @@ export function DominioModal({ open, onClose, onSaved, dominio, funis, projetos 
             />
           </div>
 
+          {/* Multiselect funis */}
           <div>
-            <Label>Funil vinculado</Label>
-            <Select value={funilId} onValueChange={setFunilId}>
-              <SelectTrigger className="mt-1 h-8 text-sm">
-                <SelectValue placeholder="Nenhum (domínio independente)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none_">Nenhum (independente)</SelectItem>
-                {funisAtivos.map(f => {
-                  const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
-                  return (
-                    <SelectItem key={f.id} value={f.id}>
-                      <span>{f.nome}</span>
-                      {proj && <span className="ml-1.5 text-muted-foreground text-[11px]">· {proj.nome}</span>}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+            <Label>Funis vinculados</Label>
+            <div className="relative mt-1" ref={dropRef}>
+              <button
+                type="button"
+                onClick={() => setDropOpen(v => !v)}
+                className={cn(
+                  'w-full min-h-[2rem] flex flex-wrap items-center gap-1 px-2 py-1 rounded-md border border-input bg-background text-sm text-left',
+                  'focus:outline-none focus:ring-2 focus:ring-ring',
+                )}
+              >
+                {funilIds.length === 0 ? (
+                  <span className="text-muted-foreground text-xs py-0.5">Nenhum (domínio independente)</span>
+                ) : (
+                  funilIds.map(id => {
+                    const f = funilMap[id];
+                    return f ? (
+                      <span key={id} className="inline-flex items-center gap-0.5 bg-muted rounded px-1.5 py-0.5 text-[11px]">
+                        {f.nome}
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); toggleFunil(id); }}
+                          className="ml-0.5 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ) : null;
+                  })
+                )}
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground ml-auto shrink-0" />
+              </button>
+
+              {dropOpen && (
+                <div className="absolute z-50 mt-1 w-full max-h-52 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
+                  {funisAtivos.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum funil ativo</p>
+                  ) : (
+                    funisAtivos.map(f => {
+                      const proj    = f.oferta_id ? projetoMap[f.oferta_id] : null;
+                      const checked = funilIds.includes(f.id);
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => toggleFunil(f.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 text-left"
+                        >
+                          <span className={cn('h-3.5 w-3.5 rounded-sm border border-input flex items-center justify-center shrink-0', checked && 'bg-primary border-primary')}>
+                            {checked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                          </span>
+                          <span className="flex-1 truncate">{f.nome}</span>
+                          {proj && <span className="text-[11px] text-muted-foreground shrink-0">· {proj.nome}</span>}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
