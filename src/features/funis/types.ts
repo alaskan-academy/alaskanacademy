@@ -62,6 +62,7 @@ export type DificuldadeTest = 'facil' | 'media' | 'dificil';
 export interface TesteFunil {
   id: string;
   funil_id: string | null;
+  funil_ids: string[] | null;
   titulo: string;
   tipo: 'funil_novo' | 'ab_interno' | 'ad';
   variante_a: string | null;

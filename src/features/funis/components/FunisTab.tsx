@@ -186,7 +186,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                 const isOpen = expanded.has(funil.id);
                 const statusDisplay = getStatusDisplay(funil, testes);
                 const funilDominios = dominios.filter(d => d.funil_id === funil.id);
-                const funilTestes = testes.filter(t => t.funil_id === funil.id);
+                const funilTestes = testes.filter(t => t.funil_id === funil.id || t.funil_ids?.includes(funil.id));
                 const testesAtivos = funilTestes.filter(t => !t.data_fim);
                 const mySubofertas = funilSubofertas.filter(fs => fs.funil_id === funil.id);
                 const isHighlighted = statusDisplay === 'em_teste';

@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
@@ -149,7 +151,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
 
-  const [funilId, setFunilId]         = useState('');
+  const [funilIds, setFunilIds]       = useState<string[]>([]);
   const [titulo, setTitulo]           = useState('');
   const [tipo, setTipo]               = useState<'funil_novo' | 'ab_interno' | 'ad'>('ab_interno');
   const [varianteA, setVarianteA]     = useState('');
@@ -178,7 +180,12 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
 
   useEffect(() => {
     if (!open) return;
-    setFunilId(teste?.funil_id ?? presetFunilId ?? '');
+    const ids = teste?.funil_ids?.length
+      ? teste.funil_ids
+      : teste?.funil_id ? [teste.funil_id]
+      : presetFunilId ? [presetFunilId]
+      : [];
+    setFunilIds(ids);
     setTitulo(teste?.titulo ?? '');
     setTipo((teste?.tipo ?? 'ab_interno') as typeof tipo);
     setVarianteA(teste?.variante_a ?? '');
@@ -203,8 +210,8 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
   }, [open, teste, presetFunilId, presetPipelineStatus]);
 
   async function handleSave() {
-    if (tipo !== 'ad' && !funilId) {
-      toast({ title: 'Selecione um funil', variant: 'destructive' });
+    if (tipo !== 'ad' && funilIds.length === 0) {
+      toast({ title: 'Selecione ao menos um funil', variant: 'destructive' });
       return;
     }
     const tituloFinal = tipo === 'ad' ? (nomeAd.trim() || titulo.trim()) : titulo.trim();
@@ -215,7 +222,8 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
     setSaving(true);
 
     const payload = {
-      funil_id:       funilId || null,
+      funil_id:       funilIds[0] || null,
+      funil_ids:      funilIds,
       titulo:         tituloFinal,
       tipo,
       variante_a:     tipo !== 'ad' ? (varianteA.trim() || null) : null,
@@ -257,7 +265,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
       return;
     }
 
-    const funilNome = funis.find(f => f.id === funilId)?.nome ?? '';
+    const funilNome = funis.find(f => f.id === funilIds[0])?.nome ?? '';
     const newRadarId = await syncToRadar({
       funisTesteId,
       radarTesteId: teste?.radar_teste_id ?? null,
@@ -327,17 +335,43 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, presetFunilId
           {/* ── Funil + Etapa ── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Funil *</Label>
-              <Select value={funilId} onValueChange={setFunilId}>
-                <SelectTrigger className="mt-1 h-8 text-sm">
-                  <SelectValue placeholder="Selecionar funil" />
-                </SelectTrigger>
-                <SelectContent>
-                  {funis.map(f => (
-                    <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Funil {!isAd && '*'}</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="mt-1 h-8 text-sm w-full flex items-center px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left min-w-0"
+                  >
+                    {funilIds.length === 0
+                      ? <span className="text-muted-foreground">Selecionar funil...</span>
+                      : funilIds.length === 1
+                        ? <span className="truncate">{funis.find(f => f.id === funilIds[0])?.nome}</span>
+                        : <span className="truncate">{funis.find(f => f.id === funilIds[0])?.nome} <span className="text-muted-foreground">+{funilIds.length - 1}</span></span>
+                    }
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="start">
+                  <div className="max-h-52 overflow-y-auto space-y-0.5">
+                    {funis.map(f => (
+                      <div
+                        key={f.id}
+                        className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                        onClick={() => setFunilIds(prev =>
+                          prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
+                        )}
+                      >
+                        <Checkbox
+                          checked={funilIds.includes(f.id)}
+                          onCheckedChange={() => setFunilIds(prev =>
+                            prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id]
+                          )}
+                        />
+                        <span className="text-xs">{f.nome}</span>
+                      </div>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label>Etapa na esteira</Label>
