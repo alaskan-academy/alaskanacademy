@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { TesteFunil, Funil, Projeto, PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest } from '../types';
 import { cn } from '@/lib/utils';
+import { GerenciarOpcoesPopover } from '@/features/producao/components/GerenciarOpcoesPopover';
 
 interface Props {
   open: boolean;
@@ -44,15 +45,6 @@ const PIPELINE_OPTIONS: { value: PipelineStatus; label: string }[] = [
   { value: 'concluido',  label: '✅ Concluído' },
 ];
 
-const CATEGORIA_OPTIONS: { value: CategoriaTest; label: string }[] = [
-  { value: 'ad',       label: 'AD' },
-  { value: 'pagina',   label: 'Página' },
-  { value: 'oferta',   label: 'Oferta' },
-  { value: 'upsell',   label: 'Upsell' },
-  { value: 'ticket',   label: 'Ticket' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'outro',    label: 'Outro' },
-];
 
 // ── Sync to Radar ─────────────────────────────────────────────────────────────
 
@@ -182,6 +174,18 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
   const [nomeAd, setNomeAd]           = useState('');
   const [linkAd, setLinkAd]           = useState('');
   const [comentarioAd, setComentarioAd] = useState('');
+
+  const [opCategorias, setOpCategorias] = useState<string[]>([]);
+
+  function loadCategorias() {
+    supabase.from('criativo_campos_opcoes')
+      .select('valor')
+      .eq('campo', 'teste_categoria')
+      .order('ordem')
+      .then(({ data }) => setOpCategorias(data?.map(d => d.valor as string) ?? []));
+  }
+
+  useEffect(() => { loadCategorias(); }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -561,12 +565,15 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Classificação</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs">Categoria</Label>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Label className="text-xs">Categoria</Label>
+                      <GerenciarOpcoesPopover campo="teste_categoria" label="Categorias" onAtualizar={loadCategorias} />
+                    </div>
                     <Select value={categoria} onValueChange={v => setCategoria(v as CategoriaTest)}>
-                      <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                       <SelectContent>
-                        {CATEGORIA_OPTIONS.map(o => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        {opCategorias.map(o => (
+                          <SelectItem key={o} value={o}>{o}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

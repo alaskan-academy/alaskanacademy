@@ -55,7 +55,7 @@ export interface Dominio {
 }
 
 export type PipelineStatus = 'planejado' | 'produzindo' | 'rodando' | 'concluido';
-export type CategoriaTest = 'ad' | 'pagina' | 'oferta' | 'upsell' | 'ticket' | 'whatsapp' | 'outro';
+export type CategoriaTest = string;
 export type ImpactoTest = 'alto' | 'medio' | 'baixo';
 export type DificuldadeTest = 'facil' | 'media' | 'dificil';
 
