@@ -255,12 +255,31 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       );
     }
 
-    // Sync domínio
+    // Sync domínio — remove funil do domínio anterior e adiciona ao novo
     if (funil) {
-      const prev = dominios.find(d => d.funil_id === funil.id && d.id !== dominioId);
-      if (prev) await supabase.from('dominios').update({ funil_id: null }).eq('id', prev.id);
+      const prevDom = dominios.find(d =>
+        (d.funil_ids ?? []).includes(funil.id) && d.id !== dominioId,
+      );
+      if (prevDom) {
+        const newIds = (prevDom.funil_ids ?? []).filter(id => id !== funil.id);
+        await supabase.from('dominios').update({
+          funil_id: newIds[0] ?? null,
+          funil_ids: newIds,
+        }).eq('id', prevDom.id);
+      }
     }
-    if (dominioId) await supabase.from('dominios').update({ funil_id: funilId }).eq('id', dominioId);
+    if (dominioId && funilId) {
+      const dom = dominios.find(d => d.id === dominioId);
+      const newIds = [...new Set([...(dom?.funil_ids ?? []), funilId])];
+      await supabase.from('dominios').update({ funil_id: funilId, funil_ids: newIds }).eq('id', dominioId);
+    } else if (!dominioId && funil) {
+      // Funil removeu o domínio: garante que está fora de todos os arrays
+      const linked = dominios.filter(d => (d.funil_ids ?? []).includes(funil.id));
+      for (const dom of linked) {
+        const newIds = (dom.funil_ids ?? []).filter(id => id !== funil.id);
+        await supabase.from('dominios').update({ funil_id: newIds[0] ?? null, funil_ids: newIds }).eq('id', dom.id);
+      }
+    }
 
     setSaving(false);
     toast({ title: funil ? 'Funil atualizado' : 'Funil criado' });

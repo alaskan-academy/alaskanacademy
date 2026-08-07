@@ -140,7 +140,10 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
             </thead>
             <tbody>
               {sorted.map(d => {
-                const funil = d.funil_id ? funilMap[d.funil_id] : null;
+                const allIds = d.funil_ids?.length ? d.funil_ids : d.funil_id ? [d.funil_id] : [];
+                const linkedFunis = allIds.map(id => funilMap[id]).filter(Boolean);
+                const activeFunis   = linkedFunis.filter(f => f.ativo && f.status !== 'arquivado');
+                const inactiveCount = linkedFunis.length - activeFunis.length;
                 return (
                   <tr key={d.id} className="border-b border-border/50 last:border-0 hover:bg-muted/30 transition-colors">
                     <td className="py-2.5 pr-4">
@@ -149,10 +152,22 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
                       </span>
                     </td>
                     <td className="py-2.5 pr-4">
-                      {funil
-                        ? <span className="text-xs text-foreground">{funil.nome}</span>
-                        : <span className="text-xs text-muted-foreground">Independente</span>
-                      }
+                      {activeFunis.length > 0 ? (
+                        <span className="text-xs text-foreground">
+                          {activeFunis.map(f => f.nome).join(', ')}
+                          {inactiveCount > 0 && (
+                            <span className="ml-1.5 text-muted-foreground">
+                              +{inactiveCount} inativo{inactiveCount > 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </span>
+                      ) : inactiveCount > 0 ? (
+                        <span className="text-xs text-muted-foreground">
+                          {inactiveCount} inativo{inactiveCount > 1 ? 's' : ''}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Independente</span>
+                      )}
                     </td>
                     <td className="py-2.5 pr-4">
                       <ExpiryBadge vencimento={d.vencimento} />

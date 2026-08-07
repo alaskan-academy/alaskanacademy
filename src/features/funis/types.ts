@@ -46,6 +46,7 @@ export interface Dominio {
   id: string;
   nome: string;
   funil_id: string | null;
+  funil_ids: string[];
   ativo: boolean;
   vencimento: string | null;
   registrador: string | null;
