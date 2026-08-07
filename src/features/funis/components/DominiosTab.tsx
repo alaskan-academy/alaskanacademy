@@ -6,11 +6,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { Plus, Pencil, Search } from 'lucide-react';
 import { DominioModal } from './DominioModal';
-import { Dominio, Funil, daysUntilExpiry } from '../types';
+import { Dominio, Funil, Projeto, daysUntilExpiry } from '../types';
 
 interface Props {
   dominios: Dominio[];
   funis: Funil[];
+  projetos: Projeto[];
   onReload: () => void;
 }
 
@@ -32,7 +33,7 @@ function ExpiryBadge({ vencimento }: { vencimento: string | null }) {
   return <span className="text-xs text-muted-foreground tabular-nums">{date}</span>;
 }
 
-export function DominiosTab({ dominios, funis, onReload }: Props) {
+export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
   const [search, setSearch] = useState('');
   const [filterFunil, setFilterFunil] = useState('todos');
   const [filterAtivo, setFilterAtivo] = useState('todos');
@@ -194,6 +195,7 @@ export function DominiosTab({ dominios, funis, onReload }: Props) {
         onSaved={() => { setModalOpen(false); onReload(); }}
         dominio={editDominio}
         funis={funis}
+        projetos={projetos}
       />
     </div>
   );

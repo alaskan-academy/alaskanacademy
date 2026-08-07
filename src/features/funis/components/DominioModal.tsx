@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
-import { Dominio, Funil } from '../types';
+import { Dominio, Funil, Projeto } from '../types';
 
 interface Props {
   open: boolean;
@@ -16,9 +16,11 @@ interface Props {
   onSaved: () => void;
   dominio?: Dominio | null;
   funis: Funil[];
+  projetos: Projeto[];
 }
 
-export function DominioModal({ open, onClose, onSaved, dominio, funis }: Props) {
+export function DominioModal({ open, onClose, onSaved, dominio, funis, projetos }: Props) {
+  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
   const [saving, setSaving] = useState(false);
   const [nome, setNome]             = useState('');
   const [funilId, setFunilId]       = useState('');
@@ -99,9 +101,15 @@ export function DominioModal({ open, onClose, onSaved, dominio, funis }: Props) 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_none_">Nenhum (independente)</SelectItem>
-                {funisAtivos.map(f => (
-                  <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-                ))}
+                {funisAtivos.map(f => {
+                  const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+                  return (
+                    <SelectItem key={f.id} value={f.id}>
+                      <span>{f.nome}</span>
+                      {proj && <span className="ml-1.5 text-muted-foreground text-[11px]">· {proj.nome}</span>}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>

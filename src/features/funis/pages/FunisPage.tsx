@@ -158,6 +158,7 @@ export default function FunisPage() {
             <DominiosTab
               dominios={state.dominios}
               funis={state.funis}
+              projetos={state.projetos}
               onReload={load}
             />
           )}
