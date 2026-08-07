@@ -230,7 +230,10 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
               {group.funis.map(funil => {
                 const isOpen = expanded.has(funil.id);
                 const statusDisplay = getStatusDisplay(funil, testes);
-                const funilDominios = dominios.filter(d => d.funil_id === funil.id);
+                const funilDominios = dominios.filter(d => {
+                  const ids = d.funil_ids?.length ? d.funil_ids : d.funil_id ? [d.funil_id] : [];
+                  return ids.includes(funil.id);
+                });
                 const funilTestes = testes.filter(t => t.funil_id === funil.id || t.funil_ids?.includes(funil.id));
                 const testesPlanejados  = funilTestes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo');
                 const testesRodando    = funilTestes.filter(t => t.pipeline_status === 'rodando');
