@@ -353,7 +353,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-64 p-2" align="start">
-                  <div className="max-h-52 overflow-y-auto space-y-0.5">
+                  <div className="max-h-52 overflow-y-auto space-y-0.5" onWheel={e => e.stopPropagation()}>
                     {funis.map(f => {
                       const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
                       return (
