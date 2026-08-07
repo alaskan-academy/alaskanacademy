@@ -268,6 +268,45 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     onClose();
   }
 
+  async function handleDuplicate() {
+    if (!funil) return;
+    setSaving(true);
+    const firstCheckout = subofertas.find(s => s.tipo === 'checkout');
+    const res = await supabase.from('funis').insert({
+      nome:          `${nome.trim()} (cópia)`,
+      oferta_id:     ofertaId || null,
+      metodo:        metodo || null,
+      status:        'planejado',
+      preco:         firstCheckout?.preco ? parseFloat(firstCheckout.preco.replace(',', '.')) : null,
+      link_checkout: firstCheckout?.link?.trim() || null,
+      url_page:      urlPage.trim() || null,
+      notas:         notas.trim() || null,
+      ativo:         true,
+      criado_por:    user?.id,
+    }).select('id').single();
+    if (res.error || !res.data) {
+      toast({ title: 'Erro ao duplicar', description: res.error?.message, variant: 'destructive' });
+      setSaving(false);
+      return;
+    }
+    if (subofertas.length > 0) {
+      await supabase.from('funil_subofertas').insert(
+        subofertas.map(s => ({
+          funil_id:  res.data.id,
+          oferta_id: null,
+          nome:      s.nome.trim() || null,
+          tipo:      s.tipo,
+          preco:     s.preco ? parseFloat(s.preco.replace(',', '.')) : null,
+          link:      s.link.trim() || null,
+        })),
+      );
+    }
+    setSaving(false);
+    toast({ title: 'Funil duplicado com sucesso' });
+    onSaved();
+    onClose();
+  }
+
   async function handleDelete() {
     if (!funil) return;
     setSaving(true);
@@ -455,16 +494,27 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
                 <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)} disabled={saving}>Cancelar</Button>
               </div>
             ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mr-auto text-muted-foreground hover:text-destructive"
-                onClick={() => setConfirmDelete(true)}
-                disabled={saving}
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                Excluir funil
-              </Button>
+              <div className="flex items-center gap-1 mr-auto">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={handleDuplicate}
+                  disabled={saving}
+                >
+                  Duplicar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={saving}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Excluir funil
+                </Button>
+              </div>
             )
           )}
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>

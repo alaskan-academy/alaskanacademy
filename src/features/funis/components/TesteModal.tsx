@@ -218,6 +218,33 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
     setComentarioAd(teste?.comentario_ad ?? '');
   }, [open, teste, presetFunilId, presetPipelineStatus]);
 
+  async function handleDuplicate() {
+    if (!teste) return;
+    setActioning(true);
+    const { error } = await supabase.from('testes_funis').insert({
+      funil_id:        funilIds[0] || null,
+      funil_ids:       funilIds,
+      titulo:          `${titulo.trim()} (cópia)`,
+      tipo,
+      variante_a:      varianteA || null,
+      variante_b:      varianteB || null,
+      metrica:         metrica || null,
+      notas:           notas || null,
+      pipeline_status: 'planejado',
+      categoria:       categoria || null,
+      impacto:         impacto || null,
+      dificuldade:     dificuldade || null,
+      kpi:             kpi || null,
+      nome_ad:         nomeAd || null,
+      link_ad:         linkAd || null,
+      comentario_ad:   comentarioAd || null,
+      criado_por:      user?.id,
+    });
+    setActioning(false);
+    if (error) toast({ title: 'Erro ao duplicar', description: error.message, variant: 'destructive' });
+    else { toast({ title: 'Teste duplicado com sucesso' }); onSaved(); onClose(); }
+  }
+
   async function handleDelete() {
     if (!teste) return;
     setActioning(true);
@@ -711,7 +738,17 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
           {teste && !confirmDelete && (
-            <div className="flex gap-2 mr-auto">
+            <div className="flex gap-1 mr-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-foreground"
+                disabled={actioning || saving}
+                onClick={handleDuplicate}
+              >
+                Duplicar
+              </Button>
               <Button
                 type="button"
                 variant="ghost"
