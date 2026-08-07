@@ -220,7 +220,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                 </div>
               ) : (
                 cards.map(t => {
-                  const funil = t.funil_id ? funilMap[t.funil_id] : null;
+                  const funisTeste = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
                   const score = iceScore(t.impacto, t.dificuldade);
                   const catCfg = t.categoria ? CATEGORIA_CFG[t.categoria] : null;
                   const isMoving = moving === t.id;
@@ -271,7 +271,11 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
 
                       {/* Funil + KPI */}
                       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        {funil && <span className="truncate">{funil.nome}</span>}
+                        {funisTeste.length > 0 && (
+                          <span className="truncate">
+                            {funisTeste.map(f => f.nome).join(', ')}
+                          </span>
+                        )}
                         {t.kpi && (
                           <>
                             <span className="shrink-0">·</span>

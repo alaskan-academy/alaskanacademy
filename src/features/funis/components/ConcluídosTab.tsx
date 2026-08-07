@@ -36,7 +36,6 @@ function fmtDate(d: string | null) {
 export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Props) {
   const perfilMap  = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
   const funilMap   = Object.fromEntries(funis.map(f => [f.id, f]));
-  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
   const [filterFunil, setFilterFunil]   = useState('todos');
   const [filterTipo, setFilterTipo]     = useState('todos');
@@ -143,8 +142,7 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
       ) : (
         <div className="space-y-3">
           {concluidos.map(t => {
-            const funil    = t.funil_id ? funilMap[t.funil_id] : null;
-            const projeto  = funil?.oferta_id ? projetoMap[funil.oferta_id] : null;
+            const funisTeste = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
             const tipoCfg  = TIPO_CONFIG[t.tipo];
             const isMoving = moving === t.id;
 
@@ -189,8 +187,7 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
                     </div>
                     <p className="text-sm font-medium">{t.titulo}</p>
                     <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
-                      {funil   && <span>{funil.nome}</span>}
-                      {projeto && <><span>·</span><span>{projeto.nome}</span></>}
+                      {funisTeste.length > 0 && <span>{funisTeste.map(f => f.nome).join(', ')}</span>}
                     </div>
                   </div>
 
