@@ -152,7 +152,10 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setAtivo(funil?.ativo ?? true);
     setConfirmDelete(false);
 
-    const dominioAtual = dominios.find(d => d.funil_id === funil?.id);
+    const dominioAtual = dominios.find(d => {
+      const ids = d.funil_ids?.length ? d.funil_ids : d.funil_id ? [d.funil_id] : [];
+      return ids.includes(funil?.id ?? '');
+    });
     setDominioId(dominioAtual?.id ?? '');
 
     // Subofertas existentes
