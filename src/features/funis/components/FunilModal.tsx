@@ -283,7 +283,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     onClose();
   }
 
-  const dominiosDisponiveis = dominios.filter(d => !d.funil_id || d.funil_id === funil?.id);
+  const dominiosDisponiveis = dominios.filter(d => d.ativo);
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
