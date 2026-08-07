@@ -53,6 +53,43 @@ function StatusBadge({ status }: { status: StatusDisplay }) {
   );
 }
 
+const TIPO_BADGE: Record<string, { label: string; cls: string }> = {
+  funil_novo: { label: 'Funil novo',  cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  ab_interno: { label: 'A/B interno', cls: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' },
+  ad:         { label: 'AD',          cls: 'bg-sky-500/15 text-sky-400' },
+};
+
+function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; onOpen: (t: TesteFunil, e: React.MouseEvent) => void; muted?: boolean }) {
+  return (
+    <div className="space-y-1">
+      {testes.map(t => {
+        const badge = TIPO_BADGE[t.tipo];
+        return (
+          <div
+            key={t.id}
+            role="button"
+            tabIndex={0}
+            className={cn(
+              'flex items-center gap-2 text-xs rounded px-1 -mx-1 py-0.5 cursor-pointer hover:bg-muted/50 transition-colors',
+              muted && 'opacity-60',
+            )}
+            onClick={e => onOpen(t, e)}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpen(t, e as unknown as React.MouseEvent)}
+          >
+            <FlaskConical className="h-3 w-3 text-amber-400 shrink-0" />
+            <span className="text-foreground flex-1 min-w-0 truncate">{t.titulo}</span>
+            {badge && (
+              <Badge className={cn('text-[9px] border-0 px-1.5 py-0 shrink-0', badge.cls)}>
+                {badge.label}
+              </Badge>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
@@ -188,7 +225,10 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                 const statusDisplay = getStatusDisplay(funil, testes);
                 const funilDominios = dominios.filter(d => d.funil_id === funil.id);
                 const funilTestes = testes.filter(t => t.funil_id === funil.id || t.funil_ids?.includes(funil.id));
-                const testesAtivos = funilTestes.filter(t => !t.data_fim);
+                const testesPlanejados  = funilTestes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo');
+                const testesRodando    = funilTestes.filter(t => t.pipeline_status === 'rodando');
+                const testesConcluidos = funilTestes.filter(t => t.pipeline_status === 'concluido');
+                const testesAtivos = funilTestes.filter(t => t.pipeline_status !== 'concluido');
                 const mySubofertas = funilSubofertas.filter(fs => fs.funil_id === funil.id);
                 const isHighlighted = statusDisplay === 'em_teste';
                 const isPausadoAnalise = statusDisplay === 'pausado_analise';
@@ -345,34 +385,32 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                           </div>
                         )}
 
-                        {testesAtivos.length > 0 && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                              Testes em andamento
-                            </p>
-                            <div className="space-y-1">
-                              {testesAtivos.map(t => (
-                                <div
-                                  key={t.id}
-                                  role="button"
-                                  tabIndex={0}
-                                  className="flex items-center gap-2 text-xs rounded px-1 -mx-1 py-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
-                                  onClick={e => openTeste(t, e)}
-                                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && openTeste(t, e as unknown as React.MouseEvent)}
-                                >
-                                  <FlaskConical className="h-3 w-3 text-amber-400 shrink-0" />
-                                  <span className="text-foreground flex-1 min-w-0 truncate">{t.titulo}</span>
-                                  <Badge className={cn(
-                                    'text-[9px] border-0 px-1.5 py-0 shrink-0',
-                                    t.tipo === 'funil_novo'
-                                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                      : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
-                                  )}>
-                                    {t.tipo === 'funil_novo' ? 'Funil novo' : 'A/B interno'}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
+                        {(testesPlanejados.length > 0 || testesRodando.length > 0 || testesConcluidos.length > 0) && (
+                          <div className="space-y-2.5">
+                            {testesPlanejados.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                                  Planejados
+                                </p>
+                                <TesteRows testes={testesPlanejados} onOpen={openTeste} />
+                              </div>
+                            )}
+                            {testesRodando.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide mb-1.5">
+                                  Em andamento
+                                </p>
+                                <TesteRows testes={testesRodando} onOpen={openTeste} />
+                              </div>
+                            )}
+                            {testesConcluidos.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide mb-1.5">
+                                  Concluídos
+                                </p>
+                                <TesteRows testes={testesConcluidos} onOpen={openTeste} muted />
+                              </div>
+                            )}
                           </div>
                         )}
 
