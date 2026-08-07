@@ -77,7 +77,14 @@ function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; on
             onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onOpen(t, e as unknown as React.MouseEvent)}
           >
             <FlaskConical className="h-3 w-3 text-amber-400 shrink-0" />
-            <span className="text-foreground flex-1 min-w-0 truncate">{t.titulo}</span>
+            <span className={cn(
+              'flex-1 min-w-0 truncate',
+              muted
+                ? t.validado
+                  ? 'text-emerald-400'
+                  : 'text-red-400'
+                : 'text-foreground',
+            )}>{t.titulo}</span>
             {badge && (
               <Badge className={cn('text-[9px] border-0 px-1.5 py-0 shrink-0', badge.cls)}>
                 {badge.label}
