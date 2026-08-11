@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,8 @@ interface Props {
 }
 
 export function MultiFilter({ placeholder, options, value, onChange, width = 'w-48' }: Props) {
+  const [open, setOpen] = useState(false);
+
   const triggerLabel =
     value.length === 0
       ? placeholder
@@ -28,7 +31,7 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -42,7 +45,11 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
           <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="p-1.5 min-w-[180px] max-w-[260px]" align="start">
+      <PopoverContent
+        className="p-1.5 min-w-[180px] max-w-[260px]"
+        align="start"
+        onInteractOutside={() => setOpen(false)}
+      >
         <div className="flex flex-col gap-0.5">
           {options.map(o => {
             const checked = value.includes(o.id);
@@ -50,7 +57,10 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
               <button
                 key={o.id}
                 type="button"
-                onClick={() => toggle(o.id)}
+                onMouseDown={e => {
+                  e.preventDefault(); // evita que o Popover feche por blur
+                  toggle(o.id);
+                }}
                 className="flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-muted text-left w-full"
               >
                 <span className={cn(
@@ -70,7 +80,10 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
         {value.length > 0 && (
           <button
             type="button"
-            onClick={() => onChange([])}
+            onMouseDown={e => {
+              e.preventDefault();
+              onChange([]);
+            }}
             className="mt-1 w-full text-[11px] text-muted-foreground hover:text-foreground text-center py-1 border-t border-border/50"
           >
             Limpar seleção

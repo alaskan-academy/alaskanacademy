@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { Plus, Pencil, Search } from 'lucide-react';
 import { DominioModal } from './DominioModal';
+import { MultiFilter } from './MultiFilter';
 import { Dominio, Funil, Projeto, daysUntilExpiry } from '../types';
 
 interface Props {
@@ -35,7 +36,7 @@ function ExpiryBadge({ vencimento }: { vencimento: string | null }) {
 
 export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
   const [search, setSearch] = useState('');
-  const [filterFunil, setFilterFunil] = useState('todos');
+  const [filterFunilIds, setFilterFunilIds] = useState<string[]>([]);
   const [filterAtivo, setFilterAtivo] = useState('todos');
   const [modalOpen, setModalOpen] = useState(false);
   const [editDominio, setEditDominio] = useState<Dominio | null>(null);
@@ -47,9 +48,13 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
   const filtered = dominios.filter(d => {
     if (filterAtivo === 'ativo' && !d.ativo) return false;
     if (filterAtivo === 'inativo' && d.ativo) return false;
-    if (filterFunil !== 'todos') {
-      if (filterFunil === '__none__' && d.funil_id !== null) return false;
-      if (filterFunil !== '__none__' && d.funil_id !== filterFunil) return false;
+    if (filterFunilIds.length > 0) {
+      const allIds = d.funil_ids?.length ? d.funil_ids : d.funil_id ? [d.funil_id] : [];
+      const isIndependent = allIds.length === 0;
+      const wantNone  = filterFunilIds.includes('__none__');
+      const funilSel  = filterFunilIds.filter(id => id !== '__none__');
+      const matchFunil = funilSel.some(id => allIds.includes(id));
+      if (!(wantNone && isIndependent) && !matchFunil) return false;
     }
     if (search) {
       const q = search.toLowerCase();
@@ -92,18 +97,19 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
           />
         </div>
 
-        <Select value={filterFunil} onValueChange={setFilterFunil}>
-          <SelectTrigger className="h-9 text-sm w-44">
-            <SelectValue placeholder="Funil" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os funis</SelectItem>
-            <SelectItem value="__none__">Independentes</SelectItem>
-            {funis.map(f => (
-              <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiFilter
+          placeholder="Todos os funis"
+          options={[
+            { id: '__none__', label: 'Independentes' },
+            ...funis.map(f => {
+              const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+              return { id: f.id, label: f.nome + (proj ? ` · ${proj.nome}` : '') };
+            }),
+          ]}
+          value={filterFunilIds}
+          onChange={setFilterFunilIds}
+          width="w-52"
+        />
 
         <Select value={filterAtivo} onValueChange={setFilterAtivo}>
           <SelectTrigger className="h-9 text-sm w-36">
