@@ -64,8 +64,9 @@ export default function FunisPage() {
     const s = getStatusDisplay(f, state.testes);
     return s === 'ativo' || s === 'em_teste';
   }).length;
-  const esteiraCount   = state.testes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo' || !t.pipeline_status).length;
-  const testesCount    = state.testes.filter(t => t.pipeline_status === 'rodando').length;
+  const esteiraCount    = state.testes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo' || !t.pipeline_status).length;
+  const prontoCount     = state.testes.filter(t => t.pipeline_status === 'pronto_para_teste').length;
+  const testesCount     = state.testes.filter(t => t.pipeline_status === 'rodando').length;
   const concluidosCount = state.testes.filter(t => t.pipeline_status === 'concluido').length;
 
   if (state.loading) {
@@ -95,7 +96,7 @@ export default function FunisPage() {
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-            {testesCount} rodando · {esteiraCount} na esteira
+            {testesCount} rodando · {prontoCount > 0 ? `${prontoCount} pronto para teste · ` : ''}{esteiraCount} na esteira
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="inline-flex h-2 w-2 rounded-full bg-blue-500" />

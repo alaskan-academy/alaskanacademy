@@ -82,10 +82,10 @@ function IceBadge({ score }: { score: number | null }) {
 export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props) {
   const perfilMap  = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
-  const [filterFunilIds, setFilterFunilIds]   = useState<string[]>([]);
-  const [filterCategoria, setFilterCategoria] = useState('todos');
-  const [filterTipo, setFilterTipo]           = useState<TipoFilter>('todos');
-  const [filterProjeto, setFilterProjeto]     = useState('todos');
+  const [filterFunilIds, setFilterFunilIds]     = useState<string[]>([]);
+  const [filterProjetoIds, setFilterProjetoIds] = useState<string[]>([]);
+  const [filterCategoria, setFilterCategoria]   = useState('todos');
+  const [filterTipo, setFilterTipo]             = useState<TipoFilter>('todos');
   const [modalOpen, setModalOpen]           = useState(false);
   const [editTeste, setEditTeste]           = useState<TesteFunil | null>(null);
   const [presetFunilId, setPresetFunilId]   = useState('');
@@ -95,16 +95,16 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
 
   const funilMap = Object.fromEntries(funis.map(f => [f.id, f]));
 
-  // Funis disponíveis no dropdown dependem do produto selecionado
-  const funisDisponiveis = filterProjeto === 'todos'
+  // Funis disponíveis dependem dos produtos selecionados
+  const funisDisponiveis = filterProjetoIds.length === 0
     ? funis
-    : funis.filter(f => f.oferta_id === filterProjeto);
+    : funis.filter(f => f.oferta_id && filterProjetoIds.includes(f.oferta_id));
 
-  function handleProjetoChange(val: string) {
-    setFilterProjeto(val);
-    if (val !== 'todos') {
-      const ids = funis.filter(f => f.oferta_id === val).map(f => f.id);
-      setFilterFunilIds(prev => prev.filter(id => ids.includes(id)));
+  function handleProjetoChange(newIds: string[]) {
+    setFilterProjetoIds(newIds);
+    if (newIds.length > 0) {
+      const validFunilIds = funis.filter(f => f.oferta_id && newIds.includes(f.oferta_id)).map(f => f.id);
+      setFilterFunilIds(prev => prev.filter(id => validFunilIds.includes(id)));
     } else {
       setFilterFunilIds([]);
     }
@@ -114,9 +114,9 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     if (filterFunilIds.length > 0 && !filterFunilIds.some(id => t.funil_id === id || t.funil_ids?.includes(id))) return false;
     if (filterCategoria !== 'todos' && t.categoria !== filterCategoria) return false;
     if (filterTipo !== 'todos' && t.tipo !== filterTipo) return false;
-    if (filterProjeto !== 'todos') {
+    if (filterProjetoIds.length > 0) {
       const linked = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
-      if (!linked.some(f => f.oferta_id === filterProjeto)) return false;
+      if (!linked.some(f => f.oferta_id && filterProjetoIds.includes(f.oferta_id))) return false;
     }
     return true;
   });
@@ -159,21 +159,19 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={filterProjeto} onValueChange={handleProjetoChange}>
-          <SelectTrigger className="h-9 text-sm w-44">
-            <SelectValue placeholder="Produto" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os produtos</SelectItem>
-            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <MultiFilter
+          placeholder="Todos os produtos"
+          options={projetos.map(p => ({ id: p.id, label: p.nome }))}
+          value={filterProjetoIds}
+          onChange={handleProjetoChange}
+          width="w-44"
+        />
 
         <MultiFilter
           placeholder="Todos os funis"
           options={funisDisponiveis.map(f => {
             const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
-            return { id: f.id, label: f.nome + (proj && filterProjeto === 'todos' ? ` · ${proj.nome}` : '') };
+            return { id: f.id, label: f.nome + (proj && filterProjetoIds.length === 0 ? ` · ${proj.nome}` : '') };
           })}
           value={filterFunilIds}
           onChange={setFilterFunilIds}
