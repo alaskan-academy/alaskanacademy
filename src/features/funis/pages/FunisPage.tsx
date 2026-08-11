@@ -89,19 +89,66 @@ export default function FunisPage() {
         />
 
         {/* Summary pills */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-            {ativosCount} funil{ativosCount !== 1 ? 's' : ''} ativo{ativosCount !== 1 ? 's' : ''}
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-            {testesCount} rodando · {prontoCount > 0 ? `${prontoCount} pronto para teste · ` : ''}{esteiraCount} na esteira
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="inline-flex h-2 w-2 rounded-full bg-blue-500" />
-            {state.dominios.filter(d => d.ativo).length} domínio{state.dominios.filter(d => d.ativo).length !== 1 ? 's' : ''} ativo{state.dominios.filter(d => d.ativo).length !== 1 ? 's' : ''}
-          </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Ativos — emerald: sinal de saúde/ativo */}
+          <span className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+            ativosCount > 0
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
+          )}>
+            <span className={cn('h-1.5 w-1.5 rounded-full', ativosCount > 0 ? 'bg-emerald-400' : 'bg-muted-foreground/30')} />
+            {ativosCount} ativo{ativosCount !== 1 ? 's' : ''}
+          </span>
+
+          {/* Rodando — amber: atenção, em observação */}
+          <span className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+            testesCount > 0
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
+          )}>
+            <span className={cn('h-1.5 w-1.5 rounded-full', testesCount > 0 ? 'bg-amber-400' : 'bg-muted-foreground/30')} />
+            {testesCount} rodando
+          </span>
+
+          {/* Pronto para teste — teal: pronto, aguardando */}
+          <span className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+            prontoCount > 0
+              ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
+              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
+          )}>
+            <span className={cn('h-1.5 w-1.5 rounded-full', prontoCount > 0 ? 'bg-teal-400' : 'bg-muted-foreground/30')} />
+            {prontoCount} pronto para teste
+          </span>
+
+          {/* Na esteira — purple: em produção */}
+          <span className={cn(
+            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+            esteiraCount > 0
+              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
+          )}>
+            <span className={cn('h-1.5 w-1.5 rounded-full', esteiraCount > 0 ? 'bg-purple-400' : 'bg-muted-foreground/30')} />
+            {esteiraCount} na esteira
+          </span>
+
+          {/* Domínios — sky: informacional */}
+          {(() => {
+            const d = state.dominios.filter(d => d.ativo).length;
+            return (
+              <span className={cn(
+                'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
+                d > 0
+                  ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                  : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
+              )}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', d > 0 ? 'bg-sky-400' : 'bg-muted-foreground/30')} />
+                {d} domínio{d !== 1 ? 's' : ''} ativo{d !== 1 ? 's' : ''}
+              </span>
+            );
+          })()}
         </div>
 
         {/* Tab nav */}
