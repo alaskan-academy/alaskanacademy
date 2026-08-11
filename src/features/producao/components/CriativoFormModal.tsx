@@ -316,8 +316,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             )}
           </div>
 
-          {/* Criativo */}
-          {form.tipo === 'criativo' && (
+          {/* Criativo / VSL */}
+          {(form.tipo === 'criativo' || form.tipo === 'vsl') && (
             <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
               <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Criativo</p>
               <div className="grid grid-cols-2 gap-3">
@@ -358,7 +358,33 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                 <Sel label="Tipo de Teste" field="tipo_teste"  options={opTipoTeste}  />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Nível de Consciência" field="nivel_consciencia" options={opNivelConsciencia} />
+                <div>
+                  <Label className="text-xs">Nível de Consciência</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="mt-1 h-8 text-xs w-full flex items-center px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
+                        {!form.nivel_consciencia || form.nivel_consciencia.trim() === ''
+                          ? <span className="text-muted-foreground">—</span>
+                          : <span className="truncate">{form.nivel_consciencia.split(',').map(s => s.trim()).filter(Boolean).join(', ')}</span>}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-2" align="start">
+                      {opNivelConsciencia.map(n => {
+                        const selected = form.nivel_consciencia.split(',').map(s => s.trim()).filter(Boolean);
+                        const toggle = () => {
+                          const next = selected.includes(n) ? selected.filter(x => x !== n) : [...selected, n];
+                          set('nivel_consciencia', next.join(','));
+                        };
+                        return (
+                          <div key={n} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer" onClick={toggle}>
+                            <Checkbox checked={selected.includes(n)} onCheckedChange={toggle} />
+                            <span className="text-xs">{n}</span>
+                          </div>
+                        );
+                      })}
+                    </PopoverContent>
+                  </Popover>
+                </div>
                 <div>
                   <Label className="text-xs">Ângulo de Teste</Label>
                   <Input className="mt-1 h-8 text-xs" placeholder="Ex: Dor + transformação"

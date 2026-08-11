@@ -201,6 +201,16 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     ch('funil_video', next.length > 0 ? next.join(',') : null);
   };
 
+  const valNivelConscienciaArr = (): string[] => {
+    const raw = val('nivel_consciencia');
+    return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  };
+  const toggleNivelConsciencia = (item: string) => {
+    const current = valNivelConscienciaArr();
+    const next = current.includes(item) ? current.filter(x => x !== item) : [...current, item];
+    ch('nivel_consciencia', next.length > 0 ? next.join(',') : null);
+  };
+
   const handleSave = async () => {
     if (!criativo || Object.keys(changes).length === 0) { setEditing(false); return; }
     const { error } = await supabase.from('producoes').update(changes).eq('id', criativo.id);
@@ -569,7 +579,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       </div>
 
       {/* Campos específicos por tipo — mesma ordem do form de criação */}
-      {criativo.tipo === 'criativo' && (
+      {(criativo.tipo === 'criativo' || criativo.tipo === 'vsl') && (
         <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
           {slLabel('Criativo')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -649,16 +659,33 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             <Field label="Nível de Consciência" editing={editing}>
               {editing ? (
                 <div className="flex items-center gap-1 mt-0.5">
-                  <Select value={val('nivel_consciencia') || '_'} onValueChange={v => ch('nivel_consciencia', v === '_' ? null : v)}>
-                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue placeholder="—" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">—</SelectItem>
-                      {opNivelConsciencia.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="h-7 text-xs flex-1 flex items-center px-2 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left min-w-0">
+                        {valNivelConscienciaArr().length === 0
+                          ? <span className="text-muted-foreground">—</span>
+                          : <span className="truncate">{valNivelConscienciaArr().join(', ')}</span>}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-2" align="start">
+                      {opNivelConsciencia.map(n => (
+                        <div key={n} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => toggleNivelConsciencia(n)}>
+                          <Checkbox checked={valNivelConscienciaArr().includes(n)} onCheckedChange={() => toggleNivelConsciencia(n)} />
+                          <span className="text-xs">{n}</span>
+                        </div>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
                   {nivel === 'socio' && <GerenciarOpcoesPopover campo="nivel_consciencia" label="Nível de Consciência" onAtualizar={loadOpcoes} />}
                 </div>
-              ) : <span>{criativo.nivel_consciencia ?? '—'}</span>}
+              ) : (
+                <span>
+                  {criativo.nivel_consciencia
+                    ? criativo.nivel_consciencia.split(',').map(s => s.trim()).filter(Boolean).join(', ')
+                    : '—'}
+                </span>
+              )}
             </Field>
             <Field label="Ângulo de Teste" editing={editing}>
               {editing ? (
