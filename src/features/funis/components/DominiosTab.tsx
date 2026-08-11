@@ -103,7 +103,7 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
             { id: '__none__', label: 'Independentes' },
             ...funis.map(f => {
               const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
-              return { id: f.id, label: f.nome + (proj ? ` · ${proj.nome}` : '') };
+              return { id: f.id, label: f.nome, sublabel: proj ? proj.nome : undefined };
             }),
           ]}
           value={filterFunilIds}

@@ -112,7 +112,7 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
           placeholder="Todos os funis"
           options={funisDisponiveis.map(f => {
             const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
-            return { id: f.id, label: f.nome + (proj && filterProjetoIds.length !== 1 ? ` · ${proj.nome}` : '') };
+            return { id: f.id, label: f.nome, sublabel: filterProjetoIds.length !== 1 && proj ? proj.nome : undefined };
           })}
           value={filterFunilIds}
           onChange={setFilterFunilIds}

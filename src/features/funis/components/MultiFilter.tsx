@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 interface Option {
   id: string;
   label: string;
+  sublabel?: string;
 }
 
 interface Props {
@@ -46,7 +47,7 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
         </button>
       </PopoverTrigger>
       <PopoverContent
-        className="p-1.5 min-w-[180px] max-w-[260px]"
+        className="p-1.5 min-w-[200px] max-w-[280px]"
         align="start"
         onInteractOutside={() => setOpen(false)}
       >
@@ -58,10 +59,10 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
                 key={o.id}
                 type="button"
                 onMouseDown={e => {
-                  e.preventDefault(); // evita que o Popover feche por blur
+                  e.preventDefault();
                   toggle(o.id);
                 }}
-                className="flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-muted text-left w-full"
+                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-left w-full"
               >
                 <span className={cn(
                   'flex h-4 w-4 shrink-0 rounded border items-center justify-center',
@@ -69,7 +70,12 @@ export function MultiFilter({ placeholder, options, value, onChange, width = 'w-
                 )}>
                   {checked && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                 </span>
-                <span className="truncate">{o.label}</span>
+                <span className="flex flex-col min-w-0 flex-1">
+                  <span className="truncate text-sm">{o.label}</span>
+                  {o.sublabel && (
+                    <span className="truncate text-[11px] text-muted-foreground leading-tight">{o.sublabel}</span>
+                  )}
+                </span>
               </button>
             );
           })}
