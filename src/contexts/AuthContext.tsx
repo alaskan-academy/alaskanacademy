@@ -97,17 +97,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const boot = async (u: User | null) => {
     setUser(u);
     if (!u) { setPerfil(null); setLoading(false); return; }
-    const p = await loadPerfil(u.id);
-    if (p?.ativo === false) {
+
+    // Fetch perfil e permissions em paralelo — economiza um round trip
+    const [{ data: perfilData }, { data: permsData }] = await Promise.all([
+      supabase
+        .from('perfis')
+        .select('nome, is_admin, ativo, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
+        .eq('id', u.id)
+        .single(),
+      supabase
+        .from('permissoes_paginas')
+        .select('pagina, permitido')
+        .eq('usuario_id', u.id),
+    ]);
+
+    setPerfil(perfilData ?? null);
+
+    if (perfilData?.ativo === false) {
       await supabase.auth.signOut();
       return;
     }
-    await loadPermissions(u.id, p?.is_admin ?? false);
+
+    if (perfilData?.is_admin || !permsData || permsData.length === 0) {
+      setAllowed(new Set(PAGINAS.map(p => p.key)));
+    } else {
+      setAllowed(new Set(permsData.filter(r => r.permitido).map(r => r.pagina)));
+    }
+
     setLoading(false);
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => boot(data.session?.user ?? null));
+    // onAuthStateChange dispara INITIAL_SESSION sozinho — getSession() seria redundante
+    // e causaria boot() duplo (dobrando as queries no startup)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_ev, session) => {
       boot(session?.user ?? null);
     });
