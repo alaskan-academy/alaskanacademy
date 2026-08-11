@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Pencil, Save, X, ExternalLink,
-  Clock, MessageSquare, CornerDownLeft, Send, Maximize2, Minimize2, Copy,
+  Clock, MessageSquare, CornerDownLeft, Send, Maximize2, Minimize2, Copy, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchProjetos } from '@/lib/dataCache';
@@ -326,6 +326,16 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     }
     setNovoComentario('');
     setPostando(false);
+    loadComentarios();
+  };
+
+  const handleEditComment = async (id: string, texto: string) => {
+    await supabase.from('criativo_comentarios').update({ texto }).eq('id', id);
+    loadComentarios();
+  };
+
+  const handleDeleteComment = async (id: string) => {
+    await supabase.from('criativo_comentarios').delete().eq('id', id);
     loadComentarios();
   };
 
@@ -814,6 +824,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               <ComentarioItem
                 key={c.id}
                 comentario={c}
+                userId={userId}
                 respondendoId={respondendoId}
                 novaResposta={novaResposta}
                 postando={postando}
@@ -822,6 +833,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 onCancelReply={() => setRespondendoId(null)}
                 onNovaRespostaChange={setNovaResposta}
                 onPostReply={() => handlePostReply(c.id)}
+                onEdit={handleEditComment}
+                onDelete={handleDeleteComment}
               />
             ))}
           </div>
@@ -972,10 +985,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 // ─── sub-components ───────────────────────────────────────────────────────────
 
 function ComentarioItem({
-  comentario, respondendoId, novaResposta, postando, perfis,
-  onReply, onCancelReply, onNovaRespostaChange, onPostReply,
+  comentario, userId, respondendoId, novaResposta, postando, perfis,
+  onReply, onCancelReply, onNovaRespostaChange, onPostReply, onEdit, onDelete,
 }: {
   comentario: Comentario;
+  userId: string;
   respondendoId: string | null;
   novaResposta: string;
   postando: boolean;
@@ -984,9 +998,32 @@ function ComentarioItem({
   onCancelReply: () => void;
   onNovaRespostaChange: (v: string) => void;
   onPostReply: () => void;
+  onEdit: (id: string, texto: string) => void;
+  onDelete: (id: string) => void;
 }) {
+  const [editMode, setEditMode]           = useState(false);
+  const [editText, setEditText]           = useState(comentario.texto);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editReplyText, setEditReplyText] = useState('');
+
   const isSistema   = comentario.tipo === 'sistema';
   const isDevolucao = comentario.tipo === 'devolucao';
+  const isMine      = comentario.autor_id === userId;
+
+  function saveEdit() {
+    if (editText.trim()) onEdit(comentario.id, editText.trim());
+    setEditMode(false);
+  }
+
+  function startEditReply(r: Comentario) {
+    setEditingReplyId(r.id);
+    setEditReplyText(r.texto);
+  }
+
+  function saveReplyEdit(id: string) {
+    if (editReplyText.trim()) onEdit(id, editReplyText.trim());
+    setEditingReplyId(null);
+  }
 
   return (
     <div className="flex flex-col gap-1">
@@ -1015,8 +1052,46 @@ function ComentarioItem({
               hour: '2-digit', minute: '2-digit',
             })}
           </span>
+          {!isSistema && isMine && !editMode && (
+            <div className="flex items-center gap-0.5 ml-1">
+              <button
+                onClick={() => { setEditText(comentario.texto); setEditMode(true); }}
+                className="p-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                title="Editar"
+              >
+                <Pencil className="h-2.5 w-2.5" />
+              </button>
+              <button
+                onClick={() => onDelete(comentario.id)}
+                className="p-0.5 rounded text-muted-foreground/40 hover:text-destructive transition-colors"
+                title="Excluir"
+              >
+                <Trash2 className="h-2.5 w-2.5" />
+              </button>
+            </div>
+          )}
         </div>
-        <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={comentario.texto} /></p>
+        {editMode ? (
+          <div className="flex flex-col gap-1.5 mt-1">
+            <Textarea
+              autoFocus
+              rows={2}
+              value={editText}
+              onChange={e => setEditText(e.target.value)}
+              className="text-xs resize-none"
+            />
+            <div className="flex gap-1 justify-end">
+              <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditMode(false)}>
+                Cancelar
+              </Button>
+              <Button size="sm" className="h-6 px-2 text-xs" onClick={saveEdit}>
+                Salvar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={comentario.texto} /></p>
+        )}
       </div>
 
       {/* Respostas */}
@@ -1032,8 +1107,46 @@ function ComentarioItem({
                     hour: '2-digit', minute: '2-digit',
                   })}
                 </span>
+                {r.autor_id === userId && editingReplyId !== r.id && (
+                  <div className="flex items-center gap-0.5 ml-1">
+                    <button
+                      onClick={() => startEditReply(r)}
+                      className="p-0.5 rounded text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                    </button>
+                    <button
+                      onClick={() => onDelete(r.id)}
+                      className="p-0.5 rounded text-muted-foreground/40 hover:text-destructive transition-colors"
+                      title="Excluir"
+                    >
+                      <Trash2 className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                )}
               </div>
-              <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={r.texto} /></p>
+              {editingReplyId === r.id ? (
+                <div className="flex flex-col gap-1.5 mt-1">
+                  <Textarea
+                    autoFocus
+                    rows={2}
+                    value={editReplyText}
+                    onChange={e => setEditReplyText(e.target.value)}
+                    className="text-xs resize-none"
+                  />
+                  <div className="flex gap-1 justify-end">
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setEditingReplyId(null)}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm" className="h-6 px-2 text-xs" onClick={() => saveReplyEdit(r.id)}>
+                      Salvar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={r.texto} /></p>
+              )}
             </div>
           ))}
         </div>
