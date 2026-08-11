@@ -52,7 +52,11 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
 
   const handleAprovar = async (c: Criativo) => {
-    const { next } = getAdjacentFases(c.tipo, c.fase);
+    let { next } = getAdjacentFases(c.tipo, c.fase);
+    // 'alteracao' é atingida apenas via devolução; aprovação pula direto para a fase seguinte
+    if (next === 'alteracao') {
+      next = getAdjacentFases(c.tipo, 'alteracao').next;
+    }
     if (!next) return;
     setSaving(true);
     await supabase.from('producoes').update({ fase: next, atualizado_em: new Date().toISOString() }).eq('id', c.id);
