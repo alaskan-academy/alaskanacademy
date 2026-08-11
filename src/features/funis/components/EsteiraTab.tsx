@@ -160,7 +160,14 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os funis</SelectItem>
-            {funis.map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+            {funis.map(f => {
+              const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+              return (
+                <SelectItem key={f.id} value={f.id}>
+                  {f.nome}{proj ? ` · ${proj.nome}` : ''}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
 

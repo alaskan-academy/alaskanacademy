@@ -236,9 +236,11 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                 });
                 const funilTestes = testes.filter(t => t.funil_id === funil.id || t.funil_ids?.includes(funil.id));
                 const testesPlanejados  = funilTestes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo');
+                const testesPromtos     = funilTestes.filter(t => t.pipeline_status === 'pronto_para_teste');
                 const testesRodando    = funilTestes.filter(t => t.pipeline_status === 'rodando');
                 const testesConcluidos = funilTestes.filter(t => t.pipeline_status === 'concluido');
                 const testesAtivos = funilTestes.filter(t => t.pipeline_status !== 'concluido');
+                const hasTestePronto = testesPromtos.length > 0;
                 const mySubofertas = funilSubofertas.filter(fs => fs.funil_id === funil.id);
                 const isHighlighted = statusDisplay === 'em_teste';
                 const isPausadoAnalise = statusDisplay === 'pausado_analise';
@@ -250,9 +252,11 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                       'rounded-lg overflow-hidden transition-all',
                       isHighlighted
                         ? 'border-2 border-amber-500/60 bg-amber-500/5 shadow-[0_0_10px_2px_rgba(245,158,11,0.1)]'
-                        : isPausadoAnalise
-                          ? 'border-2 border-orange-500/70 bg-orange-500/5 shadow-[0_0_8px_2px_rgba(249,115,22,0.12)]'
-                          : 'border border-border bg-card',
+                        : hasTestePronto
+                          ? 'border-2 border-green-500/60 bg-green-500/5 shadow-[0_0_10px_2px_rgba(34,197,94,0.12)]'
+                          : isPausadoAnalise
+                            ? 'border-2 border-orange-500/70 bg-orange-500/5 shadow-[0_0_8px_2px_rgba(249,115,22,0.12)]'
+                            : 'border border-border bg-card',
                     )}
                   >
                     <div
@@ -270,7 +274,8 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                       <span className={cn(
                         'font-medium text-sm flex-1 min-w-0 truncate',
                         isHighlighted && 'text-amber-200',
-                        isPausadoAnalise && 'text-orange-300',
+                        !isHighlighted && hasTestePronto && 'text-green-300',
+                        isPausadoAnalise && !isHighlighted && !hasTestePronto && 'text-orange-300',
                       )}>
                         {funil.nome}
                       </span>
@@ -395,7 +400,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                           </div>
                         )}
 
-                        {(testesPlanejados.length > 0 || testesRodando.length > 0 || testesConcluidos.length > 0) && (
+                        {(testesPlanejados.length > 0 || testesPromtos.length > 0 || testesRodando.length > 0 || testesConcluidos.length > 0) && (
                           <div className="space-y-2.5">
                             {testesPlanejados.length > 0 && (
                               <div>
@@ -403,6 +408,14 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                                   Planejados
                                 </p>
                                 <TesteRows testes={testesPlanejados} onOpen={openTeste} />
+                              </div>
+                            )}
+                            {testesPromtos.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-semibold text-green-500 uppercase tracking-wide mb-1.5">
+                                  Pronto para teste
+                                </p>
+                                <TesteRows testes={testesPromtos} onOpen={openTeste} />
                               </div>
                             )}
                             {testesRodando.length > 0 && (
