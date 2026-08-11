@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import {
   Plus, Pencil, ChevronRight, ChevronLeft, ExternalLink,
-  Lightbulb, Hammer,
+  Lightbulb, Hammer, Rocket,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
@@ -35,11 +35,12 @@ const COLUMNS: {
   borderCls: string;
   bgCls: string;
 }[] = [
-  { key: 'planejado',  label: 'Planejado',  Icon: Lightbulb, headerCls: 'text-blue-400',   borderCls: 'border-blue-500/25',   bgCls: 'bg-blue-500/5'   },
-  { key: 'produzindo', label: 'Produzindo', Icon: Hammer,    headerCls: 'text-purple-400', borderCls: 'border-purple-500/25', bgCls: 'bg-purple-500/5' },
+  { key: 'planejado',         label: 'Planejado',          Icon: Lightbulb, headerCls: 'text-blue-400',  borderCls: 'border-blue-500/25',  bgCls: 'bg-blue-500/5'  },
+  { key: 'produzindo',        label: 'Produzindo',         Icon: Hammer,    headerCls: 'text-purple-400', borderCls: 'border-purple-500/25', bgCls: 'bg-purple-500/5' },
+  { key: 'pronto_para_teste', label: 'Pronto para teste',  Icon: Rocket,    headerCls: 'text-teal-400',  borderCls: 'border-teal-500/25',  bgCls: 'bg-teal-500/5'  },
 ];
 
-const PIPELINE_ORDER: PipelineStatus[] = ['planejado', 'produzindo', 'rodando', 'concluido'];
+const PIPELINE_ORDER: PipelineStatus[] = ['planejado', 'produzindo', 'pronto_para_teste', 'rodando', 'concluido'];
 
 // ── Categoria config ─────────────────────────────────────────────────────────
 
@@ -135,8 +136,9 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     setModalOpen(true);
   }
 
-  const countPlanejado  = testes.filter(t => (t.pipeline_status ?? 'planejado') === 'planejado').length;
-  const countProduzindo = testes.filter(t => t.pipeline_status === 'produzindo').length;
+  const countPlanejado       = testes.filter(t => (t.pipeline_status ?? 'planejado') === 'planejado').length;
+  const countProduzindo      = testes.filter(t => t.pipeline_status === 'produzindo').length;
+  const countProntoParaTeste = testes.filter(t => t.pipeline_status === 'pronto_para_teste').length;
 
   return (
     <div className="space-y-4">
@@ -187,7 +189,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
         </Select>
 
         <span className="text-xs text-muted-foreground">
-          {countPlanejado} planejado{countPlanejado !== 1 ? 's' : ''} · {countProduzindo} produzindo
+          {countPlanejado} planejado{countPlanejado !== 1 ? 's' : ''} · {countProduzindo} produzindo · {countProntoParaTeste} pronto{countProntoParaTeste !== 1 ? 's' : ''}
         </span>
 
         <div className="flex-1" />
@@ -199,7 +201,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
       </div>
 
       {/* Kanban board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
         {COLUMNS.map((col) => {
           const cards = filtered
             .filter(t => (t.pipeline_status ?? 'planejado') === col.key)
@@ -245,6 +247,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                   const canGoNext = pipeIdx < PIPELINE_ORDER.length - 1;
                   const DEST_LABEL: Record<string, string> = {
                     planejado: 'Planejado', produzindo: 'Produzindo',
+                    pronto_para_teste: 'Pronto para teste',
                     rodando: 'Testes ↗', concluido: 'Concluídos',
                   };
                   const prevDest = canGoBack ? DEST_LABEL[PIPELINE_ORDER[pipeIdx - 1]] : '';

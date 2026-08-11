@@ -39,10 +39,11 @@ const VENCEDORES = [
 ];
 
 const PIPELINE_OPTIONS: { value: PipelineStatus; label: string }[] = [
-  { value: 'planejado',  label: '💡 Planejado' },
-  { value: 'produzindo', label: '🔨 Produzindo' },
-  { value: 'rodando',    label: '📊 Rodando' },
-  { value: 'concluido',  label: '✅ Concluído' },
+  { value: 'planejado',        label: '💡 Planejado' },
+  { value: 'produzindo',       label: '🔨 Produzindo' },
+  { value: 'pronto_para_teste', label: '🚀 Pronto para teste' },
+  { value: 'rodando',          label: '📊 Rodando' },
+  { value: 'concluido',        label: '✅ Concluído' },
 ];
 
 
