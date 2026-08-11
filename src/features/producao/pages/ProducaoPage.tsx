@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
@@ -26,22 +25,10 @@ const TABS_POR_NIVEL: Record<ProducaoNivel, readonly string[]> = {
 
 export default function ProducaoPage() {
   const { user, perfil } = useAuth();
-  const [setorId, setSetorId]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('Meu Painel');
-  const [loaded, setLoaded]       = useState(false);
 
-  const loadSetor = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from('perfis')
-      .select('setor_id')
-      .eq('id', user.id)
-      .maybeSingle();
-    setSetorId(data?.setor_id ?? null);
-    setLoaded(true);
-  }, [user]);
-
-  useEffect(() => { loadSetor(); }, [loadSetor]);
+  // setor_id já está no perfil carregado pelo AuthContext — sem query extra necessária
+  const setorId = perfil?.setor_id ?? null;
 
   // Deriva nível a partir do cargo real
   const nivel: ProducaoNivel = (() => {
@@ -60,14 +47,6 @@ export default function ProducaoPage() {
   useEffect(() => {
     if (!tabs.includes(activeTab)) setActiveTab('Meu Painel');
   }, [nivel, tabs, activeTab]);
-
-  if (!loaded) {
-    return (
-      <DashboardLayout title="Produção" hideFilters>
-        <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
-      </DashboardLayout>
-    );
-  }
 
   return (
     <DashboardLayout title="Produção" hideFilters>

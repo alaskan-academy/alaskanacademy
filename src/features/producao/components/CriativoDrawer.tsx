@@ -80,9 +80,10 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [novaResposta, setNovaResposta]     = useState('');
 
   const loadOpcoes = useCallback(async () => {
-    const [{ data }, pj] = await Promise.all([
+    const [{ data }, pj, { data: edData }] = await Promise.all([
       supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
       fetchProjetos(),
+      supabase.from('perfis').select('id,nome,setor:setores(nome)').eq('ativo', true).order('nome'),
     ]);
     if (data) {
       const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
@@ -102,18 +103,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       if (av.length)   setOpAvaliacao(av);
     }
     setProjetos(pj as { id: string; nome: string }[]);
-    // load editors (perfis from 'Editor' setor)
-    const { data: edData } = await supabase
-      .from('perfis')
-      .select('id,nome,setor:setores(nome)')
-      .eq('ativo', true)
-      .order('nome');
     if (edData) {
       type PerfComSetor = { id: string; nome: string; setor: { nome: string } | null };
       const all = edData as PerfComSetor[];
       const filterBy = (s: string) => all.filter(p => p.setor?.nome === s).map(p => ({ id: p.id, nome: p.nome }));
       const allSimple = all.map(p => ({ id: p.id, nome: p.nome }));
-
       const eds = filterBy('Editor');
       setEditores(eds.length > 0 ? eds : allSimple);
       const cps = filterBy('Copy');
