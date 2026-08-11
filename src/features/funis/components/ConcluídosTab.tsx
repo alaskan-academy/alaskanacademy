@@ -36,10 +36,12 @@ function fmtDate(d: string | null) {
 export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Props) {
   const perfilMap  = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
   const funilMap   = Object.fromEntries(funis.map(f => [f.id, f]));
+  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
-  const [filterFunil, setFilterFunil]   = useState('todos');
-  const [filterTipo, setFilterTipo]     = useState('todos');
-  const [filterResult, setFilterResult] = useState('todos');
+  const [filterFunil, setFilterFunil]     = useState('todos');
+  const [filterTipo, setFilterTipo]       = useState('todos');
+  const [filterResult, setFilterResult]   = useState('todos');
+  const [filterProjeto, setFilterProjeto] = useState('todos');
   const [modalOpen, setModalOpen]       = useState(false);
   const [editTeste, setEditTeste]       = useState<TesteFunil | null>(null);
   const [modalKey, setModalKey]         = useState(0);
@@ -52,9 +54,14 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
     .filter(t => filterTipo   === 'todos' || t.tipo     === filterTipo)
     .filter(t => {
       if (filterResult === 'todos') return true;
-      if (filterResult === 'validado')    return t.validado;
+      if (filterResult === 'validado')     return t.validado;
       if (filterResult === 'nao_validado') return !t.validado;
       return true;
+    })
+    .filter(t => {
+      if (filterProjeto === 'todos') return true;
+      const linked = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+      return linked.some(f => f.oferta_id === filterProjeto);
     })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
@@ -98,6 +105,14 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
+        <Select value={filterProjeto} onValueChange={setFilterProjeto}>
+          <SelectTrigger className="h-9 text-sm w-44"><SelectValue placeholder="Produto" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os produtos</SelectItem>
+            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
         <Select value={filterFunil} onValueChange={setFilterFunil}>
           <SelectTrigger className="h-9 text-sm w-48"><SelectValue placeholder="Funil" /></SelectTrigger>
           <SelectContent>
@@ -142,7 +157,8 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
       ) : (
         <div className="space-y-3">
           {concluidos.map(t => {
-            const funisTeste = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+            const funisTeste    = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+            const projetosTeste = [...new Set(funisTeste.map(f => f.oferta_id).filter(Boolean))].map(id => projetoMap[id!]).filter(Boolean);
             const tipoCfg  = TIPO_CONFIG[t.tipo];
             const isMoving = moving === t.id;
 
@@ -185,6 +201,11 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
                         </a>
                       )}
                     </div>
+                    {projetosTeste.length > 0 && (
+                      <p className="text-[11px] font-semibold text-foreground/80 truncate mb-0.5">
+                        {projetosTeste.map(p => p.nome).join(', ')}
+                      </p>
+                    )}
                     <p className="text-sm font-medium">{t.titulo}</p>
                     <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-muted-foreground">
                       {funisTeste.length > 0 && <span>{funisTeste.map(f => f.nome).join(', ')}</span>}

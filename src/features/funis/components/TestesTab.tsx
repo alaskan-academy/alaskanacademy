@@ -35,9 +35,10 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
   const funilMap   = Object.fromEntries(funis.map(f => [f.id, f]));
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
-  const [filterFunil, setFilterFunil] = useState('todos');
-  const [filterTipo, setFilterTipo]   = useState('todos');
-  const [modalOpen, setModalOpen]     = useState(false);
+  const [filterFunil, setFilterFunil]     = useState('todos');
+  const [filterTipo, setFilterTipo]       = useState('todos');
+  const [filterProjeto, setFilterProjeto] = useState('todos');
+  const [modalOpen, setModalOpen]         = useState(false);
   const [editTeste, setEditTeste]     = useState<TesteFunil | null>(null);
   const [modalKey, setModalKey]       = useState(0);
   const [moving, setMoving]           = useState<string | null>(null);
@@ -46,6 +47,11 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
     .filter(t => t.pipeline_status === 'rodando')
     .filter(t => filterFunil === 'todos' || t.funil_id === filterFunil)
     .filter(t => filterTipo  === 'todos' || t.tipo     === filterTipo)
+    .filter(t => {
+      if (filterProjeto === 'todos') return true;
+      const linked = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+      return linked.some(f => f.oferta_id === filterProjeto);
+    })
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   async function mover(t: TesteFunil, status: 'produzindo' | 'concluido') {
@@ -76,6 +82,14 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
+        <Select value={filterProjeto} onValueChange={setFilterProjeto}>
+          <SelectTrigger className="h-9 text-sm w-44"><SelectValue placeholder="Produto" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os produtos</SelectItem>
+            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
         <Select value={filterFunil} onValueChange={setFilterFunil}>
           <SelectTrigger className="h-9 text-sm w-48"><SelectValue placeholder="Funil" /></SelectTrigger>
           <SelectContent>
@@ -111,8 +125,8 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
       ) : (
         <div className="space-y-2">
           {rodando.map(t => {
-            const funisTeste = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
-            const projetos = [...new Set(funisTeste.map(f => f.oferta_id).filter(Boolean))].map(id => projetoMap[id!]).filter(Boolean);
+            const funisTeste  = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+            const projetosTeste = [...new Set(funisTeste.map(f => f.oferta_id).filter(Boolean))].map(id => projetoMap[id!]).filter(Boolean);
             const tipoCfg = TIPO_CONFIG[t.tipo];
             const isMoving = moving === t.id;
 
@@ -129,15 +143,14 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
 
                 {/* Main content */}
                 <div className="flex-1 min-w-0">
+                  {projetosTeste.length > 0 && (
+                    <p className="text-[11px] font-semibold text-foreground/80 truncate mb-0.5">
+                      {projetosTeste.map(p => p.nome).join(', ')}
+                    </p>
+                  )}
                   <p className="text-sm font-medium truncate">{t.titulo}</p>
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
                     {funisTeste.length > 0 && <span className="truncate">{funisTeste.map(f => f.nome).join(', ')}</span>}
-                    {projetos.length > 0 && (
-                      <>
-                        <span>·</span>
-                        <span className="truncate">{projetos.map(p => p.nome).join(', ')}</span>
-                      </>
-                    )}
                     {t.data_inicio && (
                       <>
                         <span>·</span>

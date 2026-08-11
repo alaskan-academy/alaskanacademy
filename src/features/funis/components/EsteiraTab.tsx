@@ -79,10 +79,12 @@ function IceBadge({ score }: { score: number | null }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props) {
-  const perfilMap = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
+  const perfilMap  = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
+  const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
   const [filterFunil, setFilterFunil]         = useState('todos');
   const [filterCategoria, setFilterCategoria] = useState('todos');
   const [filterTipo, setFilterTipo]           = useState<TipoFilter>('todos');
+  const [filterProjeto, setFilterProjeto]     = useState('todos');
   const [modalOpen, setModalOpen]           = useState(false);
   const [editTeste, setEditTeste]           = useState<TesteFunil | null>(null);
   const [presetFunilId, setPresetFunilId]   = useState('');
@@ -96,6 +98,10 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     if (filterFunil !== 'todos' && t.funil_id !== filterFunil) return false;
     if (filterCategoria !== 'todos' && t.categoria !== filterCategoria) return false;
     if (filterTipo !== 'todos' && t.tipo !== filterTipo) return false;
+    if (filterProjeto !== 'todos') {
+      const linked = (t.funil_ids?.length ? t.funil_ids : t.funil_id ? [t.funil_id] : []).map(id => funilMap[id]).filter(Boolean);
+      if (!linked.some(f => f.oferta_id === filterProjeto)) return false;
+    }
     return true;
   });
 
@@ -136,6 +142,16 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
+        <Select value={filterProjeto} onValueChange={setFilterProjeto}>
+          <SelectTrigger className="h-9 text-sm w-44">
+            <SelectValue placeholder="Produto" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os produtos</SelectItem>
+            {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
         <Select value={filterFunil} onValueChange={setFilterFunil}>
           <SelectTrigger className="h-9 text-sm w-48">
             <SelectValue placeholder="Funil" />
@@ -234,6 +250,8 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                   const prevDest = canGoBack ? DEST_LABEL[PIPELINE_ORDER[pipeIdx - 1]] : '';
                   const nextDest = canGoNext ? DEST_LABEL[PIPELINE_ORDER[pipeIdx + 1]] : '';
 
+                  const projetosTeste = [...new Set(funisTeste.map(f => f.oferta_id).filter(Boolean))].map(id => projetoMap[id!]).filter(Boolean);
+
                   return (
                     <div
                       key={t.id}
@@ -265,6 +283,13 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
                           </a>
                         )}
                       </div>
+
+                      {/* Produto */}
+                      {projetosTeste.length > 0 && (
+                        <p className="text-[11px] font-semibold text-foreground/80 truncate">
+                          {projetosTeste.map(p => p.nome).join(', ')}
+                        </p>
+                      )}
 
                       {/* Title */}
                       <p className="text-sm font-medium leading-snug line-clamp-2">{t.titulo}</p>
