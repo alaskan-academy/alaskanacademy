@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { Plus, Pencil, ChevronLeft, CheckCircle2, XCircle, MinusCircle, Rocket, ExternalLink } from 'lucide-react';
 import { TesteModal } from './TesteModal';
+import { MultiFilter } from './MultiFilter';
 import { TesteFunil, Funil, Projeto, PerfilSimples } from '../types';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
@@ -38,19 +39,34 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
   const funilMap   = Object.fromEntries(funis.map(f => [f.id, f]));
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
-  const [filterFunil, setFilterFunil]     = useState('todos');
-  const [filterTipo, setFilterTipo]       = useState('todos');
-  const [filterResult, setFilterResult]   = useState('todos');
-  const [filterProjeto, setFilterProjeto] = useState('todos');
+  const [filterFunilIds, setFilterFunilIds] = useState<string[]>([]);
+  const [filterTipo, setFilterTipo]         = useState('todos');
+  const [filterResult, setFilterResult]     = useState('todos');
+  const [filterProjeto, setFilterProjeto]   = useState('todos');
   const [modalOpen, setModalOpen]       = useState(false);
   const [editTeste, setEditTeste]       = useState<TesteFunil | null>(null);
   const [modalKey, setModalKey]         = useState(0);
   const [moving, setMoving]             = useState<string | null>(null);
   const [activating, setActivating]     = useState<string | null>(null);
 
+  // Funis disponíveis no dropdown dependem do produto selecionado
+  const funisDisponiveis = filterProjeto === 'todos'
+    ? funis
+    : funis.filter(f => f.oferta_id === filterProjeto);
+
+  function handleProjetoChange(val: string) {
+    setFilterProjeto(val);
+    if (val !== 'todos') {
+      const ids = funis.filter(f => f.oferta_id === val).map(f => f.id);
+      setFilterFunilIds(prev => prev.filter(id => ids.includes(id)));
+    } else {
+      setFilterFunilIds([]);
+    }
+  }
+
   const concluidos = testes
     .filter(t => t.pipeline_status === 'concluido')
-    .filter(t => filterFunil  === 'todos' || t.funil_id === filterFunil)
+    .filter(t => filterFunilIds.length === 0 || filterFunilIds.some(id => t.funil_id === id || t.funil_ids?.includes(id)))
     .filter(t => filterTipo   === 'todos' || t.tipo     === filterTipo)
     .filter(t => {
       if (filterResult === 'todos') return true;
@@ -105,7 +121,7 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={filterProjeto} onValueChange={setFilterProjeto}>
+        <Select value={filterProjeto} onValueChange={handleProjetoChange}>
           <SelectTrigger className="h-9 text-sm w-44"><SelectValue placeholder="Produto" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os produtos</SelectItem>
@@ -113,20 +129,16 @@ export function ConcluídosTab({ testes, funis, projetos, perfis, onReload }: Pr
           </SelectContent>
         </Select>
 
-        <Select value={filterFunil} onValueChange={setFilterFunil}>
-          <SelectTrigger className="h-9 text-sm w-48"><SelectValue placeholder="Funil" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os funis</SelectItem>
-            {funis.map(f => {
-              const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
-              return (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.nome}{proj ? ` · ${proj.nome}` : ''}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        <MultiFilter
+          placeholder="Todos os funis"
+          options={funisDisponiveis.map(f => {
+            const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+            return { id: f.id, label: f.nome + (proj && filterProjeto === 'todos' ? ` · ${proj.nome}` : '') };
+          })}
+          value={filterFunilIds}
+          onChange={setFilterFunilIds}
+          width="w-52"
+        />
 
         <Select value={filterTipo} onValueChange={setFilterTipo}>
           <SelectTrigger className="h-9 text-sm w-40"><SelectValue /></SelectTrigger>

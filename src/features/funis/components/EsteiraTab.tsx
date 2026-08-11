@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import {
@@ -10,6 +9,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { TesteModal } from './TesteModal';
+import { MultiFilter } from './MultiFilter';
 import {
   TesteFunil, Funil, Projeto, PerfilSimples,
   PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest,
@@ -82,7 +82,7 @@ function IceBadge({ score }: { score: number | null }) {
 export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props) {
   const perfilMap  = Object.fromEntries(perfis.map(p => [p.id, p.nome]));
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
-  const [filterFunil, setFilterFunil]         = useState('todos');
+  const [filterFunilIds, setFilterFunilIds]   = useState<string[]>([]);
   const [filterCategoria, setFilterCategoria] = useState('todos');
   const [filterTipo, setFilterTipo]           = useState<TipoFilter>('todos');
   const [filterProjeto, setFilterProjeto]     = useState('todos');
@@ -95,8 +95,23 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
 
   const funilMap = Object.fromEntries(funis.map(f => [f.id, f]));
 
+  // Funis disponíveis no dropdown dependem do produto selecionado
+  const funisDisponiveis = filterProjeto === 'todos'
+    ? funis
+    : funis.filter(f => f.oferta_id === filterProjeto);
+
+  function handleProjetoChange(val: string) {
+    setFilterProjeto(val);
+    if (val !== 'todos') {
+      const ids = funis.filter(f => f.oferta_id === val).map(f => f.id);
+      setFilterFunilIds(prev => prev.filter(id => ids.includes(id)));
+    } else {
+      setFilterFunilIds([]);
+    }
+  }
+
   const filtered = testes.filter(t => {
-    if (filterFunil !== 'todos' && t.funil_id !== filterFunil) return false;
+    if (filterFunilIds.length > 0 && !filterFunilIds.some(id => t.funil_id === id || t.funil_ids?.includes(id))) return false;
     if (filterCategoria !== 'todos' && t.categoria !== filterCategoria) return false;
     if (filterTipo !== 'todos' && t.tipo !== filterTipo) return false;
     if (filterProjeto !== 'todos') {
@@ -144,7 +159,7 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={filterProjeto} onValueChange={setFilterProjeto}>
+        <Select value={filterProjeto} onValueChange={handleProjetoChange}>
           <SelectTrigger className="h-9 text-sm w-44">
             <SelectValue placeholder="Produto" />
           </SelectTrigger>
@@ -154,22 +169,16 @@ export function EsteiraTab({ testes, funis, projetos, perfis, onReload }: Props)
           </SelectContent>
         </Select>
 
-        <Select value={filterFunil} onValueChange={setFilterFunil}>
-          <SelectTrigger className="h-9 text-sm w-48">
-            <SelectValue placeholder="Funil" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os funis</SelectItem>
-            {funis.map(f => {
-              const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
-              return (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.nome}{proj ? ` · ${proj.nome}` : ''}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        <MultiFilter
+          placeholder="Todos os funis"
+          options={funisDisponiveis.map(f => {
+            const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+            return { id: f.id, label: f.nome + (proj && filterProjeto === 'todos' ? ` · ${proj.nome}` : '') };
+          })}
+          value={filterFunilIds}
+          onChange={setFilterFunilIds}
+          width="w-52"
+        />
 
         <Select value={filterCategoria} onValueChange={setFilterCategoria}>
           <SelectTrigger className="h-9 text-sm w-48">

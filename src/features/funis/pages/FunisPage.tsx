@@ -40,7 +40,7 @@ export default function FunisPage() {
   const load = useCallback(async () => {
     const [f, p, fs, d, t, pf] = await Promise.all([
       supabase.from('funis').select('*').order('nome'),
-      supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').order('nome'),
+      supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').eq('ativo', true).order('nome'),
       supabase.from('funil_subofertas').select('*'),
       supabase.from('dominios').select('*').order('nome'),
       supabase.from('testes_funis').select('*').eq('arquivado', false).order('created_at', { ascending: false }),
