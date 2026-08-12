@@ -316,8 +316,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             )}
           </div>
 
-          {/* Criativo / VSL */}
-          {(form.tipo === 'criativo' || form.tipo === 'vsl') && (
+          {/* Criativo */}
+          {form.tipo === 'criativo' && (
             <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
               <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Criativo</p>
               <div className="grid grid-cols-2 gap-3">

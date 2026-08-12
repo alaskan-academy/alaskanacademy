@@ -573,7 +573,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       </div>
 
       {/* Campos específicos por tipo — mesma ordem do form de criação */}
-      {(criativo.tipo === 'criativo' || criativo.tipo === 'vsl') && (
+      {criativo.tipo === 'criativo' && (
         <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
           {slLabel('Criativo')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
