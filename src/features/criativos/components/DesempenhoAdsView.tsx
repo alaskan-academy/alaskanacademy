@@ -182,7 +182,7 @@ export function DesempenhoAdsView() {
   const load = useCallback(async () => {
     setLoading(true);
 
-    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,funil_ids,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
+    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
 
     // Pagina em 2 requests paralelos — Supabase limita a 1000 linhas por request
     const [pg1, pg2, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
@@ -243,7 +243,7 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroFunil.length   && !filtroFunil.some(f => (r.funil_ids ?? []).includes(f))) return false;
+    if (filtroFunil.length   && !filtroFunil.includes(r.funil_video ?? '')) return false;
     return true;
   }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
 
@@ -253,7 +253,7 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroFunil.length   && !filtroFunil.some(f => (r.funil_ids ?? []).includes(f))) return false;
+    if (filtroFunil.length   && !filtroFunil.includes(r.funil_video ?? ''))      return false;
     return true;
   }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
 
@@ -305,22 +305,23 @@ export function DesempenhoAdsView() {
     filteredSemData.filter(isEscalado).sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')),
   [filteredSemData]);
 
+  const opFunilVideo = useMemo(() =>
+    [...new Set(rows.map(r => r.funil_video).filter((v): v is string => Boolean(v)))].sort(),
+  [rows]);
+
   const porFunil = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
-      const ids = (r.funil_ids ?? []).filter(Boolean);
-      if (ids.length === 0) continue;
-      for (const fid of ids) {
-        const label = funis.find(f => f.id === fid)?.nome ?? fid;
-        if (!map[fid]) map[fid] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
-        map[fid].testados++;
-        if (isValidado(r)) map[fid].validados++;
-        if (isEscalado(r)) map[fid].escalados++;
-        if (isAprovado(r)) map[fid].aprovados++;
-      }
+      const fv = r.funil_video;
+      if (!fv) continue;
+      if (!map[fv]) map[fv] = { label: fv, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
+      map[fv].testados++;
+      if (isValidado(r)) map[fv].validados++;
+      if (isEscalado(r)) map[fv].escalados++;
+      if (isAprovado(r)) map[fv].aprovados++;
     }
     return Object.values(map).sort((a, b) => b.testados - a.testados);
-  }, [filtered, funis]);
+  }, [filtered]);
 
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
@@ -335,66 +336,58 @@ export function DesempenhoAdsView() {
     <div className="space-y-4">
 
       {/* Filtros */}
-      <div className="bg-card border border-border rounded-lg p-4 flex items-end gap-3 flex-wrap">
-        {/* Período — segmented control */}
-        <div>
-          <p className="text-xs text-muted-foreground mb-1.5">Período</p>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-md border border-border overflow-hidden">
-              {(['last', 'this', 'custom'] as Preset[]).map((p, i) => (
-                <button
-                  key={p}
-                  onClick={() => { setPreset(p); if (p !== 'custom') setCalOpen(false); }}
-                  className={cn(
-                    'h-8 px-3 text-xs transition-colors whitespace-nowrap',
-                    i > 0 && 'border-l border-border',
-                    preset === p
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                  )}
-                >
-                  {p === 'last' ? 'Mês passado' : p === 'this' ? 'Este mês' : 'Personalizado'}
-                </button>
-              ))}
-            </div>
+      <div className="bg-card border border-border rounded-lg p-4 space-y-3">
 
-            {preset === 'custom' && (
-              <Popover open={calOpen} onOpenChange={setCalOpen}>
-                <PopoverTrigger asChild>
-                  <button className={cn(
-                    'h-8 px-3 rounded-md border text-xs flex items-center gap-1.5 transition-colors',
-                    dateRange?.from
-                      ? 'border-primary text-foreground bg-primary/5'
-                      : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                  )}>
-                    <CalendarIcon className="h-3.5 w-3.5" />
-                    {rangeLabel}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={dateRange}
-                    onSelect={r => { setDateRange(r); if (r?.from && r?.to) setCalOpen(false); }}
-                    numberOfMonths={2}
-                    locale={ptBR}
-                  />
-                </PopoverContent>
-              </Popover>
-            )}
+        {/* Linha 1: Período */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex rounded-md border border-border overflow-hidden">
+            {(['last', 'this', 'custom'] as Preset[]).map((p, i) => (
+              <button
+                key={p}
+                onClick={() => { setPreset(p); if (p !== 'custom') setCalOpen(false); }}
+                className={cn(
+                  'h-8 px-3 text-xs transition-colors whitespace-nowrap',
+                  i > 0 && 'border-l border-border',
+                  preset === p
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                )}
+              >
+                {p === 'last' ? 'Mês passado' : p === 'this' ? 'Este mês' : 'Personalizado'}
+              </button>
+            ))}
           </div>
+
+          {preset === 'custom' && (
+            <Popover open={calOpen} onOpenChange={setCalOpen}>
+              <PopoverTrigger asChild>
+                <button className={cn(
+                  'h-8 px-3 rounded-md border text-xs flex items-center gap-1.5 transition-colors',
+                  dateRange?.from
+                    ? 'border-primary text-foreground bg-primary/5'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                )}>
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {rangeLabel}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="range"
+                  selected={dateRange}
+                  onSelect={r => { setDateRange(r); if (r?.from && r?.to) setCalOpen(false); }}
+                  numberOfMonths={2}
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
 
-        <div>
-          <p className="text-xs text-muted-foreground mb-1.5">Editor</p>
+        {/* Linha 2: Filtros de atributo */}
+        <div className="flex items-center gap-2 flex-wrap">
           <MultiFilter label="Todos editores" options={perfis.map(p => ({ id: p.id, nome: p.nome }))} value={filtroEditor} onChange={setFiltroEditor} width="w-44" />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1.5">Projeto</p>
           <MultiFilter label="Todos projetos" options={projetos} value={filtroProjeto} onChange={setFiltroProjeto} width="w-44" />
-        </div>
-        <div>
-          <p className="text-xs text-muted-foreground mb-1.5">Tipo</p>
           <MultiFilter
             label="Todos tipos"
             options={[{ id: 'criativo', nome: 'Criativo' }, { id: 'vsl', nome: 'VSL' }, { id: 'aula', nome: 'Aula' }]}
@@ -402,10 +395,7 @@ export function DesempenhoAdsView() {
             onChange={setFiltroTipo}
             width="w-36"
           />
-        </div>
-        {opFormato.length > 0 && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-1.5">Formato</p>
+          {opFormato.length > 0 && (
             <MultiFilter
               label="Todos formatos"
               options={opFormato.map(f => ({ id: f, nome: f }))}
@@ -413,20 +403,17 @@ export function DesempenhoAdsView() {
               onChange={setFiltroFormato}
               width="w-36"
             />
-          </div>
-        )}
-        {funis.length > 0 && (
-          <div>
-            <p className="text-xs text-muted-foreground mb-1.5">Funil</p>
+          )}
+          {opFunilVideo.length > 0 && (
             <MultiFilter
               label="Todos os funis"
-              options={funis.map(f => ({ id: f.id, nome: f.nome }))}
+              options={opFunilVideo.map(f => ({ id: f, nome: f }))}
               value={filtroFunil}
               onChange={setFiltroFunil}
               width="w-44"
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* KPI cards */}
@@ -461,16 +448,19 @@ export function DesempenhoAdsView() {
 
       {!loading && (
         <>
-          {/* Breakdowns */}
+          {/* Breakdowns: funil + tipo/formato + criativo */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
             <BreakdownTable title="Por tipo" rows={porTipo} />
             <BreakdownTable title="Por formato" rows={porFormato} />
             <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} />
             <BreakdownTable title="Por nível de consciência" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
-            <BreakdownTable title="Por editor" rows={porEditor} />
+          </div>
 
-            {porEditor.length > 0 && (
+          {/* Editor: tabela + gráfico lado a lado */}
+          {porEditor.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <BreakdownTable title="Por editor" rows={porEditor} />
               <div className="bg-card border border-border rounded-lg p-4">
                 <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
                 <ResponsiveContainer width="100%" height={220}>
@@ -483,8 +473,8 @@ export function DesempenhoAdsView() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Evolução mensal */}
           {evolucao.length > 0 && (
@@ -510,7 +500,7 @@ export function DesempenhoAdsView() {
           {/* ADs escalados no período */}
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <h4 className="text-sm font-medium">ADs escalados no período <span className="text-muted-foreground font-normal">(avaliação Escalando)</span></h4>
+              <h4 className="text-sm font-medium">ADs escalados no período <span className="text-muted-foreground font-normal">(avaliação Escalado)</span></h4>
               <span className="text-xs text-muted-foreground">{escaladosLista.length} ads</span>
             </div>
             {escaladosLista.length === 0 ? (
