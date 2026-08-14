@@ -97,9 +97,11 @@ function buildBreakdown(
 function BreakdownTable({
   title,
   rows,
+  scrollable,
 }: {
   title: string;
   rows: { label: string; testados: number; validados: number; escalados: number; aprovados: number }[];
+  scrollable?: boolean;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -107,9 +109,9 @@ function BreakdownTable({
       <div className="px-4 py-3 border-b border-border">
         <h4 className="text-sm font-medium">{title}</h4>
       </div>
-      <div className="overflow-x-auto">
+      <div className={cn('overflow-x-auto', scrollable && 'overflow-y-auto max-h-72')}>
         <table className="w-full text-sm">
-          <thead>
+          <thead className={cn(scrollable && 'sticky top-0 bg-card z-10')}>
             <tr className="border-b border-border text-[11px] text-muted-foreground uppercase">
               <th className="text-left px-3 py-2">{title.replace('Por ', '')}</th>
               <th className="text-right px-3 py-2">Testados</th>
@@ -271,7 +273,14 @@ export function DesempenhoAdsView() {
 
   const porTipo       = useMemo(() => buildBreakdown(filtered, 'tipo', v => TIPO_LABEL[v ?? ''] ?? v ?? '—'), [filtered]);
   const porFormato    = useMemo(() => buildBreakdown(filtered, 'formato', v => v ?? '— sem formato —'), [filtered]);
-  const porAngulo     = useMemo(() => buildBreakdown(filtered, 'angulo_teste', v => v ?? '— sem ângulo —'), [filtered]);
+  const porAngulo     = useMemo(() => {
+    const rows = buildBreakdown(filtered, 'angulo_teste', v => v ?? '— sem ângulo —');
+    return rows.sort((a, b) => {
+      const ta = a.testados > 0 ? a.validados / a.testados : 0;
+      const tb = b.testados > 0 ? b.validados / b.testados : 0;
+      return tb - ta;
+    });
+  }, [filtered]);
   const porNivelConsc = useMemo(() => buildBreakdown(filtered, 'nivel_consciencia', v => v ?? '— sem nível —'), [filtered]);
   const porEditor     = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
@@ -448,33 +457,35 @@ export function DesempenhoAdsView() {
 
       {!loading && (
         <>
-          {/* Breakdowns: funil + tipo/formato + criativo */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-            {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
-            <BreakdownTable title="Por tipo" rows={porTipo} />
-            <BreakdownTable title="Por formato" rows={porFormato} />
-            <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} />
-            <BreakdownTable title="Por nível de consciência" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
-          </div>
-
-          {/* Editor: tabela + gráfico lado a lado */}
-          {porEditor.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              <BreakdownTable title="Por editor" rows={porEditor} />
-              <div className="bg-card border border-border rounded-lg p-4">
-                <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={porEditor.map(r => ({ ...r, taxa: r.testados > 0 ? (r.validados / r.testados) * 100 : 0 }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
-                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} unit="%" />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatPercent(Number(v))} />
-                    <Bar dataKey="taxa" name="Taxa valid." fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+          {/* Breakdowns — 2 colunas flex independentes, sem buracos */}
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
+            {/* Coluna esquerda: tabelas compactas + editor */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              <BreakdownTable title="Por tipo" rows={porTipo} />
+              <BreakdownTable title="Por formato" rows={porFormato} />
+              <BreakdownTable title="Por nível de consciência" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
+              {porEditor.length > 0 && <BreakdownTable title="Por editor" rows={porEditor} />}
+              {porEditor.length > 0 && (
+                <div className="bg-card border border-border rounded-lg p-4">
+                  <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={porEditor.map(r => ({ ...r, taxa: r.testados > 0 ? (r.validados / r.testados) * 100 : 0 }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} unit="%" />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatPercent(Number(v))} />
+                      <Bar dataKey="taxa" name="Taxa valid." fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
-          )}
+            {/* Coluna direita: funil + ângulo (potencialmente mais altos) */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
+              <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} scrollable />
+            </div>
+          </div>
 
           {/* Evolução mensal */}
           {evolucao.length > 0 && (
