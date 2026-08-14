@@ -457,32 +457,20 @@ export function DesempenhoAdsView() {
 
       {!loading && (
         <>
-          {/* Breakdowns — CSS columns: browser distribui automaticamente, sem buracos */}
-          <div className="lg:columns-2 gap-4 space-y-4 lg:space-y-0">
-            {porFunil.length > 0 && (
-              <div className="break-inside-avoid mb-4">
-                <BreakdownTable title="Por funil de vendas" rows={porFunil} />
-              </div>
-            )}
-            <div className="break-inside-avoid mb-4">
+          {/* Breakdowns — 2 colunas balanceadas por altura estimada */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Esquerda: funil + ângulo + nível (~710px c/ editor) */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
               <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} scrollable />
-            </div>
-            <div className="break-inside-avoid mb-4">
-              <BreakdownTable title="Por tipo" rows={porTipo} />
-            </div>
-            <div className="break-inside-avoid mb-4">
-              <BreakdownTable title="Por formato" rows={porFormato} />
-            </div>
-            <div className="break-inside-avoid mb-4">
               <BreakdownTable title="Por nível de consciência" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
             </div>
-            {porEditor.length > 0 && (
-              <div className="break-inside-avoid mb-4">
-                <BreakdownTable title="Por editor" rows={porEditor} />
-              </div>
-            )}
-            {porEditor.length > 0 && (
-              <div className="break-inside-avoid mb-4">
+            {/* Direita: tipo + formato + editor + gráfico (~720px c/ editor) */}
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              <BreakdownTable title="Por tipo" rows={porTipo} />
+              <BreakdownTable title="Por formato" rows={porFormato} />
+              {porEditor.length > 0 && <BreakdownTable title="Por editor" rows={porEditor} />}
+              {porEditor.length > 0 && (
                 <div className="bg-card border border-border rounded-lg p-4">
                   <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
                   <ResponsiveContainer width="100%" height={220}>
@@ -495,8 +483,8 @@ export function DesempenhoAdsView() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Evolução mensal */}
