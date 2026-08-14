@@ -29,10 +29,9 @@ interface Projeto {
 interface Props {
   nivel: ProducaoNivel;
   userId: string;
-  filtroFunil?: string[];
 }
 
-export function PorProjetoView({ nivel, userId, filtroFunil = [] }: Props) {
+export function PorProjetoView({ nivel, userId }: Props) {
   const [projetos, setProjetos]   = useState<Projeto[]>([]);
   const [criativos, setCriativos] = useState<CriativoRow[]>([]);
   const [perfis, setPerfis]       = useState<Perfil[]>([]);
@@ -48,6 +47,7 @@ export function PorProjetoView({ nivel, userId, filtroFunil = [] }: Props) {
   const [filtroTipo, setFiltroTipo]   = useState<string[]>([]);
   const [filtroFase, setFiltroFase]   = useState<string[]>([]);
   const [filtroResp, setFiltroResp]   = useState<string[]>([]);
+  const [filtroFunil, setFiltroFunil] = useState<string[]>([]);
   const [filtroAval, setFiltroAval]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
   const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
@@ -183,6 +183,15 @@ export function PorProjetoView({ nivel, userId, filtroFunil = [] }: Props) {
             value={filtroStatus}
             onChange={setFiltroStatus}
             width="w-36"
+          />
+        )}
+        {funis.length > 0 && (
+          <MultiFilter
+            label="Funil"
+            options={funis.map(f => ({ id: f.id, nome: f.nome }))}
+            value={filtroFunil}
+            onChange={setFiltroFunil}
+            width="w-44"
           />
         )}
 

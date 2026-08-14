@@ -12,7 +12,6 @@ import { fetchProjetos, fetchFunis } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
-import { FASES } from '@/features/producao/components/constants';
 import type { Perfil, Funil } from '@/features/producao/components/types';
 
 interface CriativoPostado {
@@ -35,7 +34,6 @@ interface CriativoPostado {
 
 interface Props {
   userId: string;
-  filtroFunil?: string[];
 }
 
 function isPendente(c: CriativoPostado): boolean {
@@ -61,7 +59,7 @@ const AVAL_COR: Record<string, string> = {
   'Sem dados':    'bg-muted/60 text-muted-foreground border-border',
 };
 
-export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
+export function AvaliacaoView({ userId }: Props) {
   const { toast } = useToast();
 
   const [criativos, setCriativos]     = useState<CriativoPostado[]>([]);
@@ -78,11 +76,11 @@ export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
   const [busca, setBusca]                 = useState('');
   const [filtroProjeto, setFiltroProjeto] = useState<string[]>([]);
   const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
-  const [filtroFase, setFiltroFase]       = useState<string[]>([]);
   const [filtroEditor, setFiltroEditor]   = useState<string[]>([]);
   const [filtroAval, setFiltroAval]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
   const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
+  const [filtroFunil, setFiltroFunil]     = useState<string[]>([]);
   const [preset, setPreset]               = useState<'this' | 'last' | 'custom'>('this');
   const [dateRange, setDateRange]         = useState<DateRange | undefined>();
   const [calOpen, setCalOpen]             = useState(false);
@@ -139,13 +137,8 @@ export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
         .from('producoes')
         .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,responsavel_id,projeto_id,funil_ids,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
         .order('nome');
-      if (filtroFase.length) {
-        q = q.in('fase', filtroFase);
-      } else {
-        q = q.eq('fase', 'postado');
-        // Só exclui arquivados quando não há seleção explícita de fase
-        if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
-      }
+      q = q.eq('fase', 'postado');
+      if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
       if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
       if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
       if (filtroEditor.length)  q = q.in('responsavel_id', filtroEditor);
@@ -193,7 +186,7 @@ export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
       };
     }));
     setLoading(false);
-  }, [filtroProjeto, filtroTipo, filtroFase, filtroEditor, filtroAval, filtroFormato, filtroStatus, mostrarInativos]);
+  }, [filtroProjeto, filtroTipo, filtroEditor, filtroAval, filtroFormato, filtroStatus, mostrarInativos]);
 
   useEffect(() => { loadOpcoes(); }, [loadOpcoes]);
   useEffect(() => { load(); }, [load]);
@@ -270,13 +263,6 @@ export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
             width="w-32"
           />
           <MultiFilter
-            label="Fase"
-            options={FASES.map(f => ({ id: f.key, nome: f.label }))}
-            value={filtroFase}
-            onChange={setFiltroFase}
-            width="w-36"
-          />
-          <MultiFilter
             label="Todos os projetos"
             options={projetos}
             value={filtroProjeto}
@@ -313,6 +299,15 @@ export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
             onChange={setFiltroStatus}
             width="w-36"
           />
+          {funis.length > 0 && (
+            <MultiFilter
+              label="Funil"
+              options={funis.map(f => ({ id: f.id, nome: f.nome }))}
+              value={filtroFunil}
+              onChange={setFiltroFunil}
+              width="w-44"
+            />
+          )}
         </div>
 
         {/* Linha 2 — período + toggles */}

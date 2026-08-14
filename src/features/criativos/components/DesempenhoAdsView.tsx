@@ -149,12 +149,7 @@ function BreakdownTable({
   );
 }
 
-interface DesempenhoProps {
-  filtroFunil?: string[];
-  funisList?: Funil[];
-}
-
-export function DesempenhoAdsView({ filtroFunil = [], funisList = [] }: DesempenhoProps) {
+export function DesempenhoAdsView() {
   const { user } = useAuth();
   const userId = user?.id ?? '';
 
@@ -174,6 +169,7 @@ export function DesempenhoAdsView({ filtroFunil = [], funisList = [] }: Desempen
   const [filtroProjeto, setFiltroProjeto] = useState<string[]>([]);
   const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
+  const [filtroFunil, setFiltroFunil]     = useState<string[]>([]);
 
   const { startStr, endStr } = useMemo(() => {
     if (preset === 'this')  return { startStr: toYMD(startOfMonth(0)),  endStr: toYMD(endOfMonth(0)) };
@@ -315,7 +311,7 @@ export function DesempenhoAdsView({ filtroFunil = [], funisList = [] }: Desempen
       const ids = r.funil_ids ?? [];
       const keys = ids.length > 0 ? ids : ['__sem__'];
       for (const fid of keys) {
-        const label = fid === '__sem__' ? '— sem funil —' : (funisList.find(f => f.id === fid)?.nome ?? fid);
+        const label = fid === '__sem__' ? '— sem funil —' : (funis.find(f => f.id === fid)?.nome ?? fid);
         if (!map[fid]) map[fid] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
         map[fid].testados++;
         if (isValidado(r)) map[fid].validados++;
@@ -416,6 +412,18 @@ export function DesempenhoAdsView({ filtroFunil = [], funisList = [] }: Desempen
               value={filtroFormato}
               onChange={setFiltroFormato}
               width="w-36"
+            />
+          </div>
+        )}
+        {funis.length > 0 && (
+          <div>
+            <p className="text-xs text-muted-foreground mb-1.5">Funil</p>
+            <MultiFilter
+              label="Todos os funis"
+              options={funis.map(f => ({ id: f.id, nome: f.nome }))}
+              value={filtroFunil}
+              onChange={setFiltroFunil}
+              width="w-44"
             />
           </div>
         )}
