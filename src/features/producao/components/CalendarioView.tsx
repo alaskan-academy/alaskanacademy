@@ -11,8 +11,9 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronLeft, ChevronRight, Plus, Copy, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Copy, Trash2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MultiFilter } from './MultiFilter';
 import { supabase } from '@/lib/supabase';
@@ -235,7 +236,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
   const [filtroResp, setFiltroResp]       = useState<string[]>([]);
   const [filtroFase, setFiltroFase]       = useState<string[]>([]);
+  const [filtroAval, setFiltroAval]       = useState<string[]>([]);
+  const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
+  const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
+  const [busca, setBusca]                 = useState('');
   const [projetos, setProjetos]           = useState<{ id: string; nome: string }[]>([]);
+  const [opAvaliacao, setOpAvaliacao]     = useState<string[]>([]);
+  const [opFormato, setOpFormato]         = useState<string[]>([]);
+  const [opStatus, setOpStatus]           = useState<string[]>([]);
   const [createDate, setCreateDate]   = useState<string | null>(null);
 
   // DnD single-day
@@ -261,10 +269,21 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   // ── Data loading ─────────────────────────────────────────────────────────
 
   const loadAux = useCallback(async () => {
-    const [fs, ps, pr] = await Promise.all([fetchFunis(), fetchPerfis(), fetchProjetos()]);
+    const [fs, ps, pr, { data: opA }, { data: opF }, { data: opS }] = await Promise.all([
+      fetchFunis(),
+      fetchPerfis(),
+      fetchProjetos(),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'avaliacao').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'formato').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'status_veiculacao').order('ordem'),
+    ]);
     setFunis(fs);
     setPerfis(ps);
     setProjetos(pr);
+    if (opA?.length) setOpAvaliacao(opA.map(d => d.valor as string));
+    else setOpAvaliacao(['Sem dados', 'Validado', 'Não validado']);
+    if (opF?.length) setOpFormato(opF.map(d => d.valor as string));
+    if (opS?.length) setOpStatus(opS.map(d => d.valor as string));
   }, []);
 
   const loadCriativos = useCallback(async () => {
@@ -302,6 +321,9 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
     if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
     if (filtroFase.length)    q = q.in('fase', filtroFase);
+    if (filtroAval.length)    q = q.in('avaliacao', filtroAval);
+    if (filtroFormato.length) q = q.in('formato', filtroFormato);
+    if (filtroStatus.length)  q = q.in('status_veiculacao', filtroStatus);
     if (filtroResp.length) {
       const ids = filtroResp.join(',');
       q = q.or(`responsavel_id.in.(${ids}),especialista_id.in.(${ids}),copy_id.in.(${ids}),gestor_id.in.(${ids})`);
@@ -310,7 +332,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
-  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp]);
+  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -541,10 +563,15 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const days     = buildCalendarGrid(year, month);
   const todayYMD = toYMD(now);
 
+  const buscaLower = busca.toLowerCase();
+  const displayCriativos = buscaLower
+    ? criativos.filter(c => c.nome.toLowerCase().includes(buscaLower))
+    : criativos;
+
   const spanning: Criativo[] = [];
   const byDate: Record<string, Criativo[]> = {};
 
-  for (const c of criativos) {
+  for (const c of displayCriativos) {
     if (c.data_inicio && c.data_prazo && c.data_inicio < c.data_prazo) {
       spanning.push(c);
     } else {
@@ -578,6 +605,16 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar..."
+            className="h-8 pl-8 w-44 text-xs"
+          />
+        </div>
+
         <MultiFilter
           label="Todos os projetos"
           options={projetos}
@@ -610,6 +647,33 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
             value={filtroResp}
             onChange={setFiltroResp}
             width="w-40"
+          />
+        )}
+        {opAvaliacao.length > 0 && (
+          <MultiFilter
+            label="Avaliação"
+            options={opAvaliacao.map(a => ({ id: a, nome: a }))}
+            value={filtroAval}
+            onChange={setFiltroAval}
+            width="w-36"
+          />
+        )}
+        {opFormato.length > 0 && (
+          <MultiFilter
+            label="Formato"
+            options={opFormato.map(a => ({ id: a, nome: a }))}
+            value={filtroFormato}
+            onChange={setFiltroFormato}
+            width="w-36"
+          />
+        )}
+        {opStatus.length > 0 && (
+          <MultiFilter
+            label="Status"
+            options={opStatus.map(a => ({ id: a, nome: a }))}
+            value={filtroStatus}
+            onChange={setFiltroStatus}
+            width="w-36"
           />
         )}
 

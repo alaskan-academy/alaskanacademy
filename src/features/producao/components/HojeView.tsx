@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
   const [perfis, setPerfis]       = useState<Perfil[]>([]);
   const [loading, setLoading]     = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busca, setBusca]           = useState('');
 
   const today = toYMD(new Date());
 
@@ -89,15 +91,29 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     );
   }
 
+  const buscaLower = busca.toLowerCase();
+  const displayCriativos = buscaLower
+    ? criativos.filter(c => c.nome.toLowerCase().includes(buscaLower))
+    : criativos;
+
   return (
-    <div className="flex flex-col gap-1">
-      <p className="text-xs text-muted-foreground mb-3">
-        {criativos.length} item{criativos.length !== 1 ? 's' : ''} para hoje · {
+    <div className="flex flex-col gap-2">
+      <div className="relative w-44">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <Input
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+          placeholder="Buscar..."
+          className="h-8 pl-8 text-xs"
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {displayCriativos.length} item{displayCriativos.length !== 1 ? 's' : ''} para hoje · {
           new Date(today + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
         }
       </p>
 
-      {criativos.map(c => {
+      {displayCriativos.map(c => {
         const fase    = FASES_MAP[c.fase] ?? c.fase;
         const funil   = c.funil?.nome ?? c.funil_video ?? null;
         const projeto = c.projeto?.nome ?? null;

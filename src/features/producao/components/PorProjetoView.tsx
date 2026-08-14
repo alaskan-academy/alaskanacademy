@@ -37,6 +37,8 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const [perfis, setPerfis]       = useState<Perfil[]>([]);
   const [funis, setFunis]         = useState<Funil[]>([]);
   const [opAvaliacao, setOpAvaliacao] = useState<string[]>([]);
+  const [opFormato, setOpFormato]     = useState<string[]>([]);
+  const [opStatus, setOpStatus]       = useState<string[]>([]);
   const [expanded, setExpanded]   = useState<string | null>(null);
   const [loading, setLoading]     = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -45,21 +47,27 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const [filtroTipo, setFiltroTipo]   = useState<string[]>([]);
   const [filtroFase, setFiltroFase]   = useState<string[]>([]);
   const [filtroResp, setFiltroResp]   = useState<string[]>([]);
-  const [filtroAval, setFiltroAval]   = useState<string[]>([]);
+  const [filtroAval, setFiltroAval]       = useState<string[]>([]);
+  const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
+  const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
   const [mostrarInativos, setMostrarInativos] = useState(false);
 
   const loadAux = useCallback(async () => {
-    const [ps, perf, fs, { data: op }] = await Promise.all([
+    const [ps, perf, fs, { data: op }, { data: opF }, { data: opS }] = await Promise.all([
       fetchProjetos(),
       fetchPerfis(),
       fetchFunis(),
       supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'avaliacao').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'formato').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'status_veiculacao').order('ordem'),
     ]);
     setProjetos(ps);
     setPerfis(perf as Perfil[]);
     setFunis(fs as Funil[]);
     if (op && op.length > 0) setOpAvaliacao(op.map(d => d.valor as string));
     else setOpAvaliacao(['Sem dados', 'Validado', 'Não validado']);
+    if (opF && opF.length > 0) setOpFormato(opF.map(d => d.valor as string));
+    if (opS && opS.length > 0) setOpStatus(opS.map(d => d.valor as string));
   }, []);
 
   const loadCriativos = useCallback(async () => {
@@ -77,7 +85,9 @@ export function PorProjetoView({ nivel, userId }: Props) {
       if (filtroTipo.length) q = q.in('tipo', filtroTipo);
       if (filtroFase.length) q = q.in('fase', filtroFase);
       if (filtroResp.length) q = q.in('responsavel_id', filtroResp);
-      if (filtroAval.length) q = q.in('avaliacao', filtroAval);
+      if (filtroAval.length)    q = q.in('avaliacao', filtroAval);
+      if (filtroFormato.length) q = q.in('formato', filtroFormato);
+      if (filtroStatus.length)  q = q.in('status_veiculacao', filtroStatus);
       const { data } = await q;
       if (!data || data.length === 0) break;
       all = all.concat(data as CriativoRow[]);
@@ -86,7 +96,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
     }
     setCriativos(all);
     setLoading(false);
-  }, [filtroTipo, filtroFase, filtroResp, filtroAval, mostrarInativos]);
+  }, [filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, mostrarInativos]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -154,6 +164,24 @@ export function PorProjetoView({ nivel, userId }: Props) {
           onChange={setFiltroAval}
           width="w-36"
         />
+        {opFormato.length > 0 && (
+          <MultiFilter
+            label="Formato"
+            options={opFormato.map(a => ({ id: a, nome: a }))}
+            value={filtroFormato}
+            onChange={setFiltroFormato}
+            width="w-36"
+          />
+        )}
+        {opStatus.length > 0 && (
+          <MultiFilter
+            label="Status"
+            options={opStatus.map(a => ({ id: a, nome: a }))}
+            value={filtroStatus}
+            onChange={setFiltroStatus}
+            width="w-36"
+          />
+        )}
 
         <button
           onClick={() => setMostrarInativos(v => !v)}
