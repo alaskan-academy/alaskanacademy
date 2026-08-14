@@ -25,6 +25,7 @@ const CHART_COLORS = {
   primary:   '#6366f1',
   validados: '#10b981',
   escalados: '#3b82f6',
+  aprovados: '#a78bfa',
 } as const;
 
 interface PostadoRow {
@@ -69,22 +70,24 @@ function toYMD(d: Date): string {
 }
 
 // Pure functions — definidas fora do componente para evitar recriação
-const isEscalado = (r: PostadoRow) => r.avaliacao === 'Escalando';
-const isValidado = (r: PostadoRow) => r.avaliacao === 'Validado' || r.avaliacao === 'Escalando';
+const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalando';
+const isValidado  = (r: PostadoRow) => r.avaliacao === 'Validado';
+const isAprovado  = (r: PostadoRow) => r.avaliacao === 'Validado' || r.avaliacao === 'Escalando';
 
 function buildBreakdown(
   rows: PostadoRow[],
   key: keyof PostadoRow,
   labelFn?: (val: string | null) => string,
-): { label: string; testados: number; validados: number; escalados: number }[] {
-  const map: Record<string, { label: string; testados: number; validados: number; escalados: number }> = {};
+): { label: string; testados: number; validados: number; escalados: number; aprovados: number }[] {
+  const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
   for (const r of rows) {
     const k = (r[key] as string | null) ?? '__vazio__';
     const label = labelFn ? labelFn(r[key] as string | null) : (r[key] as string | null) ?? '— sem info —';
-    if (!map[k]) map[k] = { label, testados: 0, validados: 0, escalados: 0 };
+    if (!map[k]) map[k] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
     map[k].testados++;
     if (isValidado(r)) map[k].validados++;
     if (isEscalado(r)) map[k].escalados++;
+    if (isAprovado(r)) map[k].aprovados++;
   }
   return Object.values(map).sort((a, b) => b.testados - a.testados);
 }
@@ -94,7 +97,7 @@ function BreakdownTable({
   rows,
 }: {
   title: string;
-  rows: { label: string; testados: number; validados: number; escalados: number }[];
+  rows: { label: string; testados: number; validados: number; escalados: number; aprovados: number }[];
 }) {
   if (rows.length === 0) return null;
   return (
@@ -110,18 +113,20 @@ function BreakdownTable({
               <th className="text-right px-3 py-2">Testados</th>
               <th className="text-right px-3 py-2">Validados</th>
               <th className="text-right px-3 py-2">Escalados</th>
+              <th className="text-right px-3 py-2">Val.+Esc.</th>
               <th className="text-right px-3 py-2">Taxa valid.</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const taxa = r.testados > 0 ? (r.validados / r.testados) * 100 : 0;
+              const taxa = r.testados > 0 ? (r.aprovados / r.testados) * 100 : 0;
               return (
                 <tr key={r.label} className="border-b border-border/40 last:border-0">
                   <td className="px-3 py-2 font-medium truncate max-w-[160px]">{r.label}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.testados}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.validados}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.escalados}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium">{r.aprovados}</td>
                   <td className="px-3 py-2 text-right">
                     <span className={cn(
                       'px-1.5 py-0.5 rounded text-[11px] font-medium',
@@ -238,49 +243,62 @@ export function DesempenhoAdsView() {
     return true;
   }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato]);
 
+  // Escalados = todos os ads atualmente em "Escalando", sem filtro de data de postagem
+  const filteredSemData = useMemo(() => rows.filter(r => {
+    if (filtroEditor.length  && !filtroEditor.includes(r.responsavel_id ?? ''))  return false;
+    if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
+    if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
+    if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
+    return true;
+  }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato]);
+
   const totals = useMemo(() => {
     const testados  = filtered.length;
     const validados = filtered.filter(isValidado).length;
-    const escalados = filtered.filter(isEscalado).length;
+    const escalados = filteredSemData.filter(isEscalado).length;
+    const aprovados = filtered.filter(isAprovado).length;
     const naoValid  = filtered.filter(r => r.avaliacao === 'Não validado').length;
     const taxaValid = testados > 0 ? (validados / testados) * 100 : 0;
-    const taxaEscal = testados > 0 ? (escalados / testados) * 100 : 0;
-    return { testados, validados, escalados, naoValid, taxaValid, taxaEscal };
-  }, [filtered]);
+    const taxaEscal = filteredSemData.length > 0 ? (escalados / filteredSemData.length) * 100 : 0;
+    const taxaAprov = testados > 0 ? (aprovados / testados) * 100 : 0;
+    return { testados, validados, escalados, aprovados, naoValid, taxaValid, taxaEscal, taxaAprov };
+  }, [filtered, filteredSemData]);
 
   const porTipo       = useMemo(() => buildBreakdown(filtered, 'tipo', v => TIPO_LABEL[v ?? ''] ?? v ?? '—'), [filtered]);
   const porFormato    = useMemo(() => buildBreakdown(filtered, 'formato', v => v ?? '— sem formato —'), [filtered]);
   const porAngulo     = useMemo(() => buildBreakdown(filtered, 'angulo_teste', v => v ?? '— sem ângulo —'), [filtered]);
   const porNivelConsc = useMemo(() => buildBreakdown(filtered, 'nivel_consciencia', v => v ?? '— sem nível —'), [filtered]);
   const porEditor     = useMemo(() => {
-    const map: Record<string, { label: string; testados: number; validados: number; escalados: number }> = {};
+    const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
       const k = r.responsavel_id ?? '__sem__';
       const label = r.responsavel?.nome ?? '— sem editor —';
-      if (!map[k]) map[k] = { label, testados: 0, validados: 0, escalados: 0 };
+      if (!map[k]) map[k] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
       map[k].testados++;
       if (isValidado(r)) map[k].validados++;
       if (isEscalado(r)) map[k].escalados++;
+      if (isAprovado(r)) map[k].aprovados++;
     }
     return Object.values(map).sort((a, b) => b.testados - a.testados);
   }, [filtered]);
 
   const evolucao = useMemo(() => {
-    const map: Record<string, { mes: string; testados: number; validados: number; escalados: number }> = {};
+    const map: Record<string, { mes: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
       const mes = (r.data_ref ?? '').slice(0, 7);
       if (!mes) continue;
-      if (!map[mes]) map[mes] = { mes, testados: 0, validados: 0, escalados: 0 };
+      if (!map[mes]) map[mes] = { mes, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
       map[mes].testados++;
       if (isValidado(r)) map[mes].validados++;
       if (isEscalado(r)) map[mes].escalados++;
+      if (isAprovado(r)) map[mes].aprovados++;
     }
     return Object.values(map).sort((a, b) => a.mes.localeCompare(b.mes));
   }, [filtered]);
 
   const escaladosLista = useMemo(() =>
-    filtered.filter(isEscalado).sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')),
-  [filtered]);
+    filteredSemData.filter(isEscalado).sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')),
+  [filteredSemData]);
 
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
@@ -378,13 +396,14 @@ export function DesempenhoAdsView() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: 'ADs testados',        value: totals.testados,  sub: null,                                                                                 color: '' },
           { label: 'Validados',           value: totals.validados, sub: formatPercent(totals.taxaValid),                                                      color: 'text-emerald-500' },
-          { label: 'Não validados',       value: totals.naoValid,  sub: totals.testados > 0 ? formatPercent((totals.naoValid / totals.testados) * 100) : null, color: 'text-red-500' },
           { label: 'Escalados',           value: totals.escalados, sub: formatPercent(totals.taxaEscal),                                                      color: 'text-blue-400' },
-          { label: 'Taxa de validação',   value: null,             sub: formatPercent(totals.taxaValid),                                                      color: 'text-primary' },
+          { label: 'Val. + Esc.',         value: totals.aprovados, sub: formatPercent(totals.taxaAprov),                                                      color: 'text-violet-400' },
+          { label: 'Não validados',       value: totals.naoValid,  sub: totals.testados > 0 ? formatPercent((totals.naoValid / totals.testados) * 100) : null, color: 'text-red-500' },
+          { label: 'Taxa de validação',   value: null,             sub: formatPercent(totals.taxaAprov),                                                      color: 'text-primary' },
         ].map(card => (
           <div key={card.label} className="bg-card border border-border rounded-lg p-4">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{card.label}</p>
@@ -444,9 +463,10 @@ export function DesempenhoAdsView() {
                   <YAxis yAxisId="right" orientation="right" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} unit="%" />
                   <Tooltip contentStyle={tooltipStyle} />
                   <Legend />
-                  <Line yAxisId="left" type="monotone" dataKey="testados"  name="Testados"  stroke={CHART_COLORS.primary}   strokeWidth={2} dot={{ r: 3 }} />
-                  <Line yAxisId="left" type="monotone" dataKey="validados" name="Validados" stroke={CHART_COLORS.validados}  strokeWidth={2} dot={{ r: 3 }} />
-                  <Line yAxisId="left" type="monotone" dataKey="escalados" name="Escalados" stroke={CHART_COLORS.escalados}  strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="testados"  name="Testados"   stroke={CHART_COLORS.primary}   strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="validados" name="Validados"  stroke={CHART_COLORS.validados}  strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="escalados" name="Escalados"  stroke={CHART_COLORS.escalados}  strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="aprovados" name="Val.+Esc."  stroke={CHART_COLORS.aprovados}  strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 2" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
