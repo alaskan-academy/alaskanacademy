@@ -449,7 +449,7 @@ export function DesempenhoAdsView() {
       {!loading && (
         <>
           {/* Breakdowns: funil + tipo/formato + criativo */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
             <BreakdownTable title="Por tipo" rows={porTipo} />
             <BreakdownTable title="Por formato" rows={porFormato} />
@@ -459,7 +459,7 @@ export function DesempenhoAdsView() {
 
           {/* Editor: tabela + gráfico lado a lado */}
           {porEditor.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
               <BreakdownTable title="Por editor" rows={porEditor} />
               <div className="bg-card border border-border rounded-lg p-4">
                 <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
