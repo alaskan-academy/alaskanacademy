@@ -308,10 +308,10 @@ export function DesempenhoAdsView() {
   const porFunil = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
-      const ids = r.funil_ids ?? [];
-      const keys = ids.length > 0 ? ids : ['__sem__'];
-      for (const fid of keys) {
-        const label = fid === '__sem__' ? '— sem funil —' : (funis.find(f => f.id === fid)?.nome ?? fid);
+      const ids = (r.funil_ids ?? []).filter(Boolean);
+      if (ids.length === 0) continue;
+      for (const fid of ids) {
+        const label = funis.find(f => f.id === fid)?.nome ?? fid;
         if (!map[fid]) map[fid] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
         map[fid].testados++;
         if (isValidado(r)) map[fid].validados++;
