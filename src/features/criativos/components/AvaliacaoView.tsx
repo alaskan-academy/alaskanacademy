@@ -25,6 +25,7 @@ interface CriativoPostado {
   avaliacao: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
+  funil_ids: string[];
   responsavel: { id: string; nome: string } | null;
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
@@ -34,6 +35,7 @@ interface CriativoPostado {
 
 interface Props {
   userId: string;
+  filtroFunil?: string[];
 }
 
 function isPendente(c: CriativoPostado): boolean {
@@ -59,7 +61,7 @@ const AVAL_COR: Record<string, string> = {
   'Sem dados':    'bg-muted/60 text-muted-foreground border-border',
 };
 
-export function AvaliacaoView({ userId }: Props) {
+export function AvaliacaoView({ userId, filtroFunil = [] }: Props) {
   const { toast } = useToast();
 
   const [criativos, setCriativos]     = useState<CriativoPostado[]>([]);
@@ -135,7 +137,7 @@ export function AvaliacaoView({ userId }: Props) {
     const mkQuery = () => {
       let q = supabase
         .from('producoes')
-        .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,responsavel_id,projeto_id,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
+        .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,responsavel_id,projeto_id,funil_ids,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
         .order('nome');
       if (filtroFase.length) {
         q = q.in('fase', filtroFase);
@@ -231,9 +233,10 @@ export function AvaliacaoView({ userId }: Props) {
       if (dateEnd   && c.data_ref > dateEnd)   return false;
       if (somentePendentes && !isPendente(c)) return false;
       if (buscaLower && !c.nome.toLowerCase().includes(buscaLower)) return false;
+      if (filtroFunil.length && !filtroFunil.some(f => (c.funil_ids ?? []).includes(f))) return false;
       return true;
     });
-  }, [criativos, dateStart, dateEnd, somentePendentes, busca]);
+  }, [criativos, dateStart, dateEnd, somentePendentes, busca, filtroFunil]);
 
   const total        = displayCriativos.length;
   const pendentes    = displayCriativos.filter(isPendente).length;

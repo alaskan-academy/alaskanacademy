@@ -13,6 +13,7 @@ import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import type { Perfil, Funil } from '@/features/producao/components/types';
+
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
   CartesianGrid, LineChart, Line, Legend,
@@ -39,6 +40,7 @@ interface PostadoRow {
   status_veiculacao: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
+  funil_ids: string[];
   responsavel: { id: string; nome: string } | null;
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
@@ -147,7 +149,12 @@ function BreakdownTable({
   );
 }
 
-export function DesempenhoAdsView() {
+interface DesempenhoProps {
+  filtroFunil?: string[];
+  funisList?: Funil[];
+}
+
+export function DesempenhoAdsView({ filtroFunil = [], funisList = [] }: DesempenhoProps) {
   const { user } = useAuth();
   const userId = user?.id ?? '';
 
@@ -179,7 +186,7 @@ export function DesempenhoAdsView() {
   const load = useCallback(async () => {
     setLoading(true);
 
-    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
+    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,funil_ids,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
 
     // Pagina em 2 requests paralelos — Supabase limita a 1000 linhas por request
     const [pg1, pg2, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
@@ -240,17 +247,19 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
+    if (filtroFunil.length   && !filtroFunil.some(f => (r.funil_ids ?? []).includes(f))) return false;
     return true;
-  }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato]);
+  }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
 
-  // Escalados = todos os ads atualmente em "Escalando", sem filtro de data de postagem
+  // Escalados = todos os ads atualmente em "Escalado", sem filtro de data de postagem
   const filteredSemData = useMemo(() => rows.filter(r => {
     if (filtroEditor.length  && !filtroEditor.includes(r.responsavel_id ?? ''))  return false;
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
+    if (filtroFunil.length   && !filtroFunil.some(f => (r.funil_ids ?? []).includes(f))) return false;
     return true;
-  }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato]);
+  }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
 
   const totals = useMemo(() => {
     const testados  = filtered.length;
@@ -299,6 +308,23 @@ export function DesempenhoAdsView() {
   const escaladosLista = useMemo(() =>
     filteredSemData.filter(isEscalado).sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')),
   [filteredSemData]);
+
+  const porFunil = useMemo(() => {
+    const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
+    for (const r of filtered) {
+      const ids = r.funil_ids ?? [];
+      const keys = ids.length > 0 ? ids : ['__sem__'];
+      for (const fid of keys) {
+        const label = fid === '__sem__' ? '— sem funil —' : (funisList.find(f => f.id === fid)?.nome ?? fid);
+        if (!map[fid]) map[fid] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
+        map[fid].testados++;
+        if (isValidado(r)) map[fid].validados++;
+        if (isEscalado(r)) map[fid].escalados++;
+        if (isAprovado(r)) map[fid].aprovados++;
+      }
+    }
+    return Object.values(map).sort((a, b) => b.testados - a.testados);
+  }, [filtered, funisList]);
 
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
@@ -429,6 +455,7 @@ export function DesempenhoAdsView() {
         <>
           {/* Breakdowns */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
             <BreakdownTable title="Por tipo" rows={porTipo} />
             <BreakdownTable title="Por formato" rows={porFormato} />
             <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} />

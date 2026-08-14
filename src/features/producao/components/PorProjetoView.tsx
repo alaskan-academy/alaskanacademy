@@ -29,9 +29,10 @@ interface Projeto {
 interface Props {
   nivel: ProducaoNivel;
   userId: string;
+  filtroFunil?: string[];
 }
 
-export function PorProjetoView({ nivel, userId }: Props) {
+export function PorProjetoView({ nivel, userId, filtroFunil = [] }: Props) {
   const [projetos, setProjetos]   = useState<Projeto[]>([]);
   const [criativos, setCriativos] = useState<CriativoRow[]>([]);
   const [perfis, setPerfis]       = useState<Perfil[]>([]);
@@ -102,9 +103,11 @@ export function PorProjetoView({ nivel, userId }: Props) {
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
 
   const buscaLower = busca.toLowerCase();
-  const filtered = buscaLower
-    ? criativos.filter(c => c.nome.toLowerCase().includes(buscaLower))
-    : criativos;
+  const filtered = criativos.filter(c => {
+    if (buscaLower && !c.nome.toLowerCase().includes(buscaLower)) return false;
+    if (filtroFunil.length && !filtroFunil.some(f => (c.funil_ids ?? []).includes(f))) return false;
+    return true;
+  });
 
   const semProjeto = filtered.filter(c => !c.projeto_id);
 
