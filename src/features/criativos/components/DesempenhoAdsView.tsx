@@ -320,7 +320,7 @@ export function DesempenhoAdsView() {
       }
     }
     return Object.values(map).sort((a, b) => b.testados - a.testados);
-  }, [filtered, funisList]);
+  }, [filtered, funis]);
 
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
