@@ -14,6 +14,8 @@ import {
 
 type MonthPreset = 'this' | 'last' | 'custom';
 
+const TIPO_LABEL: Record<string, string> = { criativo: 'Criativo', vsl: 'VSL', aula: 'Aula' };
+
 function ymToDateRange(ym: string): { start: string; end: string } {
   const [y, m] = ym.split('-').map(Number);
   const start = `${ym}-01`;
@@ -35,6 +37,7 @@ const PRODUCOES_CUTOFF = '2026-07-01';
 export function DesempenhoTab() {
   const [editores, setEditores] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [projetosAtivos, setProjetosAtivos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterEditor, setFilterEditor] = useState('all');
   const [filterOfertas, setFilterOfertas] = useState<string[]>([]);
@@ -45,11 +48,13 @@ export function DesempenhoTab() {
   const load = async () => {
     setLoading(true);
 
-    // Dados históricos (≤ jun/2026) + editores
-    const [eRes, dRes] = await Promise.all([
+    // Dados históricos (≤ jun/2026) + editores + projetos ativos
+    const [eRes, dRes, pRes] = await Promise.all([
       supabase.from('editores').select('id, nome, usuario_id').order('nome'),
       supabase.from('avaliacoes_criativos').select('*').order('mes_referencia', { ascending: false }),
+      supabase.from('ofertas_editores').select('nome').eq('ativo', true).order('nome'),
     ]);
+    setProjetosAtivos((pRes.data || []).map((p: any) => p.nome));
     const editoresData = eRes.data || [];
     const historicoItems = dRes.data || [];
 
@@ -60,7 +65,7 @@ export function DesempenhoTab() {
     }
 
     // Busca producoes postados para derivar meses ≥ jul/2026
-    const SEL_PROD = 'id,responsavel_id,projeto_id,data_inicio,avaliacao,projeto:ofertas_editores!projeto_id(nome)';
+    const SEL_PROD = 'id,tipo,responsavel_id,projeto_id,data_inicio,avaliacao,projeto:ofertas_editores!projeto_id(nome)';
     const [pg1, pg2] = await Promise.all([
       supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').range(0, 999),
       supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').range(1000, 1999),
@@ -87,8 +92,11 @@ export function DesempenhoTab() {
       ),
     );
 
-    // Agrega producoes por (editor, mês, oferta) — apenas meses ≥ CUTOFF
-    const aggMap: Record<string, { editor_id: string; mes_referencia: string; empresa: string; oferta: string; ads_testados: number; ads_validados: number }> = {};
+    // Agrega producoes por (editor, mês, oferta, tipo) — apenas meses ≥ CUTOFF
+    const aggMap: Record<string, {
+      editor_id: string; mes_referencia: string; empresa: string; oferta: string; tipo: string;
+      ads_testados: number; ads_validados: number; ads_escalados: number;
+    }> = {};
     for (const p of allPosts as any[]) {
       const dataRef = postMap[p.id] ?? p.data_inicio ?? null;
       if (!dataRef || dataRef < PRODUCOES_CUTOFF) continue;
@@ -96,14 +104,18 @@ export function DesempenhoTab() {
       if (!editorId) continue;
       const mes = dataRef.slice(0, 7) + '-01';
       const oferta = (p.projeto as any)?.nome ?? '— sem projeto —';
-      const key = `${editorId}::${mes}::${oferta}`;
-      if (!aggMap[key]) aggMap[key] = { editor_id: editorId, mes_referencia: mes, empresa: 'Alaskan Academy', oferta, ads_testados: 0, ads_validados: 0 };
+      const tipo = p.tipo ?? 'criativo';
+      const key = `${editorId}::${mes}::${oferta}::${tipo}`;
+      if (!aggMap[key]) aggMap[key] = { editor_id: editorId, mes_referencia: mes, empresa: 'Alaskan Academy', oferta, tipo, ads_testados: 0, ads_validados: 0, ads_escalados: 0 };
       aggMap[key].ads_testados++;
       if (p.avaliacao === 'Validado') aggMap[key].ads_validados++;
+      if (p.avaliacao === 'Escalado') aggMap[key].ads_escalados++;
     }
     const syntheticItems = Object.values(aggMap).map(row => ({
       ...row,
-      taxa_assertividade: row.ads_testados > 0 ? String(Math.round((row.ads_validados / row.ads_testados) * 100)) : '0',
+      taxa_assertividade: row.ads_testados > 0
+        ? String(Math.round(((row.ads_validados + row.ads_escalados) / row.ads_testados) * 100))
+        : '0',
     }));
 
     setEditores(editoresData);
@@ -113,7 +125,6 @@ export function DesempenhoTab() {
   useEffect(() => { load(); }, []);
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
-  const ofertas = useMemo(() => Array.from(new Set(items.map(i => i.oferta).filter(Boolean))), [items]);
 
   const { startStr, endStr } = useMemo(() => {
     if (monthPreset === 'this') {
@@ -140,53 +151,71 @@ export function DesempenhoTab() {
 
   const totals = useMemo(() => {
     const t = filtered.reduce((acc, i) => {
-      acc.testados += Number(i.ads_testados || 0);
+      acc.testados  += Number(i.ads_testados  || 0);
       acc.validados += Number(i.ads_validados || 0);
+      acc.escalados += Number(i.ads_escalados || 0);
       return acc;
-    }, { testados: 0, validados: 0 });
-    return { ...t, taxa: t.testados > 0 ? (t.validados / t.testados) * 100 : 0 };
+    }, { testados: 0, validados: 0, escalados: 0 });
+    return { ...t, taxa: t.testados > 0 ? ((t.validados + t.escalados) / t.testados) * 100 : 0 };
+  }, [filtered]);
+
+  const porTipo = useMemo(() => {
+    const map: Record<string, { tipo: string; testados: number; validados: number; escalados: number }> = {};
+    filtered.forEach(i => {
+      const tipo = i.tipo || 'criativo';
+      if (!map[tipo]) map[tipo] = { tipo, testados: 0, validados: 0, escalados: 0 };
+      map[tipo].testados  += Number(i.ads_testados  || 0);
+      map[tipo].validados += Number(i.ads_validados || 0);
+      map[tipo].escalados += Number(i.ads_escalados || 0);
+    });
+    return Object.values(map).map(v => ({
+      ...v, taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0,
+    })).sort((a, b) => b.testados - a.testados);
   }, [filtered]);
 
   const porEditor = useMemo(() => {
-    const map: Record<string, { nome: string; testados: number; validados: number; projetos: Set<string> }> = {};
+    const map: Record<string, { nome: string; testados: number; validados: number; escalados: number; projetos: Set<string> }> = {};
     filtered.forEach(i => {
       const key = i.editor_id || 'sem-editor';
       const nome = editorMap[i.editor_id] || '—';
-      if (!map[key]) map[key] = { nome, testados: 0, validados: 0, projetos: new Set() };
-      map[key].testados += Number(i.ads_testados || 0);
+      if (!map[key]) map[key] = { nome, testados: 0, validados: 0, escalados: 0, projetos: new Set() };
+      map[key].testados  += Number(i.ads_testados  || 0);
       map[key].validados += Number(i.ads_validados || 0);
+      map[key].escalados += Number(i.ads_escalados || 0);
       if (i.oferta) map[key].projetos.add(i.oferta);
     });
     return Object.values(map).map(v => ({
       ...v,
-      taxa: v.testados > 0 ? (v.validados / v.testados) * 100 : 0,
+      taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0,
       projetos: v.projetos.size,
     })).sort((a, b) => b.taxa - a.taxa);
   }, [filtered, editorMap]);
 
   const porProjeto = useMemo(() => {
-    const map: Record<string, { oferta: string; testados: number; validados: number }> = {};
+    const map: Record<string, { oferta: string; testados: number; validados: number; escalados: number }> = {};
     filtered.forEach(i => {
       const oferta = i.oferta || '—';
-      if (!map[oferta]) map[oferta] = { oferta, testados: 0, validados: 0 };
-      map[oferta].testados += Number(i.ads_testados || 0);
+      if (!map[oferta]) map[oferta] = { oferta, testados: 0, validados: 0, escalados: 0 };
+      map[oferta].testados  += Number(i.ads_testados  || 0);
       map[oferta].validados += Number(i.ads_validados || 0);
+      map[oferta].escalados += Number(i.ads_escalados || 0);
     });
     return Object.values(map).map(v => ({
-      ...v, taxa: v.testados > 0 ? (v.validados / v.testados) * 100 : 0,
+      ...v, taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0,
     })).sort((a, b) => b.taxa - a.taxa);
   }, [filtered]);
 
   const evolucao = useMemo(() => {
-    const map: Record<string, { mes: string; testados: number; validados: number }> = {};
+    const map: Record<string, { mes: string; testados: number; validados: number; escalados: number }> = {};
     filtered.forEach(i => {
       const mes = String(i.mes_referencia).slice(0, 7);
-      if (!map[mes]) map[mes] = { mes, testados: 0, validados: 0 };
-      map[mes].testados += Number(i.ads_testados || 0);
+      if (!map[mes]) map[mes] = { mes, testados: 0, validados: 0, escalados: 0 };
+      map[mes].testados  += Number(i.ads_testados  || 0);
       map[mes].validados += Number(i.ads_validados || 0);
+      map[mes].escalados += Number(i.ads_escalados || 0);
     });
     return Object.values(map)
-      .map(v => ({ ...v, taxa: v.testados > 0 ? (v.validados / v.testados) * 100 : 0 }))
+      .map(v => ({ ...v, taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0 }))
       .sort((a, b) => a.mes.localeCompare(b.mes));
   }, [filtered]);
 
@@ -240,25 +269,25 @@ export function DesempenhoTab() {
             </PopoverTrigger>
             <PopoverContent className="w-[260px] p-2" align="start">
               <div className="flex items-center justify-between px-1 pb-2 border-b border-border mb-2">
-                <button className="text-xs text-primary hover:underline" onClick={() => setFilterOfertas(ofertas as string[])}>Todos</button>
+                <button className="text-xs text-primary hover:underline" onClick={() => setFilterOfertas(projetosAtivos)}>Todos</button>
                 <button className="text-xs text-muted-foreground hover:underline" onClick={() => setFilterOfertas([])}>Limpar</button>
               </div>
               <div className="max-h-64 overflow-y-auto space-y-1">
-                {ofertas.map(o => {
-                  const checked = filterOfertas.includes(o as string);
+                {projetosAtivos.map(o => {
+                  const checked = filterOfertas.includes(o);
                   return (
-                    <label key={o as string} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-secondary cursor-pointer text-sm">
+                    <label key={o} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-secondary cursor-pointer text-sm">
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(v) => {
-                          setFilterOfertas(prev => v ? [...prev, o as string] : prev.filter(x => x !== o));
+                          setFilterOfertas(prev => v ? [...prev, o] : prev.filter(x => x !== o));
                         }}
                       />
-                      <span className="truncate">{o as string}</span>
+                      <span className="truncate">{o}</span>
                     </label>
                   );
                 })}
-                {ofertas.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Sem projetos</div>}
+                {projetosAtivos.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Sem projetos ativos</div>}
               </div>
             </PopoverContent>
           </Popover>
@@ -266,20 +295,58 @@ export function DesempenhoTab() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-xs text-muted-foreground uppercase">Total ADs testados</p>
           <p className="text-2xl font-semibold mt-1">{formatNumber(totals.testados)}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total ADs validados</p>
+          <p className="text-xs text-muted-foreground uppercase">Validados</p>
           <p className="text-2xl font-semibold mt-1">{formatNumber(totals.validados)}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs text-muted-foreground uppercase">Escalados</p>
+          <p className="text-2xl font-semibold mt-1">{formatNumber(totals.escalados)}</p>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-xs text-muted-foreground uppercase">Taxa de validação</p>
-          <p className="text-2xl font-semibold mt-1">{formatPercent(totals.taxa)}</p>
+          <p className="text-xs text-muted-foreground/60 mb-1">(validados + escalados)</p>
+          <p className="text-2xl font-semibold">{formatPercent(totals.taxa)}</p>
         </div>
       </div>
+
+      {/* Por tipo */}
+      {porTipo.length > 0 && (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-border"><h4 className="text-sm font-medium">Por tipo de criativo</h4></div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-border text-xs text-muted-foreground uppercase">
+                <th className="text-left px-3 py-2">Tipo</th>
+                <th className="text-right px-3 py-2">Testados</th>
+                <th className="text-right px-3 py-2">Validados</th>
+                <th className="text-right px-3 py-2">Escalados</th>
+                <th className="text-right px-3 py-2">Taxa</th>
+              </tr></thead>
+              <tbody>
+                {porTipo.map((r, i) => (
+                  <tr key={i} className="border-b border-border/50">
+                    <td className="px-3 py-2 font-medium">{TIPO_LABEL[r.tipo] ?? r.tipo}</td>
+                    <td className="px-3 py-2 text-right">{formatNumber(r.testados)}</td>
+                    <td className="px-3 py-2 text-right">{formatNumber(r.validados)}</td>
+                    <td className="px-3 py-2 text-right">{formatNumber(r.escalados)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${r.taxa >= 20 ? 'bg-emerald-500/10 text-emerald-500' : r.taxa >= 10 ? 'bg-amber-500/10 text-amber-500' : 'bg-red-500/10 text-red-500'}`}>
+                        {formatPercent(r.taxa)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -348,25 +415,27 @@ export function DesempenhoTab() {
             <thead><tr className="border-b border-border text-xs text-muted-foreground uppercase">
               <th className="text-left px-3 py-2">Editor</th>
               <th className="text-left px-3 py-2">Projetos</th>
-              <th className="text-left px-3 py-2">Ads testados</th>
-              <th className="text-left px-3 py-2">Ads validados</th>
-              <th className="text-left px-3 py-2">Taxa</th>
+              <th className="text-right px-3 py-2">Testados</th>
+              <th className="text-right px-3 py-2">Validados</th>
+              <th className="text-right px-3 py-2">Escalados</th>
+              <th className="text-right px-3 py-2">Taxa</th>
             </tr></thead>
             <tbody>
               {porEditor.map((r, i) => (
                 <tr key={i} className="border-b border-border/50">
                   <td className="px-3 py-2 font-medium">{r.nome}</td>
                   <td className="px-3 py-2">{r.projetos}</td>
-                  <td className="px-3 py-2">{formatNumber(r.testados)}</td>
-                  <td className="px-3 py-2">{formatNumber(r.validados)}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 text-right">{formatNumber(r.testados)}</td>
+                  <td className="px-3 py-2 text-right">{formatNumber(r.validados)}</td>
+                  <td className="px-3 py-2 text-right">{formatNumber(r.escalados)}</td>
+                  <td className="px-3 py-2 text-right">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${r.taxa >= 20 ? 'bg-emerald-500/10 text-emerald-500' : r.taxa >= 10 ? 'bg-amber-500/10 text-amber-500' : 'bg-red-500/10 text-red-500'}`}>
                       {formatPercent(r.taxa)}
                     </span>
                   </td>
                 </tr>
               ))}
-              {porEditor.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">{loading ? 'Carregando...' : 'Sem dados'}</td></tr>}
+              {porEditor.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">{loading ? 'Carregando...' : 'Sem dados'}</td></tr>}
             </tbody>
           </table>
         </div>
