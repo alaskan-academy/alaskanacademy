@@ -70,9 +70,9 @@ function toYMD(d: Date): string {
 }
 
 // Pure functions — definidas fora do componente para evitar recriação
-const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalando';
+const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalado';
 const isValidado  = (r: PostadoRow) => r.avaliacao === 'Validado';
-const isAprovado  = (r: PostadoRow) => r.avaliacao === 'Validado' || r.avaliacao === 'Escalando';
+const isAprovado  = (r: PostadoRow) => r.avaliacao === 'Validado' || r.avaliacao === 'Escalado';
 
 function buildBreakdown(
   rows: PostadoRow[],
