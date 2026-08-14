@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, TrendingUp, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers,
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -35,6 +35,7 @@ const ALL_FIXED_ITEMS = [
   { path: '/editores',      label: 'Editores',      icon: BarChart3,     key: 'editores',     adminOnly: false, sectorOnly: null },
   { path: '/copywriters',   label: 'Copywriters',   icon: PenLine,       key: 'copywriters',  adminOnly: false, sectorOnly: 'Copy' },
   { path: '/producao',      label: 'Produção',      icon: Film,          key: 'producao',     adminOnly: false, sectorOnly: null },
+  { path: '/criativos',     label: 'Criativos',     icon: Clapperboard,  key: 'criativos',    adminOnly: true,  sectorOnly: null },
   { path: '/funis-gestao',  label: 'Funis',         icon: Layers,        key: 'funis-gestao', adminOnly: false, sectorOnly: null },
   { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false, sectorOnly: null },
   { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true, sectorOnly: null  },

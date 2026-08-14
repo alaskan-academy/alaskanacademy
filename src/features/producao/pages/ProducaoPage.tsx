@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
 import type { ProducaoNivel } from '../components/types';
 import { MeuPainelView } from '../components/MeuPainelView';
-import { PorProjetoView } from '../components/PorProjetoView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
 import { CriativoFormModal } from '../components/CriativoFormModal';
@@ -18,7 +17,7 @@ const FASES_CALENDARIO_SETOR: Record<string, string[]> = {
 
 // Tabs visíveis por nível
 const TABS_POR_NIVEL: Record<ProducaoNivel, readonly string[]> = {
-  socio:  ['Meu Painel', 'Calendário Geral', 'Painel de Aprovação', 'Por Projeto'],
+  socio:  ['Meu Painel', 'Calendário Geral', 'Painel de Aprovação'],
   head:   ['Meu Painel', 'Calendário do Setor', 'Painel de Aprovação'],
   membro: ['Meu Painel'],
 };
@@ -101,9 +100,6 @@ export default function ProducaoPage() {
       )}
       {activeTab === 'Painel de Aprovação' && (
         <PainelAprovacaoView nivel={nivel} setor={setor} userId={userId} />
-      )}
-      {activeTab === 'Por Projeto' && (
-        <PorProjetoView nivel={nivel} userId={userId} />
       )}
     </DashboardLayout>
   );

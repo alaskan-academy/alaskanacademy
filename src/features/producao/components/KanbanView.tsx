@@ -11,7 +11,8 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Plus, Loader2 } from 'lucide-react';
+import { Plus, Loader2, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -80,7 +81,14 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
   const [filtroProjeto, setFiltroProjeto] = useState<string[]>([]);
   const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
   const [filtroResp, setFiltroResp]       = useState<string[]>([]);
+  const [filtroAval, setFiltroAval]       = useState<string[]>([]);
+  const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
+  const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
+  const [busca, setBusca]                 = useState('');
   const [projetos, setProjetos]           = useState<{ id: string; nome: string }[]>([]);
+  const [opAvaliacao, setOpAvaliacao]     = useState<string[]>([]);
+  const [opFormato, setOpFormato]         = useState<string[]>([]);
+  const [opStatus, setOpStatus]           = useState<string[]>([]);
   const [activeId, setActiveId]           = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -88,14 +96,20 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
   );
 
   const loadAux = useCallback(async () => {
-    const [{ data: fs }, { data: ps }, { data: pr }] = await Promise.all([
+    const [{ data: fs }, { data: ps }, { data: pr }, { data: opA }, { data: opF }, { data: opS }] = await Promise.all([
       supabase.from('funis').select('id,nome,produto,ativo').neq('ativo', false).order('nome'),
       supabase.from('perfis').select('id,nome,is_admin').eq('ativo', true).order('nome'),
       supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'avaliacao').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'formato').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('campo,valor').eq('campo', 'status_veiculacao').order('ordem'),
     ]);
     setFunis(fs ?? []);
     setPerfis(ps ?? []);
     setProjetos(pr ?? []);
+    if (opA?.length) setOpAvaliacao(opA.map(d => d.valor as string));
+    if (opF?.length) setOpFormato(opF.map(d => d.valor as string));
+    if (opS?.length) setOpStatus(opS.map(d => d.valor as string));
   }, []);
 
   const loadCriativos = useCallback(async () => {
@@ -125,11 +139,14 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
     if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
     if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
     if (filtroResp.length)    q = q.in('responsavel_id', filtroResp);
+    if (filtroAval.length)    q = q.in('avaliacao', filtroAval);
+    if (filtroFormato.length) q = q.in('formato', filtroFormato);
+    if (filtroStatus.length)  q = q.in('status_veiculacao', filtroStatus);
 
     const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
-  }, [nivel, setorId, userId, fixedResponsavelId, filtroProjeto, filtroTipo, filtroResp]);
+  }, [nivel, setorId, userId, fixedResponsavelId, filtroProjeto, filtroTipo, filtroResp, filtroAval, filtroFormato, filtroStatus]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -203,11 +220,24 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
   }, [criativos, nivel, userId, toast]);
 
   const activeCriativo = activeId ? criativos.find(c => c.id === activeId) : null;
+  const buscaLower = busca.toLowerCase();
+  const displayCriativos = buscaLower
+    ? criativos.filter(c => c.nome.toLowerCase().includes(buscaLower))
+    : criativos;
 
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar..."
+            className="h-8 pl-8 w-44 text-xs"
+          />
+        </div>
         {!fixedResponsavelId && (
           <>
             <MultiFilter
@@ -239,6 +269,33 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
             )}
           </>
         )}
+        {opAvaliacao.length > 0 && (
+          <MultiFilter
+            label="Avaliação"
+            options={opAvaliacao.map(a => ({ id: a, nome: a }))}
+            value={filtroAval}
+            onChange={setFiltroAval}
+            width="w-36"
+          />
+        )}
+        {opFormato.length > 0 && (
+          <MultiFilter
+            label="Formato"
+            options={opFormato.map(a => ({ id: a, nome: a }))}
+            value={filtroFormato}
+            onChange={setFiltroFormato}
+            width="w-36"
+          />
+        )}
+        {opStatus.length > 0 && (
+          <MultiFilter
+            label="Status"
+            options={opStatus.map(a => ({ id: a, nome: a }))}
+            value={filtroStatus}
+            onChange={setFiltroStatus}
+            width="w-36"
+          />
+        )}
         <div className="flex-1" />
         <Button size="sm" className="h-8" onClick={() => setShowModal(true)}>
           <Plus className="h-3.5 w-3.5 mr-1" />Novo
@@ -255,7 +312,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
           <div className="overflow-x-auto -mx-4 px-4 pb-1">
             <div className="flex gap-3 pb-4" style={{ minWidth: 'max-content' }}>
               {FASES.filter(f => !f.somente_socio || nivel === 'socio').map(fase => {
-                const cards = criativos.filter(c => c.fase === fase.key);
+                const cards = displayCriativos.filter(c => c.fase === fase.key);
                 return (
                   <div key={fase.key} className="w-52 flex-none">
                     <div className={cn(

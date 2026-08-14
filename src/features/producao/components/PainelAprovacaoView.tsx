@@ -60,7 +60,14 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     if (!next) return;
     setSaving(true);
     await supabase.from('producoes').update({ fase: next, atualizado_em: new Date().toISOString() }).eq('id', c.id);
-    // activity log
+    await supabase.from('criativo_historico').insert({
+      criativo_id:    c.id,
+      usuario_id:     userId,
+      tipo_alteracao: 'fase',
+      campo_alterado: 'fase',
+      valor_anterior: c.fase,
+      valor_novo:     next,
+    });
     await supabase.from('criativo_comentarios').insert({
       criativo_id: c.id,
       autor_id: userId,
@@ -75,6 +82,14 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     if (!notaDevolucao.trim()) return;
     setSaving(true);
     await supabase.from('producoes').update({ fase: 'alteracao', atualizado_em: new Date().toISOString() }).eq('id', c.id);
+    await supabase.from('criativo_historico').insert({
+      criativo_id:    c.id,
+      usuario_id:     userId,
+      tipo_alteracao: 'fase',
+      campo_alterado: 'fase',
+      valor_anterior: c.fase,
+      valor_novo:     'alteracao',
+    });
     await supabase.from('criativo_comentarios').insert({
       criativo_id: c.id,
       autor_id: userId,

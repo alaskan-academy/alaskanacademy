@@ -39,6 +39,7 @@ const AcessosPage              = lazy(() => import("./features/acessos/pages/Ace
 const ProducaoPage             = lazy(() => import("./features/producao/pages/ProducaoPage"));
 const CopywritersPage          = lazy(() => import("./features/copywriters/pages/CopywritersPage"));
 const FunisPage                = lazy(() => import("./features/funis/pages/FunisPage"));
+const CriativosPage            = lazy(() => import("./features/criativos/pages/CriativosPage"));
 const NotFound                 = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -92,6 +93,7 @@ const App = () => (
                     <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />
                     <Route path="/acessos"  element={<ProtectedRoute pageKey="acessos"><AcessosPage /></ProtectedRoute>} />
                     <Route path="/producao" element={<ProtectedRoute pageKey="producao"><ProducaoPage /></ProtectedRoute>} />
+                    <Route path="/criativos" element={<ProtectedRoute><CriativosPage /></ProtectedRoute>} />
                     <Route path="/funis-gestao" element={<ProtectedRoute pageKey="funis-gestao"><FunisPage /></ProtectedRoute>} />
                     <Route path="/copywriters" element={<ProtectedRoute pageKey="copywriters"><CopywritersPage /></ProtectedRoute>} />
                     <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
