@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, CornerDownLeft, Loader2, Search } from 'lucide-react';
+import { CheckCircle, CornerDownLeft, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel } from './types';
 import { FASES_MAP, getAdjacentFases } from './constants';
@@ -33,7 +32,6 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
   const [devolvendoId, setDevolvendoId] = useState<string | null>(null);
   const [notaDevolucao, setNotaDevolucao] = useState('');
   const [saving, setSaving] = useState(false);
-  const [busca, setBusca]   = useState('');
 
   const fasesVisiveis: string[] = nivel === 'socio'
     ? TODAS_FASES_REVISAO
@@ -106,27 +104,13 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
   }
 
   // Agrupa por fase
-  const buscaLower = busca.toLowerCase();
-  const criativosFiltrados = buscaLower
-    ? criativos.filter(c => c.nome.toLowerCase().includes(buscaLower))
-    : criativos;
-
   const porFase = fasesVisiveis.reduce<Record<string, Criativo[]>>((acc, fase) => {
-    acc[fase] = criativosFiltrados.filter(c => c.fase === fase);
+    acc[fase] = criativos.filter(c => c.fase === fase);
     return acc;
   }, {});
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="relative w-52">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        <Input
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          placeholder="Buscar criativo..."
-          className="h-8 pl-8 text-xs"
-        />
-      </div>
       {fasesVisiveis.map(fase => {
         const items = porFase[fase] ?? [];
         if (!items.length) return null;
