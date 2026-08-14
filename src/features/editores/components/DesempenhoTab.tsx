@@ -29,6 +29,9 @@ function currentYM(offset = 0): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Mês a partir do qual usa producoes em vez de avaliacoes_criativos
+const PRODUCOES_CUTOFF = '2026-07-01';
+
 export function DesempenhoTab() {
   const [editores, setEditores] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -41,12 +44,70 @@ export function DesempenhoTab() {
 
   const load = async () => {
     setLoading(true);
-    const [e, d] = await Promise.all([
-      supabase.from('editores').select('id, nome').order('nome'),
+
+    // Dados históricos (≤ jun/2026) + editores
+    const [eRes, dRes] = await Promise.all([
+      supabase.from('editores').select('id, nome, usuario_id').order('nome'),
       supabase.from('avaliacoes_criativos').select('*').order('mes_referencia', { ascending: false }),
     ]);
-    setEditores(e.data || []);
-    setItems(d.data || []);
+    const editoresData = eRes.data || [];
+    const historicoItems = dRes.data || [];
+
+    // Map: perfis.id (= usuario_id) → editores.id
+    const editorByUserId: Record<string, string> = {};
+    for (const ed of editoresData) {
+      if (ed.usuario_id) editorByUserId[ed.usuario_id] = ed.id;
+    }
+
+    // Busca producoes postados para derivar meses ≥ jul/2026
+    const SEL_PROD = 'id,responsavel_id,projeto_id,data_inicio,avaliacao,projeto:ofertas_editores!projeto_id(nome)';
+    const [pg1, pg2] = await Promise.all([
+      supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').range(0, 999),
+      supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').range(1000, 1999),
+    ]);
+    const allPosts = [...(pg1.data || []), ...(pg2.data || [])];
+
+    // Data de postagem via criativo_historico
+    const ids = allPosts.map((p: any) => p.id);
+    const postMap: Record<string, string> = {};
+    const CHUNK = 300;
+    await Promise.all(
+      Array.from({ length: Math.ceil(ids.length / CHUNK) }, (_, i) =>
+        supabase.from('criativo_historico')
+          .select('criativo_id,criado_em')
+          .in('criativo_id', ids.slice(i * CHUNK, (i + 1) * CHUNK))
+          .eq('campo_alterado', 'fase')
+          .eq('valor_novo', 'postado')
+          .order('criado_em', { ascending: true })
+          .then(({ data }) => {
+            for (const h of data || []) {
+              if (!postMap[h.criativo_id]) postMap[h.criativo_id] = h.criado_em.slice(0, 10);
+            }
+          }),
+      ),
+    );
+
+    // Agrega producoes por (editor, mês, oferta) — apenas meses ≥ CUTOFF
+    const aggMap: Record<string, { editor_id: string; mes_referencia: string; empresa: string; oferta: string; ads_testados: number; ads_validados: number }> = {};
+    for (const p of allPosts as any[]) {
+      const dataRef = postMap[p.id] ?? p.data_inicio ?? null;
+      if (!dataRef || dataRef < PRODUCOES_CUTOFF) continue;
+      const editorId = editorByUserId[p.responsavel_id];
+      if (!editorId) continue;
+      const mes = dataRef.slice(0, 7) + '-01';
+      const oferta = (p.projeto as any)?.nome ?? '— sem projeto —';
+      const key = `${editorId}::${mes}::${oferta}`;
+      if (!aggMap[key]) aggMap[key] = { editor_id: editorId, mes_referencia: mes, empresa: 'Alaskan Academy', oferta, ads_testados: 0, ads_validados: 0 };
+      aggMap[key].ads_testados++;
+      if (p.avaliacao === 'Validado') aggMap[key].ads_validados++;
+    }
+    const syntheticItems = Object.values(aggMap).map(row => ({
+      ...row,
+      taxa_assertividade: row.ads_testados > 0 ? String(Math.round((row.ads_validados / row.ads_testados) * 100)) : '0',
+    }));
+
+    setEditores(editoresData);
+    setItems([...historicoItems, ...syntheticItems]);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
