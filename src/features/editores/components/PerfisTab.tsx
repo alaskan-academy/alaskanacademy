@@ -229,16 +229,26 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
         </div>
       </div>
 
-      <HistoricoPromocoes editorId={editor.id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} onChanged={onChanged} isAdmin={isAdmin} />
+      <HistoricoPromocoes editorId={editor.id} currentCargoId={editor.cargo_id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} onChanged={onChanged} isAdmin={isAdmin} />
       <HistoricoComissoes items={avaliacoes} />
       <HistoricoFolgas items={avaliacoes} />
     </div>
   );
 }
 
-function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload, onChanged, isAdmin }: any) {
+function HistoricoPromocoes({ editorId, currentCargoId, cargos, cargoMap, items, reload, onChanged, isAdmin }: any) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ cargo_id: '', data: '', observacao: '' });
+
+  // Cargos únicos por nome (DB tem duplicatas); exclui somente o cargo atual
+  const seen = new Set<string>();
+  const currentNome = currentCargoId ? cargoMap[currentCargoId]?.nome : null;
+  const cargosElegiveis = (cargos as Cargo[]).filter(c => {
+    if (seen.has(c.nome)) return false;
+    seen.add(c.nome);
+    return c.nome !== currentNome;
+  });
+
   const save = async () => {
     if (!form.cargo_id || !form.data) return;
     const { error } = await supabase.from('editor_promocoes').insert({ editor_id: editorId, ...form });
@@ -273,13 +283,18 @@ function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload, onChang
             <div><Label>Cargo</Label>
               <Select value={form.cargo_id} onValueChange={v => setForm({ ...form, cargo_id: v })}>
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>{cargos.map((c: Cargo) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {cargosElegiveis.length === 0
+                    ? <SelectItem value="__none__" disabled>Nenhum cargo disponível para promoção</SelectItem>
+                    : cargosElegiveis.map((c: Cargo) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)
+                  }
+                </SelectContent>
               </Select>
             </div>
             <div><Label>Data</Label><Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></div>
             <div><Label>Observação</Label><Textarea value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save}>Salvar</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save} disabled={!form.cargo_id || form.cargo_id === '__none__'}>Salvar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </Section>
