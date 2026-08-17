@@ -35,6 +35,8 @@ export function PerfisTab() {
     const eds: Editor[] = e.data || [];
     setCargos(cgs);
     setEditores(eds);
+    // Sincroniza o editor selecionado com os dados frescos do banco
+    setSelected(prev => prev ? (eds.find(e => e.id === prev.id) ?? prev) : prev);
     // não-admin sem cargo de liderança: abre automaticamente o próprio perfil
     if (!isAdmin && user) {
       const mine = eds.find(ed => ed.usuario_id === user.id) ?? null;
@@ -117,7 +119,7 @@ export function PerfisTab() {
             cargos={cargos}
             cargoMap={cargoMap}
             onChanged={load}
-            isAdmin={false}
+            isAdmin={isAdmin}
           />
         ) : (
           <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground text-sm">
@@ -227,14 +229,14 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
         </div>
       </div>
 
-      <HistoricoPromocoes editorId={editor.id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} isAdmin={isAdmin} />
+      <HistoricoPromocoes editorId={editor.id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} onChanged={onChanged} isAdmin={isAdmin} />
       <HistoricoComissoes items={avaliacoes} />
       <HistoricoFolgas items={avaliacoes} />
     </div>
   );
 }
 
-function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload, isAdmin }: any) {
+function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload, onChanged, isAdmin }: any) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ cargo_id: '', data: '', observacao: '' });
   const save = async () => {
@@ -242,7 +244,9 @@ function HistoricoPromocoes({ editorId, cargos, cargoMap, items, reload, isAdmin
     const { error } = await supabase.from('editor_promocoes').insert({ editor_id: editorId, ...form });
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     await supabase.from('editores').update({ cargo_id: form.cargo_id }).eq('id', editorId);
-    setOpen(false); setForm({ cargo_id: '', data: '', observacao: '' }); reload();
+    setOpen(false); setForm({ cargo_id: '', data: '', observacao: '' });
+    reload();      // recarrega histórico de promoções
+    onChanged?.(); // recarrega lista de editores no pai → atualiza badge de cargo
   };
   return (
     <Section title="Histórico de promoções" onAdd={isAdmin ? () => setOpen(true) : undefined}>
