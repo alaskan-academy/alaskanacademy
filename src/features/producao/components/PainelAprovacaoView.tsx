@@ -104,7 +104,10 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     });
     // Notificar menções
     const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
-    const mentioned = perfis.filter(p => mentions.includes(p.nome.toLowerCase()) && p.id !== userId);
+    const mentioned = perfis.filter(p => {
+      const first = p.nome.split(' ')[0].toLowerCase();
+      return (mentions.includes(first) || mentions.includes(p.nome.toLowerCase())) && p.id !== userId;
+    });
     if (mentioned.length) {
       await supabase.from('notificacoes').insert(
         mentioned.map(p => ({
