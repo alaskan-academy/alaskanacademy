@@ -111,10 +111,11 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     if (mentioned.length) {
       await supabase.from('notificacoes').insert(
         mentioned.map(p => ({
-          usuario_id:    p.id,
-          tipo:          'mencao_comentario',
-          mensagem:      `Você foi mencionado em uma nota de devolução em "${c.nome}".`,
-          referencia_id: c.id,
+          usuario_id:      p.id,
+          tipo:            'mencao_comentario',
+          mensagem:        `Você foi mencionado em uma nota de devolução em "${c.nome}".`,
+          referencia_id:   c.id,
+          referencia_tipo: 'criativo',
         }))
       );
     }

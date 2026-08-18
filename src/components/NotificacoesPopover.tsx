@@ -70,7 +70,12 @@ export function NotificacoesPopover({ userId, collapsed }: Props) {
 
   const handleClick = (n: Notificacao) => {
     setOpen(false);
-    if (n.referencia_tipo === 'criativo') navigate('/producao');
+    const isCriativo =
+      n.referencia_tipo === 'criativo' ||
+      (!!n.referencia_id && ['criativo_alteracao', 'mencao_comentario'].includes(n.tipo));
+    if (isCriativo && n.referencia_id) {
+      navigate('/producao', { state: { criativoId: n.referencia_id } });
+    }
   };
 
   return (

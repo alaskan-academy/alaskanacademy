@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,7 @@ import type { ProducaoNivel } from '../components/types';
 import { MeuPainelView } from '../components/MeuPainelView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
+import { CriativoDrawer } from '../components/CriativoDrawer';
 import { CriativoFormModal } from '../components/CriativoFormModal';
 const FASES_CALENDARIO_SETOR: Record<string, string[]> = {
   'Editor':             ['edicao', 'revisao_edicao', 'alteracao', 'aprovado'],
@@ -24,7 +26,11 @@ const TABS_POR_NIVEL: Record<ProducaoNivel, readonly string[]> = {
 
 export default function ProducaoPage() {
   const { user, perfil } = useAuth();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<string>('Meu Painel');
+  const [notifCriativoId, setNotifCriativoId] = useState<string | null>(
+    (location.state as { criativoId?: string } | null)?.criativoId ?? null,
+  );
 
   // setor_id já está no perfil carregado pelo AuthContext — sem query extra necessária
   const setorId = perfil?.setor_id ?? null;
@@ -101,6 +107,17 @@ export default function ProducaoPage() {
       {activeTab === 'Painel de Aprovação' && (
         <PainelAprovacaoView nivel={nivel} setor={setor} userId={userId} />
       )}
+
+      {/* Abre criativo diretamente a partir de notificação */}
+      <CriativoDrawer
+        criativoId={notifCriativoId}
+        onClose={() => setNotifCriativoId(null)}
+        onUpdate={() => {}}
+        nivel={nivel}
+        userId={userId}
+        funis={[]}
+        perfis={[]}
+      />
     </DashboardLayout>
   );
 }
