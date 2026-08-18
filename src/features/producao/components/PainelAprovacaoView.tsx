@@ -73,12 +73,6 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
       valor_anterior: c.fase,
       valor_novo:     next,
     });
-    await supabase.from('criativo_comentarios').insert({
-      criativo_id: c.id,
-      autor_id: userId,
-      texto: `Aprovado → ${FASES_MAP[next] ?? next}`,
-      tipo: 'sistema',
-    });
     setSaving(false);
     loadCriativos();
   };
