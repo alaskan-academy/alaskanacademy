@@ -96,6 +96,8 @@ export interface TesteFunil {
 export type StatusDisplay = 'planejado' | 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';
 
 export function getStatusDisplay(funil: Funil, testes: TesteFunil[]): StatusDisplay {
+  // Pausado sempre tem prioridade — mesmo que um teste ainda esteja marcado como rodando
+  if (funil.status === 'pausado_analise' || funil.status === 'pausado') return funil.status;
   const emTeste = testes.some(
     t => (t.funil_id === funil.id || t.funil_ids?.includes(funil.id)) && t.pipeline_status === 'rodando',
   );
