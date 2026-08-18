@@ -32,6 +32,11 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
   const [devolvendoId, setDevolvendoId] = useState<string | null>(null);
   const [notaDevolucao, setNotaDevolucao] = useState('');
   const [saving, setSaving] = useState(false);
+  const [perfis, setPerfis] = useState<{ id: string; nome: string }[]>([]);
+
+  useEffect(() => {
+    supabase.from('perfis').select('id,nome').then(({ data }) => setPerfis(data ?? []));
+  }, []);
 
   const fasesVisiveis: string[] = nivel === 'socio'
     ? TODAS_FASES_REVISAO
@@ -90,12 +95,26 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
       valor_anterior: c.fase,
       valor_novo:     'alteracao',
     });
+    const texto = notaDevolucao.trim();
     await supabase.from('criativo_comentarios').insert({
       criativo_id: c.id,
       autor_id: userId,
-      texto: notaDevolucao.trim(),
+      texto,
       tipo: 'devolucao',
     });
+    // Notificar menções
+    const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
+    const mentioned = perfis.filter(p => mentions.includes(p.nome.toLowerCase()) && p.id !== userId);
+    if (mentioned.length) {
+      await supabase.from('notificacoes').insert(
+        mentioned.map(p => ({
+          usuario_id:    p.id,
+          tipo:          'mencao_comentario',
+          mensagem:      `Você foi mencionado em uma nota de devolução em "${c.nome}".`,
+          referencia_id: c.id,
+        }))
+      );
+    }
     setSaving(false);
     setDevolvendoId(null);
     setNotaDevolucao('');
@@ -206,7 +225,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
                             rows={2}
                             value={notaDevolucao}
                             onChange={e => setNotaDevolucao(e.target.value)}
-                            placeholder="Descreva o que precisa ser ajustado..."
+                            placeholder="Descreva o que precisa ser ajustado... Use @nome para marcar alguém."
                             className={cn(
                               'w-full text-sm rounded-md border border-input bg-background px-3 py-2 resize-none',
                               'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
@@ -250,7 +269,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
         nivel={nivel}
         userId={userId}
         funis={[]}
-        perfis={[]}
+        perfis={perfis}
       />
     </div>
   );
