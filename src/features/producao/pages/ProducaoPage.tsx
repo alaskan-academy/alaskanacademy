@@ -28,9 +28,12 @@ export default function ProducaoPage() {
   const { user, perfil } = useAuth();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<string>('Meu Painel');
-  const [notifCriativoId, setNotifCriativoId] = useState<string | null>(
-    (location.state as { criativoId?: string } | null)?.criativoId ?? null,
-  );
+  const [notifCriativoId, setNotifCriativoId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = (location.state as { criativoId?: string } | null)?.criativoId ?? null;
+    if (id) setNotifCriativoId(id);
+  }, [location.state]);
 
   // setor_id já está no perfil carregado pelo AuthContext — sem query extra necessária
   const setorId = perfil?.setor_id ?? null;
