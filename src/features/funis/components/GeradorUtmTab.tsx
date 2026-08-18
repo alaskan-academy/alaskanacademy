@@ -70,14 +70,27 @@ function Pill({ label, active, onClick }: { label: string; active: boolean; onCl
       type="button"
       onClick={onClick}
       className={cn(
-        'px-2.5 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+        'px-2.5 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap',
         active
-          ? 'bg-primary text-primary-foreground border-primary'
-          : 'bg-transparent text-muted-foreground border-border hover:text-foreground hover:border-foreground/40',
+          ? 'bg-primary/15 text-primary border-primary/40'
+          : 'bg-transparent text-muted-foreground border-border/60 hover:text-foreground hover:border-border hover:bg-muted/30',
       )}
     >
       {label}
     </button>
+  );
+}
+
+function StepBadge({ n, filled }: { n: number; filled: boolean }) {
+  return (
+    <div className={cn(
+      'mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold shrink-0 transition-all duration-200',
+      filled
+        ? 'border-primary/40 bg-primary/10 text-primary'
+        : 'border-border/60 bg-transparent text-muted-foreground/50',
+    )}>
+      {n}
+    </div>
   );
 }
 
@@ -361,128 +374,159 @@ export function GeradorUtmTab() {
 
       <div className="space-y-6">
         {/* ── Generator ─────────────────────────────────────────────── */}
-        <div className="border border-border rounded-lg p-4 space-y-5 bg-card">
-          <h3 className="text-sm font-semibold">Gerar Link UTM</h3>
+        <div className="border border-border rounded-lg overflow-hidden bg-card">
+          {/* Card header */}
+          <div className="px-4 py-3 border-b border-border bg-muted/10">
+            <h3 className="text-sm font-semibold text-foreground">Gerar Link UTM</h3>
+          </div>
 
-          {/* 1. Canal de Venda */}
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">1. Canal de Venda</label>
-            <div className="flex flex-wrap gap-1.5">
-              {CANAIS.map(c => (
-                <Pill
-                  key={c.label}
-                  label={c.label}
-                  active={canalLabel === c.label}
-                  onClick={() => selectCanal(c.label)}
-                />
-              ))}
-            </div>
-            <Input
-              className="h-9 text-sm"
-              placeholder="ou digite um canal personalizado..."
-              value={canalInput}
-              onChange={e => handleCanalInput(e.target.value)}
-            />
-            {isCustom && (
-              <div className="flex gap-2 pt-1">
-                <div className="flex-1 space-y-1">
-                  <label className="text-[11px] text-muted-foreground">utm_source</label>
-                  <Input className="h-8 text-xs font-mono" placeholder="ex: panda" value={customSource} onChange={e => setCustomSource(e.target.value)} />
+          {/* Steps */}
+          <div className="divide-y divide-border/40">
+
+            {/* Step 1 — Canal de Venda */}
+            <div className="flex gap-4 px-4 py-4">
+              <StepBadge n={1} filled={!!canalLabel} />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Canal de Venda</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">De onde vem o tráfego — preenche <span className="font-mono">utm_source</span> e <span className="font-mono">utm_medium</span></p>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <label className="text-[11px] text-muted-foreground">utm_medium</label>
-                  <Input className="h-8 text-xs font-mono" placeholder="ex: buque-velas" value={customMedium} onChange={e => setCustomMedium(e.target.value)} />
+                <div className="flex flex-wrap gap-1.5">
+                  {CANAIS.map(c => (
+                    <Pill key={c.label} label={c.label} active={canalLabel === c.label} onClick={() => selectCanal(c.label)} />
+                  ))}
+                </div>
+                <Input className="h-8 text-sm" placeholder="ou digite um canal personalizado..." value={canalInput} onChange={e => handleCanalInput(e.target.value)} />
+                {isCustom && (
+                  <div className="flex gap-2">
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] text-muted-foreground">utm_source <span className="text-muted-foreground/50">— onde o link foi publicado</span></label>
+                      <Input className="h-8 text-xs font-mono" placeholder="ex: panda, youtube" value={customSource} onChange={e => setCustomSource(e.target.value)} />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] text-muted-foreground">utm_medium <span className="text-muted-foreground/50">— tipo de acesso (bio, stories, automação…)</span></label>
+                      <Input className="h-8 text-xs font-mono" placeholder="ex: video, stories" value={customMedium} onChange={e => setCustomMedium(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+                {canal && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/40 text-[11px] font-mono text-muted-foreground">
+                      source: <span className="text-foreground">{source || canal.source}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-muted/40 text-[11px] font-mono text-muted-foreground">
+                      medium: <span className="text-foreground">{medium}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Step 2 — Conta (condicional) */}
+            {needsConta && (
+              <div className="flex gap-4 px-4 py-4">
+                <StepBadge n={2} filled={!!conta} />
+                <div className="flex-1 min-w-0 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{canal?.label === 'Área de Membros' ? 'Conta' : 'Slug do Site'}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Completa o <span className="font-mono">utm_source</span> com o identificador da conta</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CONTAS_SUGERIDAS.map(s => (
+                      <Pill key={s} label={s} active={conta === s} onClick={() => setConta(s)} />
+                    ))}
+                  </div>
+                  <Input className="h-8 text-sm" placeholder="ou digite outra conta..." value={conta} onChange={e => setConta(e.target.value)} />
+                  {conta && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted/40 text-[11px] font-mono text-muted-foreground">
+                      source: <span className="text-foreground ml-1">{source}</span>
+                    </span>
+                  )}
                 </div>
               </div>
             )}
-            {canal && (
-              <p className="text-[11px] text-muted-foreground font-mono pl-0.5">
-                source: <span className="text-foreground">{source || canal.source}</span>
-                {' · '}medium: <span className="text-foreground">{medium}</span>
-              </p>
-            )}
-          </div>
 
-          {/* 2. Conta (condicional) */}
-          {needsConta && (
-            <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">
-                2. {canal?.label === 'Área de Membros' ? 'Conta' : 'Slug do Site'}
-              </label>
-              <div className="flex flex-wrap gap-1.5">
-                {CONTAS_SUGERIDAS.map(s => (
-                  <Pill key={s} label={s} active={conta === s} onClick={() => setConta(s)} />
-                ))}
+            {/* Projeto */}
+            <div className="flex gap-4 px-4 py-4">
+              <StepBadge n={stepNum(2)} filled={!!projetoId} />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Projeto</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Qual produto/campanha está sendo promovido — vira o <span className="font-mono">utm_campaign</span></p>
+                </div>
+                <Select value={projetoId} onValueChange={setProjetoId}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione o projeto" /></SelectTrigger>
+                  <SelectContent>
+                    {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {campaign && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted/40 text-[11px] font-mono text-muted-foreground">
+                    utm_campaign: <span className="text-foreground ml-1">{campaign}</span>
+                  </span>
+                )}
               </div>
-              <Input className="h-9 text-sm" placeholder="ou digite outra conta..." value={conta} onChange={e => setConta(e.target.value)} />
-              {conta && (
-                <p className="text-[11px] text-muted-foreground font-mono pl-0.5">
-                  source: <span className="text-foreground">{source}</span>
-                </p>
-              )}
             </div>
-          )}
 
-          {/* Projeto */}
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">{stepNum(2)}. Projeto (utm_campaign)</label>
-            <Select value={projetoId} onValueChange={setProjetoId}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Selecione o projeto" /></SelectTrigger>
-              <SelectContent>
-                {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {campaign && (
-              <p className="text-[11px] text-muted-foreground font-mono pl-0.5">
-                utm_campaign: <span className="text-foreground">{campaign}</span>
-              </p>
+            {/* URL Base */}
+            <div className="flex gap-4 px-4 py-4">
+              <StepBadge n={stepNum(3)} filled={!!urlBase} />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">URL de destino</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Link do checkout ou página — sem parâmetros UTM</p>
+                </div>
+                <Input className="h-8 text-sm" placeholder="https://checkout.payt.com.br/... ou https://payt.site/..." value={urlBase} onChange={e => setUrlBase(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Conteúdo */}
+            <div className="flex gap-4 px-4 py-4">
+              <StepBadge n={stepNum(4)} filled={!!content} />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Conteúdo <span className="text-xs font-normal text-muted-foreground/60 ml-1">opcional</span></p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Onde o link está — tipo de material ou posicionamento (<span className="font-mono">utm_content</span>)</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {CONTENT_SUGGESTIONS.map(s => (
+                    <Pill key={s} label={s} active={content === s} onClick={() => setContent(prev => prev === s ? '' : s)} />
+                  ))}
+                </div>
+                <Input className="h-8 text-sm" placeholder="ou digite um conteúdo personalizado..." value={content} onChange={e => setContent(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Termo */}
+            <div className="flex gap-4 px-4 py-4">
+              <StepBadge n={stepNum(5)} filled={!!term} />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Termo de busca <span className="text-xs font-normal text-muted-foreground/60 ml-1">opcional</span></p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Palavra-chave do anúncio — principalmente para Google Ads (<span className="font-mono">utm_term</span>)</p>
+                </div>
+                <Input className="h-8 text-sm" placeholder="ex: velas+artesanais" value={term} onChange={e => setTerm(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* URL output + save */}
+          <div className="border-t border-border bg-muted/5 px-4 py-3 space-y-2.5">
+            {urlFinal ? (
+              <div className="flex items-start gap-2 border border-emerald-500/20 bg-emerald-500/5 rounded-md px-3 py-2.5">
+                <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                <p className="flex-1 text-xs font-mono text-foreground break-all select-all leading-relaxed">{urlFinal}</p>
+                <button className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0" onClick={() => handleCopy(urlFinal)}>
+                  {copiedId === 'preview' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            ) : (
+              <div className="border border-dashed border-border/50 rounded-md px-3 py-2.5">
+                <p className="text-[11px] text-muted-foreground/40 text-center">Preencha Canal, Projeto e URL para gerar o link</p>
+              </div>
             )}
-          </div>
-
-          {/* URL Base */}
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">{stepNum(3)}. URL Base</label>
-            <Input className="h-9 text-sm" placeholder="https://checkout.payt.com.br/... ou https://payt.site/..." value={urlBase} onChange={e => setUrlBase(e.target.value)} />
-          </div>
-
-          {/* utm_content */}
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">
-              {stepNum(4)}. utm_content <span className="text-muted-foreground/50">(opcional)</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {CONTENT_SUGGESTIONS.map(s => (
-                <Pill key={s} label={s} active={content === s} onClick={() => setContent(prev => prev === s ? '' : s)} />
-              ))}
-            </div>
-            <Input className="h-9 text-sm" placeholder="ou digite um conteúdo personalizado..." value={content} onChange={e => setContent(e.target.value)} />
-          </div>
-
-          {/* utm_term */}
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">
-              {stepNum(5)}. utm_term <span className="text-muted-foreground/50">(tráfego pago — opcional)</span>
-            </label>
-            <Input className="h-9 text-sm" placeholder="ex: velas+artesanais" value={term} onChange={e => setTerm(e.target.value)} />
-          </div>
-
-          {/* URL preview */}
-          {urlFinal ? (
-            <div className="flex items-start gap-2 bg-muted/40 rounded-md px-3 py-2.5">
-              <p className="flex-1 text-xs font-mono text-foreground break-all select-all leading-relaxed">{urlFinal}</p>
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0 mt-0.5" onClick={() => handleCopy(urlFinal)}>
-                {copiedId === 'preview' ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
-              </Button>
-            </div>
-          ) : (
-            <div className="h-10 bg-muted/20 rounded-md flex items-center px-3">
-              <p className="text-xs text-muted-foreground/40">A URL aparecerá aqui quando Canal, Projeto e URL Base forem preenchidos</p>
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Button size="sm" className="gap-1.5" disabled={!urlFinal || saving} onClick={handleSave}>
-              <Plus className="h-3.5 w-3.5" />Salvar no histórico
+            <Button className="w-full gap-2 h-9" disabled={!urlFinal || saving} onClick={handleSave}>
+              <Plus className="h-4 w-4" /> Salvar no histórico
             </Button>
           </div>
         </div>
