@@ -115,6 +115,16 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
         }))
       );
     }
+    // Notificar editor responsável
+    if (c.responsavel_id && c.responsavel_id !== userId) {
+      await supabase.from('notificacoes').insert({
+        usuario_id:      c.responsavel_id,
+        tipo:            'criativo_alteracao',
+        mensagem:        `"${c.nome}" foi devolvido para alteração.`,
+        referencia_id:   c.id,
+        referencia_tipo: 'criativo',
+      });
+    }
     setSaving(false);
     setDevolvendoId(null);
     setNotaDevolucao('');

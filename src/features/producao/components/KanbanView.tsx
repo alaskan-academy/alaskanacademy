@@ -208,11 +208,11 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       valor_novo:     novaFase,
     });
 
-    if (novaFase === 'aprovado' && criativo.responsavel_id && criativo.responsavel_id !== userId) {
+    if (novaFase === 'alteracao' && criativo.responsavel_id && criativo.responsavel_id !== userId) {
       await supabase.from('notificacoes').insert({
         usuario_id:      criativo.responsavel_id,
-        tipo:            'criativo_aprovado',
-        mensagem:        `"${criativo.nome}" foi aprovado.`,
+        tipo:            'criativo_alteracao',
+        mensagem:        `"${criativo.nome}" foi devolvido para alteração.`,
         referencia_id:   criativoId,
         referencia_tipo: 'criativo',
       });
