@@ -61,13 +61,14 @@ const VarBadge = ({ atual, anterior }: { atual: number; anterior: number }) => {
   );
 };
 
-type AbaOperacional = "trafego" | "monetizacao" | "perdas" | "produtos";
+type AbaOperacional = "trafego" | "monetizacao" | "perdas" | "produtos" | "links";
 
 const ABAS: { key: AbaOperacional; label: string }[] = [
   { key: "trafego",     label: "Tráfego" },
   { key: "monetizacao", label: "Monetização" },
   { key: "perdas",      label: "Perdas" },
   { key: "produtos",    label: "Produtos" },
+  { key: "links",       label: "Links" },
 ];
 
 /**
@@ -171,6 +172,7 @@ export default function OverviewPage() {
   const [upsellData, setUpsellData] = useState<any[]>([]);
   const [prodData, setProdData] = useState<any[]>([]);
   const [serieDiaria, setSerieDiaria] = useState<any[]>([]);
+  const [linkData, setLinkData] = useState<any[]>([]);
   const [remData, setRemData] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -223,7 +225,7 @@ export default function OverviewPage() {
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
-      .select("valor_total,valor_sem_juros,juros_parcelamento,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor,is_upsell")
+      .select("valor_total,valor_sem_juros,juros_parcelamento,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor,is_upsell,link_titulo")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
@@ -444,6 +446,24 @@ export default function OverviewPage() {
           investimento: investimentoDia,
           lucro: d.faturamento * (fatBruto > 0 ? lucro / fatBruto : 0),
         })),
+    );
+
+    // Receita por link de checkout, com quanto de cada um chega rastreado.
+    // Serve para achar o link que precisa de UTM: hoje 41,5% da receita vem de links
+    // com 0% de atribuição e cai inteira em "back-end" sem ser back-end de verdade.
+    const linkMap = new Map<string, { link: string; vendas: number; rastreadas: number; valor: number }>();
+    for (const v of vendasPrincipal) {
+      const nome = v.link_titulo || "(sem link identificado)";
+      const ex = linkMap.get(nome) || { link: nome, vendas: 0, rastreadas: 0, valor: 0 };
+      ex.vendas += 1;
+      if (v.ad_id_meta) ex.rastreadas += 1;
+      ex.valor += Number(v.valor_sem_juros ?? v.valor_total ?? 0);
+      linkMap.set(nome, ex);
+    }
+    setLinkData(
+      [...linkMap.values()]
+        .map(l => ({ ...l, pct_rastreado: l.vendas > 0 ? (l.rastreadas / l.vendas) * 100 : 0 }))
+        .sort((a, b) => b.valor - a.valor),
     );
 
     const cpa = investimento > 0 && qtdAprov > 0 ? investimento / qtdAprov : 0;
@@ -870,6 +890,40 @@ export default function OverviewPage() {
                   detalhe={`${remData.qtd_chargeback || 0} · ${(remData.pct_chargeback || 0).toFixed(1)}%`}
                 />
               </div>
+            )}
+
+            {abaAtiva === "links" && (
+              <Painel titulo="Receita por link de checkout">
+                <p className="px-5 pb-3 text-xs text-muted-foreground">
+                  Link com 0% rastreado não carrega UTM, então a venda cai em back-end mesmo
+                  quando veio de anúncio. É onde vale configurar o rastreio.
+                </p>
+                <Tabela
+                  colunas={["Link", "Vendas", "Receita", "Rastreado"]}
+                  vazio="Sem vendas no período"
+                  linhas={linkData.map((l, i) => (
+                    <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-secondary/40">
+                      <td className="px-4 py-2 text-foreground">{l.link}</td>
+                      <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(l.vendas)}</td>
+                      <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(l.valor)}</td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-xs font-semibold tabular-nums",
+                            l.pct_rastreado >= 90
+                              ? "bg-success/10 text-success"
+                              : l.pct_rastreado > 0
+                                ? "bg-warning/10 text-warning"
+                                : "bg-destructive/10 text-destructive",
+                          )}
+                        >
+                          {l.pct_rastreado.toFixed(0)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                />
+              </Painel>
             )}
 
             {abaAtiva === "produtos" && (
