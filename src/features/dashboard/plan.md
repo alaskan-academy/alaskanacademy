@@ -331,12 +331,17 @@ Limiar default ±15%, configurável.
 - [ ] `vw_reembolsos` continua existindo e agregando sem data. Nenhuma página da Visão Geral usa mais, mas convém checar se outra depende dela antes de removê-la
 
 ### Fase 0.2 — Sync Meta (auto-descoberta)
-- [ ] Criar Meta App + System User Token com `ads_read`
-- [ ] Migration `meta_insights_raw` (+ RLS)
-- [ ] Edge Function `meta-insights-sync`: descobrir CAs via `/me/adaccounts`, sincronizar insights
-- [ ] Agendamento: horário (dia corrente) + diário (D-1..D-7)
-- [ ] Backfill histórico via async insights jobs
-- [ ] Reconciliar `ad_accounts` com as CAs reais descobertas
+- [x] Migrations `meta_insights_raw`, `meta_sync_estado` (+ RLS), colunas `status_meta` / `moeda` / `descoberto_em` / `visto_em` em `ad_accounts`, índice único em `account_id`
+- [x] Edge Function `meta-insights-sync` deployada (v2, JWT obrigatório, CORS para disparo manual)
+- [x] Descoberta automática via `/me/adaccounts` — não mexe em `ativo`, `funil_id` nem `produto_payt`, que são configuração humana
+- [x] Modos `hoje` (horário), `recente` (D-1..D-7, janela de atribuição), `backfill` e `descobrir`
+- [x] Backoff exponencial nos erros 17/4/613 e 5xx; leitura do header `x-business-use-case-usage` gravada em `meta_sync_estado.uso_api_pct`
+- [x] Falha isolada por conta — uma conta com problema não interrompe as outras
+- [x] Verificado em produção: responde 503 com instrução enquanto o token não existe
+- [ ] **Criar System User Token com `ads_read` e cadastrar como secret `META_ACCESS_TOKEN`** — ação no Business Manager
+- [ ] Agendar via `pg_cron`: `hoje` de hora em hora, `recente` uma vez por dia
+- [ ] Rodar o backfill histórico depois que o token existir
+- [ ] Reconciliar `ad_accounts` com o que a descoberta trouxer (hoje há 10 cadastradas à mão, várias já não rodam)
 
 ### Fase 0.3 — Funis e atribuição
 - [ ] Arquivar os 22 funis antigos; criar estrutura nova sobre as CAs reais
