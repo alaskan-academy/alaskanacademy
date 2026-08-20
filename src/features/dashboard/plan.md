@@ -302,6 +302,9 @@ Limiar default ±15%, configurável.
 - [x] **Taxa da plataforma recalculada como `total − producer`.** A linha `commission[type='platform']` traz só a comissão da Payt e ignora processamento e divisões com terceiros: media 5,34% contra 7,86% reais. Protegido o payload defeituoso (produtor zerado, que registraria 100%)
 - [x] **`vendas.produto_nome`.** A tela agrupava pelo enum `produto` — 6 categorias — mostrando "Saponaria" sem distinguir o Curso Saponaria Brasil da Arte Floral em Sabonetes. Nova coluna com o nome real da Payt (43 nomes distintos), com a categoria virando badge
 
+- [x] **Reembolsos e chargebacks ignoravam o filtro de período.** Vinham de `vw_reembolsos`, que agrega a tabela inteira numa linha só, sem recorte de data — os cards exibiam o total histórico (71 reembolsos, 11 chargebacks / R$ 972,64) ao lado de "Não aprovadas", que respeita o período. Passaram a sair de `vendas` com o mesmo filtro de data, funil e segmento
+- [x] **Upsell aparecia também em "Vendas por produto".** A mesma venda era contada no painel de produtos e no de upsells. O painel de produtos passa a excluir `is_upsell` e o título deixou de dizer "produto principal", que sugeria só ofertas de entrada
+
 **Pendências:**
 - [x] **`vw_faturamento_liquido` agrupa por dia em BRT.** Usava `date(data_venda)`, que converte no fuso do servidor (UTC) — era a última peça fora do fuso, e por isso investimento, impostos e custo fixo ainda herdavam o desvio. Também passou a excluir `LC-%`, que as páginas já excluíam. Verificado: view e `vendas` batem ao centavo (R$ 4.098,96 de faturamento, R$ 415,25 de taxa)
 - [x] **`clientes` deduplicado.** 293 grupos de e-mail duplicado (312 linhas) impediam o índice único e deixavam `fn_resolver_cliente` sujeito a corrida. Os 8 grupos com `cpf_hash` divergente foram inspecionados um a um: os nomes são da mesma pessoa — o hash mudou de formato ao longo do tempo e não é identidade estável. O `cpf_hash` **não** é propagado do descartado para o sobrevivente; uma primeira tentativa colidiu com o índice único porque o hash de um descartado já pertencia a outro cliente fora do grupo. Resultado: 10.129 → 9.817 clientes, 13.011 vendas mantiveram o vínculo, zero referência órfã. Índice único parcial criado (16 clientes legítimos não têm e-mail)
@@ -312,6 +315,8 @@ Limiar default ±15%, configurável.
 - [ ] Vendas de jan–abr não têm `ad_id_meta` (o import de 30/06 não trouxe), então aparecem 100% como back-end nesses meses
 - [ ] 339 vendas (2,6%) sem `produto` — Incensos e "Vendas no Artesanato", categorização adiada por decisão
 - [ ] Taxa da plataforma ausente nas ~2.500 vendas do import de 30/06 (payload vazio, sem `commission`)
+- [ ] **Order bump vendido avulso aparece como produto.** "Biblioteca de 100 Assinaturas Aromáticas" está cadastrada em `ofertas` como `orderbump_1`, mas nessa venda foi a única coisa comprada — logo é o produto principal daquela transação. Fica correto como está; só vira problema se você quiser separar "receita de oferta de entrada" de "receita de complemento", o que exigiria decidir o que fazer quando o mesmo item é vendido dos dois jeitos
+- [ ] `vw_reembolsos` continua existindo e agregando sem data. Nenhuma página da Visão Geral usa mais, mas convém checar se outra depende dela antes de removê-la
 
 ### Fase 0.2 — Sync Meta (auto-descoberta)
 - [ ] Criar Meta App + System User Token com `ads_read`

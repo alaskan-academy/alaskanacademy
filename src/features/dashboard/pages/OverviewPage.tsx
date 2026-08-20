@@ -214,7 +214,7 @@ export default function OverviewPage() {
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
-      .select("valor_total,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor")
+      .select("valor_total,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor,is_upsell")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
@@ -233,8 +233,18 @@ export default function OverviewPage() {
     if (inicio && fim) q5 = q5.gte("data_venda", inicio).lte("data_venda", fim);
     if (funilId) q5 = q5.eq("funil_id", funilId);
 
-    // Reembolsos/chargeback
-    const q6 = supabase.from("vw_reembolsos").select("*").single();
+    // Reembolsos e chargebacks. Antes vinham de `vw_reembolsos`, que agrega a tabela
+    // inteira sem recorte de data — os cards mostravam o total histórico ao lado de
+    // "Não aprovadas", que respeita o período. Agora saem de `vendas`, no mesmo filtro.
+    let q6 = supabase
+      .from("vendas")
+      .select("valor_total,valor_reembolsado,status")
+      .in("status", ["reembolsada", "chargeback"])
+      .not("pedido_id", "like", "TEST%")
+      .not("pedido_id", "like", "LC-%");
+    q6 = porSegmento(q6);
+    if (inicio && fim) q6 = q6.gte("data_venda", inicio).lte("data_venda", fim);
+    if (funilId) q6 = q6.eq("funil_id", funilId);
 
     // Produtos — será calculado a partir de vendasRows (q4)
 
@@ -362,12 +372,29 @@ export default function OverviewPage() {
     const valBackend = backendRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
     const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
 
-    setRemData(r6.data || {});
+    // Percentuais sobre a base do período: aprovadas + as próprias perdas.
+    const perdas = r6.data || [];
+    const reembolsadas = perdas.filter((r: any) => r.status === "reembolsada");
+    const chargebacks = perdas.filter((r: any) => r.status === "chargeback");
+    const valReemb = reembolsadas.reduce((s: number, r: any) => s + Number(r.valor_reembolsado ?? r.valor_total ?? 0), 0);
+    const valCb = chargebacks.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    const baseReemb = qtdAprov + reembolsadas.length;
+    const baseCb = qtdAprov + reembolsadas.length + chargebacks.length;
+    setRemData({
+      qtd_reembolsos: reembolsadas.length,
+      valor_reembolsos: valReemb,
+      pct_reembolsos: baseReemb > 0 ? (reembolsadas.length / baseReemb) * 100 : 0,
+      qtd_chargeback: chargebacks.length,
+      valor_chargeback: valCb,
+      pct_chargeback: baseCb > 0 ? (chargebacks.length / baseCb) * 100 : 0,
+    });
     // Compute prodData from vendasRows (already filtered by date/product)
     // Agrupa pelo nome real vindo da Payt. `produto` é o enum de categoria — só
     // 6 valores — e não distingue "Curso Saponaria Brasil" de "Arte Floral em Sabonetes".
     const prodMap = new Map<string, { produto: string; categoria: string; vendas_aprovadas: number; faturamento_principal: number; faturamento_total: number }>();
-    for (const v of vendasPrincipal) {
+    // Upsell fica de fora: tem painel próprio em Monetização, e listá-lo aqui
+    // contava a mesma venda duas vezes.
+    for (const v of vendasPrincipal.filter((r: any) => !r.is_upsell)) {
       const p = v.produto_nome || v.produto || "Sem produto";
       const existing = prodMap.get(p) || { produto: p, categoria: v.produto || "", vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
       existing.vendas_aprovadas += 1;
@@ -805,7 +832,7 @@ export default function OverviewPage() {
             )}
 
             {abaAtiva === "produtos" && (
-              <Painel titulo="Vendas por produto principal">
+              <Painel titulo="Vendas por produto">
                 <div className="px-5 pb-5">
                   {prodData.length === 0 ? (
                     <div className="py-6 text-center text-sm text-muted-foreground">Sem dados no período</div>
