@@ -202,7 +202,7 @@ export default function OverviewPage() {
     // + buscar nomes reais de upsells da tabela ofertas para filtrar
     let qUp = supabase
       .from("vendas")
-      .select("id,pedido_id,produto,valor_total,valor_oferta_principal,data_venda,payload_webhook->product->name")
+      .select("id,pedido_id,produto,produto_nome,valor_total,valor_oferta_principal,data_venda")
       .eq("status", "aprovada")
       .eq("is_upsell", true)
       .not("pedido_id", "like", "TEST%")
@@ -210,8 +210,6 @@ export default function OverviewPage() {
     qUp = porSegmento(qUp);
     if (inicio && fim) qUp = qUp.gte("data_venda", inicio).lte("data_venda", fim);
     if (funilId) qUp = qUp.eq("funil_id", funilId);
-
-    const qOfertasUp = supabase.from("ofertas").select("nome").eq("tipo", "upsell");
 
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
@@ -267,7 +265,7 @@ export default function OverviewPage() {
     if (ant.start && ant.end) qA2 = qA2.gte("data_venda", inicioDiaBRT(ant.start)).lte("data_venda", fimDiaBRT(ant.end));
     if (funilId) qA2 = qA2.eq("funil_id", funilId);
 
-    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rOfertasUp] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qOfertasUp]);
+    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2]);
 
     const fatRows = r1.data || [];
     const vendasRows = r4.data || [];
@@ -339,17 +337,14 @@ export default function OverviewPage() {
     const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
     setObsData(obsRows);
 
-    // Upsells: vendas separadas com is_upsell = true, filtradas pelos nomes cadastrados em ofertas
-    const upsellNamesSet = new Set((rOfertasUp.data || []).map((o: any) => o.nome));
-    const allUpVendas = rUp.data || [];
-    // Só considerar como upsell se o nome do produto estiver na tabela ofertas como tipo=upsell
-    const upVendas = allUpVendas.filter((v: any) => {
-      const nome = (v as any).name || "";
-      return upsellNamesSet.has(nome);
-    });
+    // Upsell é resolvido no banco (`is_upsell`): compra seguinte do mesmo cliente em
+    // até 30 min, de produto diferente. Antes a tela cruzava ainda com os nomes
+    // cadastrados em `ofertas` como tipo='upsell' — e como o upsell muda a cada funil
+    // e a cada teste, esse cadastro nunca acompanha e a lista aparecia sempre vazia.
+    const upVendas = rUp.data || [];
     const upGrouped = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
     for (const v of upVendas) {
-      const nome = (v as any).name || `Upsell ${v.produto}`;
+      const nome = v.produto_nome || `Upsell ${v.produto ?? ""}`.trim();
       const key = nome;
       const ex = upGrouped.get(key) || { nome_upsell: nome, total_upsells: 0, receita_total: 0 };
       ex.total_upsells += 1;
