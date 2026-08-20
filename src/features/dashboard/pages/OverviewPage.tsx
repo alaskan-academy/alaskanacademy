@@ -329,7 +329,7 @@ export default function OverviewPage() {
     // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
     const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
     const qtdAprov = vendasPrincipal.length;
-    const ticketMedio = qtdAprov > 0 ? fatBruto / qtdAprov : 0;
+    const ticketMedio = qtdAprov > 0 ? receita / qtdAprov : 0;
 
     // Pendentes/canceladas/expiradas
     const naoAprov = r5.data || [];
@@ -412,7 +412,8 @@ export default function OverviewPage() {
       const existing = prodMap.get(p) || { produto: p, categoria: v.produto || "", vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
       existing.vendas_aprovadas += 1;
       existing.faturamento_principal += Number(v.valor_oferta_principal || 0);
-      existing.faturamento_total += Number(v.valor_total || 0);
+      // sem juros, para o TM refletir o preco e nao o custo do parcelamento
+      existing.faturamento_total += Number(v.valor_sem_juros ?? v.valor_total ?? 0);
       prodMap.set(p, existing);
     }
     const computedProdData = [...prodMap.values()].map(p => ({
@@ -429,7 +430,7 @@ export default function OverviewPage() {
       if (!v.data_venda) continue;
       const dia = diaBRT(v.data_venda);
       const ex = diaMap.get(dia) || { dia, faturamento: 0, vendas: 0 };
-      ex.faturamento += Number(v.valor_total || 0);
+      ex.faturamento += Number(v.valor_sem_juros ?? v.valor_total ?? 0);
       ex.vendas += 1;
       diaMap.set(dia, ex);
     }
