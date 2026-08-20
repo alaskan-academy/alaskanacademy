@@ -85,10 +85,19 @@ function Metrica({
   cor?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{rotulo}</span>
-      <div className={cn("mt-1.5 text-xl font-bold tabular-nums", cor || "text-foreground")}>{valor}</div>
-      {detalhe && <div className="mt-1 text-xs text-muted-foreground">{detalhe}</div>}
+    <div className="min-w-0 rounded-lg border border-border bg-card p-4">
+      <span className="block text-xs font-medium uppercase tracking-wider text-muted-foreground">{rotulo}</span>
+      {/* `text-[clamp()]` encolhe o número em vez de deixá-lo vazar do card quando a
+          sidebar está aberta e a coluna fica estreita. */}
+      <div
+        className={cn(
+          "mt-1.5 font-bold tabular-nums leading-tight [font-size:clamp(1rem,2.2vw,1.25rem)]",
+          cor || "text-foreground",
+        )}
+      >
+        {valor}
+      </div>
+      {detalhe && <div className="mt-1 text-xs leading-snug text-muted-foreground">{detalhe}</div>}
       {rodape}
     </div>
   );
@@ -214,7 +223,7 @@ export default function OverviewPage() {
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
-      .select("valor_total,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor,is_upsell")
+      .select("valor_total,valor_sem_juros,juros_parcelamento,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor,is_upsell")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
@@ -283,7 +292,13 @@ export default function OverviewPage() {
     // O faturamento vem de `vendas` (e não da view) porque a view agrega por dia/produto
     // e não sabe distinguir tráfego de back-end. Calculando das vendas, Misto fecha
     // exatamente como Tráfego + Back-end.
+    // `fatBruto` é o que o cliente pagou. Os juros de parcelamento saem antes do resto:
+    // quem paga é o cliente e quem recebe é a adquirente — nunca foi dinheiro da casa.
+    // Contá-los como receita inflaria ticket médio, margem e ROAS de uma vez só.
     const fatBruto = vendasRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+    const juros = vendasRows.reduce((s: number, r: any) => s + Number(r.juros_parcelamento || 0), 0);
+    const receita = vendasRows.reduce(
+      (s: number, r: any) => s + Number(r.valor_sem_juros ?? r.valor_total ?? 0), 0);
 
     // Custos e impostos só existem no total; são rateados pela participação do segmento
     // no faturamento. O investimento em ads é a exceção: pertence 100% ao tráfego pago.
@@ -293,7 +308,9 @@ export default function OverviewPage() {
     // Taxa vem das próprias vendas, não da view: a view agrupa pelo dia em UTC e
     // divergiria do faturamento, que já respeita o limite do dia em BRT.
     const taxaPlat = vendasRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma_valor || 0), 0);
-    const taxaPlatPct = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
+    // Percentual sobre a receita, não sobre o pago: senão o juro de parcelamento
+    // faria a taxa parecer maior do que a Payt cobra.
+    const taxaPlatPct = receita > 0 ? (taxaPlat / receita) * 100 : 0;
     const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0) * share;
     const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0) * share;
     const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0) * share;
@@ -303,16 +320,12 @@ export default function OverviewPage() {
     const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
     const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr) * share;
-    // Faturamento líquido = bruto - taxa Payt - imposto Simples
-    const fatLiquido = fatBruto - taxaPlat - impSimples;
-
-    // Lucro operacional (sem custo fixo)
-    const lucro = fatBruto - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
-    // Lucro com custo fixo
+    // Tudo a partir de `receita` (sem juros), não do pago pelo cliente.
+    const fatLiquido = receita - taxaPlat - impSimples;
+    const lucro = receita - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
     const lucroCC = lucro - custoFixo;
-    // Margem % = operacional (SEM custo fixo)
-    const margemPct = fatBruto > 0 ? (lucro / fatBruto) * 100 : 0;
-    const roas = investimento > 0 ? fatBruto / investimento : 0;
+    const margemPct = receita > 0 ? (lucro / receita) * 100 : 0;
+    const roas = investimento > 0 ? receita / investimento : 0;
     // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
     const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
     const qtdAprov = vendasPrincipal.length;
@@ -436,6 +449,8 @@ export default function OverviewPage() {
 
     setKpis({
       cpa,
+      juros,
+      receita,
       fatBruto,
       fatLiquido,
       lucro,
@@ -472,7 +487,13 @@ export default function OverviewPage() {
     // Período anterior
     const antFat = (rA1.data || []).reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
     const antInv = (rA1.data || []).reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
-    setKpisAnt({ fatBruto: antFat, qtdAprov: (rA2.data || []).length, roas: antInv > 0 ? antFat / antInv : 0 });
+    const antQtd = (rA2.data || []).length;
+    setKpisAnt({
+      fatBruto: antFat,
+      qtdAprov: antQtd,
+      ticketMedio: antQtd > 0 ? antFat / antQtd : 0,
+      roas: antInv > 0 ? antFat / antInv : 0,
+    });
 
     setLastUpdate(new Date());
     setLoading(false);
@@ -565,10 +586,13 @@ export default function OverviewPage() {
               </div>
             </div>
 
-            <div className="lg:col-span-2 grid grid-cols-2 gap-4 md:grid-cols-4">
+            {/* Só vai a 4 colunas em xl: em lg, com a sidebar aberta, a coluna fica
+                estreita demais e os valores cortavam. */}
+            <div className="lg:col-span-2 grid grid-cols-2 gap-4 xl:grid-cols-4">
               <Metrica
-                rotulo="Faturamento bruto"
+                rotulo="Pago pelos clientes"
                 valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))}
+                detalhe={(kpis.juros || 0) > 0 ? `inclui ${formatCurrency(kpis.juros)} de juros` : undefined}
                 rodape={<VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />}
               />
               <Metrica
@@ -581,7 +605,11 @@ export default function OverviewPage() {
                 valor={formatNumber(kpis.qtdAprov || 0)}
                 rodape={<VarBadge atual={kpis.qtdAprov} anterior={kpisAnt.qtdAprov} />}
               />
-              <Metrica rotulo="Ticket médio" valor={formatCurrency(kpis.ticketMedio || 0)} />
+              <Metrica
+                rotulo="Ticket médio"
+                valor={formatCurrency(kpis.ticketMedio || 0)}
+                rodape={<VarBadge atual={kpis.ticketMedio} anterior={kpisAnt.ticketMedio} />}
+              />
             </div>
           </section>
 
@@ -651,9 +679,21 @@ export default function OverviewPage() {
             {/* Cascata: substitui os cards de Receita e Custos Diretos, que repetiam
                 exatamente estes mesmos números uma seção acima. */}
             <div className="lg:col-span-2 rounded-lg border border-border bg-card p-5">
-              <h3 className="mb-4 text-sm font-medium text-foreground">Do bruto ao lucro</h3>
+              <h3 className="mb-4 text-sm font-medium text-foreground">Do pago ao lucro</h3>
               <div className="space-y-1.5 text-sm tabular-nums">
-                <Linha rotulo="Faturamento bruto" valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))} forte />
+                <Linha rotulo="Pago pelos clientes" valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))} forte />
+                {(kpis.juros || 0) > 0 && (
+                  <>
+                    <Linha
+                      rotulo="Juros de parcelamento"
+                      valor={formatCurrency(kpis.juros)}
+                      negativo
+                    />
+                    <div className="border-t border-border/60 pt-1.5">
+                      <Linha rotulo="Receita" valor={formatCurrency(kpis.receita || 0)} forte />
+                    </div>
+                  </>
+                )}
                 <Linha
                   rotulo={`Taxa Payt (${(kpis.taxaPlatPct || 0).toFixed(2)}%)`}
                   valor={formatCurrency(kpis.taxaPlat || 0)}
