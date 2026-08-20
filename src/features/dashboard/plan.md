@@ -347,6 +347,9 @@ Limiar default ±15%, configurável.
 - [x] **`metricas_meta.produto` herda de `ad_accounts` por trigger.** Sem isso o investimento não chegava ao dashboard: `vw_faturamento_liquido` casa métricas com vendas por `(data, produto)`, e com produto nulo o join não acontecia
 - [x] Verificado na Visão Geral: investimento R$ 1.531,60, ROAS 3,06x, CPA R$ 34,81 — antes os três estavam zerados ou em "—". A margem caiu de 81% para 47%, que é a margem real com tráfego contabilizado
 
+- [x] **Múltiplos Business Managers.** Um token por BM em secrets separados (`META_ACCESS_TOKEN`, `META_ACCESS_TOKEN_2`…), e `ad_accounts.origem_token` guarda qual credencial descobriu cada conta. Escolhido em vez de compartilhar ativos entre BMs para que problema em uma não derrube a outra — mesma lógica de isolamento que aplicamos ao criar o app
+- [x] Cron `processar_windsor_staging` removido (rodava diariamente sobre dados estáticos desde 23/07). As tabelas ficam, pelo histórico
+
 **Pendências da Fase 0.2:**
 - [ ] `ad_accounts.funil_id` continua nulo nas 5 contas novas — bloqueia o seletor de CA e a atribuição de venda a funil (Fase 0.3)
 - [ ] O cron `processar_windsor_staging` (`0 4 * * *`) ainda roda diariamente sobre `windsor_meta_staging`, que está estático desde 23/07. Não conflita com o sync novo (as contas antigas têm outros UUIDs, então a chave única difere), mas é job morto
