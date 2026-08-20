@@ -78,6 +78,31 @@ function somaAcoes(lista: unknown, casa: (tipo: string) => boolean): number {
   return total;
 }
 
+/**
+ * Valor do primeiro `action_type` encontrado, na ordem da lista.
+ *
+ * A Meta devolve a MESMA conversão sob vários rótulos: uma compra aparece
+ * simultaneamente como `purchase`, `omni_purchase`,
+ * `offsite_conversion.fb_pixel_purchase`, `onsite_web_purchase` e outros — todos
+ * com valor idêntico. Somar por "contém purchase" multiplicava o resultado por 8
+ * (224 compras onde havia 28). Por isso a busca é exata e para no primeiro acerto.
+ */
+function valorAcao(lista: unknown, tipos: string[]): number {
+  if (!Array.isArray(lista)) return 0;
+  for (const tipo of tipos) {
+    const achado = (lista as Linha[]).find(i => String(i?.action_type ?? '') === tipo);
+    if (achado) return Number(achado.value ?? 0);
+  }
+  return 0;
+}
+
+// Ordem de preferência: o evento do pixel é o mais fiel à configuração da casa;
+// os demais servem de fallback caso a conta use outro método de rastreio.
+const TIPOS_COMPRA   = ['offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'purchase'];
+const TIPOS_CHECKOUT = ['offsite_conversion.fb_pixel_initiate_checkout', 'omni_initiated_checkout', 'initiate_checkout'];
+const TIPOS_CARRINHO = ['offsite_conversion.fb_pixel_add_to_cart', 'omni_add_to_cart', 'add_to_cart'];
+const TIPOS_PAGINA   = ['landing_page_view', 'omni_landing_page_view'];
+
 const num = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v));
 
 /**
@@ -175,11 +200,11 @@ function normalizar(linha: Linha, contaUuid: string, nivel: string): Linha {
   const acoes = linha.actions;
   const valores = linha.action_values;
 
-  const compras = somaAcoes(acoes, t => t.includes('purchase'));
-  const receita = somaAcoes(valores, t => t.includes('purchase'));
-  const checkout = somaAcoes(acoes, t => t.includes('initiate_checkout'));
-  const carrinho = somaAcoes(acoes, t => t.includes('add_to_cart'));
-  const paginas = somaAcoes(acoes, t => t === 'landing_page_view');
+  const compras = valorAcao(acoes, TIPOS_COMPRA);
+  const receita = valorAcao(valores, TIPOS_COMPRA);
+  const checkout = valorAcao(acoes, TIPOS_CHECKOUT);
+  const carrinho = valorAcao(acoes, TIPOS_CARRINHO);
+  const paginas = valorAcao(acoes, TIPOS_PAGINA);
 
   const plays = somaAcoes(linha.video_play_actions, () => true);
   const p75 = somaAcoes(linha.video_p75_watched_actions, () => true);
@@ -321,13 +346,23 @@ Deno.serve(async (req) => {
     // A descoberta roda junto do sync diário para pegar conta nova sem intervenção.
     if (modo === 'recente') await descobrirContas();
 
+    // Só sincroniza conta que a descoberta confirmou existir (`visto_em`). As 10
+    // cadastradas à mão antes deste sync não pertencem mais ao portfólio e
+    // devolviam 403 a cada execução, poluindo o log e gastando chamada à toa.
+    // Filtrar por `visto_em` em vez de mexer em `ativo` preserva o histórico de
+    // métricas que ainda está ancorado nelas.
     const { data: contas } = await supabase
       .from('ad_accounts')
       .select('id, account_id, nome')
-      .eq('ativo', true);
+      .eq('ativo', true)
+      .not('visto_em', 'is', null);
 
     if (!contas || contas.length === 0) {
-      return json({ ok: true, aviso: 'nenhuma conta ativa em ad_accounts', modo });
+      return json({
+        ok: true,
+        aviso: 'nenhuma conta confirmada pela API — rode modo=descobrir primeiro',
+        modo,
+      });
     }
 
     const resultado: Linha[] = [];

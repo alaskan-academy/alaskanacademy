@@ -338,10 +338,19 @@ Limiar default ±15%, configurável.
 - [x] Backoff exponencial nos erros 17/4/613 e 5xx; leitura do header `x-business-use-case-usage` gravada em `meta_sync_estado.uso_api_pct`
 - [x] Falha isolada por conta — uma conta com problema não interrompe as outras
 - [x] Verificado em produção: responde 503 com instrução enquanto o token não existe
-- [ ] **Criar System User Token com `ads_read` e cadastrar como secret `META_ACCESS_TOKEN`** — ação no Business Manager
-- [ ] Agendar via `pg_cron`: `hoje` de hora em hora, `recente` uma vez por dia
-- [ ] Rodar o backfill histórico depois que o token existir
-- [ ] Reconciliar `ad_accounts` com o que a descoberta trouxer (hoje há 10 cadastradas à mão, várias já não rodam)
+- [x] System User Token com `ads_read` criado e cadastrado como `META_ACCESS_TOKEN`
+- [x] **Descoberta revelou que as 10 contas cadastradas à mão não existem mais no portfólio.** A API retornou 5 contas totalmente diferentes (`Lembrancinha - TSL`, `Saponaria Brasil - TSL`, `Saponaria Brasil - VSL`, `Workshop Buquê - TSL`, `Worshop Buquê - SO`). Não foi renomeação: são outros IDs. As antigas seguem no banco por causa das 2.496 linhas de métrica do Windsor ancoradas nelas, mas o sync as ignora via `visto_em`
+- [x] Backfill de 20/05 a hoje: **3.926 linhas novas**, 94 dias cobertos. Uso da API no pico: **4%**
+- [x] `pg_cron` agendado — `meta-sync-horario` (`0 * * * *`, dia corrente) e `meta-sync-diario` (`20 5 * * *`, D-1..D-7)
+- [x] **Bug corrigido: contagem de conversões inflada 8×.** A Meta devolve a mesma compra sob 8 `action_type` diferentes (`purchase`, `omni_purchase`, `offsite_conversion.fb_pixel_purchase`…), todos com valor idêntico. Somar por "contém purchase" dava 224 compras onde havia 28. Mesmo problema em `initiate_checkout` (5 rótulos). Trocado por busca exata com lista de prioridade
+- [x] **Bug corrigido: `numeric field overflow`.** As colunas de taxa eram `numeric(8,6)` — máximo 99.999999, ou seja nem 100% cabia. `taxa_video_compra` chega a 320%. Alargadas para `numeric(12,6)`; clampar teria destruído o dado
+- [x] **`metricas_meta.produto` herda de `ad_accounts` por trigger.** Sem isso o investimento não chegava ao dashboard: `vw_faturamento_liquido` casa métricas com vendas por `(data, produto)`, e com produto nulo o join não acontecia
+- [x] Verificado na Visão Geral: investimento R$ 1.531,60, ROAS 3,06x, CPA R$ 34,81 — antes os três estavam zerados ou em "—". A margem caiu de 81% para 47%, que é a margem real com tráfego contabilizado
+
+**Pendências da Fase 0.2:**
+- [ ] `ad_accounts.funil_id` continua nulo nas 5 contas novas — bloqueia o seletor de CA e a atribuição de venda a funil (Fase 0.3)
+- [ ] O cron `processar_windsor_staging` (`0 4 * * *`) ainda roda diariamente sobre `windsor_meta_staging`, que está estático desde 23/07. Não conflita com o sync novo (as contas antigas têm outros UUIDs, então a chave única difere), mas é job morto
+- [ ] O mapeamento conta → produto foi inferido do nome de cada conta. Conferir se `Lembrancinha`, `Workshop Buquê` e as duas de `Saponaria` estão nas categorias certas
 
 ### Fase 0.3 — Funis e atribuição
 - [ ] Arquivar os 22 funis antigos; criar estrutura nova sobre as CAs reais
