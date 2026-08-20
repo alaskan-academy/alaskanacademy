@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
+import { IngestStatusBanner } from '@/components/IngestStatusBanner';
 import { useSidebarState } from '@/contexts/SidebarContext';
 import { useFilters } from '@/contexts/FilterContext';
 import { Menu, Search } from 'lucide-react';
@@ -46,6 +47,7 @@ export function DashboardLayout({
           </div>
         </header>
         <main className="p-4 md:p-6 animate-fade-in">
+          <IngestStatusBanner />
           {children}
         </main>
       </div>

@@ -1,6 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { KPICard } from "@/components/KPICard";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
@@ -23,6 +22,16 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
+import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+/** Origem da venda. Tráfego = venda com ad_id do Meta; back-end = sem ad_id. */
+type Segmento = "trafego" | "backend" | "misto";
+
+const SEGMENTOS: { key: Segmento; label: string; descricao: string }[] = [
+  { key: "trafego", label: "Tráfego", descricao: "Vendas atribuídas a um anúncio do Meta" },
+  { key: "backend", label: "Back-end", descricao: "Recompra, e-mail, orgânico e área de membros" },
+  { key: "misto",   label: "Misto",    descricao: "Todas as vendas do período" },
+];
 
 function custoFixoProp(mensal: number, start?: string, end?: string) {
   if (!mensal) return 0;
@@ -44,20 +53,114 @@ const VarBadge = ({ atual, anterior }: { atual: number; anterior: number }) => {
   if (!anterior) return null;
   const v = ((atual - anterior) / anterior) * 100;
   return (
-    <span className={cn("flex items-center gap-0.5 text-xs mt-1", v >= 0 ? "text-green-400" : "text-red-400")}>
+    <span className={cn("flex items-center gap-0.5 text-xs mt-1", v >= 0 ? "text-success" : "text-destructive")}>
       {v >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       {Math.abs(v).toFixed(1)}% vs anterior
     </span>
   );
 };
 
+type AbaOperacional = "trafego" | "monetizacao" | "perdas" | "produtos";
+
+const ABAS: { key: AbaOperacional; label: string }[] = [
+  { key: "trafego",     label: "Tráfego" },
+  { key: "monetizacao", label: "Monetização" },
+  { key: "perdas",      label: "Perdas" },
+  { key: "produtos",    label: "Produtos" },
+];
+
+/**
+ * Card de métrica neutro. A cor é opcional e reservada para quando o número
+ * carrega julgamento (ROAS baixo, chargeback acima de zero) — não para rotular
+ * a seção a que pertence.
+ */
+function Metrica({
+  rotulo, valor, detalhe, rodape, cor,
+}: {
+  rotulo: string;
+  valor: string;
+  detalhe?: string;
+  rodape?: ReactNode;
+  cor?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{rotulo}</span>
+      <div className={cn("mt-1.5 text-xl font-bold tabular-nums", cor || "text-foreground")}>{valor}</div>
+      {detalhe && <div className="mt-1 text-xs text-muted-foreground">{detalhe}</div>}
+      {rodape}
+    </div>
+  );
+}
+
+function Linha({
+  rotulo, valor, negativo, forte, cor,
+}: {
+  rotulo: string;
+  valor: string;
+  negativo?: boolean;
+  forte?: boolean;
+  cor?: string;
+}) {
+  return (
+    <div className={cn("flex justify-between", forte && "font-semibold")}>
+      <span className={cn(negativo ? "text-muted-foreground" : "text-foreground")}>
+        {negativo && "− "}
+        {rotulo}
+      </span>
+      <span className={cn(cor || (negativo ? "text-muted-foreground" : "text-foreground"))}>{valor}</span>
+    </div>
+  );
+}
+
+function Painel({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <h3 className="px-5 pb-3 pt-5 text-sm font-medium text-foreground">{titulo}</h3>
+      {children}
+    </div>
+  );
+}
+
+function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: ReactNode[]; vazio: string }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[380px] text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            {colunas.map(c => (
+              <th key={c} className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.length > 0 ? (
+            linhas
+          ) : (
+            <tr>
+              <td colSpan={colunas.length} className="px-4 py-6 text-center text-muted-foreground">
+                {vazio}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function OverviewPage() {
   const { startDateStr, endDateStr, funilId } = useFilters();
+  const [segmento, setSegmento] = useState<Segmento>("misto");
+  const [abaOp, setAbaOp] = useState<AbaOperacional>("trafego");
   const [kpis, setKpis] = useState<any>({});
   const [kpisAnt, setKpisAnt] = useState<any>({});
   const [obsData, setObsData] = useState<any[]>([]);
   const [upsellData, setUpsellData] = useState<any[]>([]);
   const [prodData, setProdData] = useState<any[]>([]);
+  const [serieDiaria, setSerieDiaria] = useState<any[]>([]);
   const [remData, setRemData] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -65,6 +168,16 @@ export default function OverviewPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
+
+    // Segmenta por presença de ad_id_meta. Não usamos utm_source porque ele chega
+    // corrompido da Payt (valores como "FBjLj6a5696504d5dca326db9199b"), enquanto o
+    // ad_id sobrevive intacto.
+    const porSegmento = (q: any, prefixo = "") => {
+      const col = `${prefixo}ad_id_meta`;
+      if (segmento === "trafego") return q.not(col, "is", null);
+      if (segmento === "backend") return q.is(col, null);
+      return q;
+    };
 
     // Faturamento
     let q1 = supabase.from("vw_faturamento_liquido").select("*");
@@ -74,9 +187,10 @@ export default function OverviewPage() {
     // OBs (via venda_itens com join para filtrar por data)
     let q2 = supabase
       .from("venda_itens")
-      .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas!inner(data_venda,produto,status)")
+      .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas!inner(data_venda,produto,status,ad_id_meta)")
       .eq("converteu", true)
       .eq("vendas.status", "aprovada");
+    q2 = porSegmento(q2, "vendas.");
     if (startDateStr && endDateEnd) q2 = q2.gte("vendas.data_venda", startDateStr).lte("vendas.data_venda", endDateEnd);
     if (funilId) q2 = q2.eq("vendas.funil_id", funilId);
 
@@ -89,6 +203,7 @@ export default function OverviewPage() {
       .eq("is_upsell", true)
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
+    qUp = porSegmento(qUp);
     if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (funilId) qUp = qUp.eq("funil_id", funilId);
 
@@ -97,10 +212,11 @@ export default function OverviewPage() {
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
-      .select("valor_total,valor_oferta_principal,produto")
+      .select("valor_total,valor_oferta_principal,produto,data_venda,ad_id_meta")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
+    q4 = porSegmento(q4);
     if (startDateStr && endDateEnd) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (funilId) q4 = q4.eq("funil_id", funilId);
 
@@ -111,6 +227,7 @@ export default function OverviewPage() {
       .in("status", ["pendente", "cancelada", "expirada"])
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
+    q5 = porSegmento(q5);
     if (startDateStr && endDateEnd) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
     if (funilId) q5 = q5.eq("funil_id", funilId);
 
@@ -119,12 +236,13 @@ export default function OverviewPage() {
 
     // Produtos — será calculado a partir de vendasRows (q4)
 
-    // Vendas backend (sem tráfego pago = utm_source é null)
+    // Vendas back-end = sem ad_id do Meta. Antes usava `utm_source is null`, o que
+    // classificava errado: o utm_source chega corrompido e nem sempre nulo.
     let q8 = supabase
       .from("vendas")
       .select("valor_total,produto")
       .eq("status", "aprovada")
-      .is("utm_source", null)
+      .is("ad_id_meta", null)
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     if (startDateStr && endDateEnd) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
@@ -147,19 +265,30 @@ export default function OverviewPage() {
 
     const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rOfertasUp] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qOfertasUp]);
 
-    // Faturamento
     const fatRows = r1.data || [];
-    const fatBruto = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
-    const taxaPlat = fatRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma || 0), 0);
+    const vendasRows = r4.data || [];
+
+    // O faturamento vem de `vendas` (e não da view) porque a view agrega por dia/produto
+    // e não sabe distinguir tráfego de back-end. Calculando das vendas, Misto fecha
+    // exatamente como Tráfego + Back-end.
+    const fatBruto = vendasRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
+
+    // Custos e impostos só existem no total; são rateados pela participação do segmento
+    // no faturamento. O investimento em ads é a exceção: pertence 100% ao tráfego pago.
+    const fatTotalPeriodo = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
+    const share = fatTotalPeriodo > 0 ? Math.min(fatBruto / fatTotalPeriodo, 1) : (fatBruto > 0 ? 1 : 0);
+
+    const taxaPlat = fatRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma || 0), 0) * share;
     const taxaPlatPct = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
-    const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0);
-    const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0);
-    const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0);
-    const investimento = fatRows.reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
+    const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0) * share;
+    const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0) * share;
+    const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0) * share;
+    const investimentoTotal = fatRows.reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
+    const investimento = segmento === "backend" ? 0 : investimentoTotal;
     const simplesPct = fatRows.length > 0 ? Number(fatRows[0].simples_pct || 0) : 0;
     const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
     const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
-    const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr);
+    const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr) * share;
     // Faturamento líquido = bruto - taxa Payt - imposto Simples
     const fatLiquido = fatBruto - taxaPlat - impSimples;
 
@@ -170,8 +299,6 @@ export default function OverviewPage() {
     // Margem % = operacional (SEM custo fixo)
     const margemPct = fatBruto > 0 ? (lucro / fatBruto) * 100 : 0;
     const roas = investimento > 0 ? fatBruto / investimento : 0;
-
-    const vendasRows = r4.data || [];
     // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
     const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
     const qtdAprov = vendasPrincipal.length;
@@ -251,7 +378,34 @@ export default function OverviewPage() {
     }));
     setProdData(computedProdData.sort((a, b) => b.vendas_aprovadas - a.vendas_aprovadas));
 
+    // Série diária para o gráfico. O dia é calculado em BRT — a Payt entrega paid_at
+    // em horário de Brasília e ~5% das vendas caem entre 21h e 23h59, que em UTC
+    // seriam contadas no dia seguinte.
+    const diaMap = new Map<string, { dia: string; faturamento: number; vendas: number }>();
+    for (const v of vendasPrincipal) {
+      if (!v.data_venda) continue;
+      const dia = new Date(v.data_venda).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const ex = diaMap.get(dia) || { dia, faturamento: 0, vendas: 0 };
+      ex.faturamento += Number(v.valor_total || 0);
+      ex.vendas += 1;
+      diaMap.set(dia, ex);
+    }
+    const investimentoDia = investimento > 0 && diaMap.size > 0 ? investimento / diaMap.size : 0;
+    setSerieDiaria(
+      [...diaMap.values()]
+        .sort((a, b) => a.dia.localeCompare(b.dia))
+        .map(d => ({
+          ...d,
+          rotulo: format(parseISO(d.dia), "dd/MM"),
+          investimento: investimentoDia,
+          lucro: d.faturamento * (fatBruto > 0 ? lucro / fatBruto : 0),
+        })),
+    );
+
+    const cpa = investimento > 0 && qtdAprov > 0 ? investimento / qtdAprov : 0;
+
     setKpis({
+      cpa,
       fatBruto,
       fatLiquido,
       lucro,
@@ -292,14 +446,14 @@ export default function OverviewPage() {
 
     setLastUpdate(new Date());
     setLoading(false);
-  }, [startDateStr, endDateStr, funilId]);
+  }, [startDateStr, endDateStr, funilId, segmento]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const margemBadge =
-    kpis.margemPct > 30 ? "text-green-400" : kpis.margemPct >= 15 ? "text-yellow-400" : "text-red-400";
+  const margemCor =
+    kpis.margemPct > 30 ? "text-success" : kpis.margemPct >= 15 ? "text-warning" : "text-destructive";
 
   const custoLabel = () => {
     if (!kpis.custoMensal) return null;
@@ -308,10 +462,30 @@ export default function OverviewPage() {
     return `${dias}d`;
   };
 
+  const abasDisponiveis = ABAS.filter(a => !(a.key === "trafego" && segmento === "backend"));
+  const abaAtiva = abasDisponiveis.some(a => a.key === abaOp) ? abaOp : abasDisponiveis[0].key;
+
   return (
     <DashboardLayout title="Visão Geral">
-      {/* Botão Atualizar */}
-      <div className="flex justify-end mb-4">
+      {/* ── Origem do tráfego + atualizar ───────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+          {SEGMENTOS.map(s => (
+            <button
+              key={s.key}
+              onClick={() => setSegmento(s.key)}
+              title={s.descricao}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                segmento === s.key
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={fetchData}
           disabled={loading}
@@ -322,366 +496,341 @@ export default function OverviewPage() {
         </button>
       </div>
 
+      {segmento !== "misto" && (
+        <p className="mb-4 text-xs text-muted-foreground">
+          {SEGMENTOS.find(s => s.key === segmento)?.descricao}. Taxas, impostos e custo fixo são
+          rateados pela participação deste segmento no faturamento.
+        </p>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">
           Carregando dados...
         </div>
       ) : (
         <>
-          {/* ═══ 1. RECEITA ═══ */}
-          <div className="mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Receita</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Faturamento Bruto</span>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(Math.max(0, kpis.fatBruto || 0))}</div>
-              <VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />
-            </div>
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendas Aprovadas</span>
-                <ShoppingBag className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatNumber(kpis.qtdAprov || 0)}</div>
-              <VarBadge atual={kpis.qtdAprov} anterior={kpisAnt.qtdAprov} />
-            </div>
-            <div className="bg-card rounded-lg border border-border p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Ticket Médio</span>
-                <Target className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.ticketMedio || 0)}</div>
-            </div>
-          </div>
-
-          {/* ═══ 2. CUSTOS DIRETOS ═══ */}
-          <div className="mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-warning/60">Custos Diretos</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-card rounded-lg border border-warning/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Taxa Payt</span>
-                <CreditCard className="h-4 w-4 text-warning" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.taxaPlat || 0)}</div>
-              <div className="text-xs text-warning mt-1">{(kpis.taxaPlatPct || 0).toFixed(2)}%</div>
-            </div>
-            <div className="bg-card rounded-lg border border-warning/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Imposto Simples</span>
-                <Receipt className="h-4 w-4 text-warning" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.impSimples || 0)}</div>
-              <div className="text-xs text-warning mt-1">{formatPercent(kpis.simplesPct || 0)}</div>
-            </div>
-            <div className="bg-card rounded-lg border border-warning/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Imposto Meta Ads</span>
-                <BadgeDollarSign className="h-4 w-4 text-warning" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.impMeta || 0)}</div>
-              <div className="text-xs text-warning mt-1">{formatPercent(kpis.metaPct || 0)}</div>
-            </div>
-          </div>
-
-          {/* ═══ 3. TRÁFEGO ═══ */}
-          <div className="mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-info/60">Tráfego</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="bg-card rounded-lg border border-info/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Investimento Meta</span>
-                <TrendingUp className="h-4 w-4 text-info" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.investimento || 0)}</div>
-            </div>
-            <div className="bg-card rounded-lg border border-info/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ROAS</span>
-                <BarChart3 className="h-4 w-4 text-info" />
-              </div>
-              <div className={cn("text-2xl font-bold", kpis.roas >= 3 ? "text-success" : kpis.roas >= 1 ? "text-warning" : "text-destructive")}>
-                {(kpis.roas || 0).toFixed(2)}x
-              </div>
-              <VarBadge atual={kpis.roas} anterior={kpisAnt.roas} />
-            </div>
-          </div>
-
-          {/* ═══ 4. FUNIL / MONETIZAÇÃO ═══ */}
-          <div className="mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-primary/60">Funil / Monetização</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-card rounded-lg border border-primary/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Order Bumps</span>
-                <Target className="h-4 w-4 text-primary" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.receitaOb || 0)}</div>
-              <div className="text-xs text-primary mt-1">Taxa: {formatPercent(kpis.taxaOb || 0)}</div>
-            </div>
-            <div className="bg-card rounded-lg border border-primary/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Upsells</span>
-                <TrendingUp className="h-4 w-4 text-primary" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.receitaUp || 0)}</div>
-              <div className="text-xs text-primary mt-1">Taxa: {formatPercent(kpis.taxaUp || 0)}</div>
-            </div>
-            <div className="bg-card rounded-lg border border-primary/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendas Backend</span>
-                <ShoppingBag className="h-4 w-4 text-primary" />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatCurrency(kpis.valBackend || 0)}</div>
-              <div className="text-xs text-primary mt-1">{formatNumber(kpis.qtdBackend || 0)} vendas · {formatPercent(kpis.pctBackend || 0)}</div>
-            </div>
-          </div>
-
-          {/* ═══ 5. PERDAS ═══ */}
-          <div className="mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-destructive/60">Perdas</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {/* Não Aprovadas */}
-            <div className="bg-card rounded-lg border border-destructive/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Não Aprovadas</span>
-                <XCircle className="h-4 w-4 text-destructive" />
-              </div>
-              <div className="text-xl font-bold text-foreground">
-                {formatCurrency((kpis.pendVal || 0) + (kpis.cancelVal || 0) + (kpis.expVal || 0))}
-              </div>
-              <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
-                <div className="flex justify-between"><span className="text-yellow-400">Pendentes</span><span className="text-yellow-400">{kpis.qtdPend || 0} · {formatCurrency(kpis.pendVal || 0)}</span></div>
-                <div className="flex justify-between"><span className="text-red-400">Canceladas</span><span className="text-red-400">{kpis.qtdCanc || 0} · {formatCurrency(kpis.cancelVal || 0)}</span></div>
-                <div className="flex justify-between"><span className="text-orange-400">Expiradas</span><span className="text-orange-400">{kpis.qtdExp || 0} · {formatCurrency(kpis.expVal || 0)}</span></div>
-              </div>
-            </div>
-            {/* Reembolsos */}
-            <div className="bg-card rounded-lg border border-destructive/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Reembolsos</span>
-                <RefreshCcw className="h-4 w-4 text-destructive" />
-              </div>
-              <div className="text-xl font-bold text-foreground">{formatCurrency(remData.valor_reembolsos || 0)}</div>
-              <div className="text-xs text-destructive mt-1">
-                {remData.qtd_reembolsos || 0} · {(remData.pct_reembolsos || 0).toFixed(1)}%
-              </div>
-            </div>
-            {/* Chargebacks */}
-            <div className="bg-card rounded-lg border border-destructive/20 p-5">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Chargebacks</span>
-                <AlertCircle className="h-4 w-4 text-destructive" />
-              </div>
-              <div className="text-xl font-bold text-destructive">{formatCurrency(remData.valor_chargeback || 0)}</div>
-              <div className="text-xs text-destructive mt-1">
-                {remData.qtd_chargeback || 0} · {(remData.pct_chargeback || 0).toFixed(1)}%
-              </div>
-            </div>
-          </div>
-
-          {/* ═══ 6. RESULTADO FINAL ═══ */}
-          <div className="mb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-success/60">Resultado Final</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-card rounded-lg border-2 border-success/30 p-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-success uppercase tracking-wider">Faturamento Líquido</span>
-                <DollarSign className="h-4 w-4 text-success" />
-              </div>
-              <div className="text-3xl font-bold text-foreground">{formatCurrency(Math.max(0, kpis.fatLiquido || 0))}</div>
-              <div className="text-xs text-muted-foreground mt-1">após taxa Payt + Simples</div>
-            </div>
-            <div className="bg-card rounded-lg border-2 border-success/30 p-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-success uppercase tracking-wider">Lucro</span>
-                <TrendingUp className="h-4 w-4 text-success" />
-              </div>
-              <div className={cn("text-3xl font-bold", (kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive")}>
+          {/* ══ 1. O resultado ═══════════════════════════════════════════ */}
+          <section className="grid gap-4 lg:grid-cols-3 mb-6">
+            <div className="rounded-lg border border-border bg-card p-6">
+              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                Lucro operacional
+              </span>
+              <div
+                className={cn(
+                  "mt-2 text-4xl font-bold tabular-nums",
+                  (kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive",
+                )}
+              >
                 {formatCurrency(kpis.lucro || 0)}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">pós taxas, impostos e ads</div>
-            </div>
-            <div className="bg-card rounded-lg border-2 border-success/30 p-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-success uppercase tracking-wider">Margem %</span>
-                <Percent className="h-4 w-4 text-success" />
-              </div>
-              <div className={cn("text-3xl font-bold", kpis.margemPct > 30 ? "text-success" : kpis.margemPct >= 15 ? "text-warning" : "text-destructive")}>
-                {formatPercent(kpis.margemPct || 0)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">margem operacional</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Margem Detalhada */}
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-4">Margem Detalhada</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Faturamento bruto</span>
-                  <span className="text-foreground font-medium">{formatCurrency(Math.max(0, kpis.fatBruto || 0))}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-400">(-) Taxa Payt ({(kpis.taxaPlatPct || 0).toFixed(2)}%)</span>
-                  <span className="text-red-400">{formatCurrency(kpis.taxaPlat || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-400">(-) Reembolsos</span>
-                  <span className="text-red-400">{formatCurrency(kpis.reembolsosV || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-400">(-) Simples ({formatPercent(kpis.simplesPct || 0)})</span>
-                  <span className="text-red-400">{formatCurrency(kpis.impSimples || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-400">(-) Imp. Meta ({formatPercent(kpis.metaPct || 0)})</span>
-                  <span className="text-red-400">{formatCurrency(kpis.impMeta || 0)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-red-400">(-) Investimento Meta</span>
-                  <span className="text-red-400">{formatCurrency(kpis.investimento || 0)}</span>
-                </div>
-                <div className="border-t border-border/50 pt-1 flex justify-between text-xs">
-                  <span className="font-medium text-foreground">= Lucro (sem custo fixo)</span>
-                  <span className={cn("font-semibold", (kpis.lucro || 0) >= 0 ? "text-green-400" : "text-red-400")}>
-                    {formatCurrency(kpis.lucro || 0)}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className={cn("rounded bg-secondary px-2 py-0.5 font-semibold", margemCor)}>
+                  margem {formatPercent(kpis.margemPct || 0)}
+                </span>
+                {(kpis.custoFixo || 0) > 0 && (
+                  <span className="text-muted-foreground">
+                    c/ custo fixo {formatCurrency(kpis.lucroCC || 0)}
                   </span>
+                )}
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Metrica
+                rotulo="Faturamento bruto"
+                valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))}
+                rodape={<VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />}
+              />
+              <Metrica
+                rotulo="Faturamento líquido"
+                valor={formatCurrency(Math.max(0, kpis.fatLiquido || 0))}
+                detalhe="após taxa e Simples"
+              />
+              <Metrica
+                rotulo="Vendas aprovadas"
+                valor={formatNumber(kpis.qtdAprov || 0)}
+                rodape={<VarBadge atual={kpis.qtdAprov} anterior={kpisAnt.qtdAprov} />}
+              />
+              <Metrica rotulo="Ticket médio" valor={formatCurrency(kpis.ticketMedio || 0)} />
+            </div>
+          </section>
+
+          {/* ══ 2. Para onde foi o dinheiro ══════════════════════════════ */}
+          <section className="grid gap-4 lg:grid-cols-5 mb-6">
+            <div className="lg:col-span-3 rounded-lg border border-border bg-card p-5">
+              <div className="mb-4 flex items-baseline justify-between">
+                <h3 className="text-sm font-medium text-foreground">Faturamento por dia</h3>
+                <span className="text-xs text-muted-foreground">
+                  {serieDiaria.length} {serieDiaria.length === 1 ? "dia" : "dias"}
+                </span>
+              </div>
+              {serieDiaria.length === 0 ? (
+                <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">
+                  Sem vendas no período selecionado
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={serieDiaria} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
+                    <defs>
+                      <linearGradient id="gradFaturamento" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="rotulo"
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={16}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={64}
+                      tickFormatter={(v: number) => `R$ ${Math.round(v / 1000)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
+                      formatter={(v: number, nome: string) => [
+                        formatCurrency(v),
+                        nome === "lucro" ? "Lucro estimado" : "Faturamento",
+                      ]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="faturamento"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      fill="url(#gradFaturamento)"
+                    />
+                    <Line type="monotone" dataKey="lucro" stroke="hsl(var(--success))" strokeWidth={1.5} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Cascata: substitui os cards de Receita e Custos Diretos, que repetiam
+                exatamente estes mesmos números uma seção acima. */}
+            <div className="lg:col-span-2 rounded-lg border border-border bg-card p-5">
+              <h3 className="mb-4 text-sm font-medium text-foreground">Do bruto ao lucro</h3>
+              <div className="space-y-1.5 text-sm tabular-nums">
+                <Linha rotulo="Faturamento bruto" valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))} forte />
+                <Linha
+                  rotulo={`Taxa Payt (${(kpis.taxaPlatPct || 0).toFixed(2)}%)`}
+                  valor={formatCurrency(kpis.taxaPlat || 0)}
+                  negativo
+                />
+                <Linha rotulo="Reembolsos" valor={formatCurrency(kpis.reembolsosV || 0)} negativo />
+                <Linha
+                  rotulo={`Simples (${formatPercent(kpis.simplesPct || 0)})`}
+                  valor={formatCurrency(kpis.impSimples || 0)}
+                  negativo
+                />
+                <Linha
+                  rotulo={`Imposto Meta (${formatPercent(kpis.metaPct || 0)})`}
+                  valor={formatCurrency(kpis.impMeta || 0)}
+                  negativo
+                />
+                <Linha rotulo="Investimento em ads" valor={formatCurrency(kpis.investimento || 0)} negativo />
+                <div className="border-t border-border pt-1.5">
+                  <Linha
+                    rotulo="Lucro operacional"
+                    valor={formatCurrency(kpis.lucro || 0)}
+                    forte
+                    cor={(kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive"}
+                  />
                 </div>
                 {(kpis.custoFixo || 0) > 0 && (
                   <>
-                    <div className="flex justify-between">
-                      <span className="text-red-400">(-) Custo fixo ({custoLabel()})</span>
-                      <span className="text-red-400">{formatCurrency(kpis.custoFixo)}</span>
-                    </div>
-                    <div className="border-t border-border pt-2 flex justify-between font-semibold">
-                      <span className="text-foreground">(=) Lucro c/ custo fixo</span>
-                      <span className={cn((kpis.lucroCC || 0) >= 0 ? "text-green-400" : "text-red-400")}>
-                        {formatCurrency(kpis.lucroCC || 0)}
-                      </span>
+                    <Linha rotulo={`Custo fixo (${custoLabel()})`} valor={formatCurrency(kpis.custoFixo)} negativo />
+                    <div className="border-t border-border pt-1.5">
+                      <Linha
+                        rotulo="Lucro c/ custo fixo"
+                        valor={formatCurrency(kpis.lucroCC || 0)}
+                        forte
+                        cor={(kpis.lucroCC || 0) >= 0 ? "text-success" : "text-destructive"}
+                      />
                     </div>
                   </>
                 )}
-                <div className="flex justify-between font-semibold">
-                  <span className="text-foreground">Margem operacional</span>
-                  <span className={margemBadge}>{formatPercent(kpis.margemPct || 0)}</span>
+              </div>
+            </div>
+          </section>
+
+          {/* ══ 3. Detalhe operacional ═══════════════════════════════════ */}
+          <section>
+            <div className="mb-4 inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+              {abasDisponiveis.map(a => (
+                <button
+                  key={a.key}
+                  onClick={() => setAbaOp(a.key)}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    abaAtiva === a.key
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+
+            {abaAtiva === "trafego" && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Metrica
+                  rotulo="Investimento Meta"
+                  valor={formatCurrency(kpis.investimento || 0)}
+                  detalhe={!kpis.investimento ? "sem dados de ads no período" : undefined}
+                />
+                <Metrica
+                  rotulo="ROAS"
+                  valor={kpis.roas ? `${kpis.roas.toFixed(2)}x` : "—"}
+                  cor={kpis.roas >= 3 ? "text-success" : kpis.roas >= 1 ? "text-warning" : undefined}
+                  rodape={kpis.roas ? <VarBadge atual={kpis.roas} anterior={kpisAnt.roas} /> : undefined}
+                />
+                <Metrica
+                  rotulo="CPA"
+                  valor={kpis.cpa ? formatCurrency(kpis.cpa) : "—"}
+                  detalhe="custo por venda aprovada"
+                />
+              </div>
+            )}
+
+            {abaAtiva === "monetizacao" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <Metrica
+                    rotulo="Order bumps"
+                    valor={formatCurrency(kpis.receitaOb || 0)}
+                    detalhe={`taxa ${formatPercent(kpis.taxaOb || 0)}`}
+                  />
+                  <Metrica
+                    rotulo="Upsells"
+                    valor={formatCurrency(kpis.receitaUp || 0)}
+                    detalhe={`taxa ${formatPercent(kpis.taxaUp || 0)}`}
+                  />
+                  <Metrica
+                    rotulo="Vendas back-end"
+                    valor={formatCurrency(kpis.valBackend || 0)}
+                    detalhe={`${formatNumber(kpis.qtdBackend || 0)} vendas · ${formatPercent(kpis.pctBackend || 0)}`}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <Painel titulo="Conversão de order bumps">
+                    <Tabela
+                      colunas={["OB", "Tipo", "Conv.", "Receita", "Taxa"]}
+                      vazio="Sem conversões no período"
+                      linhas={obsData.map((r, i) => (
+                        <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-secondary/40">
+                          <td className="px-4 py-2 text-foreground">{r.nome_ob}</td>
+                          <td className="px-4 py-2">
+                            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                              {(r.tipo_ob || "").replace("orderbump_", "OB").toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
+                          <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
+                          <td className="px-4 py-2 tabular-nums text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                    />
+                  </Painel>
+                  <Painel titulo="Conversão de upsells">
+                    <Tabela
+                      colunas={["Upsell", "Conv.", "Receita", "Taxa"]}
+                      vazio="Sem upsells no período"
+                      linhas={upsellData.map((r, i) => (
+                        <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-secondary/40">
+                          <td className="px-4 py-2 text-foreground">{r.nome_upsell}</td>
+                          <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(r.total_upsells || 0)}</td>
+                          <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(r.receita_total || 0)}</td>
+                          <td className="px-4 py-2 tabular-nums text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                    />
+                  </Painel>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Vendas por Produto */}
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por Produto Principal</h3>
-              <div className="space-y-3">
-                {prodData.map((r: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex justify-between items-center py-2 border-b border-border/50 last:border-0"
-                  >
-                    <div>
-                      <span className="text-sm font-medium text-foreground capitalize">{r.produto}</span>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-foreground">
-                        {formatCurrency(r.faturamento_principal || 0)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">fat. principal</div>
-                    </div>
+            {abaAtiva === "perdas" && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="rounded-lg border border-border bg-card p-4">
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Não aprovadas
+                  </span>
+                  <div className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
+                    {formatCurrency((kpis.pendVal || 0) + (kpis.cancelVal || 0) + (kpis.expVal || 0))}
                   </div>
-                ))}
-                {prodData.length === 0 && <div className="text-center text-muted-foreground py-4">Sem dados</div>}
+                  <div className="mt-2 space-y-1 text-xs">
+                    {[
+                      ["Pendentes", kpis.qtdPend, kpis.pendVal],
+                      ["Canceladas", kpis.qtdCanc, kpis.cancelVal],
+                      ["Expiradas", kpis.qtdExp, kpis.expVal],
+                    ].map(([rot, qtd, val]) => (
+                      <div key={rot as string} className="flex justify-between text-muted-foreground">
+                        <span>{rot as string}</span>
+                        <span className="tabular-nums">
+                          {(qtd as number) || 0} · {formatCurrency((val as number) || 0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <Metrica
+                  rotulo="Reembolsos"
+                  valor={formatCurrency(remData.valor_reembolsos || 0)}
+                  detalhe={`${remData.qtd_reembolsos || 0} · ${(remData.pct_reembolsos || 0).toFixed(1)}%`}
+                />
+                <Metrica
+                  rotulo="Chargebacks"
+                  valor={formatCurrency(remData.valor_chargeback || 0)}
+                  cor={(remData.valor_chargeback || 0) > 0 ? "text-destructive" : undefined}
+                  detalhe={`${remData.qtd_chargeback || 0} · ${(remData.pct_chargeback || 0).toFixed(1)}%`}
+                />
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Conversões */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <h3 className="text-sm font-medium text-muted-foreground px-5 pt-5 mb-3">Conversão OBs</h3>
-              <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[400px]">
-                <thead>
-                  <tr className="border-b border-border">
-                    {["OB", "Tipo", "Convertidos", "Receita", "Taxa"].map((h) => (
-                      <th key={h} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {obsData.map((r, i) => {
-                    const tipoBadge = (r.tipo_ob || "").replace("orderbump_", "OB").toUpperCase();
-                    return (
-                      <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                        <td className="px-4 py-2 text-foreground">{r.nome_ob}</td>
-                        <td className="px-4 py-2">
-                          <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-primary/10 text-primary">{tipoBadge}</span>
-                        </td>
-                        <td className="px-4 py-2 text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
-                        <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
-                        <td className="px-4 py-2 text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
-                      </tr>
-                    );
-                  })}
-                  {obsData.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-4 text-center text-muted-foreground">
-                        Sem conversões no período
-                      </td>
-                    </tr>
+            {abaAtiva === "produtos" && (
+              <Painel titulo="Vendas por produto principal">
+                <div className="px-5 pb-5">
+                  {prodData.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">Sem dados no período</div>
+                  ) : (
+                    prodData.map((r: any, i: number) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between border-b border-border/50 py-2.5 last:border-0"
+                      >
+                        <div>
+                          <span className="text-sm font-medium capitalize text-foreground">{r.produto}</span>
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold tabular-nums text-foreground">
+                            {formatCurrency(r.faturamento_principal || 0)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">fat. principal</div>
+                        </div>
+                      </div>
+                    ))
                   )}
-                </tbody>
-              </table>
-              </div>
-            </div>
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              <h3 className="text-sm font-medium text-muted-foreground px-5 pt-5 mb-3">Conversão Upsells</h3>
-              <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[400px]">
-                <thead>
-                  <tr className="border-b border-border">
-                    {["Upsell", "Convertidos", "Receita", "Taxa"].map((h) => (
-                      <th key={h} className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {upsellData.map((r, i) => (
-                    <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                      <td className="px-4 py-2 text-foreground">{r.nome_upsell}</td>
-                      <td className="px-4 py-2 text-foreground">{formatNumber(r.total_upsells || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{formatCurrency(r.receita_total || 0)}</td>
-                      <td className="px-4 py-2 text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
-                    </tr>
-                  ))}
-                  {upsellData.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-4 text-center text-muted-foreground">
-                        Sem upsells no período
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          </div>
+                </div>
+              </Painel>
+            )}
+          </section>
         </>
       )}
     </DashboardLayout>

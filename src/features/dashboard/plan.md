@@ -1,0 +1,349 @@
+# Plano de Implementação — Dashboard & Análise de Tendências
+
+Reconstrução completa da área "DASHBOARDS", incluindo a camada de ingestão de dados.
+
+---
+
+## Diagnóstico (20/08/2026)
+
+Levantamento feito direto no banco antes de planejar.
+
+### O webhook da Payt está funcionando
+
+`vendas_payt` tem **11.680 eventos**, o último em 20/08 às 04:01 BRT. Nunca parou. Cobertura contínua desde 04/01/2026.
+
+**O elo que nunca existiu:** não há nenhuma função ou trigger no banco que leia `vendas_payt`. A tabela `vendas` — que todas as páginas do dashboard consomem — sempre foi alimentada por **import manual de CSV** (`ImportarPaytModal.tsx`), abandonado em 19/05. Os 3 meses "perdidos" estão intactos em `vendas_payt`.
+
+A camada raw proposta originalmente **já existe** (`vendas_payt.payload_raw`) — não é preciso criar `payt_eventos_raw`.
+
+| Fonte | Tabela | Última entrada | Situação |
+|---|---|---|---|
+| Payt (webhook) | `vendas_payt` | **hoje** | Funcionando |
+| Payt (normalizado) | `vendas` | 19/05/2026 | Import manual abandonado — **elo a construir** |
+| Meta | `metricas_meta` | 23/07/2026 | Vinha via Windsor.ai — descontinuado por decisão |
+| UTMify | `metricas_diarias` | nunca | 0 linhas |
+
+### Composição de `vendas_payt`
+
+8.528 vendas pagas, de duas origens com formatos distintos:
+
+| Origem | Qtd | Payload |
+|---|---|---|
+| Import em massa de 30/06 | ~4.628 | Vazio — só campos planos |
+| Webhook real | ~3.900 | Completo, com `product.code` |
+
+Consequência: o trigger `fn_auto_produto_venda` resolve produto via `product.code` → `ofertas`. Funciona nas do webhook; as importadas exigem resolução **por nome**.
+
+### Achados que afetam o desenho
+
+**1. `utm_source` está corrompido.** Das 8.528 pagas: 5.982 sem `utm_source`, 280 com `FB` correto, e ~1.968 com valores poluídos por token (`FBjLj6a5696504d5dca326db9199b`…), cada um aparecendo 1-2 vezes. Bug no template do link. O `ad_id` sobreviveu intacto em todos.
+
+→ **A segmentação Tráfego/Back não pode usar `utm_source`.** Usar presença de `ad_id`:
+- **Tráfego** = tem `ad_id` → 2.248 (26,4%)
+- **Back-end** = sem `ad_id` → 6.280 (73,6%)
+
+Mais robusto, e é como a UTMify atribui na prática.
+
+**2. Fuso horário.** `criado_em` é `timestamptz` em UTC. **5,1% das vendas pagas (432) ocorrem entre 21h e 23h59 BRT** e caem no dia seguinte se filtradas por data em UTC. Toda métrica diária fica distorcida. A normalização deve calcular o dia em `America/Sao_Paulo`.
+
+**3. Bug no webhook.** `DashboardsSettings` gera a URL como `/payt-webhook/{funilId}`, mas a função ignora o path. O `funil_id` nunca foi capturado.
+
+**4. `ad_accounts` desatualizada.** 10 CAs, todas com `funil_id` null, várias já não rodam e faltam CAs ativas. Lista mantida à mão envelheceu — a correção é auto-descoberta via API do Meta, não manutenção manual.
+
+**5. `funis` inutilizável.** 22 registros, todos `ativo = false`, nomes duplicados (4× "REV1", 3× "REV2", 3× "REV3"), `produto` quase todo null. **Decisão: recomeçar do zero**, estruturados sobre as CAs reais descobertas no passo 2.
+
+### Lacunas em `ofertas` (bloqueiam a resolução de produto)
+
+| Código | Produto | Vendas | Situação |
+|---|---|---|---|
+| `R2JAJA` | Workshop Buquê de Velas | 895 | Existe, `produto` NULL |
+| `4MJ9YD` | Fábrica das Velas de Lembrancinha | 395 | Falta |
+| `L9QEPN` | Kit Completo p/ Começar no Artesanato com Velas | 45 | Falta |
+| `4OMXA8` | Vendas no Artesanato na Prática | 11 | Falta — categoria a definir |
+| `LPGKQ8` | Handify Artesanato Completo | 7 | Falta — categoria a definir |
+| — | Manual Incensos Naturais em Vareta | 123 | Só no import, sem código |
+
+Enum disponível: `velas · saponaria · cosmeticos · hormonal · velaroma`
+
+---
+
+## Princípios da reconstrução
+
+Derivados do diagnóstico acima:
+
+**1. Camada raw imutável + camada normalizada**
+O webhook atual parseia e descarta o payload original. Se a normalização tem bug, o dado é perdido definitivamente. Toda ingestão grava o payload cru primeiro; a normalização lê dele. Permite reprocessar sem re-buscar na origem.
+
+**2. Idempotência em toda ingestão**
+- Payt: chave única `transaction_id`
+- Meta: upsert em `(data, ad_id)` — o mesmo dia é re-sincronizado várias vezes pela janela deslizante de atribuição
+
+**3. Saúde da ingestão visível na UI**
+As três fontes morreram em silêncio. Um dashboard com dado velho não sinalizado é pior que um quebrado — induz decisão errada. Toda fonte reporta heartbeat, e a UI exibe defasagem quando ela existe.
+
+**4. Chave de junção Payt ↔ Meta**
+O webhook extrai o `ad_id` do Meta de dentro do `utm_content` (formato `Nome do Ad|ad_id::token`). É o que viabiliza faturamento por criativo. Deve ser preservado e formalizado como coluna indexada.
+
+---
+
+## Contexto e decisões de negócio
+
+### Segmentação de tráfego
+
+Critério baseado em presença de `ad_id_meta`, **não** em `utm_source` — que está corrompido (ver diagnóstico).
+
+| Categoria | Regra | Volume atual |
+|---|---|---|
+| **Tráfego** | `ad_id_meta` preenchido | 2.248 (26,4%) |
+| **Back-end** | `ad_id_meta` nulo | 6.280 (73,6%) |
+| **Misto** | Sem filtro | 8.528 |
+
+A tabela `utm_sources_pagos` fica como refinamento futuro, útil apenas depois que o template de link for corrigido.
+
+### Filtro por CA
+
+Além do filtro de funil da sidebar, ambas as partes têm **seletor de CA** na toolbar:
+
+- Modo "Geral" + CA → todos os funis vinculados àquela CA
+- Modo funil + CA → recorte dentro do funil (quando o funil tem múltiplas CAs)
+- Default: "Todas as CAs"
+
+---
+
+## Fase 0 — Fundação de dados (pré-requisito)
+
+### 0.1 Normalização `vendas_payt` → `vendas` (o elo que falta)
+
+O webhook e a camada raw já existem e funcionam. O que falta é a normalização.
+
+**Sem dependência de `funil_id`** — deixa a coluna nula nesta fase. Isso desbloqueia o backfill imediatamente; `funil_id` é preenchido retroativamente na fase 0.3 via `ad_id_meta`.
+
+Mapeamentos:
+
+| `vendas_payt` | `vendas` | Regra |
+|---|---|---|
+| `payt_id` | `pedido_id` / `pedido_id_payt` | direto |
+| `status` | `status` (enum) | `paid`→`aprovada` · `expired`→`expirada` · `canceled`→`cancelada` · `refunded`→`reembolsada` · `chargeback`→`chargeback` · `refund_requested`→`pendente` |
+| `valor` | `valor_total` / `valor_oferta_principal` | direto |
+| `criado_em` | `data_venda` | preservar timestamptz; dia de negócio calculado em `America/Sao_Paulo` |
+| `utm_ad_id` | `ad_id_meta` | direto — chave para o passo 0.3 |
+| `payload_raw` | `payload_webhook` | direto (vazio nas linhas do import de 30/06) |
+| `produto` (texto) | `produto` (enum) | trigger resolve por `product.code`; **fallback por nome** para as linhas do import |
+| — | `funil_id` | nulo nesta fase |
+
+Pré-requisito: completar as lacunas de `ofertas` listadas no diagnóstico.
+
+Os triggers já existentes em `vendas` (cliente, origem, upsell, campos de data, prejuízo) fazem o enriquecimento automaticamente na inserção.
+
+**Backfill:** reprocessar as 8.528 pagas de `vendas_payt`, recuperando 19/05 → hoje.
+
+**Execução contínua:** trigger `AFTER INSERT OR UPDATE` em `vendas_payt` chamando a mesma função de normalização — assim toda venda nova flui sozinha, sem depender de job externo.
+
+**Correções pendentes no webhook** (não bloqueiam a normalização):
+- Ler `funil_id` do path da URL (`/payt-webhook/{funilId}`) e gravar em `vendas_payt`
+- Corrigir o template do link que corrompe `utm_source`
+- Migrar de `integration_key` para assinatura HMAC se a Payt oferecer (ver CLAUDE.md)
+
+### 0.2 Sync Meta Marketing API (novo, direto)
+
+Substitui o Windsor.ai. Configuração de segurança:
+
+| Item | Decisão | Motivo |
+|---|---|---|
+| Token | **System User Token** (BM → Usuários do Sistema) | Não expira em 60d, não atrelado a perfil pessoal, sobrevive a saída de pessoa |
+| Permissão | **`ads_read` apenas** | Torna impossível um bug alterar campanha/budget/status. Nunca `ads_management` |
+| Armazenamento | Supabase secrets, só server-side | Nunca no frontend |
+| Tier | Development basta | Lendo apenas contas próprias, sem App Review |
+| Backoff | Exponencial + respeitar `X-Business-Use-Case-Usage` | Evita throttle (erro 17/613) |
+
+**Cadência — janela deslizante por atribuição:**
+
+O Meta re-atribui conversões retroativamente (7d clique / 1d view). Dado de hoje é volátil, D-1 quase fechado, D-3+ estável.
+
+- **A cada 1h** → sincroniza o dia corrente
+- **1x/dia** → re-sincroniza D-1 até D-7, capturando correções de atribuição
+
+Volume: ~31 chamadas/dia por conta (~310/dia no total). Usar `time_increment=1` para trazer múltiplos dias por chamada e async insights jobs para backfill histórico.
+
+```sql
+CREATE TABLE meta_insights_raw (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ad_account_id text NOT NULL,
+  data date NOT NULL,
+  nivel text NOT NULL,          -- 'campaign' | 'adset' | 'ad'
+  objeto_id text NOT NULL,
+  payload jsonb NOT NULL,
+  sincronizado_em timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(ad_account_id, data, nivel, objeto_id)
+);
+```
+
+Normalização alimenta `metricas_meta` (existente) preservando o contrato de `vw_metricas_meta_nivel`, que já é consumida por MetaAdsPage e AdsAnalysisPage.
+
+### 0.3 Monitoramento de saúde
+
+```sql
+CREATE TABLE ingest_health (
+  fonte text PRIMARY KEY,             -- 'payt' | 'meta'
+  ultimo_sucesso timestamptz,
+  ultimo_erro timestamptz,
+  mensagem_erro text,
+  registros_ultima_execucao integer,
+  atualizado_em timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- Toda ingestão escreve heartbeat ao concluir
+- Componente `<IngestStatusBanner />` no `DashboardLayout` exibe aviso quando qualquer fonte estiver defasada além do limiar (Payt > 6h, Meta > 25h)
+- Sem defasagem, o componente não renderiza nada
+
+### 0.4 Configuração
+
+```sql
+CREATE TABLE utm_sources_pagos (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source text NOT NULL UNIQUE,
+  ativo boolean NOT NULL DEFAULT true
+);
+
+CREATE TABLE dashboard_benchmarks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  funil_id uuid REFERENCES funis(id) ON DELETE CASCADE,
+  metrica text NOT NULL,
+  valor_ideal numeric,
+  valor_limite numeric,
+  direcao text NOT NULL DEFAULT 'menor_melhor',  -- 'menor_melhor' | 'maior_melhor'
+  ativo boolean NOT NULL DEFAULT true,
+  UNIQUE(funil_id, metrica)
+);
+```
+
+RLS obrigatória em todas as tabelas novas (ver CLAUDE.md).
+
+---
+
+## Parte 1 — Resumo revampado (`/`)
+
+### Estrutura
+
+1. **Toolbar**: seletor de CA (novo) + filtro de data (existente) + funil via sidebar (existente)
+2. **Tabs de origem**: `Tráfego | Back-end | Misto`
+3. **Gráfico temporal** (ausente hoje): faturamento diário + custo de ads + lucro
+4. **KPI cards**: preservar os atuais, acrescentar CPA e ROAS
+
+### Métricas por tab
+
+| Métrica | Tráfego | Back-end | Misto |
+|---|---|---|---|
+| Faturamento | só utm pagos | só back | todos |
+| Custo de ads | Meta do período | — | total Meta |
+| ROAS | sim | n/a | agregado |
+| CPA | sim | n/a | só tráfego |
+| Margem / AOV | sim | sim | sim |
+| OBs / Upsells | sim | sim | sim |
+
+---
+
+## Parte 2 — Tendências (`/tendencias`)
+
+Nova rota, entrada no sidebar dentro de DASHBOARDS. Respeita funil da sidebar + CA da toolbar.
+
+| Contexto | Exibição |
+|---|---|
+| Geral + todas CAs | Grade comparativa entre funis, métricas **relativas** (%) — produtos com preços diferentes não comparam em valor absoluto |
+| Geral + CA | Grade dos funis daquela CA |
+| Funil específico | Análise completa, métricas agrupadas |
+
+### Grupos de métricas
+
+**Aquisição** — CPM, CPC, CTR, Hook Rate, Hold Rate, CPA, ROAS, Frequência
+**Conversão** — conv. landing page, conv. checkout, taxa de upsell, taxa de order bump, conv. global
+**Financeiro** — faturamento bruto/líquido, AOV, ticket com upsell, margem %, lucro por venda, break-even ROAS, taxa de reembolso
+**Retenção/Back** — taxa de recompra, intervalo médio entre compras, LTV estimado, CAC tráfego vs back
+
+### Três referências por métrica
+
+1. **Tendência** — média móvel de 7 dias (direção real, sem ruído diário)
+2. **Período anterior** — mesmo intervalo imediatamente anterior
+3. **Benchmark** — meta configurável por funil (`dashboard_benchmarks`)
+
+### Status de saúde
+
+| Status | Critério |
+|---|---|
+| Saudável | Dentro do benchmark E tendência estável/melhorando |
+| Atenção | Próximo do limite OU tendência piorando moderadamente |
+| Crítico | Fora do benchmark E tendência negativa |
+
+Limiar default ±15%, configurável.
+
+---
+
+## Fases de execução
+
+### Fase 0.1 — Normalização Payt ✅ concluída
+- [x] Enum `produto_tipo` recebeu `handify`
+- [x] Lacunas de `ofertas` completadas (`R2JAJA` + 5 inserções)
+- [x] `fn_normalizar_venda_payt()` — idempotente, com dia de negócio em BRT
+- [x] `calcular_origem` / `trg_fn_origem` passam a priorizar `ad_id_meta`
+- [x] Backfill: 11.680 eventos processados → `vendas` de 4.532 para 12.961 linhas
+- [x] Trigger `trg_normalizar_venda_payt` em `vendas_payt` (falha isolada, não derruba o raw)
+- [x] View `vw_ingest_health` + `<IngestStatusBanner />` no DashboardLayout
+- [x] Verificado: 93 dias consecutivos sem lacuna, última venda 20/08 04:03 BRT
+
+**Pendências identificadas durante a execução:**
+- [ ] **Segurança:** `vendas_payt` tem políticas RLS para o papel `public` permitindo INSERT e UPDATE anônimos. O webhook usa `SERVICE_ROLE_KEY` e não precisa delas. Contraria a regra do CLAUDE.md ("nunca deixar acesso de escrita `anon`)
+- [ ] Vendas de jan–abr não têm `ad_id_meta` (o import de 30/06 não trouxe), então aparecem 100% como back-end nesses meses
+- [ ] 339 vendas (2,6%) sem `produto` — Incensos e "Vendas no Artesanato", categorização adiada por decisão
+
+### Fase 0.2 — Sync Meta (auto-descoberta)
+- [ ] Criar Meta App + System User Token com `ads_read`
+- [ ] Migration `meta_insights_raw` (+ RLS)
+- [ ] Edge Function `meta-insights-sync`: descobrir CAs via `/me/adaccounts`, sincronizar insights
+- [ ] Agendamento: horário (dia corrente) + diário (D-1..D-7)
+- [ ] Backfill histórico via async insights jobs
+- [ ] Reconciliar `ad_accounts` com as CAs reais descobertas
+
+### Fase 0.3 — Funis e atribuição
+- [ ] Arquivar os 22 funis antigos; criar estrutura nova sobre as CAs reais
+- [ ] Vincular `ad_accounts.funil_id`
+- [ ] UPDATE retroativo: `vendas.funil_id` via `ad_id_meta` → CA → funil
+- [ ] Migration `dashboard_benchmarks` (+ RLS)
+- [ ] Corrigir webhook: ler `funil_id` do path da URL
+- [ ] Corrigir template de link que corrompe `utm_source`
+
+### Fase 1 — Resumo (parcial)
+- [x] Tabs Tráfego / Back-end / Misto, segmentadas por `ad_id_meta`
+- [x] Todas as queries de `vendas` respeitam o segmento (KPIs, OBs, upsells, não-aprovadas, produtos)
+- [x] Faturamento passa a ser calculado de `vendas` e não da view — garante Misto = Tráfego + Back-end
+- [x] Taxas, impostos e custo fixo rateados pela participação do segmento; investimento em ads fica 100% no tráfego
+- [x] Card "Vendas Backend" corrigido: usava `utm_source is null`, agora usa `ad_id_meta`
+- [x] Gráfico de faturamento por dia (dia calculado em BRT)
+- [x] CPA adicionado; ROAS e CPA mostram "—" enquanto não houver gasto de ads
+- [ ] **Seletor de CA na toolbar** — bloqueado pela Fase 0.2 (precisa do Meta para resolver `ad_id` → CA)
+
+Validação (01–20/08): Tráfego 600 vendas / R$ 55.112,53 · Back-end 660 / R$ 59.440,35 · Misto 1.260 / R$ 114.552,88 — fecha exato.
+
+### Fase 2 — Tendências
+- [ ] Rota `/tendencias` + sidebar
+- [ ] Modo grade (Geral) com sparklines
+- [ ] Modo detalhado (funil) com grupos de métricas
+- [ ] Média móvel 7d + comparação de período
+- [ ] Configuração de benchmarks
+
+### Fase 3 — Refinamentos
+- [ ] Config de `utm_sources_pagos` via UI admin
+- [ ] Alerta persistente para métrica crítica por N dias
+- [ ] Export de relatório
+
+---
+
+## Dependências e riscos
+
+| Item | Risco | Mitigação |
+|---|---|---|
+| Conversão de página/checkout | Não há registro de visitantes no banco | O Meta fornece `visualizacoes_pagina` e `initiate_checkout` — usar como proxy. Conversão real da página exige pixel/GA, fora do escopo V1 |
+| `ad_accounts.funil_id` | Pode estar incompleto (10 CAs cadastradas) | Auditar antes de construir o filtro de CA |
+| Token Meta | Revogação derruba o sync | System User Token + heartbeat em `ingest_health` alerta em < 25h |
+| LTV estimado | Exige histórico de recompra | Só calcular com N mínimo; senão "dados insuficientes" |
+| Lacuna 19/05–hoje | 3 meses sem vendas gravadas | Verificar se a Payt permite replay/export do período para backfill |
