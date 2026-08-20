@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from 'react';
 import { subDays, startOfDay, endOfDay, format } from 'date-fns';
+import { inicioDiaBRT, fimDiaBRT } from '@/lib/periodo';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
 
@@ -11,6 +12,13 @@ interface FilterContextType {
   setCustomRange: (start: Date, end: Date) => void;
   startDateStr: string | null;
   endDateStr: string | null;
+  /**
+   * Limites do período como timestamp com offset do fuso da operação.
+   * Use estes ao comparar com colunas `timestamptz` (ex: `vendas.data_venda`);
+   * as versões `*DateStr` são só data e o Postgres as lê em UTC.
+   */
+  startISO: string | null;
+  endISO: string | null;
   funilId: string | null;
   setFunilId: (id: string | null) => void;
 }
@@ -44,6 +52,9 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
   const startDateStr = useMemo(() => start ? format(start, 'yyyy-MM-dd') : null, [start]);
   const endDateStr   = useMemo(() => end   ? format(end,   'yyyy-MM-dd') : null, [end]);
 
+  const startISO = useMemo(() => startDateStr ? inicioDiaBRT(startDateStr) : null, [startDateStr]);
+  const endISO   = useMemo(() => endDateStr   ? fimDiaBRT(endDateStr)      : null, [endDateStr]);
+
   const setDatePreset  = useCallback((p: DatePreset) => setDatePresetState(p), []);
   const setCustomRange = useCallback((s: Date, e: Date) => {
     setCustomStart(s);
@@ -59,9 +70,11 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
     setCustomRange,
     startDateStr,
     endDateStr,
+    startISO,
+    endISO,
     funilId,
     setFunilId,
-  }), [datePreset, start, end, startDateStr, endDateStr, funilId, setDatePreset, setCustomRange]);
+  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, funilId, setDatePreset, setCustomRange]);
 
   return (
     <FilterContext.Provider value={value}>

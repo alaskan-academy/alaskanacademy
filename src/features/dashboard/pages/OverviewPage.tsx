@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { inicioDiaBRT, fimDiaBRT, diaBRT } from "@/lib/periodo";
 
 /** Origem da venda. Tráfego = venda com ad_id do Meta; back-end = sem ad_id. */
 type Segmento = "trafego" | "backend" | "misto";
@@ -152,7 +153,7 @@ function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: ReactNo
 }
 
 export default function OverviewPage() {
-  const { startDateStr, endDateStr, funilId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, funilId } = useFilters();
   const [segmento, setSegmento] = useState<Segmento>("misto");
   const [abaOp, setAbaOp] = useState<AbaOperacional>("trafego");
   const [kpis, setKpis] = useState<any>({});
@@ -167,7 +168,10 @@ export default function OverviewPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
+    // data_venda é timestamptz: comparar com data solta faria o Postgres ler em UTC
+    // e puxar as 21h–23h59 BRT do dia anterior para dentro do período.
+    const inicio = startISO;
+    const fim = endISO;
 
     // Segmenta por presença de ad_id_meta. Não usamos utm_source porque ele chega
     // corrompido da Payt (valores como "FBjLj6a5696504d5dca326db9199b"), enquanto o
@@ -191,7 +195,7 @@ export default function OverviewPage() {
       .eq("converteu", true)
       .eq("vendas.status", "aprovada");
     q2 = porSegmento(q2, "vendas.");
-    if (startDateStr && endDateEnd) q2 = q2.gte("vendas.data_venda", startDateStr).lte("vendas.data_venda", endDateEnd);
+    if (inicio && fim) q2 = q2.gte("vendas.data_venda", inicio).lte("vendas.data_venda", fim);
     if (funilId) q2 = q2.eq("vendas.funil_id", funilId);
 
     // Upsells (são vendas separadas com is_upsell = true)
@@ -204,7 +208,7 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     qUp = porSegmento(qUp);
-    if (startDateStr && endDateEnd) qUp = qUp.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (inicio && fim) qUp = qUp.gte("data_venda", inicio).lte("data_venda", fim);
     if (funilId) qUp = qUp.eq("funil_id", funilId);
 
     const qOfertasUp = supabase.from("ofertas").select("nome").eq("tipo", "upsell");
@@ -212,12 +216,12 @@ export default function OverviewPage() {
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
-      .select("valor_total,valor_oferta_principal,produto,data_venda,ad_id_meta")
+      .select("valor_total,valor_oferta_principal,produto,data_venda,ad_id_meta,taxa_plataforma_valor")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     q4 = porSegmento(q4);
-    if (startDateStr && endDateEnd) q4 = q4.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (inicio && fim) q4 = q4.gte("data_venda", inicio).lte("data_venda", fim);
     if (funilId) q4 = q4.eq("funil_id", funilId);
 
     // Vendas pendentes + canceladas + expiradas (TODOS os não aprovados)
@@ -228,7 +232,7 @@ export default function OverviewPage() {
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
     q5 = porSegmento(q5);
-    if (startDateStr && endDateEnd) q5 = q5.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (inicio && fim) q5 = q5.gte("data_venda", inicio).lte("data_venda", fim);
     if (funilId) q5 = q5.eq("funil_id", funilId);
 
     // Reembolsos/chargeback
@@ -245,7 +249,7 @@ export default function OverviewPage() {
       .is("ad_id_meta", null)
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (startDateStr && endDateEnd) q8 = q8.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+    if (inicio && fim) q8 = q8.gte("data_venda", inicio).lte("data_venda", fim);
     if (funilId) q8 = q8.eq("funil_id", funilId);
 
     // Período anterior
@@ -260,7 +264,7 @@ export default function OverviewPage() {
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
-    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
+    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", inicioDiaBRT(ant.start)).lte("data_venda", fimDiaBRT(ant.end));
     if (funilId) qA2 = qA2.eq("funil_id", funilId);
 
     const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2, rOfertasUp] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2, qOfertasUp]);
@@ -278,7 +282,9 @@ export default function OverviewPage() {
     const fatTotalPeriodo = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
     const share = fatTotalPeriodo > 0 ? Math.min(fatBruto / fatTotalPeriodo, 1) : (fatBruto > 0 ? 1 : 0);
 
-    const taxaPlat = fatRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma || 0), 0) * share;
+    // Taxa vem das próprias vendas, não da view: a view agrupa pelo dia em UTC e
+    // divergiria do faturamento, que já respeita o limite do dia em BRT.
+    const taxaPlat = vendasRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma_valor || 0), 0);
     const taxaPlatPct = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
     const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0) * share;
     const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0) * share;
@@ -384,7 +390,7 @@ export default function OverviewPage() {
     const diaMap = new Map<string, { dia: string; faturamento: number; vendas: number }>();
     for (const v of vendasPrincipal) {
       if (!v.data_venda) continue;
-      const dia = new Date(v.data_venda).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+      const dia = diaBRT(v.data_venda);
       const ex = diaMap.get(dia) || { dia, faturamento: 0, vendas: 0 };
       ex.faturamento += Number(v.valor_total || 0);
       ex.vendas += 1;
@@ -446,7 +452,7 @@ export default function OverviewPage() {
 
     setLastUpdate(new Date());
     setLoading(false);
-  }, [startDateStr, endDateStr, funilId, segmento]);
+  }, [startDateStr, endDateStr, startISO, endISO, funilId, segmento]);
 
   useEffect(() => {
     fetchData();

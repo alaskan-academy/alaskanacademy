@@ -295,8 +295,12 @@ Limiar default ±15%, configurável.
 - [x] **RLS órfã corrigida (bug crítico):** 24 tabelas tinham RLS ligada com política de SELECT só para `anon`. Como usuário logado usa o papel `authenticated`, que não é membro de `anon`, **toda query retornava zero linhas** — a Visão Geral aparecia inteira zerada. Inclui `vendas`, `venda_itens`, `ofertas`, `clientes`, `assinaturas`, `configuracoes`. Só `caixa_config` segue restrita, corretamente (service-role only)
 - [x] **Taxa da plataforma:** a normalização não preenchia `taxa_plataforma_valor`, então a cascata mostrava "Taxa Payt R$ 0,00" e a margem saía inflada em 90%. O payload traz `commission[]` com `type='platform'`. Backfill aplicado: 5.987 vendas, média 6,20%
 
+- [x] **Filtro de data em BRT.** O app passava `yyyy-MM-dd`, que o Postgres lia como meia-noite UTC, arrastando as vendas de 21h–23h59 do dia anterior. Novo `src/lib/periodo.ts` (`inicioDiaBRT` / `fimDiaBRT` / `diaBRT`) com offset calculado via `Intl`, não fixado — o Brasil já teve horário de verão e pode voltar a ter. `FilterContext` passa a expor `startISO` / `endISO`. Coberto por `src/test/periodo.test.ts` (6 testes)
+- [x] **Taxa da plataforma sai de `vendas`, não da view.** A view agrupa pelo dia em UTC e divergia do faturamento, que já respeita o dia em BRT — a cascata fechava com R$1,55 de erro
+
 **Pendências:**
-- [ ] **Filtro de data usa UTC, não BRT.** O app passa `yyyy-MM-dd`, que o Postgres lê como meia-noite UTC. Com "Hoje" selecionado, o gráfico mostra 2 dias (19/08 e 20/08) e conta 37 vendas em vez de 35 — as de 21h–23h59 BRT do dia anterior entram. O agrupamento do gráfico já é BRT; falta alinhar o filtro
+- [ ] Aplicar `startISO`/`endISO` nas outras 3 páginas que filtram `data_venda`: `SalesPage`, `FunnelPage`, `UTMPage`. Enquanto não for feito, elas contam o dia em UTC e divergem do Resumo
+- [ ] `vw_faturamento_liquido` agrupa por dia em UTC; investimento, impostos e custo fixo herdam esse desvio
 - [ ] Vendas de jan–abr não têm `ad_id_meta` (o import de 30/06 não trouxe), então aparecem 100% como back-end nesses meses
 - [ ] 339 vendas (2,6%) sem `produto` — Incensos e "Vendas no Artesanato", categorização adiada por decisão
 - [ ] Taxa da plataforma ausente nas ~2.500 vendas do import de 30/06 (payload vazio, sem `commission`)
