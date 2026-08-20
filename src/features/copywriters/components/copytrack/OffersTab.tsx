@@ -11,6 +11,7 @@ import {
   Archive, Globe, Plus, Pencil, Eye,
 } from 'lucide-react';
 import { OfferModal } from './OfferModal';
+import { OfferTracking } from './OfferTracking';
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   acompanhando: { label: 'Acompanhando', cls: 'bg-violet-500 text-white dark:bg-violet-500 dark:text-white' },
@@ -280,37 +281,11 @@ export function OffersTab() {
                       <p className="text-xs text-muted-foreground mb-3 italic">{offer.notes}</p>
                     )}
 
-                    {offer.tracking.length > 0 ? (
-                      <div>
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                          Histórico de Tracking
-                        </p>
-                        <div className="overflow-x-auto">
-                          <table className="text-xs w-full">
-                            <thead>
-                              <tr className="text-muted-foreground border-b border-border">
-                                <th className="text-left py-1 pr-4 font-medium">Dia</th>
-                                <th className="text-left py-1 pr-4 font-medium">Data</th>
-                                <th className="text-left py-1 pr-4 font-medium">Ads Ativos</th>
-                                <th className="text-left py-1 font-medium">Notas</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {offer.tracking.map(t => (
-                                <tr key={t.id} className="border-b border-border/50 last:border-0">
-                                  <td className="py-1 pr-4 tabular-nums">#{t.day_number ?? '—'}</td>
-                                  <td className="py-1 pr-4 tabular-nums">{fmtDate(t.tracked_date)}</td>
-                                  <td className="py-1 pr-4 tabular-nums font-medium">{t.active_ads_count ?? '—'}</td>
-                                  <td className="py-1 text-muted-foreground">{t.notes ?? '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Nenhum tracking registrado.</p>
-                    )}
+                    <OfferTracking
+                      offerId={offer.id}
+                      tracking={offer.tracking}
+                      onChanged={load}
+                    />
                   </div>
                 )}
               </div>

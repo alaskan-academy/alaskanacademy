@@ -291,10 +291,15 @@ Limiar default ±15%, configurável.
 - [x] View `vw_ingest_health` + `<IngestStatusBanner />` no DashboardLayout
 - [x] Verificado: 93 dias consecutivos sem lacuna, última venda 20/08 04:03 BRT
 
-**Pendências identificadas durante a execução:**
-- [ ] **Segurança:** `vendas_payt` tem políticas RLS para o papel `public` permitindo INSERT e UPDATE anônimos. O webhook usa `SERVICE_ROLE_KEY` e não precisa delas. Contraria a regra do CLAUDE.md ("nunca deixar acesso de escrita `anon`)
+- [x] **Segurança:** removidas as políticas `anon_write` / `anon_update` de `vendas_payt`; restam leitura autenticada e service_role
+- [x] **RLS órfã corrigida (bug crítico):** 24 tabelas tinham RLS ligada com política de SELECT só para `anon`. Como usuário logado usa o papel `authenticated`, que não é membro de `anon`, **toda query retornava zero linhas** — a Visão Geral aparecia inteira zerada. Inclui `vendas`, `venda_itens`, `ofertas`, `clientes`, `assinaturas`, `configuracoes`. Só `caixa_config` segue restrita, corretamente (service-role only)
+- [x] **Taxa da plataforma:** a normalização não preenchia `taxa_plataforma_valor`, então a cascata mostrava "Taxa Payt R$ 0,00" e a margem saía inflada em 90%. O payload traz `commission[]` com `type='platform'`. Backfill aplicado: 5.987 vendas, média 6,20%
+
+**Pendências:**
+- [ ] **Filtro de data usa UTC, não BRT.** O app passa `yyyy-MM-dd`, que o Postgres lê como meia-noite UTC. Com "Hoje" selecionado, o gráfico mostra 2 dias (19/08 e 20/08) e conta 37 vendas em vez de 35 — as de 21h–23h59 BRT do dia anterior entram. O agrupamento do gráfico já é BRT; falta alinhar o filtro
 - [ ] Vendas de jan–abr não têm `ad_id_meta` (o import de 30/06 não trouxe), então aparecem 100% como back-end nesses meses
 - [ ] 339 vendas (2,6%) sem `produto` — Incensos e "Vendas no Artesanato", categorização adiada por decisão
+- [ ] Taxa da plataforma ausente nas ~2.500 vendas do import de 30/06 (payload vazio, sem `commission`)
 
 ### Fase 0.2 — Sync Meta (auto-descoberta)
 - [ ] Criar Meta App + System User Token com `ads_read`
@@ -330,6 +335,10 @@ Validação (01–20/08): Tráfego 600 vendas / R$ 55.112,53 · Back-end 660 / R
 - [ ] Modo detalhado (funil) com grupos de métricas
 - [ ] Média móvel 7d + comparação de período
 - [ ] Configuração de benchmarks
+
+### Fora do plano — corrigido no caminho
+- [x] **Copytrack:** as 6 tabelas `copytrack_*` tinham `id uuid NOT NULL` sem `DEFAULT gen_random_uuid()`, então qualquer insert falhava com not-null violation ("Erro ao salvar")
+- [x] **Copytrack — histórico de anúncios:** `copytrack_offer_tracking` já existia com `tracked_date` e `active_ads_count`, e a tabela era exibida, mas não havia como **adicionar** registros. Novo `OfferTracking.tsx` com formulário inline (data, quantidade, notas), registros ilimitados, coluna de variação entre dias e exclusão com confirmação. `day_number` é calculado a partir da data mais antiga, então lançar um dia fora de ordem não quebra a sequência
 
 ### Fase 3 — Refinamentos
 - [ ] Config de `utm_sources_pagos` via UI admin
