@@ -91,7 +91,7 @@ const displayUtmValue = (value: string, level: UTMLevel) => {
 };
 
 export default function UTMPage() {
-  const { startDateStr, endDateStr, funilId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, funilId } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [utmData, setUtmData] = useState<any[]>([]);
@@ -113,8 +113,8 @@ export default function UTMPage() {
         .not("pedido_id", "like", "LC-%")
         .neq("is_upsell", true);
 
-      if (startDateStr) q1 = q1.gte("data_venda", startDateStr);
-      if (endDateStr) q1 = q1.lte("data_venda", `${endDateStr}T23:59:59`);
+      if (startISO) q1 = q1.gte("data_venda", startISO);
+      if (endISO) q1 = q1.lte("data_venda", endISO);
       if (funilId) q1 = q1.eq("funil_id", funilId);
 
       const r1 = await q1;

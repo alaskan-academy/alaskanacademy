@@ -50,7 +50,7 @@ const paymentLabels: Record<string, string> = {
 const PAGE_SIZE = 50;
 
 export default function SalesPage() {
-  const { startDateStr, endDateStr, funilId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, funilId } = useFilters();
   const [salesData, setSalesData] = useState<any[]>([]);
   const [salesTotal, setSalesTotal] = useState(0);
   const [salesPage, setSalesPage] = useState(0);
@@ -73,7 +73,7 @@ export default function SalesPage() {
   useEffect(() => {
     const loadSales = async () => {
       setLoadingSales(true);
-      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
+      const endDateEnd = endISO;
       const from = salesPage * PAGE_SIZE;
       const to   = from + PAGE_SIZE - 1;
 
@@ -84,7 +84,7 @@ export default function SalesPage() {
         .not("pedido_id", "like", "LC-%")
         .order("data_venda", { ascending: false })
         .range(from, to);
-      if (startDateStr && endDateEnd) q = q.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+      if (startISO && endDateEnd) q = q.gte("data_venda", startISO).lte("data_venda", endDateEnd);
       if (funilId) q = q.eq("funil_id", funilId);
       if (statusFilter !== "todos") q = q.eq("status", statusFilter);
 
@@ -100,7 +100,7 @@ export default function SalesPage() {
     const load = async () => {
       setLoading(true);
 
-      const endDateEnd = endDateStr ? `${endDateStr}T23:59:59` : null;
+      const endDateEnd = endISO;
 
       let qT = supabase.from("vw_vendas_temporal").select("*");
       if (startDateStr && endDateStr) qT = qT.gte("data", startDateStr).lte("data", endDateStr);
@@ -112,7 +112,7 @@ export default function SalesPage() {
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
-      if (startDateStr && endDateEnd) qP = qP.gte("data_venda", startDateStr).lte("data_venda", endDateEnd);
+      if (startISO && endDateEnd) qP = qP.gte("data_venda", startISO).lte("data_venda", endDateEnd);
       if (funilId) qP = qP.eq("funil_id", funilId);
 
       let qPay = supabase.from("vw_vendas_por_pagamento").select("*");

@@ -6,6 +6,7 @@ import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
+import { inicioDiaBRT, fimDiaBRT } from "@/lib/periodo";
 
 // Limpa utm_campaign
 function cleanUtm(s: string | null): string {
@@ -280,7 +281,7 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
 }
 
 export default function FunnelPage() {
-  const { startDateStr, endDateStr, funilId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, funilId } = useFilters();
   const [allMeta, setAllMeta] = useState<any[]>([]);
   const [allMetaAnt, setAllMetaAnt] = useState<any[]>([]);
   const [allVendas, setAllVendas] = useState<any[]>([]);
@@ -314,7 +315,7 @@ export default function FunnelPage() {
         .eq("status", "aprovada")
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
-      if (startDateStr && endDateStr) qV = qV.gte("data_venda", startDateStr).lte("data_venda", `${endDateStr}T23:59:59`);
+      if (startISO && endISO) qV = qV.gte("data_venda", startISO).lte("data_venda", endISO);
       if (funilId) qV = qV.eq("funil_id", funilId);
 
       // OBs e Upsells vinculados às vendas (com utm_campaign)
@@ -338,7 +339,7 @@ export default function FunnelPage() {
         .not("pedido_id", "like", "LC-%");
       if (ant) {
         qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
-        qVAnt = qVAnt.gte("data_venda", ant.start).lte("data_venda", `${ant.end}T23:59:59`);
+        qVAnt = qVAnt.gte("data_venda", inicioDiaBRT(ant.start)).lte("data_venda", fimDiaBRT(ant.end));
       }
       if (funilId) {
         qMetaAnt = qMetaAnt.eq("funil_id", funilId);

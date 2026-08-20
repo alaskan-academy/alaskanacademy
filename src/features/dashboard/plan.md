@@ -298,9 +298,15 @@ Limiar default ±15%, configurável.
 - [x] **Filtro de data em BRT.** O app passava `yyyy-MM-dd`, que o Postgres lia como meia-noite UTC, arrastando as vendas de 21h–23h59 do dia anterior. Novo `src/lib/periodo.ts` (`inicioDiaBRT` / `fimDiaBRT` / `diaBRT`) com offset calculado via `Intl`, não fixado — o Brasil já teve horário de verão e pode voltar a ter. `FilterContext` passa a expor `startISO` / `endISO`. Coberto por `src/test/periodo.test.ts` (6 testes)
 - [x] **Taxa da plataforma sai de `vendas`, não da view.** A view agrupa pelo dia em UTC e divergia do faturamento, que já respeita o dia em BRT — a cascata fechava com R$1,55 de erro
 
+- [x] `startISO`/`endISO` propagados para `SalesPage`, `FunnelPage` e `UTMPage` — as quatro páginas passam a contar o dia no mesmo fuso
+- [x] **Taxa da plataforma recalculada como `total − producer`.** A linha `commission[type='platform']` traz só a comissão da Payt e ignora processamento e divisões com terceiros: media 5,34% contra 7,86% reais. Protegido o payload defeituoso (produtor zerado, que registraria 100%)
+- [x] **`vendas.produto_nome`.** A tela agrupava pelo enum `produto` — 6 categorias — mostrando "Saponaria" sem distinguir o Curso Saponaria Brasil da Arte Floral em Sabonetes. Nova coluna com o nome real da Payt (43 nomes distintos), com a categoria virando badge
+
 **Pendências:**
-- [ ] Aplicar `startISO`/`endISO` nas outras 3 páginas que filtram `data_venda`: `SalesPage`, `FunnelPage`, `UTMPage`. Enquanto não for feito, elas contam o dia em UTC e divergem do Resumo
 - [ ] `vw_faturamento_liquido` agrupa por dia em UTC; investimento, impostos e custo fixo herdam esse desvio
+- [ ] **Upsell não é detectado nas vendas do webhook — aguarda definição de regra.** O trigger `fn_marcar_upsell` procura `payload.type IN ('upsell','manual_upsell')`, mas o webhook só grava eventos com `type='order'`, então nunca dispara. As 110 vendas com `is_upsell=true` são todas do import antigo (24/03 a 19/05). O `cart_id` é único por venda e não liga o upsell ao pedido pai. Dois caminhos possíveis:
+  1. **Por cadastro:** marcar como upsell quando o `product.code` estiver em `ofertas` com `tipo='upsell'`. Determinístico, mas hoje só 6 vendas se encaixam — a classificação em `ofertas` está incompleta (quase tudo como `oferta_principal`)
+  2. **Por comportamento:** segunda compra do mesmo cliente em até 30 min. Pega 443 vendas / R$ 28.041 — e o agrupamento é nítido (451 em 2h, 513 em 24h). Risco: inclui quem comprou dois cursos principais na mesma sessão, que não é upsell
 - [ ] Vendas de jan–abr não têm `ad_id_meta` (o import de 30/06 não trouxe), então aparecem 100% como back-end nesses meses
 - [ ] 339 vendas (2,6%) sem `produto` — Incensos e "Vendas no Artesanato", categorização adiada por decisão
 - [ ] Taxa da plataforma ausente nas ~2.500 vendas do import de 30/06 (payload vazio, sem `commission`)

@@ -216,7 +216,7 @@ export default function OverviewPage() {
     // Vendas aprovadas (para contagem e ticket)
     let q4 = supabase
       .from("vendas")
-      .select("valor_total,valor_oferta_principal,produto,data_venda,ad_id_meta,taxa_plataforma_valor")
+      .select("valor_total,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor")
       .eq("status", "aprovada")
       .not("pedido_id", "like", "TEST%")
       .not("pedido_id", "like", "LC-%");
@@ -369,10 +369,12 @@ export default function OverviewPage() {
 
     setRemData(r6.data || {});
     // Compute prodData from vendasRows (already filtered by date/product)
-    const prodMap = new Map<string, { produto: string; vendas_aprovadas: number; faturamento_principal: number; faturamento_total: number }>();
+    // Agrupa pelo nome real vindo da Payt. `produto` é o enum de categoria — só
+    // 6 valores — e não distingue "Curso Saponaria Brasil" de "Arte Floral em Sabonetes".
+    const prodMap = new Map<string, { produto: string; categoria: string; vendas_aprovadas: number; faturamento_principal: number; faturamento_total: number }>();
     for (const v of vendasPrincipal) {
-      const p = v.produto || "outros";
-      const existing = prodMap.get(p) || { produto: p, vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
+      const p = v.produto_nome || v.produto || "Sem produto";
+      const existing = prodMap.get(p) || { produto: p, categoria: v.produto || "", vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
       existing.vendas_aprovadas += 1;
       existing.faturamento_principal += Number(v.valor_oferta_principal || 0);
       existing.faturamento_total += Number(v.valor_total || 0);
@@ -818,10 +820,15 @@ export default function OverviewPage() {
                         key={i}
                         className="flex items-center justify-between border-b border-border/50 py-2.5 last:border-0"
                       >
-                        <div>
-                          <span className="text-sm font-medium capitalize text-foreground">{r.produto}</span>
-                          <div className="mt-0.5 text-xs text-muted-foreground">
-                            {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
+                        <div className="min-w-0 pr-4">
+                          <span className="text-sm font-medium text-foreground">{r.produto}</span>
+                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            {r.categoria && (
+                              <span className="rounded bg-secondary px-1.5 py-0.5 capitalize">{r.categoria}</span>
+                            )}
+                            <span>
+                              {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
+                            </span>
                           </div>
                         </div>
                         <div className="text-right">
