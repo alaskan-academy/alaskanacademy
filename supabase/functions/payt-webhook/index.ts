@@ -121,15 +121,40 @@ Deno.serve(async (req) => {
     '';
   const data = rawDate.slice(0, 10) || null;
 
-  // Valor: centavos → reais. A Payt zera `total_price` ao estornar, então um valor
-  // zerado não significa venda de zero — cai para os campos que sobrevivem.
-  const centavos =
-    (body.transaction?.total_price || null) ??
-    (body.transaction?.price_without_installments || null) ??
-    (body.transaction?.price || null) ??
-    (body.product?.price || null) ??
-    body.total_price;
-  const valor = typeof centavos === 'number' ? centavos / 100 : 0;
+  /**
+   * Valor: centavos → reais.
+   *
+   * A Payt zera `total_price` ao estornar. A versão anterior tratava isso com uma
+   * escada de alternativas que terminava no **preço de tabela do produto** — e era ela
+   * que ganhava, sobrescrevendo o valor real da compra. A conferência de 21/08 contra
+   * o relatório da Payt pegou: 7 dos 14 reembolsos de agosto viraram R$ 67,00, o preço
+   * de lista, no lugar dos R$ 66,33 com desconto do Pix, dos R$ 60,30 com cupom e dos
+   * R$ 123,65 que incluíam um order bump.
+   *
+   * A regra agora é outra: **estorno muda o status da venda, não o quanto ela custou.**
+   * Só grava valor quando ele vem da transação de verdade; se não vier, mantém o que já
+   * está gravado, e o preço de tabela só entra se a venda for nova e não houver nada.
+   */
+  const emReais = (c: unknown) => (typeof c === 'number' && c > 0 ? c / 100 : null);
+
+  const valorDaTransacao =
+    emReais(body.transaction?.total_price) ??
+    emReais(body.transaction?.price_without_installments) ??
+    emReais(body.transaction?.price);
+
+  const valorDeTabela = emReais(body.product?.price) ?? emReais(body.total_price);
+
+  let valor: number;
+  if (valorDaTransacao !== null) {
+    valor = valorDaTransacao;
+  } else {
+    const { data: jaGravado } = await supabase
+      .from('vendas_payt')
+      .select('valor')
+      .eq('payt_id', payt_id)
+      .maybeSingle();
+    valor = jaGravado?.valor ?? valorDeTabela ?? 0;
+  }
 
   const status: string = body.status ?? 'unknown';
 

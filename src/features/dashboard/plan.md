@@ -1332,3 +1332,64 @@ dado. A classe que mais custou — reembolso descontado duas vezes, média de ra
 no denominador — é dado presente e errado, que não dispara nada porque parece normal.
 Nenhum código pega isso sozinho: o dashboard não tem contra o que se comparar. O que dá
 para garantir é que a comparação humana aconteça e que a tela cobre quando atrasar.
+
+## Primeiro ciclo de conferência — agosto (01 a 20)
+
+Comparação venda a venda contra três exportações da Payt: vendas, origens e upsells.
+
+**O núcleo bateu.** Os 1.821 códigos são idênticos por hash — nenhuma venda a mais, nenhuma
+a menos — e os valores fecham ao centavo em quatro dos cinco status. A receita aprovada:
+**R$ 128.236,46 dos dois lados.**
+
+Três coisas apareceram, e nenhuma teria aparecido sozinha.
+
+### 1. Estorno sobrescrevia o valor da venda — R$ 46,60
+
+A Payt zera `total_price` no aviso de estorno. A webhook tratava isso com uma escada de
+alternativas que terminava no **preço de tabela do produto** — e era ela que ganhava. Sete
+dos quatorze reembolsos de agosto viraram R$ 67,00 no lugar dos R$ 66,33 com desconto do
+Pix, dos R$ 60,30 com cupom e dos R$ 123,65 que incluíam um order bump.
+
+A regra nova: **estorno muda o status da venda, não o quanto ela custou.** Só grava valor
+vindo da transação de verdade; senão mantém o que já está gravado.
+
+- [x] Webhook v27 no ar, com `verify_jwt` preservado em `false`
+- [x] Os 7 valores antigos corrigidos pela planilha — reembolsos agora somam R$ 1.360,40
+      nos dois lados, e agosto fecha ao centavo nos **cinco** status
+
+### 2. `{{ad.id}}` literal como identificador de anúncio — 59 vendas
+
+A macro do Meta não é substituída na URL de alguns anúncios, e gravávamos o texto cru como
+se fosse um id. São 59 vendas desde 25/03, 19 em agosto, em seis checkouts: Fábrica das
+Velas — Desconto e Acesso Vitalício, Saponaria Brasil Rev2 e Rev5, Workshop Buquê de Velas
+Rev1, Rev3 47 e VSL 01 Rev01.
+
+- [ ] **Aberto** — é configuração do anúncio, não do dashboard
+
+### 3. Os 27 upsells sem anúncio
+
+A Payt atribui o upsell à origem do pedido que o gerou. Nós tínhamos a mesma ligação pelo
+`cart_id`, com dois problemas somados: a herança copiava só a **conta**, e nenhum upsell de
+agosto tinha `cart_id` gravado.
+
+- [x] `cart_id` dos 74 upsells preenchido a partir da planilha ("Código do Upsell" →
+      "Código da Venda")
+- [x] `fn_herdar_origem_do_upsell` passou a herdar `ad_id_meta` e `utm_content` além da
+      conta. Resultado: **653 vendas com anúncio, exatamente o número da Payt**
+
+Correção de um alerta meu: a aba Criativos **já exclui upsell de propósito**
+(`tipo_venda.neq.Upsell`), então essas 27 não estavam custando tela nenhuma. Herdar mantém
+a exclusão sendo uma escolha em vez de um acidente.
+
+### O que a conferência ensinou sobre ela mesma
+
+Os três achados são invisíveis num total. O de R$ 46,60 some em R$ 128 mil; o `{{ad.id}}`
+não muda soma nenhuma; os 27 upsells têm origem que ninguém olha hoje. **Nenhum apareceria
+comparando só faturamento** — só apareceram porque a comparação foi feita linha a linha,
+com as três exportações cruzadas.
+
+- [x] O lembrete deixou de cobrar todos os dias: some depois de conferido e volta no dia
+      certo. Lembrete que aparece sempre vira paisagem — inclusive no dia em que importa.
+      A exceção é divergência não resolvida, que continua visível
+- [x] O texto passou a pedir o que de fato funciona: exportar e mandar no chat, porque a
+      comparação venda a venda não cabe num formulário

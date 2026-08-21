@@ -6,7 +6,7 @@ import { inicioDiaBRT, fimDiaBRT } from "@/lib/periodo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ScanLine, CheckCircle2, AlertCircle } from "lucide-react";
+import { ScanLine, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -76,24 +76,30 @@ export function LembreteConferencia() {
     : null;
   const atrasada = diasDesde === null || diasDesde >= cadencia;
 
-  // Conferência em dia e sem divergência não precisa ocupar a dobra: vira uma linha.
+  /**
+   * Entre uma conferência e outra, a tela fica calada.
+   *
+   * O aviso cobrava todo dia até alguém agir, e lembrete que aparece sempre vira
+   * paisagem — ninguém lê mais, inclusive no dia em que importa. Some depois de
+   * conferida e reaparece no dia certo.
+   *
+   * A única exceção é divergência não resolvida: esconder um número que já se sabe
+   * errado seria trocar ruído visual por silêncio sobre um problema conhecido, que é
+   * exatamente o defeito que esta tela existe para combater.
+   */
   if (!atrasada) {
     const divergiu = Math.abs(Number(ultima!.diferenca_pct)) > LIMIAR_PCT;
+    if (!divergiu) return null;
     return (
       <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-        {divergiu
-          ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-          : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />}
+        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
         <span>
-          Conferido contra a Payt {diasDesde === 0 ? "hoje" : `há ${diasDesde} dia${diasDesde! > 1 ? "s" : ""}`}
-          {divergiu && (
-            <span className="text-amber-400">
-              {" "}— diferença de {Number(ultima!.diferenca_pct).toFixed(2)}% não resolvida
-            </span>
-          )}
-          <span className="text-muted-foreground/60">
-            {" "}· próxima em {cadencia - (diasDesde ?? 0)} dia{cadencia - (diasDesde ?? 0) !== 1 ? "s" : ""}
-          </span>
+          A conferência de {ultima!.periodo_ini.slice(8)}/{ultima!.periodo_ini.slice(5, 7)} a{" "}
+          {ultima!.periodo_fim.slice(8)}/{ultima!.periodo_fim.slice(5, 7)} deu{" "}
+          <span className="text-amber-400">
+            {Number(ultima!.diferenca_pct).toFixed(2)}% de diferença
+          </span>{" "}
+          e continua sem explicação.
         </span>
         <button onClick={() => setAberto(true)} className="underline underline-offset-2 hover:text-foreground">
           conferir de novo
@@ -107,22 +113,20 @@ export function LembreteConferencia() {
     <>
       <div className="mb-4 flex flex-wrap items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
         <ScanLine className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+        {/* A comparação de verdade é venda a venda, e isso se faz no chat: foi assim
+            que apareceram os reembolsos com valor de tabela, o {'{{ad.id}}'} literal e os
+            upsells sem anúncio. O formulário abaixo serve para registrar o resultado. */}
         <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-200/90">
-          {diasDesde === null
-            ? "O dashboard nunca foi conferido contra o relatório da Payt."
-            : `Faz ${diasDesde} dias que o dashboard não é conferido contra a Payt.`}{" "}
-          <span className="text-amber-100">
-            Abra o relatório da Payt do período e pegue o faturamento.
-          </span>{" "}
-          Você pode registrar aqui, ou mandar o número no chat para eu comparar e
-          investigar a diferença. Os alertas automáticos pegam dado{" "}
-          <span className="text-amber-100">faltando</span>; dado{" "}
-          <span className="text-amber-100">presente e errado</span> só aparece nesta
-          comparação — foi assim que o reembolso contado duas vezes e a média de razões
-          apareceram.
+          <span className="text-amber-100">Hoje é dia de conferir contra a Payt.</span>{" "}
+          Exporte as vendas, as origens e os upsells{" "}
+          {ultima
+            ? `de ${ultima.periodo_fim.slice(8)}/${ultima.periodo_fim.slice(5, 7)} para cá`
+            : "do período"}{" "}
+          e mande no chat — dá para bater venda a venda e investigar o que divergir.
+          Depois é só registrar o resultado aqui.
         </p>
         <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={() => setAberto(true)}>
-          Conferir agora
+          Registrar
         </Button>
       </div>
       <DialogoConferencia aberto={aberto} setAberto={setAberto} aoSalvar={carregar} ultima={ultima} cadencia={cadencia} />
