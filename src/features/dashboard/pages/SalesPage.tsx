@@ -50,7 +50,7 @@ const paymentLabels: Record<string, string> = {
 const PAGE_SIZE = 50;
 
 export default function SalesPage() {
-  const { startDateStr, endDateStr, startISO, endISO, funilId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaId } = useFilters();
   const [salesData, setSalesData] = useState<any[]>([]);
   const [salesTotal, setSalesTotal] = useState(0);
   const [salesPage, setSalesPage] = useState(0);
@@ -67,7 +67,7 @@ export default function SalesPage() {
   const [statusFilter, setStatusFilter] = useState("todos");
 
   // Reset page when filters change
-  useEffect(() => { setSalesPage(0); }, [startDateStr, endDateStr, funilId, statusFilter]);
+  useEffect(() => { setSalesPage(0); }, [startDateStr, endDateStr, contaId, statusFilter]);
 
   // Paginated sales fetch (runs when page OR filters change)
   useEffect(() => {
@@ -85,7 +85,7 @@ export default function SalesPage() {
         .order("data_venda", { ascending: false })
         .range(from, to);
       if (startISO && endDateEnd) q = q.gte("data_venda", startISO).lte("data_venda", endDateEnd);
-      if (funilId) q = q.eq("funil_id", funilId);
+      if (contaId) q = q.eq("ad_account_id", contaId);
       if (statusFilter !== "todos") q = q.eq("status", statusFilter);
 
       const { data, count } = await q;
@@ -94,7 +94,7 @@ export default function SalesPage() {
       setLoadingSales(false);
     };
     loadSales();
-  }, [salesPage, startDateStr, endDateStr, funilId, statusFilter]);
+  }, [salesPage, startDateStr, endDateStr, contaId, statusFilter]);
 
   useEffect(() => {
     const load = async () => {
@@ -104,7 +104,7 @@ export default function SalesPage() {
 
       let qT = supabase.from("vw_vendas_temporal").select("*");
       if (startDateStr && endDateStr) qT = qT.gte("data", startDateStr).lte("data", endDateStr);
-      if (funilId) qT = qT.eq("funil_id", funilId);
+      if (contaId) qT = qT.eq("ad_account_id", contaId);
 
       let qP = supabase
         .from("vendas")
@@ -113,19 +113,19 @@ export default function SalesPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startISO && endDateEnd) qP = qP.gte("data_venda", startISO).lte("data_venda", endDateEnd);
-      if (funilId) qP = qP.eq("funil_id", funilId);
+      if (contaId) qP = qP.eq("ad_account_id", contaId);
 
       let qPay = supabase.from("vw_vendas_por_pagamento").select("*");
-      if (funilId) qPay = qPay.eq("funil_id", funilId);
+      if (contaId) qPay = qPay.eq("ad_account_id", contaId);
 
       let qH = supabase.from("vw_vendas_por_horario").select("*");
-      if (funilId) qH = qH.eq("funil_id", funilId);
+      if (contaId) qH = qH.eq("ad_account_id", contaId);
 
       let qW = supabase.from("vw_vendas_por_dia_semana").select("*");
-      if (funilId) qW = qW.eq("funil_id", funilId);
+      if (contaId) qW = qW.eq("ad_account_id", contaId);
 
       let qM = supabase.from("vw_vendas_por_mes").select("*").order("mes_ano", { ascending: true });
-      if (funilId) qM = qM.eq("funil_id", funilId);
+      if (contaId) qM = qM.eq("ad_account_id", contaId);
 
       const [rT, rP, rPay, rH, rW, rM] = await Promise.all([qT, qP, qPay, qH, qW, qM]);
 
@@ -202,7 +202,7 @@ export default function SalesPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, funilId, statusFilter]);
+  }, [startDateStr, endDateStr, contaId, statusFilter]);
 
   const openDetail = async (sale: any) => {
     setSelectedSale(sale);

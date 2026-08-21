@@ -12,11 +12,18 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
-interface Funil {
+/**
+ * Conta de anúncio — a dimensão pela qual a operação separa os funis.
+ *
+ * O seletor listava a tabela `funis`, que tem 22 linhas todas inativas, com nomes
+ * repetidos e sem produto. Como `vendas.funil_id` também é nulo em 100% das linhas,
+ * escolher um funil zerava a tela em sete páginas. A conta é o que de fato isola um
+ * funil do outro.
+ */
+interface Conta {
   id: string;
   nome: string;
-  produto: string;
-  ativo: boolean;
+  produto: string | null;
 }
 
 const ALL_SUB_PAGES = [
@@ -53,12 +60,12 @@ const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt
 
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
-  const { funilId, setFunilId } = useFilters();
+  const { contaId, setContaId } = useFilters();
   const { user, canAccess, perfil, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [funis, setFunis] = useState<Funil[]>([]);
-  const [loadingFunis, setLoadingFunis] = useState(true);
+  const [contas, setContas] = useState<Conta[]>([]);
+  const [loadingContas, setLoadingContas] = useState(true);
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
   const fixedItems = ALL_FIXED_ITEMS.filter(p => {
@@ -75,22 +82,29 @@ export function AppSidebar() {
   // Track which dashboard is expanded — null means "Geral"
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Sync expandedId with funilId
-  useEffect(() => { setExpandedId(funilId); }, [funilId]);
+  // Sync expandedId with contaId
+  useEffect(() => { setExpandedId(contaId); }, [contaId]);
 
-  const loadFunis = async () => {
-    setLoadingFunis(true);
-    const { data } = await supabase.from('funis').select('id,nome,produto,ativo').eq('ativo', true).order('nome');
-    setFunis(data || []);
-    setLoadingFunis(false);
+  const loadContas = async () => {
+    setLoadingContas(true);
+    // `visto_em` não nulo exclui conta que o token não enxerga mais — sem isso a
+    // lista acumula conta antiga de BM desativada.
+    const { data } = await supabase
+      .from('ad_accounts')
+      .select('id,nome,produto')
+      .eq('ativo', true)
+      .not('visto_em', 'is', null)
+      .order('nome');
+    setContas(data || []);
+    setLoadingContas(false);
   };
 
-  useEffect(() => { loadFunis(); }, []);
+  useEffect(() => { loadContas(); }, []);
 
   const selectDashboard = (id: string | null, onNav?: () => void) => {
-    const wasExpanded = expandedId === id && funilId === id;
+    const wasExpanded = expandedId === id && contaId === id;
     if (wasExpanded) return; // already selected & expanded
-    setFunilId(id);
+    setContaId(id);
     setExpandedId(id);
     // Navigate to Resumo when switching dashboards
     if (!['/configuracoes', '/editores'].includes(location.pathname)) {
@@ -107,7 +121,7 @@ export function AppSidebar() {
   const DashboardItem = ({ id, label, icon, colorDot, onNav, expandable = false }: {
     id: string | null; label: string; icon?: React.ReactNode; colorDot?: string; onNav?: () => void; expandable?: boolean;
   }) => {
-    const isSelected = funilId === id;
+    const isSelected = contaId === id;
     const isExpanded = expandedId === id && isSelected;
 
     return (
@@ -200,17 +214,21 @@ export function AppSidebar() {
         <div className="space-y-0.5">
           <DashboardItem id={null} label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} expandable />
 
-          {loadingFunis ? (
+          {loadingContas ? (
             <div className="flex justify-center py-3">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
+          ) : contas.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">
+              Nenhuma conta de anúncio ativa
+            </p>
           ) : (
-            funis.map((f) => (
+            contas.map((c) => (
               <DashboardItem
-                key={f.id}
-                id={f.id}
-                label={f.nome}
-                colorDot={prodColors[f.produto]?.split(' ')[0]}
+                key={c.id}
+                id={c.id}
+                label={c.nome}
+                colorDot={c.produto ? prodColors[c.produto]?.split(' ')[0] : undefined}
                 onNav={onNav}
               />
             ))

@@ -19,8 +19,8 @@ interface FilterContextType {
    */
   startISO: string | null;
   endISO: string | null;
-  funilId: string | null;
-  setFunilId: (id: string | null) => void;
+  contaId: string | null;
+  setContaId: (id: string | null) => void;
 }
 
 const FilterContext = createContext<FilterContextType | null>(null);
@@ -35,7 +35,7 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
   const [datePreset, setDatePresetState] = useState<DatePreset>('today');
   const [customStart, setCustomStart] = useState<Date>(subDays(new Date(), 30));
   const [customEnd, setCustomEnd] = useState<Date>(new Date());
-  const [funilId, setFunilId] = useState<string | null>(null);
+  const [contaId, setContaId] = useState<string | null>(null);
 
   const { start, end } = useMemo(() => {
     const now = new Date();
@@ -78,9 +78,9 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
     endDateStr,
     startISO,
     endISO,
-    funilId,
-    setFunilId,
-  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, funilId, setDatePreset, setCustomRange]);
+    contaId,
+    setContaId,
+  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, contaId, setDatePreset, setCustomRange]);
 
   return (
     <FilterContext.Provider value={value}>

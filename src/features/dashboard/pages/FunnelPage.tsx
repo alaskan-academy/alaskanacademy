@@ -281,7 +281,7 @@ function FunnelDisplay({ data, title, compare }: { data: any; title?: string; co
 }
 
 export default function FunnelPage() {
-  const { startDateStr, endDateStr, startISO, endISO, funilId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaId } = useFilters();
   const [allMeta, setAllMeta] = useState<any[]>([]);
   const [allMetaAnt, setAllMetaAnt] = useState<any[]>([]);
   const [allVendas, setAllVendas] = useState<any[]>([]);
@@ -306,7 +306,7 @@ export default function FunnelPage() {
         )
         .eq("nivel", "campanha");
       if (startDateStr && endDateStr) qMeta = qMeta.gte("data", startDateStr).lte("data", endDateStr);
-      if (funilId) qMeta = qMeta.eq("funil_id", funilId);
+      if (contaId) qMeta = qMeta.eq("ad_account_id", contaId);
 
       // Vendas atuais
       let qV = supabase
@@ -316,7 +316,7 @@ export default function FunnelPage() {
         .not("pedido_id", "like", "TEST%")
         .not("pedido_id", "like", "LC-%");
       if (startISO && endISO) qV = qV.gte("data_venda", startISO).lte("data_venda", endISO);
-      if (funilId) qV = qV.eq("funil_id", funilId);
+      if (contaId) qV = qV.eq("ad_account_id", contaId);
 
       // OBs e Upsells vinculados às vendas (com utm_campaign)
       let qItems = supabase
@@ -341,9 +341,9 @@ export default function FunnelPage() {
         qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
         qVAnt = qVAnt.gte("data_venda", inicioDiaBRT(ant.start)).lte("data_venda", fimDiaBRT(ant.end));
       }
-      if (funilId) {
-        qMetaAnt = qMetaAnt.eq("funil_id", funilId);
-        qVAnt = qVAnt.eq("funil_id", funilId);
+      if (contaId) {
+        qMetaAnt = qMetaAnt.eq("ad_account_id", contaId);
+        qVAnt = qVAnt.eq("ad_account_id", contaId);
       }
 
       const [rMeta, rV, rItems, rMetaAnt, rVAnt] = await Promise.all([qMeta, qV, qItems, qMetaAnt, qVAnt]);
@@ -376,7 +376,7 @@ export default function FunnelPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, funilId]);
+  }, [startDateStr, endDateStr, contaId]);
 
   // Funil geral — OBs/upsells de todas as vendas do período
   const { obs: obsGeral, ups: upsGeral } = aggregateItems(allItems);

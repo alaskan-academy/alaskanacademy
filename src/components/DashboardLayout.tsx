@@ -16,7 +16,7 @@ export function DashboardLayout({
   hideFilters?: boolean;
 }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
-  const { funilId } = useFilters();
+  const { contaId } = useFilters();
 
   // Find selected funnel name for header context
   return (

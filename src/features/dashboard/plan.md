@@ -449,3 +449,27 @@ Validação (01–20/08): Tráfego 600 vendas / R$ 55.112,53 · Back-end 660 / R
 **Nota sobre o `tsc`:** ele passou limpo com um `const dias` declarado duas vezes no mesmo escopo, que o navegador pegou na hora como `SyntaxError`. Typecheck verde não substitui abrir a tela.
 
 - [ ] O custo fixo no filtro "Todos" continua assumindo um mês cheio. É aproximação ruim — todo o histórico custaria vários meses — mas foi preservada para não mudar número sem aviso
+
+### Filtro por CA (Parte 1) — a conta de anúncio vira a dimensão de recorte
+
+- [x] **O item "popular `ad_accounts.funil_id`" estava mal formulado.** Investigando antes de executar: a tabela `funis` tem 22 linhas, **todas inativas**, com nomes repetidos (`REV1 - Original` ×4, `REV2` ×3) e a maioria sem produto. E `vendas.funil_id` é nulo em **100% das 13.107 linhas**. Popular o `funil_id` das contas apontaria para lixo
+- [x] **O seletor de funil zerava a tela em sete páginas, não só na Visão Geral.** Toda página fazia `.eq("funil_id", funilId)` contra uma coluna sempre nula. Nas páginas de anúncio era pior: `vw_metricas_meta_nivel.funil_id` é nulo nas 9.756 linhas, então Meta Ads, Análise de Anúncios e Funil também zeravam
+- [x] **A CA passa a ser a dimensão**, que é o que o pedido original dizia — *"isolamos por CA cada funil"* e *"quero um filtro por CA na parte 1"*. A indireção pela tabela `funis` era invenção do código
+- [x] **`vendas.ad_account_id`**, resolvido por `ad_id_meta` → `metricas_meta(nivel='ad')`. Medido antes de escolher o caminho: 2.233 das 2.274 vendas aprovadas com ad_id resolvem (**98,2%**) e **nenhum ad_id aparece em duas contas**
+- [x] **Trigger de statement em `metricas_meta`** preenche as vendas que chegaram antes do anúncio ser conhecido — o webhook entrega na hora e o Meta sincroniza de hora em hora, então uma venda das 10h05 de um anúncio novo só resolveria às 11h
+- [x] **`fn_overview(p_conta)`**: com conta selecionada, o investimento sai de `metricas_meta` daquela conta em vez do total rateado. Sem isso o recorte mostraria a receita de uma conta contra o gasto de todas
+- [x] `contaId` substitui `funilId` no `FilterContext`; a sidebar lista `ad_accounts` ativas e vistas pelo token
+- [x] Conferido na tela contra o banco: Saponaria Brasil - TSL em 20/08 dá 7 vendas, R$ 713,66 de receita, R$ 955,86 de investimento e ROAS 0,75 nos dois
+
+**ROAS por CA em agosto (01–20), que a Parte 2 vai usar como base:**
+
+| Conta | Vendas | Receita | Investimento | ROAS |
+|---|---|---|---|---|
+| Saponaria Brasil - TSL | 269 | R$ 25.803,76 | R$ 22.933,06 | 1,13 |
+| Lembrancinha - TSL | 167 | R$ 18.897,66 | R$ 11.089,40 | 1,70 |
+| Workshop Buquê - TSL | 164 | R$ 9.635,01 | R$ 7.313,95 | 1,32 |
+| Worshop Buquê - SO | 9 | R$ 959,71 | R$ 832,57 | 1,15 |
+| Desafios na Sala - TSL | 1 | R$ 297,00 | R$ 608,68 | 0,49 |
+
+- [ ] **A tabela `funis` continua no banco**, agora sem uso pelo filtro. A feature `/funis-gestao` tem `funilId` próprio e não foi tocada. Decidir depois se a tabela é aposentada
+- [ ] Só 5 das 15 contas ativas têm venda atribuída no período. Vale checar se as outras gastam sem retorno rastreável ou se é o mesmo buraco de UTM
