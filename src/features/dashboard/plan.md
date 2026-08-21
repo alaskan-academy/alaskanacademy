@@ -340,7 +340,9 @@ Limiar default ±15%, configurável.
 - [x] Verificado em produção: responde 503 com instrução enquanto o token não existe
 - [x] System User Token com `ads_read` criado e cadastrado como `META_ACCESS_TOKEN`
 - [x] **Inventário real: 14 contas em dois Business Managers.** A primeira descoberta (só BM Handify) trouxe 5 contas e me levou a concluir, erradamente, que as 10 cadastradas à mão não existiam mais. Com o token da segunda BM, **6 delas apareceram** — estavam lá o tempo todo, só invisíveis ao primeiro token. Duas haviam sido renomeadas e mantiveram histórico intacto justamente porque o casamento é por `account_id`: `act_1612067732932482` virou "Desafios na Sala - TSL" (era "04. Velas TSL") e `act_474062128831453` virou "Velas Perfeitas - RMKT" (era "01. Velas TSL"). Mais 3 contas novas apareceram (CA2, CA3, CA4). Restam 4 das originais sem aparecer — provavelmente numa terceira BM (Ravenna) ou encerradas
-- [x] Backfill completo: **6.994 linhas, 112 dias, 9 contas com dados**. Feito mês a mês porque 14 contas × 3 níveis × 93 dias estoura o limite de tempo de uma invocação (504)
+- [x] **Três Business Managers, 18 contas.** A comparação com a UTMify expôs o que faltava: ela mostrava R$ 2.938 de gasto no dia contra R$ 1.738 nossos. A terceira BM tinha a conta "Saponaria" (`act_2298547470659974`, antes "01. Saponaria - TSL | Ravenna") gastando R$ 1.210/dia — praticamente o gap exato. Ela reapareceu com as **1.573 linhas de histórico intactas**, de novo porque o casamento é por `account_id`. Também apareceu `Jabon - TSL`, que nunca esteve no banco. Só `Hormonal - Principal` segue sem aparecer em nenhuma das três
+- [x] Backfill completo: **9.756 linhas, 112 dias, 10 contas com gasto**. Feito quinzena a quinzena — com 18 contas × 3 níveis, mesmo um mês inteiro estoura o limite de tempo da invocação (504). O cron diário não sofre disso porque processa só 7 dias
+- [x] Conferido contra a UTMify: gasto do dia fecha com 1% de diferença, explicada pelo acúmulo entre as duas leituras
 - [x] Backfill de 20/05 a hoje: **3.926 linhas novas**, 94 dias cobertos. Uso da API no pico: **4%**
 - [x] `pg_cron` agendado — `meta-sync-horario` (`0 * * * *`, dia corrente) e `meta-sync-diario` (`20 5 * * *`, D-1..D-7)
 - [x] **Bug corrigido: contagem de conversões inflada 8×.** A Meta devolve a mesma compra sob 8 `action_type` diferentes (`purchase`, `omni_purchase`, `offsite_conversion.fb_pixel_purchase`…), todos com valor idêntico. Somar por "contém purchase" dava 224 compras onde havia 28. Mesmo problema em `initiate_checkout` (5 rótulos). Trocado por busca exata com lista de prioridade
@@ -354,7 +356,8 @@ Limiar default ±15%, configurável.
 **Pendências da Fase 0.2:**
 - [ ] `ad_accounts.funil_id` continua nulo nas 5 contas novas — bloqueia o seletor de CA e a atribuição de venda a funil (Fase 0.3)
 - [ ] O cron `processar_windsor_staging` (`0 4 * * *`) ainda roda diariamente sobre `windsor_meta_staging`, que está estático desde 23/07. Não conflita com o sync novo (as contas antigas têm outros UUIDs, então a chave única difere), mas é job morto
-- [ ] O mapeamento conta → produto foi inferido do nome de cada conta. Conferir se `Lembrancinha`, `Workshop Buquê` e as duas de `Saponaria` estão nas categorias certas
+- [ ] O mapeamento conta → produto foi inferido do nome de cada conta. Conferir se `Lembrancinha`, `Workshop Buquê` e as duas de `Saponaria` estão nas categorias certas. **`RMKT Saponaria - TSL` está como `cosmeticos`** — resquício do cadastro manual antigo, quase certamente errado. `Jabon - TSL`, `CA2`, `CA3` e `CA4` estão sem produto
+- [ ] `Jabon - TSL` sugere operação em espanhol. Se vender por outra plataforma ou outra conta Payt, a receita correspondente não está no dashboard e o ROAS dessa conta ficará distorcido
 
 ### Fase 0.3 — Funis e atribuição
 - [ ] Arquivar os 22 funis antigos; criar estrutura nova sobre as CAs reais
