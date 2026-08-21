@@ -649,3 +649,43 @@ Medido se valia a pena manter, em agosto:
 dos casos. Removida da Visão Geral; o campo continua existindo e segue útil no
 agrupamento "Por Produto" da página de Vendas, onde não há nome de produto ao lado
 para tornar a categoria óbvia.
+
+### Coluna de % na cascata — e dois defeitos que ela desenterrou
+
+- [x] **Coluna "% da receita" em "Do pago ao lucro".** A base é a receita, não o pago
+      pelo cliente: é dela que tudo é descontado e é ela que a margem usa, então a
+      última linha da coluna fecha exatamente com a margem do topo da página. "Pago
+      pelos clientes" aparece acima de 100% — na medida exata do juro que o cliente
+      paga à adquirente
+
+**Defeito 1: reembolso e chargeback apareciam zerados.** A aba Perdas mostrava
+R$ 0,00 com contagem 1 e 2, enquanto a cascata, na mesma tela, mostrava R$ 594,00.
+Duas regras para o mesmo conceito:
+
+| Fonte | Regra | Resultado |
+|---|---|---|
+| `fn_overview` | `coalesce(valor_reembolsado, valor_total)` | R$ 0,00 |
+| `vw_faturamento_liquido` | sempre `valor_total` | R$ 594,00 |
+
+As duas erradas, por motivos diferentes. O `coalesce` supunha que nulo significa "não
+sei", mas a coluna tem default 0 e nunca é preenchida — **72 dos 72 reembolsos e 8 dos
+12 chargebacks estão zerados**, então ele devolvia zero e a perda sumia. Já usar sempre
+`valor_total` subestima o chargeback: nos 4 casos em que o campo está preenchido, dois
+passam do valor da venda (R$ 116,60 sobre R$ 97,00) porque a adquirente cobra multa
+além do estorno.
+
+- [x] **`fn_perda_da_venda()`** — uma regra só, usada pelas duas fontes: valor estornado
+      quando existe de fato, valor da venda quando está zerado. Agora Perdas soma
+      R$ 297 + R$ 297 e fecha com os R$ 594 da cascata
+
+**Defeito 2: "(sem link identificado)" com 46 vendas e R$ 10.220,70.** Eram os upsells.
+O upsell acontece depois do checkout, então não tem página própria e nunca terá link
+nem UTM — mas apareciam numa tabela de "receita por link" com selo vermelho de 0%
+rastreado, ao lado de checkouts com UTM de fato quebrada. Linha permanente que ninguém
+pode consertar ensina a ignorar o vermelho.
+
+- [x] `por_link` passa a excluir upsell, como `por_produto` já fazia
+
+As duas migrações trocaram a expressão por substituição no DDL existente, com
+`RAISE EXCEPTION` se o trecho não for encontrado — reescrever à mão uma view e uma
+função longas só para mudar uma expressão é convite a erro de digitação.

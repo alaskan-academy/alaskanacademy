@@ -136,22 +136,44 @@ function Metrica({
   );
 }
 
+/**
+ * Uma linha da cascata, com o peso do item sobre a receita.
+ *
+ * A base é a receita, não o pago pelo cliente. É dela que tudo é descontado, e é ela
+ * que a margem usa — então a última linha da coluna fecha exatamente com a margem
+ * mostrada no topo da página. Sobre o pago, os percentuais não reconciliariam com
+ * nada, porque o juro de parcelamento entraria no denominador.
+ *
+ * Por isso "Pago pelos clientes" aparece acima de 100%: ele é maior que a receita,
+ * na exata medida do juro que o cliente paga à adquirente.
+ */
 function Linha({
-  rotulo, valor, negativo, forte, cor,
+  rotulo, valor, pct, negativo, forte, cor,
 }: {
   rotulo: string;
   valor: string;
+  pct?: number;
   negativo?: boolean;
   forte?: boolean;
   cor?: string;
 }) {
   return (
-    <div className={cn("flex justify-between", forte && "font-semibold")}>
-      <span className={cn(negativo ? "text-muted-foreground" : "text-foreground")}>
+    <div className={cn("flex items-baseline gap-3", forte && "font-semibold")}>
+      <span className={cn("flex-1", negativo ? "text-muted-foreground" : "text-foreground")}>
         {negativo && "− "}
         {rotulo}
       </span>
-      <span className={cn(cor || (negativo ? "text-muted-foreground" : "text-foreground"))}>{valor}</span>
+      <span className={cn("shrink-0", cor || (negativo ? "text-muted-foreground" : "text-foreground"))}>
+        {valor}
+      </span>
+      <span
+        className={cn(
+          "w-14 shrink-0 text-right text-xs",
+          forte ? "text-muted-foreground" : "text-muted-foreground/60",
+        )}
+      >
+        {pct === undefined ? "" : `${pct.toFixed(1)}%`}
+      </span>
     </div>
   );
 }
@@ -439,6 +461,13 @@ export default function OverviewPage() {
     return `${diasDoPeriodo(startDateStr, endDateStr)}d`;
   };
 
+  /** Peso de um item sobre a receita. Ver {@link Linha} para a escolha da base. */
+  const pctReceita = (valor?: number) => {
+    const receita = kpis.receita || 0;
+    if (!receita) return undefined;
+    return ((valor || 0) / receita) * 100;
+  };
+
   const abasDisponiveis = ABAS.filter(a => !(a.key === "trafego" && segmento === "backend"));
   const abaAtiva = abasDisponiveis.some(a => a.key === abaOp) ? abaOp : abasDisponiveis[0].key;
 
@@ -647,53 +676,89 @@ export default function OverviewPage() {
             {/* Cascata: substitui os cards de Receita e Custos Diretos, que repetiam
                 exatamente estes mesmos números uma seção acima. */}
             <div className="lg:col-span-2 rounded-lg border border-border bg-card p-5">
-              <h3 className="mb-4 text-sm font-medium text-foreground">Do pago ao lucro</h3>
+              <div className="mb-4 flex items-baseline justify-between">
+                <h3 className="text-sm font-medium text-foreground">Do pago ao lucro</h3>
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  % da receita
+                </span>
+              </div>
               <div className="space-y-1.5 text-sm tabular-nums">
-                <Linha rotulo="Pago pelos clientes" valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))} forte />
+                <Linha
+                  rotulo="Pago pelos clientes"
+                  valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))}
+                  pct={pctReceita(kpis.fatBruto)}
+                  forte
+                />
                 {(kpis.juros || 0) > 0 && (
                   <>
                     <Linha
                       rotulo="Juros de parcelamento"
                       valor={formatCurrency(kpis.juros)}
+                      pct={pctReceita(kpis.juros)}
                       negativo
                     />
                     <div className="border-t border-border/60 pt-1.5">
-                      <Linha rotulo="Receita" valor={formatCurrency(kpis.receita || 0)} forte />
+                      <Linha
+                        rotulo="Receita"
+                        valor={formatCurrency(kpis.receita || 0)}
+                        pct={pctReceita(kpis.receita)}
+                        forte
+                      />
                     </div>
                   </>
                 )}
                 <Linha
                   rotulo={`Taxa Payt (${(kpis.taxaPlatPct || 0).toFixed(2)}%)`}
                   valor={formatCurrency(kpis.taxaPlat || 0)}
+                  pct={pctReceita(kpis.taxaPlat)}
                   negativo
                 />
-                <Linha rotulo="Reembolsos" valor={formatCurrency(kpis.reembolsosV || 0)} negativo />
+                <Linha
+                  rotulo="Reembolsos"
+                  valor={formatCurrency(kpis.reembolsosV || 0)}
+                  pct={pctReceita(kpis.reembolsosV)}
+                  negativo
+                />
                 <Linha
                   rotulo={`Simples (${formatPercent(kpis.simplesPct || 0)})`}
                   valor={formatCurrency(kpis.impSimples || 0)}
+                  pct={pctReceita(kpis.impSimples)}
                   negativo
                 />
                 <Linha
                   rotulo={`Imposto Meta (${formatPercent(kpis.metaPct || 0)})`}
                   valor={formatCurrency(kpis.impMeta || 0)}
+                  pct={pctReceita(kpis.impMeta)}
                   negativo
                 />
-                <Linha rotulo="Investimento em ads" valor={formatCurrency(kpis.investimento || 0)} negativo />
+                <Linha
+                  rotulo="Investimento em ads"
+                  valor={formatCurrency(kpis.investimento || 0)}
+                  pct={pctReceita(kpis.investimento)}
+                  negativo
+                />
                 <div className="border-t border-border pt-1.5">
                   <Linha
                     rotulo="Lucro operacional"
                     valor={formatCurrency(kpis.lucro || 0)}
+                    pct={pctReceita(kpis.lucro)}
                     forte
                     cor={(kpis.lucro || 0) >= 0 ? "text-success" : "text-destructive"}
                   />
                 </div>
                 {(kpis.custoFixo || 0) > 0 && (
                   <>
-                    <Linha rotulo={`Custo fixo (${custoLabel()})`} valor={formatCurrency(kpis.custoFixo)} negativo />
+                    <Linha
+                      rotulo={`Custo fixo (${custoLabel()})`}
+                      valor={formatCurrency(kpis.custoFixo)}
+                      pct={pctReceita(kpis.custoFixo)}
+                      negativo
+                    />
                     <div className="border-t border-border pt-1.5">
                       <Linha
                         rotulo="Lucro c/ custo fixo"
                         valor={formatCurrency(kpis.lucroCC || 0)}
+                        pct={pctReceita(kpis.lucroCC)}
                         forte
                         cor={(kpis.lucroCC || 0) >= 0 ? "text-success" : "text-destructive"}
                       />
