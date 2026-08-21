@@ -331,7 +331,7 @@ export function ContasAnunciosTab() {
                         <span>
                           · 30 dias: ROAS {(sugestoes[c.id].roas_atual ?? 0).toFixed(2)}x ·
                           CPA {formatCurrency(sugestoes[c.id].cpa_atual ?? 0)} ·
-                          ticket {formatCurrency(sugestoes[c.id].ticket_medio)}
+                          AOV {formatCurrency(sugestoes[c.id].ticket_medio)}
                         </span>
                       )}
                     </div>

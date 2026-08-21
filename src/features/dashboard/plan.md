@@ -1203,3 +1203,42 @@ verdade sobre eles.
 - [x] **Workshop Buquê de Velas Rev1 / Rev2 / Rev3** confirmados como tráfego pela
       Jessica, fechando a lista: **zero vendas sem origem** nos últimos 30 dias, contra
       as 75 de R$ 7.359 de onde isto partiu
+
+## A atribuição passa a rodar sozinha
+
+`fn_resolver_conta_das_vendas` liga a venda à conta pelo `ad_id`; `fn_herdar_origem_do_upsell`
+dá ao upsell a conta da compra que o gerou. **Nenhuma das duas estava agendada** — não
+estavam em cron, nem no webhook, nem em caminho nenhum do código. Rodavam quando alguém
+as executava à mão, e é delas que dependem o filtro de CA, o CPA, o ROAS e as Tendências.
+
+- [x] `pg_cron` **`atribuicao-horaria`**, aos 10 minutos de cada hora, logo depois do
+      `meta-sync-horario`. A ordem importa: a venda chega antes de o anúncio aparecer nas
+      métricas, então quem chegou cedo demais só é ligado numa passada posterior — por
+      isso uma execução manual conserta o passado e não o amanhã. Ambas são idempotentes
+
+**Resíduo conhecido:** 41 vendas aprovadas (21/05 a 20/08) têm `ad_id` que não existe em
+`metricas_meta` em nenhum nível, então o cron não as alcança. São anúncios de contas que
+não são sincronizadas — `meta-insights-sync` só busca conta ativa, e onze estão desligadas.
+
+## AOV no lugar de "ticket médio"
+
+O divisor era a linha de venda, e um upsell é uma linha separada no mesmo carrinho. Isso
+inflava a contagem sem haver cliente novo: o CPA aparecia mais barato do que é e o valor
+por pedido, mais baixo.
+
+| Conta | Receita ÷ linhas *(antes)* | AOV sem upsell *(agora)* |
+|---|---|---|
+| Saponaria | R$ 89,27 | R$ 87,60 |
+| Saponaria Brasil - TSL | R$ 99,07 | R$ 96,13 |
+| Lembrancinha - TSL | R$ 118,26 | R$ 114,60 |
+| Workshop Buquê - TSL | R$ 67,37 | R$ 61,16 |
+
+Hoje a diferença é de 2% a 9%, pequena porque upsell ainda é raro — 13 de 739 vendas na
+Saponaria. **Mas o erro cresce exatamente quando o upsell melhorar**: é uma métrica que se
+degrada conforme o negócio evolui, e esse é o motivo de trocar agora e não quando doer.
+
+- [x] Mudam de denominador **AOV, Vendas, CPA e a conversão do checkout** — todas
+      respondem "quantos pedidos a conta trouxe"
+- [x] **Não** mudam Receita e ROAS: seguem somando o upsell, porque ele é receita que a
+      conta gerou de verdade. Por isso `Receita ÷ Vendas` na tela não bate com o AOV, e as
+      ajudas de cada métrica dizem isso

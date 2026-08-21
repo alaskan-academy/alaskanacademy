@@ -62,11 +62,11 @@ type Formato = "moeda" | "numero" | "x" | "pct";
 const METRICAS: Record<string, { formato: Formato; bomSubir: boolean | null; ajuda: string }> = {
   // Resultado
   ROAS:                    { formato: "x",      bomSubir: true,  ajuda: "Receita por real investido" },
-  "Ticket médio":          { formato: "moeda",  bomSubir: true,  ajuda: "Receita por venda" },
-  Receita:                 { formato: "moeda",  bomSubir: true,  ajuda: "Média por dia" },
-  Vendas:                  { formato: "numero", bomSubir: true,  ajuda: "Média por dia" },
+  AOV:                     { formato: "moeda",  bomSubir: true,  ajuda: "Valor médio do pedido, sem contar upsell — é o que a conta traz na compra inicial" },
+  Receita:                 { formato: "moeda",  bomSubir: true,  ajuda: "Média por dia, upsell incluído" },
+  Vendas:                  { formato: "numero", bomSubir: true,  ajuda: "Pedidos por dia. Upsell do mesmo carrinho não conta como venda nova" },
   Investimento:            { formato: "moeda",  bomSubir: null,  ajuda: "Média por dia. Gastar mais não é bom nem ruim — quem julga é o ROAS" },
-  CPA:                     { formato: "moeda",  bomSubir: false, ajuda: "Custo por venda" },
+  CPA:                     { formato: "moeda",  bomSubir: false, ajuda: "Custo por pedido — o upsell não entra no divisor, senão a aquisição sairia mais barata do que é" },
   // Leilão
   CPM:                     { formato: "moeda",  bomSubir: false, ajuda: "Custo por mil impressões — o que o Meta cobra" },
   CPC:                     { formato: "moeda",  bomSubir: false, ajuda: "Custo por clique" },
@@ -75,7 +75,7 @@ const METRICAS: Record<string, { formato: Formato; bomSubir: boolean | null; aju
   "Hook (3s)":             { formato: "pct",    bomSubir: true,  ajuda: "Quem passa dos 3 segundos de vídeo" },
   // Funil
   "Conexão da página":     { formato: "pct",    bomSubir: true,  ajuda: "Cliques que viram visita — abaixo de 80% indica página lenta" },
-  "Conversão do checkout": { formato: "pct",    bomSubir: true,  ajuda: "Checkouts iniciados que viram venda" },
+  "Conversão do checkout": { formato: "pct",    bomSubir: true,  ajuda: "Checkouts iniciados que viram pedido" },
 };
 
 /**
@@ -84,7 +84,7 @@ const METRICAS: Record<string, { formato: Formato; bomSubir: boolean | null; aju
  * caindo junto é criativo cansado; com a conversão do checkout caindo é outra coisa.
  */
 const GRUPOS: { titulo: string; metricas: string[] }[] = [
-  { titulo: "Resultado", metricas: ["ROAS", "Ticket médio", "Receita", "Vendas", "Investimento", "CPA"] },
+  { titulo: "Resultado", metricas: ["ROAS", "AOV", "Receita", "Vendas", "Investimento", "CPA"] },
   { titulo: "Leilão",    metricas: ["CPM", "CPC"] },
   { titulo: "Criativo",  metricas: ["CTR", "Hook (3s)"] },
   { titulo: "Funil",     metricas: ["Conexão da página", "Conversão do checkout"] },
