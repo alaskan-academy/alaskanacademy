@@ -501,3 +501,47 @@ Atribuindo essas vendas à conta, o ROAS dela seria **1,60** — acima da média
 
 - [x] **Alerta `conta_sem_venda`** criado a partir do caso: conta que gasta, o Meta reporta compra, e nada chega atribuído. Já dispara nomeando "Saponaria"
 - [ ] **Configurar a UTM do checkout "Saponaria Brasil - Desconto de Aula"** — ação no painel da Payt. É a correção de maior valor pendente: destrava R$ 48 mil de atribuição e o ROAS de duas contas
+
+### Correção retroativa do "Desconto de Aula"
+
+UTM configurada no checkout (ação no painel da Payt). O ajuste do histórico foi feito
+em duas partes, com escopos diferentes porque a evidência sustenta uma e não a outra.
+
+**1. Segmento — todas as 1.219 vendas.** Nova coluna `vendas.trafego_pago` marca venda
+que se sabe vir de anúncio mesmo sem `ad_id`. Antes elas caíam em back-end, e o
+segmento Tráfego aparecia deficitário por carregar 100% do investimento contra metade
+da receita que de fato gerou.
+
+| Segmento Tráfego, agosto | Antes | Depois |
+|---|---|---|
+| Vendas | 969 | **1.176** |
+| Receita | R$ 87.340,15 | **R$ 104.985,02** |
+| ROAS | 0,83 | **1,43** |
+| Margem operacional | −44,79% | **+6,20%** |
+
+**2. Conta — só as 938 de julho em diante.** O mês a mês delimita onde a atribuição
+se sustenta:
+
+| Mês | Vendas no link | Rastreadas "Saponaria" | Rastreadas "Brasil-TSL" | Meta reporta |
+|---|---|---|---|---|
+| 05/26 | 119 | 97 | 0 | 791 |
+| 06/26 | 162 | 172 | 16 | 457 |
+| 07/26 | 388 | **1** | 262 | 471 |
+| 08/26 | 550 | **0** | 269 | 629 |
+
+Em maio e junho a conta era rastreada normalmente — os anúncios dela levavam UTM.
+De julho em diante ela zera enquanto o link dispara: foi quando a parametrização
+quebrou. Maio e junho ficam como tráfego pago sem conta, porque naqueles meses a
+conta tinha vendas rastreadas próprias e não dá para dizer que as do link também eram.
+
+Resultado: **conta Saponaria em agosto passa de 0 vendas e ROAS indefinido para 550
+vendas, R$ 48.042,40 e ROAS 1,60** — de suposto buraco sem fundo a uma das melhores.
+
+**O que não foi feito, deliberadamente:** ratear as vendas de maio–junho entre as
+contas por participação no gasto. As duas contas Saponaria gastaram todos os dias do
+período, e os links irmãos com rastreio aparecem servidos pelas duas — não existe dia
+em que só uma rodou. Ratear ali seria modelagem vestida de dado, que é o defeito que
+este projeto passou o dia corrigindo.
+
+- [ ] Confirmar, na primeira venda pós-correção, que o `ad_id` passou a chegar. Se
+      chegar, `trafego_pago` fica só como marca histórica e a UTM resolve na origem

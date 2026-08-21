@@ -32,11 +32,17 @@ import {
   taxaPlataformaPct,
 } from "@/lib/financeiro";
 
-/** Origem da venda. Tráfego = venda com ad_id do Meta; back-end = sem ad_id. */
+/**
+ * Origem da venda.
+ *
+ * Tráfego é venda com `ad_id` do Meta **ou** marcada em `trafego_pago` — o segundo
+ * caso cobre o checkout que rodou sem UTM e cujas vendas, por isso, caíam em
+ * back-end e faziam o segmento pago parecer deficitário.
+ */
 type Segmento = "trafego" | "backend" | "misto";
 
 const SEGMENTOS: { key: Segmento; label: string; descricao: string }[] = [
-  { key: "trafego", label: "Tráfego", descricao: "Vendas atribuídas a um anúncio do Meta" },
+  { key: "trafego", label: "Tráfego", descricao: "Vendas vindas de anúncio, inclusive as de link que rodou sem UTM" },
   { key: "backend", label: "Back-end", descricao: "Recompra, e-mail, orgânico e área de membros" },
   { key: "misto",   label: "Misto",    descricao: "Todas as vendas do período" },
 ];
