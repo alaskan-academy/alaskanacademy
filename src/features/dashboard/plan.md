@@ -1242,3 +1242,27 @@ degrada conforme o negócio evolui, e esse é o motivo de trocar agora e não qu
 - [x] **Não** mudam Receita e ROAS: seguem somando o upsell, porque ele é receita que a
       conta gerou de verdade. Por isso `Receita ÷ Vendas` na tela não bate com o AOV, e as
       ajudas de cada métrica dizem isso
+
+### O `ativo` escrito por duas telas — e a correção do meu próprio alerta
+
+`toggleCA` em `DashboardsSettings` gravava `ativo: false` junto com o desvínculo do
+funil. Vínculo com funil e coleta de métricas são decisões independentes, e a mesma
+decisão em Contas de Anúncios avisa o que se perde enquanto esta não avisava nada.
+
+- [x] `toggleCA` escreve só `funil_id`, com `.select()` para não comemorar um UPDATE
+      barrado por RLS. O estado da coleta virou informação na linha ("coleta desligada"),
+      não parte do vínculo — antes uma CA vinculada com a coleta desligada aparecia como
+      não vinculada
+
+**Mas o alerta que eu dei estava errado na parte que importava.** Eu disse "em
+Configurações → Dashboards, desvincular uma CA…" tendo lido só o código: fui verificar e
+`DashboardsSettings` **não é importado por nada**. Não existe seção "Dashboards" em
+Configurações. O defeito era real no arquivo e inalcançável na tela.
+
+Sobra um componente de ~380 linhas que ninguém abre, mexendo em `ad_accounts` e `funis` —
+com `funil_id` nulo nas 18 contas e os 22 funis inativos. Candidato a remoção pelo mesmo
+critério da tela Ofertas Payt.
+
+**A lição:** "o código faz X" e "a usuária consegue fazer X" são afirmações diferentes, e
+eu apresentei a primeira como se fosse a segunda. Vale o mesmo hábito de sempre — abrir a
+tela, não só ler o arquivo.

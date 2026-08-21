@@ -153,13 +153,36 @@ export default function DashboardsSettings() {
     setAdAccounts(data || []);
   };
 
+  /**
+   * Vincula e desvincula a CA do funil — e **só isso**.
+   *
+   * Antes esta função também escrevia `ativo`, que é o interruptor da coleta de
+   * métricas do Meta: desvincular uma CA de um funil parava de trazer os dados dela,
+   * em silêncio e sem confirmação, enquanto a mesma decisão em Contas de Anúncios
+   * avisa o que se perde. Duas telas escrevendo o mesmo campo com sentidos diferentes
+   * — a terceira vez que esse padrão aparece no projeto, e nas outras duas uma das
+   * cópias estava errada.
+   *
+   * Aqui a errada era esta: vínculo com funil e coleta de dados são decisões
+   * independentes.
+   */
   const toggleCA = async (ca: AdAccount, funil: Funil) => {
-    const isLinked = ca.funil_id === funil.id && ca.ativo;
-    await supabase.from('ad_accounts').update({
-      funil_id: isLinked ? null : funil.id,
-      ativo: !isLinked,
-    }).eq('id', ca.id);
-    // Refresh
+    const isLinked = ca.funil_id === funil.id;
+    const { data: alteradas, error } = await supabase
+      .from('ad_accounts')
+      .update({ funil_id: isLinked ? null : funil.id })
+      .eq('id', ca.id)
+      .select('id');
+
+    if (error || !alteradas?.length) {
+      toast({
+        title: 'Não salvou',
+        description: error?.message ?? 'Nenhuma linha alterada — provável falta de permissão.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const { data } = await supabase.from('ad_accounts').select('id,account_id,nome,ativo,funil_id');
     setAdAccounts(data || []);
   };
@@ -298,12 +321,20 @@ export default function DashboardsSettings() {
                 <p className="text-sm text-muted-foreground text-center py-4">Nenhuma conta de anúncio encontrada</p>
               ) : (
                 adAccounts.map((ca) => {
-                  const isLinked = ca.funil_id === casFunil.id && ca.ativo;
+                  // O vínculo é só o `funil_id`. Incluir `ativo` aqui fazia uma CA
+                  // vinculada mas com a coleta desligada aparecer como não vinculada.
+                  const isLinked = ca.funil_id === casFunil.id;
                   return (
                     <div key={ca.id} className="flex items-center justify-between bg-secondary/50 rounded-lg px-3 py-2.5">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground truncate">{ca.nome || ca.account_id}</div>
-                        <div className="text-xs text-muted-foreground">{ca.account_id}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {ca.account_id}
+                          {/* A coleta é decisão de outra tela; aqui só se informa. */}
+                          {!ca.ativo && (
+                            <span className="ml-1.5 text-amber-400/80">· coleta desligada</span>
+                          )}
+                        </div>
                       </div>
                       <Switch
                         checked={isLinked}
