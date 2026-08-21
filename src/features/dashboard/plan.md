@@ -1393,3 +1393,35 @@ com as três exportações cruzadas.
       A exceção é divergência não resolvida, que continua visível
 - [x] O texto passou a pedir o que de fato funciona: exportar e mandar no chat, porque a
       comparação venda a venda não cabe num formulário
+
+### `{{ad.id}}` literal: limpo, e o que a limpeza custou de propósito
+
+- [x] `ad_id_meta` zerado nas 59 vendas que traziam a macro sem substituir. O nome do
+      anúncio segue em `utm_content` e o payload cru em `payload_raw`, então nada
+      recuperável se perde
+- [x] "Workshop Buquê de Velas VSL 01 Rev01" classificado como tráfego; os outros cinco
+      já estavam. A "Fábrica das Velas — Desconto e Acesso Vitalício" fica em recuperação
+      com `trafego_pago = false`, que é o "back" que a Jessica confirmou
+
+**Por que zerar em vez de guardar:** enquanto o texto literal estava em `ad_id_meta`, a
+venda *parecia* ter origem — entrava nas contagens de "com anúncio" e, pior, qualquer
+agrupamento por `ad_id` inventaria um anúncio fantasma somando vendas de dezesseis
+checkouts diferentes. A origem dessas vendas passa a vir de `checkouts_origem`, que é onde
+ela de fato se sabe.
+
+**Custo deliberado:** agosto cai de 653 para 637 vendas com anúncio e deixa de bater com a
+Payt, que também guarda a macro literal. A divergência é escolhida, não um defeito — e fica
+registrada aqui para a próxima conferência não a tratar como achado novo. (O comentário da
+migração previu 634; o número real é 637.)
+
+**Correção de escopo:** relatei seis checkouts afetados, que eram a fatia de agosto. Na
+base inteira, desde 25/03, são dezesseis. Oito seguem sem classificação:
+
+| Checkout | Vendas com a macro |
+|---|---|
+| Workshop Buquê de Velas | 16 |
+| Curso Velas Perfeitas 2.0 — Desconto e Acesso Vitalício | 5 |
+| Saponaria Brasil | 4 |
+| Saponaria Brasil Rev1 | 4 |
+| Curso Velas Perfeitas 2.0 — Desconto para quem já viu | 2 |
+| Curso Velas Perfeitas 2.0 · Saponaria Brasil Revisão · Rev2 SUPER OFERTA · Cosmética Natural · (sem link) | 1 cada |
