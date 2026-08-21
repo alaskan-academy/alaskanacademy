@@ -804,3 +804,45 @@ até `link` com UTM completa.
       ao lado. Era isso que confundia: o bruto parecia receita perdida e um terço dele
       não era. Layout em duas colunas em vez de quatro, porque o card divide a largura
       com outros dois e sobram ~250px
+
+### Um PIX a mais não é uma oportunidade a mais
+
+Pergunta da usuária: *"está considerando 1 tentativa por produto? pois normalmente a
+galera gera mais de um pix de uma vez"*. Estava — e inflava o número. Medido em 01–21/08:
+
+| | Contando tentativas | Contando pessoa+produto |
+|---|---|---|
+| Registros | 455 | **385** |
+| Valor | R$ 51.663,56 | **R$ 43.244,16** |
+| Inflação | — | **R$ 7.661,34 (14,8%)** |
+
+53 combinações tinham tentativa repetida. Se alguém gera três PIX de R$ 67 e não paga
+nenhum, a oportunidade perdida é R$ 67, não R$ 201.
+
+- [x] `nao_aprovadas` e `recuperadas` passam a deduplicar por pessoa+produto, ficando
+      com a tentativa mais recente — o estado final daquela intenção de compra. Quem
+      não tem `cliente_id` cai no `pedido_id`, que é único: sem identificação não há
+      como agrupar, e supor que são a mesma pessoa seria pior que contar duas vezes
+
+### O "Desconto de Aula" continua sem UTM, e o motivo não é o checkout
+
+A usuária configurou e na Utmify aparece certo, mas para nós não. Comparando os eventos
+crus de hoje:
+
+| Link | `link.sources` | Com UTM |
+|---|---|---|
+| **Saponaria Brasil - Desconto de Aula** | array vazio | **0 de 56** |
+| Fábrica das Velas — Vitalício | objeto | 11 de 11 |
+| Saponaria Brasil Rev5 | objeto | 8 de 8 |
+| **Assinatura** | **os dois** | **2 de 4** |
+
+O "Assinatura" aparecendo das duas formas é o que resolve: **não é configuração do
+checkout, é como o visitante chega nele.** Quando a pessoa entra na URL do checkout já
+com os parâmetros, a Payt registra em `link.sources`; quando entra sem, vem `[]`.
+
+A Utmify enxerga porque rastreia por script no navegador, independente da URL do
+checkout — por isso as duas fontes discordam sem que nenhuma esteja quebrada.
+
+- [ ] **O que falta é no botão da VSL que leva ao checkout**, não no checkout. Ele
+      precisa repassar a query string, com `utm_content` no formato
+      `Nome do Ad|{{ad.id}}` — é dele que o `ad_id` é extraído
