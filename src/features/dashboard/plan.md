@@ -931,3 +931,40 @@ capturados desde a v26 — todos casam com a venda original, e herdaram
 **Efeito em agosto:** 43 dos 49 upsells passam para tráfego (R$ 9.986,30 de
 R$ 11.111,70), e o ROAS do segmento vai de **1,43 para 1,56**. Os 6 que ficaram são de
 carrinhos cujo pai também não veio de anúncio.
+
+### Back-end não paga imposto de mídia que não comprou
+
+O investimento já era zerado no back-end, mas o **imposto sobre o Meta** não: ele era
+rateado pela participação no faturamento. É imposto sobre o *gasto* com anúncio — sem
+gasto, não há imposto. O back-end pagava mídia alheia e sua margem saía menor do que é.
+
+Em 21/08 a margem do segmento vai de **32,67% para 83,85%** com a correção.
+
+### Dois ROAS, porque são duas perguntas
+
+- **1,56x** com o carrinho inteiro — "o funil fecha?", o padrão em resposta direta
+- **1,43x** sem upsell — "o anúncio se paga sozinho?", o número de quem escala mídia
+
+Order bump fica dentro dos dois de propósito: está no mesmo carrinho e vale
+R$ 26.372,21 contra R$ 9.986,30 do upsell — quase três vezes mais. Tirá-lo de um deles
+seria arbitrário, e é justamente o argumento contra mover o upsell para back-end.
+
+### Testes de `fn_overview()`
+
+O buraco estrutural apontado na revisão: a lógica migrou para o SQL e os testes ficaram
+no JavaScript. `supabase/tests/fn_overview.test.sql` monta um cenário à mão, roda a
+função e confere 11 asserções — cada uma é um defeito que apareceu neste dia:
+
+- receita soma só aprovadas, e o estorno não é descontado duas vezes
+- a perda cai para `valor_total` quando `valor_reembolsado` está zerado
+- três PIX da mesma pessoa contam uma vez, e valem 60 e não 180
+- o upsell herda o carrinho do pai e entra em tráfego
+- tráfego + back-end fecham o misto
+- a origem sai legível, sem o sufixo `jLj6…`
+- o filtro por conta traz a venda e o upsell que herdou a conta
+
+Roda dentro de `BEGIN … ROLLBACK`, então não suja o banco.
+
+**Nota de execução:** rodei pelo MCP, que não respeita a transação, e os dados de teste
+ficaram gravados. Removidos na sequência, com as 1.402 aprovadas de agosto conferidas
+antes e depois. Pelo `psql` o rollback funciona; pelo MCP é preciso limpar na mão.

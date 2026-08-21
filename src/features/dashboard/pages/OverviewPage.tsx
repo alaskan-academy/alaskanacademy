@@ -287,8 +287,13 @@ export default function OverviewPage() {
 
     const fiscal = d.fiscal ?? {};
     const impSimples = num(fiscal.imposto_simples) * share;
-    const impMeta = num(fiscal.imposto_meta) * share;
-    const investimento = segmento === "backend" ? 0 : num(fiscal.investimento_meta);
+    // Custo de anúncio não existe no back-end, e o imposto sobre ele também não. O
+    // imposto do Meta incide sobre o gasto, não sobre a receita — ratear pela
+    // participação no faturamento fazia o back-end pagar imposto de mídia que ele
+    // nunca comprou, e a margem dele saía menor do que é.
+    const eBackend = segmento === "backend";
+    const investimento = eBackend ? 0 : num(fiscal.investimento_meta);
+    const impMeta = eBackend ? 0 : num(fiscal.imposto_meta) * share;
     const simplesPct = num(fiscal.simples_pct);
     const metaPct = num(fiscal.meta_pct);
     const custoMensal = num(fiscal.custo_fixo_mensal);
@@ -316,6 +321,11 @@ export default function OverviewPage() {
 
     const qtdAprov = num(d.qtd_aprovadas);
     const roasPeriodo = roas(receita, investimento);
+    // Dois ROAS porque são duas perguntas. Sem upsell responde "o anúncio se paga com
+    // a oferta e os bumps?"; com upsell responde "o funil inteiro fecha?". O bump fica
+    // dentro dos dois: está no mesmo carrinho e é quase três vezes maior que o upsell,
+    // então tirá-lo de um deles seria arbitrário.
+    const roasSemUpsell = roas(num(d.receita_sem_upsell), investimento);
     const ticketMedioPeriodo = ticketMedio(receita, qtdAprov);
     const cpaPeriodo = cpa(investimento, qtdAprov);
 
@@ -428,7 +438,7 @@ export default function OverviewPage() {
 
     setKpis({
       juros, receita, fatBruto, fatLiquido, lucro, lucroCC,
-      cpa: cpaPeriodo, roas: roasPeriodo, ticketMedio: ticketMedioPeriodo,
+      cpa: cpaPeriodo, roas: roasPeriodo, roasSemUpsell, ticketMedio: ticketMedioPeriodo,
       taxaPlat, taxaPlatPct, impSimples, impMeta,
       investimento, custoFixo, custoMensal,
       margemPct, margemCcPct, simplesPct, metaPct,
@@ -813,10 +823,22 @@ export default function OverviewPage() {
                       : undefined
                   }
                 />
+                {/* Dois ROAS porque são duas perguntas. O de cima conta o carrinho
+                    inteiro e responde "o funil fecha?" — é o padrão em resposta direta.
+                    O de baixo tira o upsell e responde "o anúncio se paga sozinho?",
+                    que é o número de quem decide onde escalar mídia.
+
+                    Order bump fica dentro dos dois: está no mesmo carrinho e é quase
+                    três vezes maior que o upsell, então tirá-lo de um seria arbitrário. */}
                 <Metrica
                   rotulo="ROAS"
                   valor={kpis.roas ? `${kpis.roas.toFixed(2)}x` : "—"}
                   cor={kpis.roas >= 3 ? "text-success" : kpis.roas >= 1 ? "text-warning" : undefined}
+                  detalhe={
+                    kpis.roas && kpis.roasSemUpsell
+                      ? `${kpis.roasSemUpsell.toFixed(2)}x sem upsell`
+                      : undefined
+                  }
                   rodape={kpis.roas ? <VarBadge atual={kpis.roas} anterior={kpisAnt.roas} /> : undefined}
                 />
                 <Metrica
