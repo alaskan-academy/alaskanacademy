@@ -882,3 +882,26 @@ de back-end por procedência que hoje não existe na tela — e mostra que o Cha
 fonte de venda em agosto.
 
 - [ ] Usar isso para abrir o segmento back-end por origem, em vez de tratá-lo como bloco único
+
+### Back-end aberto por origem
+
+O bloco de R$ 24 mil que só dizia "back-end" agora diz de onde vem, em agosto:
+
+| Origem | Vendas | Receita | % |
+|---|---|---|---|
+| Upsell (pós-checkout) | 48 | R$ 10.814,70 | 44,8% |
+| (sem origem) | 49 | R$ 4.846,75 | 20,1% |
+| whatsapp | 37 | R$ 3.031,11 | 12,6% |
+| instagram | 19 | R$ 1.798,18 | 7,5% |
+| site-handify | 11 | R$ 1.598,06 | 6,6% |
+| area-membros-handify | 19 | R$ 1.513,60 | 6,3% |
+| **chatgpt.com** | 3 | R$ 287,21 | 1,2% |
+| organic | 2 | R$ 157,73 | 0,7% |
+| Voxuy | 1 | R$ 66,33 | 0,3% |
+
+Upsell aparece separado porque acontece depois do checkout e nunca terá origem própria.
+Somá-lo ao "(sem origem)" fazia esse balaio ser 65% do back-end sem dizer nada — o que
+seria repetir, em escala menor, o problema que o painel veio resolver.
+
+- [ ] Os 20,1% "(sem origem)" continuam sem explicação. Vale investigar antes de tratar
+      como resíduo aceitável

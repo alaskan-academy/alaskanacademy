@@ -227,6 +227,7 @@ export default function OverviewPage() {
   const [prodData, setProdData] = useState<any[]>([]);
   const [serieDiaria, setSerieDiaria] = useState<any[]>([]);
   const [linkData, setLinkData] = useState<any[]>([]);
+  const [origemData, setOrigemData] = useState<any[]>([]);
   const [remData, setRemData] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
@@ -394,6 +395,17 @@ export default function OverviewPage() {
         vendas: num(l.vendas),
         valor: num(l.valor),
         pct_rastreado: num(l.pct_rastreado),
+      })),
+    );
+
+    // Back-end aberto por procedência. O `utm_source` da Payt vem como origem colada
+    // num identificador de sessão ("whatsapp" + "jLj6a..."), e o banco já devolve
+    // limpo — sem isso o back-end era um bloco de R$ 23 mil sem dizer de onde.
+    setOrigemData(
+      (d.por_origem ?? []).map((o: any) => ({
+        origem: o.origem,
+        vendas: num(o.vendas),
+        receita: num(o.receita),
       })),
     );
 
@@ -886,6 +898,33 @@ export default function OverviewPage() {
                     />
                   </Painel>
                 </div>
+
+                {/* O back-end deixa de ser um bloco só. A origem vem do `utm_source`
+                    da Payt, que chega como procedência colada num identificador de
+                    sessão e o banco devolve já limpa. Upsell aparece separado porque
+                    acontece depois do checkout e nunca terá origem própria — somá-lo
+                    ao "sem origem" fazia esse balaio ser 65% do back-end sem dizer nada. */}
+                {origemData.length > 0 && (
+                  <Painel titulo="Back-end por origem">
+                    <Tabela
+                      colunas={["Origem", "Vendas", "Receita", "% do back-end"]}
+                      vazio="Sem vendas de back-end no período"
+                      linhas={origemData.map((r, i) => {
+                        const pct = (kpis.valBackend || 0) > 0
+                          ? (r.receita / kpis.valBackend) * 100
+                          : 0;
+                        return (
+                          <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-secondary/40">
+                            <td className="px-4 py-2 text-foreground">{r.origem}</td>
+                            <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(r.vendas)}</td>
+                            <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(r.receita)}</td>
+                            <td className="px-4 py-2 tabular-nums text-muted-foreground">{pct.toFixed(1)}%</td>
+                          </tr>
+                        );
+                      })}
+                    />
+                  </Painel>
+                )}
               </div>
             )}
 
