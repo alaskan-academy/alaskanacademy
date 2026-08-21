@@ -968,3 +968,19 @@ Roda dentro de `BEGIN … ROLLBACK`, então não suja o banco.
 **Nota de execução:** rodei pelo MCP, que não respeita a transação, e os dados de teste
 ficaram gravados. Removidos na sequência, com as 1.402 aprovadas de agosto conferidas
 antes e depois. Pelo `psql` o rollback funciona; pelo MCP é preciso limpar na mão.
+
+### A UTM do "Desconto de Aula" voltou — confirmado em 21/08 às 11h50
+
+O ciclo fechou. A venda `X9BEDGX` chegou com `link.sources` como objeto (era array
+vazio em 56 de 56 pela manhã), `ad_id_meta = 120250395750880323` e
+`utm_content = "AD 045 H05 V01"`. Rodada a resolução de conta, ela ligou em
+**"Saponaria"** — a conta que aparecia como buraco sem fundo, gastando R$ 29.937,87 em
+agosto com zero vendas atribuídas.
+
+**O remendo fica ligado por decisão da usuária.** Uma venda não é amostra: a das 11h15
+ainda veio sem `ad_id`, e pode ser tanto outro caminho de entrada quanto a correção
+pegando aos poucos. A vigilância diária das 11h confirma com alguns dias de dado e
+avisa quando `links_trafego_sem_utm` puder ser esvaziada.
+
+Enquanto isso o remendo é inofensivo: ele só age na ausência de `ad_id`, então a venda
+que chega rastreada passa por ele sem ser tocada.
