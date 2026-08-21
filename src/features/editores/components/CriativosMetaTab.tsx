@@ -29,7 +29,21 @@ import { cn } from '@/lib/utils';
  *   validada; a tela diz isso em vez de mostrar o número como se fosse conclusão.
  */
 
-type Vinculo = 'confirmado' | 'sugerido' | 'ambiguo' | 'sem_card';
+/**
+ * Cinco estados porque são cinco problemas diferentes, cada um com uma saída própria.
+ * Juntá-los em "sem dono" fazia a tela dizer 83 onde o número real de anúncios sem card
+ * é 11 — e escondia a hipótese de seis que tinham card, só não tinham responsável.
+ */
+type Vinculo = 'confirmado' | 'sugerido' | 'ambiguo' | 'sem_responsavel' | 'sem_card' | 'fora_do_recorte';
+
+const VINCULO: Record<Vinculo, { curto: string; comoResolver: string }> = {
+  confirmado:      { curto: 'confirmado',        comoResolver: '' },
+  sugerido:        { curto: '',                  comoResolver: '' },
+  ambiguo:         { curto: 'vários editores',   comoResolver: 'cards de editores diferentes usam este nome — só ligando ao card certo para saber de quem é' },
+  sem_responsavel: { curto: 'sem responsável',   comoResolver: 'o card existe e não tem editor atribuído — isso se resolve no card, em Produção' },
+  sem_card:        { curto: 'sem card',          comoResolver: 'nenhum card postado do tipo criativo tem este nome' },
+  fora_do_recorte: { curto: 'card arquivado',    comoResolver: 'existe card com este nome, mas arquivado ou de outro tipo' },
+};
 
 interface Anuncio {
   ad_id: string; ad_nome: string; conta_id: string; conta: string;
@@ -202,7 +216,16 @@ export function CriativosMetaTab() {
     return [...m.entries()].sort((x, y) => x[1].localeCompare(y[1]));
   }, [dados]);
 
-  const pendentes = dados.filter(a => a.vinculo === 'ambiguo' || a.vinculo === 'sem_card');
+  /** Agrupado por problema: cada um se resolve de um jeito diferente. */
+  const pendentes = useMemo(() => {
+    const g: Record<string, Anuncio[]> = {};
+    dados.forEach(a => {
+      if (a.vinculo === 'sugerido' || a.vinculo === 'confirmado') return;
+      (g[a.vinculo] ??= []).push(a);
+    });
+    return g;
+  }, [dados]);
+  const totalPendentes = Object.values(pendentes).reduce((s, l) => s + l.length, 0);
 
   const contasCegas = useMemo(() => {
     const m = new Map<string, number>();
@@ -218,7 +241,7 @@ export function CriativosMetaTab() {
     if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
     if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
     if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
-    if (soPendentes) l = l.filter(a => a.vinculo === 'ambiguo' || a.vinculo === 'sem_card');
+    if (soPendentes) l = l.filter(a => a.vinculo !== 'sugerido' && a.vinculo !== 'confirmado');
     if (busca.trim()) {
       const b = busca.trim().toLowerCase();
       l = l.filter(a => a.ad_nome?.toLowerCase().includes(b)
@@ -278,18 +301,23 @@ export function CriativosMetaTab() {
         </p>
       </div>
 
-      {pendentes.length > 0 && !loading && (
+      {totalPendentes > 0 && !loading && (
         <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-200/90">
-            <span className="text-amber-100">
-              {pendentes.length} anúncio{pendentes.length > 1 ? 's' : ''} sem card de Produção
-            </span>{' '}
-            — {formatCurrency(pendentes.reduce((s, a) => s + a.investimento, 0))} investidos que
-            não estão creditados a ninguém. Sem o card não dá para saber de quem é o anúncio nem
-            qual era a hipótese: o nome bate com cards de editores diferentes, ou não existe card
-            postado com esse nome.
-          </p>
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="text-xs text-amber-100">
+              {totalPendentes} anúncio{totalPendentes > 1 ? 's' : ''} sem editor identificado
+            </p>
+            {(Object.entries(pendentes) as [Vinculo, Anuncio[]][])
+              .sort((a, b) => b[1].length - a[1].length)
+              .map(([v, lista]) => (
+                <p key={v} className="text-[11px] leading-relaxed text-amber-200/80">
+                  <span className="tabular-nums text-amber-100">{lista.length}</span>{' '}
+                  ({formatCurrency(lista.reduce((s, a) => s + a.investimento, 0))}) —{' '}
+                  {VINCULO[v].comoResolver}
+                </p>
+              ))}
+          </div>
           <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs"
                   onClick={() => setSoPendentes(v => !v)}>
             {soPendentes ? 'Ver todos' : 'Ver só esses'}
@@ -473,7 +501,9 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
         <td className="max-w-[130px] px-3 py-2">
           {a.editor
             ? <span className="truncate text-xs text-muted-foreground">{a.editor}</span>
-            : <span className="text-xs text-amber-400">sem card</span>}
+            : <span className="text-xs text-amber-400" title={VINCULO[a.vinculo].comoResolver}>
+                {VINCULO[a.vinculo].curto}
+              </span>}
         </td>
         <td className="px-3 py-2 text-right tabular-nums text-foreground">{formatCurrency(a.investimento)}</td>
         <td className="px-3 py-2 text-right">
@@ -520,7 +550,7 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
               ) : (
                 <span className="text-muted-foreground/60">
                   {semCard
-                    ? 'este anúncio não está ligado a nenhum card de Produção — sem isso não dá para saber de quem é nem o que estava sendo testado'
+                    ? VINCULO[a.vinculo].comoResolver || 'sem card ligado a este anúncio'
                     : 'o card existe mas não registrou hipótese'}
                 </span>
               )}

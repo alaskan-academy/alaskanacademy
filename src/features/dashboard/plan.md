@@ -1500,3 +1500,32 @@ Quatro problemas apontados pela Jessica, todos procedentes.
 não tem taxa — eu tratei todas as etapas como percentual e o resultado parecia dado
 faltando onde havia dado. Os 22% de anúncios realmente sem hipótese são os sem card; o
 resto das métricas está completo (0% sem hook, retenção, conexão ou checkout).
+
+### "Todos têm card" — e tinham mesmo
+
+A Jessica olhou a tela e disse que todos os anúncios têm card. Fui conferir: ela estava
+certa, e o erro era do casamento, em dois pontos somados.
+
+**O nome era comparado literalmente.** O Meta acrescenta "— Cópia" ao duplicar um anúncio,
+e o card fica com o nome original. Comparando texto puro, "AD 033 H01 V01 — Cópia" não
+achava o card "AD 033 H01 V01" que estava lá o tempo todo.
+
+**E o casamento exigia responsável no card.** Card sem responsável é card mesmo assim: tem
+hipótese, projeto, avaliação. Exigindo editor, eu escondia tudo isso e dizia "sem card"
+para seis anúncios que tinham card — inclusive a hipótese deles, que era o ponto da tela.
+
+| | Antes | Depois |
+|---|---|---|
+| Resolve para 1 editor | 293 | **295** |
+| Cards de editores diferentes | 61 | 64 |
+| Card sem responsável | *(dizia "sem card")* | 6 |
+| **Sem card nenhum** | **22** | **11** |
+
+- [x] `fn_nome_criativo` normaliza o nome antes de comparar
+- [x] Cards sem responsável passam a casar, com estado próprio
+- [x] Cinco estados no lugar de dois, porque são cinco problemas com saídas diferentes:
+      ligar ao card certo, atribuir editor em Produção, criar o card, ou desarquivar
+
+**A lição:** "83 anúncios sem dono" era um número que parecia medir a bagunça do cadastro
+e media a rigidez do meu casamento. Um agregado que junta causas diferentes esconde que
+uma delas é minha.
