@@ -1425,3 +1425,55 @@ base inteira, desde 25/03, são dezesseis. Oito seguem sem classificação:
 | Saponaria Brasil Rev1 | 4 |
 | Curso Velas Perfeitas 2.0 — Desconto para quem já viu | 2 |
 | Curso Velas Perfeitas 2.0 · Saponaria Brasil Revisão · Rev2 SUPER OFERTA · Cosmética Natural · (sem link) | 1 cada |
+
+## Criativos Meta, refeito
+
+A tela era uma tabela de gestor com 908 linhas de código, sincronismo com o Notion e
+atribuição que dependia de um campo digitado à mão. Refeita para o público que ela de
+fato tem: **o editor, olhando os próprios anúncios e os dos outros, para saber se a
+hipótese que ele escreveu no card se sustentou.**
+
+### O vínculo com o anúncio virou explícito
+
+Casar card com anúncio **pelo nome** acerta 92,6% das vezes. O problema são os outros:
+em **18% dos anúncios o mesmo nome existe em cards de editores diferentes**. A saída
+tentadora — "pega o card mais recente" — sempre devolve alguém, nunca acusa erro, e em
+quase um quinto das vezes credita o trabalho à pessoa errada.
+
+- [x] `producoes.ad_id_meta`, com índice único parcial. O casamento por nome vira
+      **sugestão**; confirmado uma vez, está certo para sempre
+- [x] A tela mostra o estado do vínculo — confirmado, pelo nome, sem dono, sem card — e
+      um diálogo para escolher o card certo entre os candidatos
+
+Recorte dos cards elegíveis, definido pela Jessica: `fase = 'postado'` e
+`tipo = 'criativo'`. Em 60 dias isso dá 380 anúncios com editor único, 94 ambíguos e 53
+sem card.
+
+### O defeito que a própria tela revelou ao ser construída
+
+O primeiro anúncio da lista mostrava **R$ 10.968 investidos e ROAS 0,00x em vermelho**.
+O anúncio não é ruim: a conta "Saponaria" tem **1% das 735 vendas com anúncio
+identificado**, porque o checkout "Desconto de Aula" ficou sem UTM o mês inteiro. As
+outras cinco contas estão em 100%.
+
+Zero em vermelho ao lado de onze mil reais é a pior forma de errar — parece conclusão, é
+ausência de dado.
+
+- [x] `fn_criativos_meta` devolve a taxa de atribuição da conta; abaixo de 80% a tela
+      pinta receita, ROAS e CPA em cinza e diz o porquê. Hook, CTR e retenção seguem em
+      cor, porque não dependem da venda
+
+### Decisões de produto
+
+| | |
+|---|---|
+| Vendas | compra principal + order bumps; **upsell não entra** — é receita do funil, não do criativo |
+| Referência | a própria conta no mesmo período; "CTR 6,2%" sozinho não diz nada |
+| Amostra | menos de 1.000 impressões ou 3 vendas aparece em cinza, com o motivo |
+| Ranking de editores | **não existe** — o editor não escolhe oferta nem checkout |
+| "Validado" | só leitura; quem marca é o sócio, em Criativos → Avaliação |
+| "Meus anúncios" | filtro opcional, desligado por padrão: o editor também vem se inspirar |
+| Notion | removido — `notion_criativos` duplicava o que `producoes` já tem |
+
+**Resíduo:** a edge function `sync-notion-criativos` segue publicada, sem cron e sem
+nenhuma referência no front. Dorme, mas está lá.

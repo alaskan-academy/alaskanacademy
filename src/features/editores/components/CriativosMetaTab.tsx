@@ -1,908 +1,656 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
-import { ArrowUpDown, Trophy, Anchor, ShoppingCart, MousePointer, RefreshCw, Search, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, Check, RotateCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useFilters } from '@/contexts/FilterContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { ImportarPaytModal } from './ImportarPaytModal';
+import { formatCurrency, formatNumber } from '@/lib/formatters';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Link2, AlertCircle, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-// ─── tipos ────────────────────────────────────────────────────────────────────
-type Preset  = 'yesterday' | '7d' | '28d' | 'custom';
-type SortKey =
-  | 'investimento' | 'roas' | 'vendas'
-  | 'hook_rate' | 'body_rate'
-  | 'taxa_conv' | 'ctr_pct' | 'cpc' | 'cpm';
+/**
+ * Criativos Meta — a tela do editor.
+ *
+ * Junta três coisas que viviam separadas: o que o Meta cobrou e entregou, o que a Payt
+ * vendeu, e a hipótese que o editor escreveu no card de Produção. Sem as três juntas, ou
+ * se vê métrica sem saber o que estava sendo testado, ou se vê a hipótese sem saber se
+ * deu certo.
+ *
+ * O que ela **não** faz, de propósito:
+ *
+ * - **Não ranqueia editores.** O editor não escolhe oferta, preço nem checkout;
+ *   comparar Fulana com Beltrana por ROAS cobra de cada uma o que dependeu da oferta
+ *   que pegou. A performance financeira aparece por anúncio, que é onde ela julga o
+ *   criativo, e não numa tabela de pessoas.
+ * - **Não deixa o editor marcar "validado".** Isso é decisão de sócio, e acontece em
+ *   Criativos → Avaliação. Aqui só se lê.
+ * - **Não esconde amostra pequena.** Hook de 60% em 300 impressões não é hipótese
+ *   validada; a tela diz isso em vez de mostrar o número como se fosse conclusão.
+ */
 
-// ─── formatadores ─────────────────────────────────────────────────────────────
-const brl  = (v: number) => 'R$ ' + v.toFixed(2);
-const pct  = (v: number) => v.toFixed(2) + '%';
-const num  = (v: number) => v.toLocaleString('pt-BR');
-const xval = (v: number) => v.toFixed(2) + 'x';
+type Vinculo = 'confirmado' | 'sugerido' | 'ambiguo' | 'sem_card';
 
-// color: good ≥ good, ok ≥ ok, else red. rev=true inverte (menor é melhor)
-function clr(v: number, good: number, ok: number, rev = false) {
-  if (rev) return v <= good ? 'text-emerald-400' : v <= ok ? 'text-amber-400' : 'text-red-400';
-  return v >= good ? 'text-emerald-400' : v >= ok ? 'text-amber-400' : 'text-red-400';
+interface Anuncio {
+  ad_id: string;
+  ad_nome: string;
+  conta_id: string;
+  conta: string;
+  investimento: number;
+  impressoes: number;
+  cliques_link: number;
+  video_3s: number;
+  video_75pct: number;
+  checkouts: number;
+  visualizacoes: number;
+  vendas: number;
+  receita: number;
+  producao_id: string | null;
+  editor_id: string | null;
+  editor: string | null;
+  projeto: string | null;
+  avaliacao: string | null;
+  status_veiculacao: string | null;
+  tipo_teste: string | null;
+  angulo_teste: string | null;
+  nivel_consciencia: string | null;
+  formato: string | null;
+  vinculo: Vinculo;
+  candidatos: number;
+  conta_hook: number | null;
+  conta_ctr: number | null;
+  conta_conexao: number | null;
+  conta_cpa: number | null;
+  conta_roas: number | null;
+  /** Quanto das vendas da conta chega com anúncio identificado, no período. */
+  conta_pct_atribuido: number;
 }
 
-// ─── datas (fuso de São Paulo) ────────────────────────────────────────────────
-const TZ = 'America/Sao_Paulo';
-const brDate = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: TZ }); // → YYYY-MM-DD
-const today  = () => brDate(new Date());
-const ago    = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return brDate(d);
-};
+/** PostgREST devolve `numeric` como string; somar isso concatena. */
+const n = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 
-// ─── ranking card ─────────────────────────────────────────────────────────────
-type RankingDef = {
-  title: string;
-  icon: React.ReactNode;
-  key: SortKey;
-  fmt: (v: number) => string;
-  colorFn?: (v: number) => string;
-  subtitle?: string;
-};
-
-const MIN_SPEND = 100;
+/**
+ * Abaixo disso o número existe mas não conclui nada.
+ *
+ * Separados porque medem coisas diferentes: mil impressões já dizem se o vídeo segura,
+ * mas três vendas não dizem se o anúncio é lucrativo. É a mesma disciplina das
+ * Tendências — mostrar o limite em vez de deixar o número parecer conclusão.
+ */
+const MIN_IMPRESSOES = 1000;
 const MIN_VENDAS = 3;
-const qualifica = (r: any) =>
-  Number(r.investimento ?? 0) >= MIN_SPEND || Number(r.vendas ?? 0) > MIN_VENDAS;
 
-// Selects the best Notion entry when multiple ads share the same name across projects.
-// Prefers the entry whose projeto_nome matches the account's produto_payt.
-function pickBest(
-  entries: Array<{ editor_nome: string | null; projeto_nome: string | null }> | undefined,
-  produto: string,
-) {
-  if (!entries || entries.length === 0) return null;
-  if (entries.length === 1) return entries[0];
-  const prod = produto.toLowerCase();
-  return entries.find(e =>
-    e.projeto_nome && (
-      e.projeto_nome.toLowerCase().includes(prod) ||
-      prod.includes(e.projeto_nome.toLowerCase())
-    ),
-  ) ?? entries[0];
-}
+/**
+ * Abaixo disso, o financeiro por anúncio não é subestimado: é ficção.
+ *
+ * A conta "Saponaria" gastou R$ 10.968 num anúncio que aparece com ROAS 0,00x — não
+ * porque o anúncio seja ruim, mas porque 1% das 735 vendas dela carregam identificação.
+ * Zero em vermelho ao lado de onze mil reais é a pior forma de errar: parece conclusão,
+ * é ausência de dado.
+ */
+const MIN_ATRIBUICAO = 80;
 
-function RankingCard({ def, rows }: { def: RankingDef; rows: any[] }) {
-  const top = [...rows]
-    .filter(r => qualifica(r) && Number(r[def.key] ?? 0) > 0)
-    .sort((a, b) => Number(b[def.key] ?? 0) - Number(a[def.key] ?? 0))
-    .slice(0, 5);
+const razao = (num: number, den: number) => (den > 0 ? (num / den) * 100 : null);
 
-  return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-        <span className="text-primary">{def.icon}</span>
-        <div>
-          <h4 className="text-sm font-semibold">{def.title}</h4>
-          {def.subtitle && <p className="text-xs text-muted-foreground">{def.subtitle}</p>}
-        </div>
-      </div>
-      <div className="divide-y divide-border/50">
-        {top.length === 0 && (
-          <div className="px-4 py-6 text-center text-xs text-muted-foreground">Sem dados</div>
-        )}
-        {top.map((r, i) => (
-          <div key={String(r.ad_id) + i} className="px-4 py-2.5 flex items-center gap-3">
-            <span className={cn(
-              'text-xs font-bold w-5 text-center',
-              i === 0 && 'text-amber-400',
-              i === 1 && 'text-slate-400',
-              i === 2 && 'text-orange-600',
-              i > 2    && 'text-muted-foreground',
-            )}>
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm truncate" title={r.ad_nome}>{r.ad_nome}</div>
-              {(r.projeto_notion || r.produto_payt) && (
-                <div className="text-xs text-muted-foreground truncate">{r.projeto_notion || r.produto_payt}</div>
-              )}
-              {/* editor_notion oculto temporariamente */}
-            </div>
-            <span className={cn(
-              'text-sm font-semibold tabular-nums',
-              def.colorFn ? def.colorFn(Number(r[def.key])) : 'text-foreground',
-            )}>
-              {def.fmt(Number(r[def.key] ?? 0))}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const AVALIACAO_COR: Record<string, string> = {
+  Validado: 'bg-success/15 text-success',
+  Escalado: 'bg-primary/15 text-primary',
+  'Não validado': 'bg-destructive/15 text-destructive',
+  'Sem dados': 'bg-secondary text-muted-foreground',
+};
 
-function ConsistencyCard({ defs, rows }: { defs: RankingDef[]; rows: any[] }) {
-  // conta quantas vezes cada ad aparece no top 5 de cada ranking
-  const counts = new Map<string, { ad_nome: string; produto_payt: string; editor_notion: string | null; projeto_notion: string | null; count: number; cats: string[] }>();
-  for (const def of defs) {
-    const top = [...rows]
-      .filter(r => qualifica(r) && Number(r[def.key] ?? 0) > 0)
-      .sort((a, b) => Number(b[def.key] ?? 0) - Number(a[def.key] ?? 0))
-      .slice(0, 5);
-    for (const r of top) {
-      const id = String(r.ad_id ?? r.ad_nome);
-      const cur = counts.get(id) ?? { ad_nome: r.ad_nome, produto_payt: r.produto_payt ?? '', editor_notion: r.editor_notion ?? null, projeto_notion: r.projeto_notion ?? null, count: 0, cats: [] };
-      cur.count++;
-      cur.cats.push(def.title);
-      counts.set(id, cur);
-    }
+const VINCULO_ROTULO: Record<Vinculo, string> = {
+  confirmado: 'confirmado',
+  sugerido: 'pelo nome',
+  ambiguo: 'sem dono',
+  sem_card: 'sem card',
+};
+
+type Ordem = 'investimento' | 'receita' | 'roas' | 'cpa' | 'hook' | 'ctr';
+
+/** Métrica com a referência da conta ao lado — sozinha ela não diz nada. */
+function Metrica({ valor, refConta, formato, invertido, semAmostra }: {
+  valor: number | null; refConta: number | null;
+  formato: 'pct' | 'moeda' | 'x'; invertido?: boolean; semAmostra?: boolean;
+}) {
+  if (valor === null) return <span className="text-muted-foreground/40">—</span>;
+
+  const texto = formato === 'pct' ? `${valor.toFixed(1)}%`
+    : formato === 'x' ? `${valor.toFixed(2)}x`
+    : formatCurrency(valor);
+
+  if (semAmostra) {
+    return (
+      <span className="text-muted-foreground/50" title="Amostra pequena demais para concluir">
+        {texto}
+      </span>
+    );
   }
 
-  const top = [...counts.values()]
-    .filter(e => e.count >= 2)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+  const acima = refConta !== null && refConta > 0 ? valor > refConta : null;
+  const bom = acima === null ? null : invertido ? !acima : acima;
+  const delta = refConta !== null && refConta > 0
+    ? ((valor - refConta) / refConta) * 100
+    : null;
 
   return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-        <span className="text-primary"><Trophy className="h-4 w-4" /></span>
-        <div>
-          <h4 className="text-sm font-semibold">Mais consistente</h4>
-          <p className="text-xs text-muted-foreground">Aparece em mais de um ranking</p>
-        </div>
+    <span className="inline-flex items-baseline gap-1.5 tabular-nums">
+      <span className={cn('font-medium', bom === null ? 'text-foreground' : bom ? 'text-success' : 'text-destructive')}>
+        {texto}
+      </span>
+      {delta !== null && Math.abs(delta) >= 1 && (
+        <span className="text-[10px] text-muted-foreground/60" title={`Conta no período: ${
+          formato === 'pct' ? `${refConta!.toFixed(1)}%` : formato === 'x' ? `${refConta!.toFixed(2)}x` : formatCurrency(refConta!)
+        }`}>
+          {delta > 0 ? '+' : ''}{delta.toFixed(0)}%
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Etapa do funil do criativo, com o número absoluto embaixo da taxa. */
+function Etapa({ rotulo, taxa, absoluto, fraco }: {
+  rotulo: string; taxa: number | null; absoluto: string; fraco?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground/50">{rotulo}</div>
+      <div className={cn('text-sm tabular-nums', fraco ? 'text-muted-foreground/50' : 'text-foreground')}>
+        {taxa === null ? '—' : `${taxa.toFixed(1)}%`}
       </div>
-      <div className="divide-y divide-border/50">
-        {top.length === 0 && (
-          <div className="px-4 py-6 text-center text-xs text-muted-foreground">Nenhum ad no top de 2+ métricas</div>
-        )}
-        {top.map((e, i) => (
-          <div key={e.ad_nome + i} className="px-4 py-2.5 flex items-start gap-3">
-            <span className={cn(
-              'text-xs font-bold w-5 text-center mt-0.5',
-              i === 0 && 'text-amber-400',
-              i === 1 && 'text-slate-400',
-              i === 2 && 'text-orange-600',
-              i > 2    && 'text-muted-foreground',
-            )}>
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm truncate" title={e.ad_nome}>{e.ad_nome}</p>
-              {(e.projeto_notion || e.produto_payt) && (
-                <p className="text-xs text-muted-foreground truncate">{e.projeto_notion || e.produto_payt}</p>
-              )}
-              {/* editor_notion oculto temporariamente */}
-              <p className="text-xs text-muted-foreground/50 truncate">{e.cats.join(' · ')}</p>
-            </div>
-            <span className="text-sm font-semibold text-emerald-400 tabular-nums">{e.count}x</span>
-          </div>
-        ))}
-      </div>
+      <div className="text-[10px] tabular-nums text-muted-foreground/50">{absoluto}</div>
     </div>
   );
 }
 
-// ─── colunas ──────────────────────────────────────────────────────────────────
-type ColKey = SortKey | 'ad_nome' | 'conta_nome' | 'campanha_nome';
-
-type ColDef = {
-  key: ColKey;
-  label: string;
-  // métricas têm fmt + colorFn; colunas de texto têm type:'text'
-  type?: 'text';
-  fmt?: (v: number) => string;
-  colorFn?: (v: number) => string;
-};
-
-// métricas (ordenáveis)
-const COLS: ColDef[] = [
-  { key: 'investimento', label: 'Invest.',  fmt: brl },
-  { key: 'roas',         label: 'ROAS',     fmt: xval, colorFn: v => clr(v, 3, 1) },
-  { key: 'vendas',       label: 'Vendas',   fmt: num },
-  { key: 'hook_rate',    label: 'Hook%',    fmt: pct,  colorFn: v => clr(v, 25, 10) },
-  { key: 'body_rate',    label: 'Body%',    fmt: pct,  colorFn: v => clr(v, 50, 25) },
-  { key: 'taxa_conv',    label: 'Conv%',    fmt: pct,  colorFn: v => clr(v, 3, 1) },
-  { key: 'ctr_pct',      label: 'CTR',      fmt: pct,  colorFn: v => clr(v, 2, 0.5) },
-  { key: 'cpc',          label: 'CPC',      fmt: brl },
-  { key: 'cpm',          label: 'CPM',      fmt: brl },
-];
-
-// todas as colunas (incluindo texto)
-const ALL_COLS: ColDef[] = [
-  { key: 'ad_nome',      label: 'Criativo',  type: 'text' },
-  { key: 'conta_nome',   label: 'CA',        type: 'text' },
-  { key: 'campanha_nome',label: 'Campanha',  type: 'text' },
-  ...COLS,
-];
-
-const ALL_COL_KEYS = ALL_COLS.map(c => c.key);
-const colMap = Object.fromEntries(ALL_COLS.map(c => [c.key, c])) as Record<ColKey, ColDef>;
-
-// ─── componente principal ─────────────────────────────────────────────────────
 export function CriativosMetaTab() {
-  const [rows, setRows]         = useState<any[]>([]);
-  // `produtos` guarda o que cada anúncio vendeu, com a contagem: um anúncio pode ter
-  // vendido mais de um produto, e o dominante serve para achar o projeto no Notion.
-  const [paytByAdId, setPaytByAdId] = useState<Record<string, { vendas: number; valor: number; produtos: Record<string, number> }>>({});
-  const [paytByKey,  setPaytByKey]  = useState<Record<string, { vendas: number; valor: number }>>({});
-  const [accountMap, setAccountMap] = useState<Record<string, { nome: string }>>({});
-  const [loading, setLoading]   = useState(true);
-  const [preset, setPreset]     = useState<Preset>('28d');
-  const [customStart, setCustomStart] = useState(ago(28));
-  const [customEnd,   setCustomEnd]   = useState(today());
-  const [sortKey, setSortKey]   = useState<SortKey>('investimento');
-  const [sortDir, setSortDir]   = useState<'desc' | 'asc'>('desc');
-  const [search, setSearch]     = useState('');
-  const [filterContas, setFilterContas]     = useState<Set<string>>(new Set());
-  const [showContaPanel, setShowContaPanel] = useState(false);
-  const contaPanelRef = useRef<HTMLDivElement>(null);
-  const [filterCampanha, setFilterCampanha] = useState('');
-  const [colOrder, setColOrder]   = useState<ColKey[]>(ALL_COL_KEYS);
-  const [colHidden, setColHidden] = useState<Set<ColKey>>(new Set());
-  const [showColPanel, setShowColPanel] = useState(false);
-  const [notionMap, setNotionMap] = useState<Record<string, Array<{ editor_nome: string | null; projeto_nome: string | null }>>>({});
-  const [syncing, setSyncing] = useState(false);
+  const { startDateStr, endDateStr, contaId } = useFilters();
+  const { user, perfil } = useAuth();
 
-  const { startStr, endStr } = useMemo(() => {
-    if (preset === 'yesterday') return { startStr: ago(1), endStr: ago(1) };
-    if (preset === '7d')        return { startStr: ago(7),  endStr: today() };
-    if (preset === '28d')       return { startStr: ago(28), endStr: today() };
-    return { startStr: customStart, endStr: customEnd };
-  }, [preset, customStart, customEnd]);
+  const [dados, setDados] = useState<Anuncio[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
-  const load = async () => {
+  const [busca, setBusca] = useState('');
+  const [soMeus, setSoMeus] = useState(false);
+  const [editorFiltro, setEditorFiltro] = useState<string>('todos');
+  const [soPendentes, setSoPendentes] = useState(false);
+  const [ordem, setOrdem] = useState<Ordem>('investimento');
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [vincular, setVincular] = useState<Anuncio | null>(null);
+
+  const carregar = useCallback(async () => {
+    if (!startDateStr || !endDateStr) return;
     setLoading(true);
-    const [metaRes, paytRes, contasRes] = await Promise.all([
-      supabase
-        .from('metricas_meta')
-        .select(`
-          data, ad_id, ad_nome, ad_account_id, campanha_id, campanha_nome, adset_id,
-          investimento, impressoes, cliques_link,
-          ctr, cpm, cpc,
-          video_plays, video_3s, video_75pct,
-          compras_meta, faturamento_atribuido
-        `)
-        .eq('nivel', 'ad')
-        .not('ad_nome', 'is', null)
-        .gte('data', startStr)
-        .lte('data', endStr)
-        .limit(50000),
-      supabase
-        .from('vendas_payt')
-        .select('utm_content, utm_ad_id, utm_campaign, utm_medium, valor, produto')
-        .eq('status', 'paid')
-        .or('tipo_venda.is.null,tipo_venda.neq.Upsell')
-        .gte('data', startStr)
-        .lte('data', endStr)
-        .not('utm_content', 'is', null),
-      supabase
-        .from('ad_accounts')
-        .select('id, nome')
-        .eq('ativo', true),
-    ]);
-
-    const am: Record<string, { nome: string }> = {};
-    for (const c of contasRes.data || []) {
-      am[c.id] = { nome: c.nome };
+    const { data, error } = await supabase.rpc('fn_criativos_meta', {
+      p_ini: startDateStr, p_fim: endDateStr, p_conta: contaId,
+    });
+    if (error) {
+      console.error('fn_criativos_meta:', error.message);
+      setErro(error.message);
+      setDados([]);
+    } else {
+      setErro(null);
+      setDados(((data ?? []) as Anuncio[]).map(a => ({
+        ...a,
+        investimento: n(a.investimento), impressoes: n(a.impressoes),
+        cliques_link: n(a.cliques_link), video_3s: n(a.video_3s),
+        video_75pct: n(a.video_75pct), checkouts: n(a.checkouts),
+        visualizacoes: n(a.visualizacoes), vendas: n(a.vendas), receita: n(a.receita),
+        conta_hook: a.conta_hook === null ? null : n(a.conta_hook),
+        conta_ctr: a.conta_ctr === null ? null : n(a.conta_ctr),
+        conta_conexao: a.conta_conexao === null ? null : n(a.conta_conexao),
+        conta_cpa: a.conta_cpa === null ? null : n(a.conta_cpa),
+        conta_roas: a.conta_roas === null ? null : n(a.conta_roas),
+        conta_pct_atribuido: n(a.conta_pct_atribuido),
+      })));
     }
-
-    // Dois mapas de atribuição:
-    // pmById: keyed por ad_id do Meta (extraído do utm_content) — matching exato
-    // pmByKey: keyed por "utm_content|campanha_id|adset_id" — fallback para vendas sem utm_ad_id
-    const pmById:  Record<string, { vendas: number; valor: number; produtos: Record<string, number> }> = {};
-    const pmByKey: Record<string, { vendas: number; valor: number }> = {};
-
-    for (const v of paytRes.data || []) {
-      const adId  = (v.utm_ad_id as string | null) || null;
-      const prod  = (v.produto   as string | null) || '';
-      const valor = Number(v.valor || 0);
-
-      if (adId) {
-        /**
-         * Chave é o `ad_id` sozinho.
-         *
-         * Antes era `ad_id + produto da conta`, para "só contar vendas do produto
-         * correto". Só que o produto vinha de um campo digitado à mão em
-         * `ad_accounts`, que cabe um produto só — e a "Workshop Buquê - TSL" vende
-         * dois: Workshop Buquê (490 vendas) e Kit Completo (33). As 33 não batiam com
-         * o campo e **sumiam da atribuição**, junto com outras 24 espalhadas: 57
-         * vendas e R$ 6.874 em 60 dias, com o anúncio parecendo que parou de vender.
-         *
-         * O `ad_id` já é único por anúncio. Se um anúncio vende dois produtos, ele
-         * vendeu os dois — somar é a resposta certa, e filtrar era a errada.
-         */
-        if (!pmById[adId]) pmById[adId] = { vendas: 0, valor: 0, produtos: {} };
-        pmById[adId].vendas += 1;
-        pmById[adId].valor  += valor;
-        if (prod) pmById[adId].produtos[prod] = (pmById[adId].produtos[prod] || 0) + 1;
-      } else {
-        // fallback: match por nome+campanha+adset
-        const utmCamp   = (v.utm_campaign as string | null) || '';
-        const utmMedium = (v.utm_medium   as string | null) || '';
-        const campId  = utmCamp.includes('|')   ? utmCamp.split('|').slice(-1)[0].trim()   : '';
-        const adsetId = utmMedium.includes('|') ? utmMedium.split('|').slice(-1)[0].trim() : '';
-        const key = (v.utm_content as string) + '|' + campId + '|' + adsetId;
-        if (!pmByKey[key]) pmByKey[key] = { vendas: 0, valor: 0 };
-        pmByKey[key].vendas += 1;
-        pmByKey[key].valor  += valor;
-      }
-    }
-
-    setRows(metaRes.data || []);
-    setPaytByAdId(pmById);
-    setPaytByKey(pmByKey);
-    setAccountMap(am);
-
-    // Carrega mapa do Notion (nome → editor/projeto)
-    const { data: notionRows } = await supabase
-      .from('notion_criativos')
-      .select('nome, editor_nome, projeto_nome');
-    const nm: Record<string, Array<{ editor_nome: string | null; projeto_nome: string | null }>> = {};
-    for (const r of notionRows || []) {
-      const k = String(r.nome).trim().toLowerCase();
-      if (!nm[k]) nm[k] = [];
-      nm[k].push({ editor_nome: r.editor_nome, projeto_nome: r.projeto_nome });
-    }
-    setNotionMap(nm);
-
     setLoading(false);
-  };
+  }, [startDateStr, endDateStr, contaId]);
 
-  const syncNotion = async () => {
-    setSyncing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('sync-notion-criativos');
-      if (error || data?.error) {
-        toast({ title: 'Erro ao sincronizar Notion', description: data?.error || String(error), variant: 'destructive' });
-      } else {
-        toast({ title: `Notion sincronizado — ${data.synced} criativos` });
-        // Recarrega mapa
-        const { data: notionRows } = await supabase.from('notion_criativos').select('nome, editor_nome, projeto_nome');
-        const nm: Record<string, Array<{ editor_nome: string | null; projeto_nome: string | null }>> = {};
-        for (const r of notionRows || []) {
-          const k = String(r.nome).trim().toLowerCase();
-          if (!nm[k]) nm[k] = [];
-          nm[k].push({ editor_nome: r.editor_nome, projeto_nome: r.projeto_nome });
-        }
-        setNotionMap(nm);
-      }
-    } finally {
-      setSyncing(false);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const editores = useMemo(() => {
+    const m = new Map<string, string>();
+    dados.forEach(a => { if (a.editor_id && a.editor) m.set(a.editor_id, a.editor); });
+    return [...m.entries()].sort((x, y) => x[1].localeCompare(y[1]));
+  }, [dados]);
+
+  const pendentes = dados.filter(a => a.vinculo === 'ambiguo' || a.vinculo === 'sem_card');
+
+  /** Contas cujas vendas em maioria não dizem de qual anúncio vieram. */
+  const contasCegas = useMemo(() => {
+    const m = new Map<string, number>();
+    dados.forEach(a => {
+      if (a.conta_pct_atribuido < MIN_ATRIBUICAO) m.set(a.conta, a.conta_pct_atribuido);
+    });
+    return [...m.entries()].map(([nome, pct]) => ({ nome, pct }));
+  }, [dados]);
+
+  const visiveis = useMemo(() => {
+    let l = dados;
+    if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
+    if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
+    if (soPendentes) l = l.filter(a => a.vinculo === 'ambiguo' || a.vinculo === 'sem_card');
+    if (busca.trim()) {
+      const b = busca.trim().toLowerCase();
+      l = l.filter(a => a.ad_nome?.toLowerCase().includes(b) || a.editor?.toLowerCase().includes(b));
     }
-  };
-
-  useEffect(() => { load(); }, [startStr, endStr]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!showContaPanel) return;
-    const handler = (e: MouseEvent) => {
-      if (contaPanelRef.current && !contaPanelRef.current.contains(e.target as Node)) {
-        setShowContaPanel(false);
+    const chave = (a: Anuncio) => {
+      switch (ordem) {
+        case 'receita': return a.receita;
+        case 'roas': return a.investimento > 0 ? a.receita / a.investimento : -1;
+        case 'cpa': return a.vendas > 0 ? -(a.investimento / a.vendas) : -Infinity;
+        case 'hook': return razao(a.video_3s, a.impressoes) ?? -1;
+        case 'ctr': return razao(a.cliques_link, a.impressoes) ?? -1;
+        default: return a.investimento;
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showContaPanel]);
+    return [...l].sort((a, b) => chave(b) - chave(a));
+  }, [dados, soMeus, user, editorFiltro, soPendentes, busca, ordem]);
 
-  // Agrega por anúncio (soma todos os dias do período)
-  const ads = useMemo(() => {
-    const map: Record<string, any> = {};
-
-    rows.forEach(r => {
-      const k = (r.ad_id || r.ad_nome || 'sem-id') + '|' + (r.ad_account_id || '');
-      if (!map[k]) {
-        map[k] = {
-          ad_id: r.ad_id, ad_nome: r.ad_nome,
-          ad_account_id: r.ad_account_id, campanha_nome: r.campanha_nome,
-          investimento: 0, impressoes: 0, cliques_link: 0,
-          video_plays: 0, video_3s: 0, video_75pct: 0,
-          compras_meta: 0, faturamento_atribuido: 0,
-          // fallback para quando Windsor só envia CTR/CPM/CPC agregados (trial)
-          _ctr_sum: 0, _cpm_sum: 0, _cpc_sum: 0, _dias: 0,
-          // conjunto de chaves Payt para este anúncio (campanha+adset+nome)
-          _payt_keys: new Set<string>(),
-        };
-      }
-      const m = map[k];
-      m.investimento          += Number(r.investimento          || 0);
-      m.impressoes            += Number(r.impressoes            || 0);
-      m.cliques_link          += Number(r.cliques_link          || 0);
-      m.video_plays           += Number(r.video_plays           || 0);
-      m.video_3s              += Number(r.video_3s              || 0);
-      m.video_75pct           += Number(r.video_75pct           || 0);
-      m.compras_meta          += Number(r.compras_meta          || 0);
-      m.faturamento_atribuido += Number(r.faturamento_atribuido || 0);
-      // Windsor envia CTR/CPM/CPC como decimais por dia — acumula para fallback
-      if (r.ctr) { m._ctr_sum += Number(r.ctr); m._dias += 1; }
-      if (r.cpm) m._cpm_sum += Number(r.cpm);
-      if (r.cpc) m._cpc_sum += Number(r.cpc);
-      // chave de atribuição Payt: ad_nome|campanha_id|adset_id
-      if (r.ad_nome && r.campanha_id && r.adset_id) {
-        m._payt_keys.add(`${r.ad_nome}|${r.campanha_id}|${r.adset_id}`);
-      }
-    });
-
-    return Object.values(map).map((m: any) => {
-      const inv = m.investimento;
-
-      // CTR com cliques únicos (unique link clicks) — mais preciso que total de cliques
-      const ctr_pct = m.impressoes > 0
-        ? (m.cliques_link / m.impressoes) * 100
-        : m._dias > 0 ? (m._ctr_sum / m._dias) * 100 : 0;
-
-      // CPC e CPM com clique único
-      const cpm = m.impressoes > 0 ? (inv / m.impressoes) * 1000
-                : m._dias > 0 ? m._cpm_sum / m._dias : 0;
-      const cpc = m.cliques_link > 0 ? inv / m.cliques_link
-                : m._dias > 0 ? m._cpc_sum / m._dias : 0;
-
-      // Criativo (vídeo)
-      const hook_rate = m.impressoes > 0 ? (m.video_3s    / m.impressoes) * 100 : 0;
-      const body_rate = m.video_3s   > 0 ? (m.video_75pct / m.video_3s)   * 100 : 0;
-
-      // Atribuição Payt — prioridade:
-      // 1. Por ad_id (exato) — disponível após reimportação dos CSVs
-      // 2. Por nome+campanha_id+adset_id (fallback para dados antigos)
-      // 3. Meta compras_meta (fallback final)
-      let paytVendas = 0, paytFaturamento = 0, foundPayt = false;
-
-      // Tentativa 1: match por ad_id (exato)
-      const conta = accountMap[m.ad_account_id];
-      const byId = m.ad_id ? paytByAdId[m.ad_id] : null;
-      if (byId) {
-        paytVendas      = byId.vendas;
-        paytFaturamento = byId.valor;
-        foundPayt = true;
-      } else {
-        // Tentativa 2: match por nome+campanha+adset (soma todas as combinações)
-        for (const key of m._payt_keys as Set<string>) {
-          const entry = paytByKey[key];
-          if (entry) {
-            paytVendas      += entry.vendas;
-            paytFaturamento += entry.valor;
-            foundPayt = true;
-          }
-        }
-      }
-
-      const vendas      = foundPayt ? paytVendas      : 0;
-      const faturamento = foundPayt ? paytFaturamento : 0;
-
-      // Conversão: vendas reais / cliques únicos
-      const taxa_conv = m.cliques_link > 0 ? (vendas / m.cliques_link) * 100 : 0;
-
-      // ROAS com faturamento real da Payt (ou atribuído do Meta)
-      const roas = inv > 0 ? faturamento / inv : 0;
-
-      // Lookup Notion: exact → fallback without suffix (- cópia, - VSL, etc.)
-      //
-      // O produto sai das vendas do próprio anúncio, não de um campo da conta: é o que
-      // ele de fato vendeu, acompanha sozinho quando a CA muda de oferta, e não some
-      // quando ela passa a vender dois.
-      const produtoPayt = byId
-        ? (Object.entries(byId.produtos).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '')
-        : '';
-      const adNomeLower = String(m.ad_nome || '').trim().toLowerCase();
-      const produtoLower = produtoPayt.toLowerCase();
-      const notionInfo = pickBest(notionMap[adNomeLower], produtoLower) ?? (() => {
-        const base = adNomeLower.replace(/\s*[-–—]\s*(c[oó]pia|vsl|copy)\s*(\d*)$/i, '').trim();
-        return base !== adNomeLower ? pickBest(notionMap[base], produtoLower) : null;
-      })();
-
-      // Only show project when it matches produto_payt (prevents inactive projects)
-      const projetoNotion = notionInfo?.projeto_nome ?? null;
-      const projetoBate = projetoNotion && produtoPayt
-        ? projetoNotion.toLowerCase().includes(produtoLower) ||
-          produtoLower.includes(projetoNotion.toLowerCase())
-        : false;
-
-      return {
-        ...m,
-        conta_nome: conta?.nome ?? '—',
-        produto_payt: produtoPayt,
-        editor_notion: notionInfo?.editor_nome ?? null,
-        projeto_notion: projetoBate ? projetoNotion : null,
-        ctr_pct, cpm, cpc,
-        hook_rate, body_rate,
-        taxa_conv, roas,
-        vendas,
-        faturamento,
-        fonte_vendas: foundPayt ? (byId ? 'payt-id' : 'payt-key') : 'meta',
-      };
-    });
-  }, [rows, paytByAdId, paytByKey, accountMap, notionMap]);
-
-  const sorted = useMemo(() =>
-    [...ads].sort((a, b) => {
-      const va = Number(a[sortKey] ?? 0);
-      const vb = Number(b[sortKey] ?? 0);
-      return sortDir === 'desc' ? vb - va : va - vb;
-    }),
-  [ads, sortKey, sortDir]);
-
-  const contasUnicas   = useMemo(() => [...new Set(ads.map(r => r.conta_nome).filter(Boolean))].sort(), [ads]);
-  const campanhasUnicas = useMemo(() => [...new Set(ads.map(r => r.campanha_nome).filter(Boolean))].sort(), [ads]);
-
-  // Para os rankings: aplica filtros de conta e campanha (mas não a pesquisa de texto)
-  const adsParaRanking = useMemo(() => {
-    let result = ads.filter(r => Number(r.investimento) > 0);
-    if (filterContas.size > 0) result = result.filter(r => filterContas.has(r.conta_nome));
-    if (filterCampanha)        result = result.filter(r => r.campanha_nome === filterCampanha);
-    return result;
-  }, [ads, filterContas, filterCampanha]);
-
-  const filtered = useMemo(() => {
-    let result = sorted.filter(r => Number(r.investimento) > 0);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(r => (r.ad_nome ?? '').toLowerCase().includes(q));
-    }
-    if (filterContas.size > 0) result = result.filter(r => filterContas.has(r.conta_nome));
-    if (filterCampanha)        result = result.filter(r => r.campanha_nome === filterCampanha);
-    return result;
-  }, [sorted, search, filterContas, filterCampanha]);
-
-  // Linha de resumo: somas e médias ponderadas de todos os anúncios filtrados
-  const summary = useMemo(() => {
-    let inv = 0, vendas = 0, fat = 0;
-    let impressoes = 0, cliques = 0, v3s = 0, v75 = 0;
-    for (const r of filtered) {
-      inv        += Number(r.investimento  || 0);
-      vendas     += Number(r.vendas        || 0);
-      fat        += Number(r.faturamento   || 0);
-      impressoes += Number(r.impressoes    || 0);
-      cliques    += Number(r.cliques_link  || 0);
-      v3s        += Number(r.video_3s      || 0);
-      v75        += Number(r.video_75pct   || 0);
-    }
-    return {
-      investimento: inv,
-      vendas,
-      roas:      inv > 0        ? fat / inv                    : 0,
-      hook_rate: impressoes > 0 ? (v3s / impressoes) * 100     : 0,
-      body_rate: v3s > 0        ? (v75 / v3s) * 100            : 0,
-      taxa_conv: cliques > 0    ? (vendas / cliques) * 100     : 0,
-      ctr_pct:   impressoes > 0 ? (cliques / impressoes) * 100 : 0,
-      cpc:       cliques > 0    ? inv / cliques                : 0,
-      cpm:       impressoes > 0 ? (inv / impressoes) * 1000    : 0,
-    };
-  }, [filtered]);
-
-  const handleSort = (k: SortKey) => {
-    if (sortKey === k) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
-    else { setSortKey(k); setSortDir('desc'); }
-  };
-
-  const moveCol = (key: ColKey, dir: -1 | 1) => {
-    setColOrder(prev => {
-      const i = prev.indexOf(key);
-      const j = i + dir;
-      if (j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-  };
-
-  const toggleCol = (key: ColKey) => {
-    setColHidden(prev => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
-  };
-
-  const visibleCols = colOrder
-    .map(k => colMap[k])
-    .filter(c => c && !colHidden.has(c.key));
-
-  const thCls = (k: SortKey) => cn(
-    'px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase whitespace-nowrap',
-    'cursor-pointer select-none hover:text-foreground',
-    sortKey === k && 'text-primary',
-  );
-
-  const RANKINGS: RankingDef[] = [
-    {
-      title: 'Melhor ROAS',      icon: <Trophy className="h-4 w-4" />,
-      key: 'roas',               fmt: xval,  colorFn: v => clr(v, 3, 1),
-      subtitle: 'Faturamento / investimento',
-    },
-    {
-      title: 'Melhor Hook Rate', icon: <Anchor className="h-4 w-4" />,
-      key: 'hook_rate',          fmt: pct,   colorFn: v => clr(v, 25, 10),
-      subtitle: 'Primeiros 3s / impressões',
-    },
-    {
-      title: 'Mais vendas',      icon: <ShoppingCart className="h-4 w-4" />,
-      key: 'vendas',             fmt: num,
-      subtitle: 'Compras atribuídas',
-    },
-    {
-      title: 'Melhor CTR',       icon: <MousePointer className="h-4 w-4" />,
-      key: 'ctr_pct',            fmt: pct,   colorFn: v => clr(v, 2, 0.5),
-      subtitle: 'Cliques / impressões',
-    },
-    {
-      title: 'Maior conversão',  icon: <RefreshCw className="h-4 w-4" />,
-      key: 'taxa_conv',          fmt: pct,   colorFn: v => clr(v, 3, 1),
-      subtitle: 'Compras / cliques',
-    },
-  ];
+  const totais = useMemo(() => visiveis.reduce(
+    (acc, a) => ({
+      investimento: acc.investimento + a.investimento,
+      receita: acc.receita + a.receita,
+      vendas: acc.vendas + a.vendas,
+    }), { investimento: 0, receita: 0, vendas: 0 },
+  ), [visiveis]);
 
   return (
-    <div className="space-y-5">
-      {/* Filtros */}
-      <div className="bg-card border border-border rounded-lg p-4 flex items-end gap-3 flex-wrap">
-        <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={syncNotion} disabled={syncing}>
-            <RotateCw className={cn('h-3.5 w-3.5', syncing && 'animate-spin')} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar Notion'}
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-base font-semibold">Criativos Meta</h3>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          O que cada anúncio entregou, ao lado da hipótese que o card de Produção registrou.
+          Vendas contam a compra principal e os order bumps — upsell é receita do funil, não
+          do criativo. As taxas são comparadas com a média da própria conta no período.
+        </p>
+      </div>
+
+      {/* Anúncio sem dono não é detalhe: é editor sem crédito pelo trabalho dele. Fica
+          no topo, com o caminho para resolver, em vez de escondido num filtro. */}
+      {pendentes.length > 0 && !loading && (
+        <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-200/90">
+            <span className="text-amber-100">
+              {pendentes.length} anúncio{pendentes.length > 1 ? 's' : ''} sem dono definido
+            </span>{' '}
+            — {formatCurrency(pendentes.reduce((s, a) => s + a.investimento, 0))} investidos e{' '}
+            {pendentes.reduce((s, a) => s + a.vendas, 0)} vendas que não estão creditadas a
+            ninguém. O nome do card bate com produções de editores diferentes, ou não existe
+            card postado com esse nome.
+          </p>
+          <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs"
+                  onClick={() => setSoPendentes(v => !v)}>
+            {soPendentes ? 'Ver todos' : 'Resolver'}
           </Button>
-          <ImportarPaytModal onImported={load} />
         </div>
-        <div className="w-full border-t border-border/50 mt-1 mb-0" />
-        <div>
-          <Label className="text-xs">Período</Label>
-          <Select value={preset} onValueChange={(v: Preset) => setPreset(v)}>
-            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yesterday">Ontem</SelectItem>
-              <SelectItem value="7d">Últimos 7 dias</SelectItem>
-              <SelectItem value="28d">Últimos 28 dias</SelectItem>
-              <SelectItem value="custom">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
+      )}
+
+      {contasCegas.length > 0 && !loading && (
+        <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-200/90">
+            <span className="text-amber-100">
+              Receita, ROAS e CPA não são confiáveis em{' '}
+              {contasCegas.map(c => c.nome).join(', ')}
+            </span>{' '}
+            — só {contasCegas.map(c => `${c.pct.toFixed(0)}%`).join(' e ')} das vendas dessas
+            contas chegam com anúncio identificado. Os números aparecem em cinza nesses
+            anúncios: não são desempenho ruim, é venda que existe e não sabemos de qual
+            criativo veio. Hook, CTR e retenção seguem válidos, porque não dependem da venda.
+          </p>
         </div>
-        {preset === 'custom' && (
-          <>
-            <div>
-              <Label className="text-xs">De</Label>
-              <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-[150px]" />
-            </div>
-            <div>
-              <Label className="text-xs">Até</Label>
-              <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-[150px]" />
-            </div>
-          </>
-        )}
-        <div className="relative" ref={contaPanelRef}>
-          <Label className="text-xs">Conta (CA)</Label>
-          <button
-            onClick={() => setShowContaPanel(v => !v)}
-            className={cn(
-              'flex items-center justify-between gap-2 w-[220px] mt-1 px-3 py-2 rounded-md border text-sm transition-colors',
-              showContaPanel || filterContas.size > 0
-                ? 'border-primary text-foreground bg-primary/10'
-                : 'border-border text-muted-foreground bg-secondary hover:text-foreground',
-            )}
-          >
-            <span className="truncate">
-              {filterContas.size === 0
-                ? 'Todas as CAs'
-                : filterContas.size === 1
-                  ? [...filterContas][0]
-                  : `${filterContas.size} CAs selecionadas`}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input value={busca} onChange={e => setBusca(e.target.value)}
+                 placeholder="Buscar anúncio ou editor" className="h-8 w-56 pl-8 text-xs" />
+        </div>
+
+        {/* Opcional, e desligado por padrão: o editor também vem aqui para ver o que
+            os outros fizeram e se inspirar. */}
+        {user && (
+          <button onClick={() => setSoMeus(v => !v)}
+                  className={cn('rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+                    soMeus ? 'border-primary/50 bg-primary/10 text-primary'
+                           : 'border-border text-muted-foreground hover:bg-secondary')}>
+            Meus anúncios
           </button>
-          {showContaPanel && (
-            <div className="absolute left-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg w-[280px] py-1 max-h-64 overflow-y-auto">
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-border mb-1">
-                <span className="text-xs font-medium text-muted-foreground">Contas de anúncio</span>
-                {filterContas.size > 0 && (
-                  <button
-                    onClick={() => setFilterContas(new Set())}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              {contasUnicas.map(c => {
-                const checked = filterContas.has(c);
-                return (
-                  <label
-                    key={c}
-                    className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-secondary/60 cursor-pointer"
-                    onClick={() => {
-                      setFilterContas(prev => {
-                        const next = new Set(prev);
-                        next.has(c) ? next.delete(c) : next.add(c);
-                        return next;
-                      });
-                    }}
-                  >
-                    <span className={cn(
-                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                      checked ? 'bg-primary border-primary' : 'border-border',
-                    )}>
-                      {checked && <Check className="h-3 w-3 text-primary-foreground" />}
-                    </span>
-                    <span className="text-xs text-foreground truncate">{c}</span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div>
-          <Label className="text-xs">Campanha</Label>
-          <Select value={filterCampanha || '__all__'} onValueChange={v => setFilterCampanha(v === '__all__' ? '' : v)}>
-            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Todas as campanhas" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todas as campanhas</SelectItem>
-              {campanhasUnicas.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        {loading && <span className="text-xs text-muted-foreground animate-pulse">Carregando...</span>}
+        )}
+
+        <select value={editorFiltro} onChange={e => setEditorFiltro(e.target.value)}
+                className="h-8 rounded-md border border-border bg-background px-2 text-xs">
+          <option value="todos">Todos os editores</option>
+          {editores.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+        </select>
+
+        <select value={ordem} onChange={e => setOrdem(e.target.value as Ordem)}
+                className="h-8 rounded-md border border-border bg-background px-2 text-xs">
+          <option value="investimento">Ordenar por investimento</option>
+          <option value="receita">Receita</option>
+          <option value="roas">ROAS</option>
+          <option value="cpa">CPA (menor primeiro)</option>
+          <option value="hook">Hook</option>
+          <option value="ctr">CTR</option>
+        </select>
+
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+          {visiveis.length} anúncios · {formatCurrency(totais.investimento)} investidos ·{' '}
+          {formatCurrency(totais.receita)} · {formatNumber(totais.vendas)} vendas
+        </span>
       </div>
 
-      {/* Rankings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {RANKINGS.map(def => (
-          <RankingCard key={def.key} def={def} rows={adsParaRanking} />
-        ))}
-        <ConsistencyCard defs={RANKINGS} rows={adsParaRanking} />
-      </div>
-
-      {/* Tabela completa */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
-          <h4 className="text-sm font-semibold shrink-0">Todos os criativos</h4>
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Pesquisar anúncio..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-8 h-8 text-sm"
+      {loading ? (
+        <div className="space-y-2">
+          {[0, 1, 2, 3, 4].map(i => (
+            <div key={i} className="h-14 animate-pulse rounded-lg border border-border bg-card" />
+          ))}
+        </div>
+      ) : erro ? (
+        <div className="flex h-48 flex-col items-center justify-center gap-3 text-center">
+          <AlertCircle className="h-6 w-6 text-destructive" />
+          <p className="text-sm text-muted-foreground">{erro}</p>
+          <Button size="sm" variant="outline" className="text-xs" onClick={carregar}>Tentar de novo</Button>
+        </div>
+      ) : visiveis.length === 0 ? (
+        <div className="flex h-48 items-center justify-center text-center text-sm text-muted-foreground">
+          Nenhum anúncio com esses filtros no período selecionado.
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {visiveis.map(a => (
+            <LinhaAnuncio
+              key={a.ad_id}
+              a={a}
+              expandido={aberto === a.ad_id}
+              onToggle={() => setAberto(aberto === a.ad_id ? null : a.ad_id)}
+              onVincular={() => setVincular(a)}
+              ehMeu={!!user && a.editor_id === user.id}
             />
-          </div>
-          <div className="flex items-center gap-3 ml-auto">
-            {Object.keys(paytByAdId).length > 0 && (
-              <span className="text-xs bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full">
-                vendas via Payt
+          ))}
+        </div>
+      )}
+
+      {vincular && (
+        <ModalVinculo
+          anuncio={vincular}
+          podeEditar={!!perfil?.is_admin}
+          onFechar={() => setVincular(null)}
+          onSalvo={() => { setVincular(null); carregar(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
+  a: Anuncio; expandido: boolean; onToggle: () => void; onVincular: () => void; ehMeu: boolean;
+}) {
+  const hook = razao(a.video_3s, a.impressoes);
+  const ctr = razao(a.cliques_link, a.impressoes);
+  const conexao = razao(a.visualizacoes, a.cliques_link);
+  const retencao = razao(a.video_75pct, a.video_3s);
+  const convCheckout = razao(a.vendas, a.checkouts);
+  const roas = a.investimento > 0 ? a.receita / a.investimento : null;
+  const cpa = a.vendas > 0 ? a.investimento / a.vendas : null;
+
+  const poucaImpressao = a.impressoes < MIN_IMPRESSOES;
+  const poucaVenda = a.vendas < MIN_VENDAS;
+  // Não é amostra pequena: é a conta inteira que não sabe de onde vieram as vendas.
+  const financeiroCego = a.conta_pct_atribuido < MIN_ATRIBUICAO;
+  const semDono = a.vinculo === 'ambiguo' || a.vinculo === 'sem_card';
+
+  return (
+    <div className={cn('rounded-lg border bg-card', semDono ? 'border-amber-500/25' : 'border-border')}>
+      <button onClick={onToggle} className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left">
+        {expandido ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                   : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-foreground">{a.ad_nome || a.ad_id}</span>
+            {ehMeu && <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] text-primary">meu</span>}
+            {a.avaliacao && (
+              <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                AVALIACAO_COR[a.avaliacao] ?? 'bg-secondary text-muted-foreground')}>
+                {a.avaliacao}
               </span>
             )}
-            <span className="text-xs text-muted-foreground">
-              {filtered.length} anúncios
-            </span>
-            <div className="relative">
-              <button
-                onClick={() => setShowColPanel(v => !v)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs border transition-colors',
-                  showColPanel
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30',
-                )}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Colunas
-              </button>
-
-              {showColPanel && (
-                <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-lg w-56 py-1">
-                  <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground border-b border-border mb-1">
-                    Ordem e visibilidade
-                  </p>
-                  {colOrder.map((key, idx) => {
-                    const col = colMap[key];
-                    const hidden = colHidden.has(key);
-                    return (
-                      <div key={key} className={cn(
-                        'flex items-center gap-1 px-2 py-1 hover:bg-secondary/50',
-                        hidden && 'opacity-40',
-                      )}>
-                        <button onClick={() => moveCol(key, -1)} disabled={idx === 0} className="p-0.5 hover:text-foreground text-muted-foreground disabled:opacity-20">
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => moveCol(key, 1)} disabled={idx === colOrder.length - 1} className="p-0.5 hover:text-foreground text-muted-foreground disabled:opacity-20">
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="flex-1 text-xs text-foreground">{col.label}</span>
-                        <button onClick={() => toggleCol(key)} className="p-0.5 text-muted-foreground hover:text-foreground">
-                          {hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground">
+            <span>{a.conta}</span>
+            <span className="text-muted-foreground/30">·</span>
+            {a.editor ? <span>{a.editor}</span>
+                      : <span className="text-amber-400">{VINCULO_ROTULO[a.vinculo]}</span>}
+            {a.vinculo === 'sugerido' && (
+              <span className="text-muted-foreground/50" title="Vínculo deduzido do nome do card, não confirmado">
+                · pelo nome
+              </span>
+            )}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary/30">
-                <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase w-8">#</th>
-                {visibleCols.map(c => {
-                  const isSortable = !c.type;
-                  return isSortable ? (
-                    <th key={c.key} className={thCls(c.key as SortKey)} onClick={() => handleSort(c.key as SortKey)}>
-                      <span className="flex items-center gap-1">{c.label} <ArrowUpDown className="h-3 w-3" /></span>
-                    </th>
-                  ) : (
-                    <th key={c.key} className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                      {c.label}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, i) => (
-                <tr key={String(r.ad_id) + i} className="border-b border-border/50 hover:bg-secondary/40">
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
-                  {visibleCols.map(c => {
-                    if (c.type === 'text') {
-                      const val = r[c.key] ?? '—';
-                      return (
-                        <td key={c.key} className={cn(
-                          'px-3 py-2.5 truncate',
-                          c.key === 'ad_nome' ? 'font-medium max-w-52' : 'text-xs text-muted-foreground max-w-40',
-                        )} title={val}>{val}</td>
-                      );
-                    }
-                    const v = Number(r[c.key] ?? 0);
-                    const hasData = v > 0;
-                    return (
-                      <td key={c.key} className={cn(
-                        'px-3 py-2.5 tabular-nums whitespace-nowrap',
-                        hasData && c.colorFn ? c.colorFn(v) : hasData ? 'text-foreground' : 'text-muted-foreground',
-                      )}>
-                        {hasData ? c.fmt!(v) : '—'}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {filtered.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={visibleCols.length + 1} className="px-3 py-8 text-center text-muted-foreground">
-                    Sem dados no período selecionado
-                  </td>
-                </tr>
-              )}
-              {loading && (
-                <tr>
-                  <td colSpan={visibleCols.length + 1} className="px-3 py-8 text-center text-muted-foreground animate-pulse">
-                    Carregando...
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {filtered.length > 0 && !loading && (
-              <tfoot>
-                <tr className="border-t-2 border-border bg-secondary/50 font-semibold">
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">Σ</td>
-                  {visibleCols.map(c => {
-                    if (c.type === 'text') {
-                      return (
-                        <td key={c.key} className="px-3 py-2.5 text-xs text-muted-foreground">
-                          {c.key === 'ad_nome' ? `${filtered.length} anúncios` : ''}
-                        </td>
-                      );
-                    }
-                    const v = Number((summary as any)[c.key] ?? 0);
-                    return (
-                      <td key={c.key} className={cn(
-                        'px-3 py-2.5 tabular-nums whitespace-nowrap text-sm',
-                        v > 0 && c.colorFn ? c.colorFn(v) : 'text-foreground',
-                      )}>
-                        {v > 0 ? c.fmt!(v) : '—'}
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tfoot>
-            )}
-          </table>
+
+        {/* Quatro colunas, não cinco: o hook já aparece no detalhe, e a quinta espremia
+            o nome do anúncio até "AD 0...". Nome truncado num painel cujo assunto é o
+            anúncio é o pior lugar para economizar espaço. */}
+        <div className="hidden shrink-0 gap-4 text-right text-xs sm:flex">
+          <div className="w-[76px]">
+            <div className="text-[10px] text-muted-foreground/50">Investido</div>
+            <div className="tabular-nums text-foreground">{formatCurrency(a.investimento)}</div>
+          </div>
+          <div className="w-[76px]">
+            <div className="text-[10px] text-muted-foreground/50">Receita</div>
+            <div className={cn('tabular-nums', financeiroCego ? 'text-muted-foreground/40' : 'text-foreground')}
+                 title={financeiroCego ? 'A conta não identifica de qual anúncio vêm as vendas' : undefined}>
+              {formatCurrency(a.receita)}
+            </div>
+          </div>
+          <div className="w-16">
+            <div className="text-[10px] text-muted-foreground/50">ROAS</div>
+            <Metrica valor={roas} refConta={a.conta_roas} formato="x" semAmostra={poucaVenda || financeiroCego} />
+          </div>
+          <div className="w-[76px]">
+            <div className="text-[10px] text-muted-foreground/50">CPA</div>
+            <Metrica valor={cpa} refConta={a.conta_cpa} formato="moeda" invertido semAmostra={poucaVenda || financeiroCego} />
+          </div>
         </div>
-      </div>
+      </button>
+
+      {expandido && (
+        <div className="space-y-3 border-t border-border/60 px-3.5 py-3">
+          {/* A hipótese primeiro: o número só significa alguma coisa contra o que se
+              queria testar. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50">Hipótese</span>
+            {a.angulo_teste || a.tipo_teste || a.nivel_consciencia || a.formato ? (
+              <>
+                {a.tipo_teste && <span className="text-foreground">teste: {a.tipo_teste}</span>}
+                {a.angulo_teste && <span className="text-foreground">ângulo: {a.angulo_teste}</span>}
+                {a.nivel_consciencia && <span className="text-foreground">consciência: {a.nivel_consciencia}</span>}
+                {a.formato && <span className="text-muted-foreground">{a.formato}</span>}
+              </>
+            ) : (
+              <span className="text-muted-foreground/60">
+                {a.producao_id ? 'o card não registrou hipótese' : 'sem card de Produção'}
+              </span>
+            )}
+            {a.projeto && <span className="text-muted-foreground">· {a.projeto}</span>}
+            {a.status_veiculacao && <span className="text-muted-foreground">· {a.status_veiculacao}</span>}
+          </div>
+
+          {/* O funil do criativo, na ordem em que a pessoa atravessa. Onde ele cai é
+              onde o criativo perdeu. */}
+          <div className="grid grid-cols-3 gap-4 rounded-lg border border-border/60 bg-secondary/20 px-3 py-2.5 sm:grid-cols-6">
+            <Etapa rotulo="Impressões" taxa={null} absoluto={formatNumber(a.impressoes)} />
+            <Etapa rotulo="Hook 3s" taxa={hook} absoluto={formatNumber(a.video_3s)} fraco={poucaImpressao} />
+            <Etapa rotulo="Retenção 75%" taxa={retencao} absoluto={formatNumber(a.video_75pct)} fraco={poucaImpressao} />
+            <Etapa rotulo="CTR" taxa={ctr} absoluto={formatNumber(a.cliques_link)} fraco={poucaImpressao} />
+            <Etapa rotulo="Conexão" taxa={conexao} absoluto={formatNumber(a.visualizacoes)} fraco={poucaImpressao} />
+            <Etapa rotulo="Checkout → venda" taxa={convCheckout} absoluto={`${formatNumber(a.vendas)} vendas`} fraco={poucaVenda} />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <span className="text-muted-foreground">
+                CTR <Metrica valor={ctr} refConta={a.conta_ctr} formato="pct" semAmostra={poucaImpressao} />
+              </span>
+              <span className="text-muted-foreground">
+                Conexão <Metrica valor={conexao} refConta={a.conta_conexao} formato="pct" semAmostra={poucaImpressao} />
+              </span>
+              {financeiroCego ? (
+                <span className="text-[11px] text-amber-400/80">
+                  só {a.conta_pct_atribuido.toFixed(0)}% das vendas desta conta dizem de qual
+                  anúncio vieram — receita, ROAS e CPA aqui não são desempenho, são falta de dado
+                </span>
+              ) : (poucaImpressao || poucaVenda) && (
+                <span className="text-[11px] text-amber-400/80">
+                  {poucaImpressao && `menos de ${formatNumber(MIN_IMPRESSOES)} impressões`}
+                  {poucaImpressao && poucaVenda && ' e '}
+                  {poucaVenda && `menos de ${MIN_VENDAS} vendas`}
+                  {' '}— não dá para concluir
+                </span>
+              )}
+            </div>
+
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={onVincular}>
+              <Link2 className="h-3 w-3" />
+              {a.vinculo === 'confirmado' ? 'Trocar card' : 'Definir card'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+interface Card {
+  id: string; nome: string; criado_em: string;
+  responsavel: { nome: string } | null;
+  avaliacao: string | null; status_veiculacao: string | null;
+}
+
+/**
+ * Confirma qual card de Produção é este anúncio.
+ *
+ * Grava `producoes.ad_id_meta`. Depois de confirmado, o vínculo para de depender do
+ * nome — que é o ponto: em 18% dos anúncios o mesmo nome existe em cards de editores
+ * diferentes, e escolher "o mais recente" sempre devolveria alguém sem nunca acusar
+ * erro.
+ */
+function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
+  anuncio: Anuncio; podeEditar: boolean; onFechar: () => void; onSalvo: () => void;
+}) {
+  const [cards, setCards] = useState<Card[]>([]);
+  const [buscando, setBuscando] = useState(true);
+  const [termo, setTermo] = useState(anuncio.ad_nome ?? '');
+  const [salvando, setSalvando] = useState(false);
+
+  const procurar = useCallback(async (t: string) => {
+    setBuscando(true);
+    const { data } = await supabase
+      .from('producoes')
+      .select('id, nome, criado_em, avaliacao, status_veiculacao, responsavel:perfis!producoes_responsavel_id_fkey(nome)')
+      .eq('fase', 'postado').eq('tipo', 'criativo')
+      .ilike('nome', `%${t.trim()}%`)
+      .order('criado_em', { ascending: false })
+      .limit(25);
+    setCards((data ?? []) as unknown as Card[]);
+    setBuscando(false);
+  }, []);
+
+  // Busca uma vez ao abrir, com o nome do anúncio. Depois quem dispara é a pessoa:
+  // refazer a cada tecla transformaria digitar num bombardeio de consultas.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { procurar(termo); }, []);
+
+  const salvar = async (cardId: string) => {
+    setSalvando(true);
+    // Um anúncio pertence a um card só: solta o vínculo anterior antes de criar o novo,
+    // senão o índice único recusa e o clique vira erro sem explicação.
+    await supabase.from('producoes').update({ ad_id_meta: null }).eq('ad_id_meta', anuncio.ad_id);
+    const { data, error } = await supabase
+      .from('producoes').update({ ad_id_meta: anuncio.ad_id }).eq('id', cardId).select('id');
+    setSalvando(false);
+
+    if (error || !data?.length) {
+      toast({
+        title: 'Não salvou',
+        description: error?.message ?? 'Nenhuma linha alterada — provável falta de permissão.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    toast({ title: 'Card vinculado ao anúncio' });
+    onSalvo();
+  };
+
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onFechar(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-base">Qual card é este anúncio?</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="rounded-lg border border-border bg-secondary/30 px-3 py-2">
+            <div className="text-sm font-medium text-foreground">{anuncio.ad_nome}</div>
+            <div className="text-[11px] text-muted-foreground">
+              {anuncio.conta} · {formatCurrency(anuncio.investimento)} investidos ·{' '}
+              {anuncio.vendas} vendas
+              {anuncio.vinculo === 'ambiguo' &&
+                ` · ${anuncio.candidatos} editores diferentes têm card com este nome`}
+            </div>
+          </div>
+
+          {!podeEditar && (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
+              Só administrador define o dono do anúncio. Você pode conferir os candidatos abaixo.
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Input value={termo} onChange={e => setTermo(e.target.value)}
+                   onKeyDown={e => { if (e.key === 'Enter') procurar(termo); }}
+                   placeholder="Buscar card pelo nome" className="h-8 text-xs" />
+            <Button size="sm" variant="outline" className="h-8 text-xs"
+                    onClick={() => procurar(termo)} disabled={buscando}>
+              {buscando ? 'Buscando...' : 'Buscar'}
+            </Button>
+          </div>
+
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {buscando ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">Buscando...</p>
+            ) : cards.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                Nenhum card postado do tipo criativo com esse nome.
+              </p>
+            ) : cards.map(c => (
+              <div key={c.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs text-foreground">{c.nome}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {c.responsavel?.nome ?? 'sem responsável'}
+                    {c.avaliacao && ` · ${c.avaliacao}`}
+                    {c.status_veiculacao && ` · ${c.status_veiculacao}`}
+                    {' · '}{new Date(c.criado_em).toLocaleDateString('pt-BR')}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs"
+                        disabled={!podeEditar || salvando} onClick={() => salvar(c.id)}>
+                  {anuncio.producao_id === c.id ? 'Atual' : 'É este'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
