@@ -12,20 +12,6 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
-/**
- * Conta de anúncio — a dimensão pela qual a operação separa os funis.
- *
- * O seletor listava a tabela `funis`, que tem 22 linhas todas inativas, com nomes
- * repetidos e sem produto. Como `vendas.funil_id` também é nulo em 100% das linhas,
- * escolher um funil zerava a tela em sete páginas. A conta é o que de fato isola um
- * funil do outro.
- */
-interface Conta {
-  id: string;
-  nome: string;
-  produto: string | null;
-}
-
 const ALL_SUB_PAGES = [
   { path: '/',         label: 'Resumo',      icon: LayoutDashboard, key: 'overview' },
   { path: '/meta-ads', label: 'Meta Ads',    icon: TrendingUp,      key: 'meta-ads' },
@@ -60,12 +46,9 @@ const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt
 
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
-  const { contaId, setContaId } = useFilters();
   const { user, canAccess, perfil, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [contas, setContas] = useState<Conta[]>([]);
-  const [loadingContas, setLoadingContas] = useState(true);
 
   const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
   const fixedItems = ALL_FIXED_ITEMS.filter(p => {
@@ -79,76 +62,46 @@ export function AppSidebar() {
     navigate('/login');
   };
 
-  // Track which dashboard is expanded — null means "Geral"
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  // Sync expandedId with contaId
-  useEffect(() => { setExpandedId(contaId); }, [contaId]);
-
-  const loadContas = async () => {
-    setLoadingContas(true);
-    // `visto_em` não nulo exclui conta que o token não enxerga mais — sem isso a
-    // lista acumula conta antiga de BM desativada.
-    const { data } = await supabase
-      .from('ad_accounts')
-      .select('id,nome,produto')
-      .eq('ativo', true)
-      .not('visto_em', 'is', null)
-      .order('nome');
-    setContas(data || []);
-    setLoadingContas(false);
-  };
-
-  useEffect(() => { loadContas(); }, []);
-
-  const selectDashboard = (id: string | null, onNav?: () => void) => {
-    const wasExpanded = expandedId === id && contaId === id;
-    if (wasExpanded) return; // already selected & expanded
-    setContaId(id);
-    setExpandedId(id);
-    // Navigate to Resumo when switching dashboards
-    if (!['/configuracoes', '/editores'].includes(location.pathname)) {
-      // stay on current sub-page
-    } else {
-      navigate('/');
-    }
-    onNav?.();
-  };
+  /**
+   * A sidebar tem um dashboard só.
+   *
+   * Antes ela listava a tabela `funis` — 22 linhas todas inativas, então na prática
+   * só "Geral" aparecia. O recorte por conta de anúncio virou filtro no cabeçalho,
+   * junto do período, porque é lá que ele pertence: é um recorte da visão, não uma
+   * visão diferente. E o filtro só oferece conta que gastou no período escolhido,
+   * em vez de despejar as quinze.
+   */
+  const [geralAberto, setGeralAberto] = useState(true);
 
 
   const showLabels = isMobile || !collapsed;
 
-  const DashboardItem = ({ id, label, icon, colorDot, onNav, expandable = false }: {
-    id: string | null; label: string; icon?: React.ReactNode; colorDot?: string; onNav?: () => void; expandable?: boolean;
+  const DashboardItem = ({ label, icon, onNav }: {
+    label: string; icon?: React.ReactNode; onNav?: () => void;
   }) => {
-    const isSelected = contaId === id;
-    const isExpanded = expandedId === id && isSelected;
+    const isExpanded = geralAberto;
 
     return (
       <div>
         <button
-          onClick={() => selectDashboard(id, onNav)}
+          onClick={() => setGeralAberto(v => !v)}
           className={cn(
             "flex items-center gap-2.5 w-full rounded-md text-sm transition-colors",
             showLabels ? "px-3 py-2" : "justify-center py-2 px-1",
-            isSelected
-              ? "bg-primary/15 text-primary font-medium"
-              : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            "bg-primary/15 text-primary font-medium",
           )}
         >
-          {icon || <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", colorDot || 'bg-muted')} />}
+          {icon}
           {showLabels && (
             <>
               <span className="truncate flex-1 text-left">{label}</span>
-              {expandable && (
-                <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", isExpanded ? "rotate-180" : "")} />
-              )}
+              <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", isExpanded ? "rotate-180" : "")} />
             </>
           )}
         </button>
 
-        {/* Sub-pages — only when expanded, expandable, and labels visible */}
-        {expandable && isExpanded && showLabels && (
+        {/* Sub-páginas — só quando aberto e com rótulos visíveis */}
+        {isExpanded && showLabels && (
           <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2">
             {subPages.map((sp) => {
               const isActive = location.pathname === sp.path;
@@ -212,27 +165,9 @@ export function AppSidebar() {
         )}
 
         <div className="space-y-0.5">
-          <DashboardItem id={null} label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} expandable />
+          <DashboardItem label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} />
 
-          {loadingContas ? (
-            <div className="flex justify-center py-3">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
-          ) : contas.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
-              Nenhuma conta de anúncio ativa
-            </p>
-          ) : (
-            contas.map((c) => (
-              <DashboardItem
-                key={c.id}
-                id={c.id}
-                label={c.nome}
-                colorDot={c.produto ? prodColors[c.produto]?.split(' ')[0] : undefined}
-                onNav={onNav}
-              />
-            ))
-          )}
+
 
         </div>
       </div>

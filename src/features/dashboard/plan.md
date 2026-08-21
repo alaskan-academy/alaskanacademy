@@ -473,3 +473,31 @@ Validação (01–20/08): Tráfego 600 vendas / R$ 55.112,53 · Back-end 660 / R
 
 - [ ] **A tabela `funis` continua no banco**, agora sem uso pelo filtro. A feature `/funis-gestao` tem `funilId` próprio e não foi tocada. Decidir depois se a tabela é aposentada
 - [ ] Só 5 das 15 contas ativas têm venda atribuída no período. Vale checar se as outras gastam sem retorno rastreável ou se é o mesmo buraco de UTM
+
+### O recorte por CA vira filtro no cabeçalho
+
+- [x] **Saiu da sidebar, entrou ao lado do período.** Listar as quinze contas como "dashboards" transformava a escolha em garimpo, e conceitualmente estava errado: é um recorte da mesma visão, não uma visão diferente — o mesmo lugar onde mora o período
+- [x] **Só oferece conta com gasto no período escolhido** (`fn_contas_com_gasto`). Num dia típico são cinco, não quinze. O investimento aparece ao lado do nome, então dá para ver a escala sem entrar na conta
+- [x] Trocar o período pode deixar a conta escolhida sem gasto nenhum; nesse caso volta para "Todas" em vez de manter um recorte que resulta em tela vazia
+- [x] A sidebar voltou a ter só "Geral", e o `handleDateSelect` deixou de usar `any` — o tipo agora sai do próprio `DATE_OPTIONS`
+
+### A conta que parecia um buraco sem fundo
+
+O primeiro uso do filtro achou o caso: **"Saponaria" gastou R$ 29.937,87 em agosto com zero vendas atribuídas.** Investigando em vez de aceitar:
+
+| Conta | Gasto | Meta reporta | No banco |
+|---|---|---|---|
+| **Saponaria** | R$ 29.937,87 | **629 compras** | **0** |
+| Saponaria Brasil - TSL | R$ 22.933,06 | 451 | 269 |
+| Lembrancinha - TSL | R$ 11.089,40 | 169 | 167 |
+| Workshop Buquê - TSL | R$ 7.313,95 | 171 | 164 |
+| Worshop Buquê - SO | R$ 832,57 | 9 | 9 |
+| **Saponaria Brasil - VSL** | R$ 829,53 | **8** | **0** |
+| Desafios na Sala - TSL | R$ 608,68 | 1 | 1 |
+
+A conta tem 48 anúncios conhecidos e o Meta reporta 629 compras. O que falta não é venda — é UTM. O checkout **"Saponaria Brasil - Desconto de Aula"** fez 550 vendas e R$ 48.042,40 no período com **0,0% de `ad_id`**, enquanto todo outro link rastreia de 92% a 100%.
+
+Atribuindo essas vendas à conta, o ROAS dela seria **1,60** — acima da média da casa. O dashboard estava prestes a apresentar a campanha que mais vende como a que só queima dinheiro.
+
+- [x] **Alerta `conta_sem_venda`** criado a partir do caso: conta que gasta, o Meta reporta compra, e nada chega atribuído. Já dispara nomeando "Saponaria"
+- [ ] **Configurar a UTM do checkout "Saponaria Brasil - Desconto de Aula"** — ação no painel da Payt. É a correção de maior valor pendente: destrava R$ 48 mil de atribuição e o ROAS de duas contas
