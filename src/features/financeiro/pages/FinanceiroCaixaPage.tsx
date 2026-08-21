@@ -234,19 +234,26 @@ export default function FinanceiroCaixaPage() {
     const val = parseFloat(novoSaldo.replace(',', '.'));
     if (isNaN(val)) return;
 
-    const { error } = await supabase
+    // O `.select()` devolve as linhas afetadas. Sem ele, um UPDATE barrado por RLS
+    // retorna 200 com zero linhas e o código dá sucesso sobre nada.
+    const { data, error } = await supabase
       .from('caixa_config')
       .update({ saldo_inicial: val, data_referencia: novaData || config.data_referencia, updated_at: new Date().toISOString() })
-      .eq('id', config.id);
+      .eq('id', config.id)
+      .select('id');
 
     if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
+    if (!data || data.length === 0) {
+      toast({ title: 'Nada foi salvo', description: 'Nenhuma linha alterada — verifique permissão.', variant: 'destructive' });
+      return;
+    }
     setConfig(c => c ? { ...c, saldo_inicial: val, data_referencia: novaData || c.data_referencia } : c);
     setEditando(false);
     toast({ title: 'Reserva atualizada' });
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout title="Caixa">
       <FinanceiroNav />
 
       {/* Cabeçalho */}
