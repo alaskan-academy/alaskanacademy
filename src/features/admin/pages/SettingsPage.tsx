@@ -112,8 +112,20 @@ function FiscalTab() {
     ];
     const errors: string[] = [];
     for (const u of updates) {
-      const { error } = await supabase.from("configuracoes").update({ valor: u.valor }).eq("chave", u.chave);
-      if (error) errors.push(error.message);
+      // O `.select()` no fim devolve as linhas afetadas. Sem ele, um UPDATE barrado
+      // por RLS retorna 200 com zero linhas e o código comemora — foi assim que os
+      // parâmetros fiscais ficaram meses sem salvar, exibindo "Configurações salvas!".
+      const { data, error } = await supabase
+        .from("configuracoes")
+        .update({ valor: u.valor })
+        .eq("chave", u.chave)
+        .select("chave");
+
+      if (error) {
+        errors.push(`${u.chave}: ${error.message}`);
+      } else if (!data || data.length === 0) {
+        errors.push(`${u.chave}: nenhuma linha alterada (permissão ou chave inexistente)`);
+      }
     }
     if (errors.length > 0) {
       toast({ title: "Erro ao salvar", description: errors.join(" | "), variant: "destructive" });

@@ -312,7 +312,11 @@ Limiar default ±15%, configurável.
 
 - [x] **Descoberto por que "back-end" aparecia em 50%: 41,5% da receita vem de links de checkout sem UTM.** O bloco `link` do payload identifica o checkout usado, e os links bem configurados rastreiam 92–99%. Já 39 links rastreiam **0%** — 1.574 vendas, R$ 135.271. O maior é "Saponaria Brasil - Desconto de Aula": **1.213 vendas, R$ 110.848, nenhuma atribuição** — a maior linha de receita da base. Não é falha de tracking, é link sem UTM configurada. Novas colunas `link_titulo` / `link_url` e nova aba **Links** na Visão Geral, que lista receita por checkout e o % rastreado de cada um
 
+- [x] **Salvar em Configurações não gravava nada — e dizia que gravou.** 18 tabelas tinham política de escrita apenas para `anon`; usuário logado usa `authenticated`, então o UPDATE afetava zero linhas. O PostgREST devolve 200 nesse caso, e o código só checava `error`, nunca a quantidade de linhas afetadas — daí o toast "Configurações salvas!" sobre nada. Atingia também os módulos de Editores, Avaliações e Processos. Corrigido nos dois lados: política `authenticated_write` nas 18 tabelas, e `.select()` no update para detectar zero linhas
+- [x] `ParametrosFiscaisTab.tsx` removido — cópia divergente de `SettingsPage.tsx` que nunca foi importada em lugar nenhum
+
 **Pendências:**
+- [ ] **Remover as políticas de escrita `anon` das 18 tabelas.** Hoje qualquer um com a chave anon escreve nelas sem estar logado, o que contraria a regra do CLAUDE.md. Não removi junto da correção para não arriscar quebrar algum fluxo que dependa disso — precisa de verificação antes
 - [ ] **Configurar UTM nos links de checkout com 0% de rastreio** — ação no painel da Payt, não no código. Prioridade absoluta em "Saponaria Brasil - Desconto de Aula" (R$ 110.848). Enquanto não for feito, ROAS e CPA do funil de aula ficam impossíveis de medir e a receita dele é lida como back-end
 - [ ] Depois que os links estiverem rastreados, revisar a régua Tráfego/Back-end: hoje ela mistura back-end real (Suporte, Assinatura, Oferta p/ Alunas, Seguidoras) com venda de anúncio que perdeu atribuição
 - [x] **Base do Simples corrigida para `valor_sem_juros`, confirmada pelas notas.** O pedido `282O8JD` (R$ 328,80 em 5x) é faturado em dois documentos que somam exatamente R$ 297,00 — o `valor_sem_juros`: NF-e de R$ 237,60 (mercadoria, NCM 49019900, com imunidade de livro pela CF/88 art. 150 VI d) e NFS-e de R$ 59,40 (serviço). Os R$ 31,80 de juro não aparecem em nota alguma. A view passou a expor `receita_tributavel` e `juros_parcelamento`
@@ -356,7 +360,9 @@ Limiar default ±15%, configurável.
 **Pendências da Fase 0.2:**
 - [ ] `ad_accounts.funil_id` continua nulo nas 5 contas novas — bloqueia o seletor de CA e a atribuição de venda a funil (Fase 0.3)
 - [ ] O cron `processar_windsor_staging` (`0 4 * * *`) ainda roda diariamente sobre `windsor_meta_staging`, que está estático desde 23/07. Não conflita com o sync novo (as contas antigas têm outros UUIDs, então a chave única difere), mas é job morto
-- [ ] O mapeamento conta → produto foi inferido do nome de cada conta. Conferir se `Lembrancinha`, `Workshop Buquê` e as duas de `Saponaria` estão nas categorias certas. **`RMKT Saponaria - TSL` está como `cosmeticos`** — resquício do cadastro manual antigo, quase certamente errado. `Jabon - TSL`, `CA2`, `CA3` e `CA4` estão sem produto
+- [x] `RMKT Saponaria - TSL` corrigida de `cosmeticos` para `saponaria` (resquício do cadastro manual)
+- [ ] `Jabon - TSL`, `CA2`, `CA3` e `CA4` seguem sem produto. Nenhuma teve gasto no período, então classificar agora seria adivinhar sem dado para conferir
+- [ ] **Uma conta pode trocar de produto ao longo do tempo, e o modelo atual não expressa isso.** `Desafios na Sala - TSL` rodou Velas Perfeitas de maio a julho (R$ 18.131) e foi reaproveitada em 18/08 para o Workshop Desafios na Sala de Aula (R$ 608, campanha "TESTE - 18/08/26"). Como `produto` é um campo único na conta, qualquer valor escolhido erra um dos dois períodos. `metricas_meta.produto` é por linha e comporta o corte por data, mas falta decidir a categoria do produto novo — ele não é velas nem saponária, é outro vertical (professores). O caminho definitivo é abandonar o join por produto e casar gasto com receita via `ad_id_meta`, que é por venda e não depende de configuração
 - [ ] `Jabon - TSL` sugere operação em espanhol. Se vender por outra plataforma ou outra conta Payt, a receita correspondente não está no dashboard e o ROAS dessa conta ficará distorcido
 
 ### Fase 0.3 — Funis e atribuição
