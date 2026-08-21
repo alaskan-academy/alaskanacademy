@@ -8,37 +8,96 @@ const supabase = createClient(
 // Chave de integração da Payt — configure em Supabase > Edge Functions > Secrets
 const INTEGRATION_KEY = Deno.env.get('PAYT_INTEGRATION_KEY');
 
+/**
+ * Onde a Payt pode colocar o identificador da transação.
+ *
+ * A versão anterior olhava só `transaction_id` e devolvia 400 quando não achava.
+ * Como o corpo era descartado junto, 46 upsells de agosto sumiram sem deixar
+ * rastro — só apareceram ao conciliar com um export manual. Hoje o corpo é
+ * gravado antes de qualquer validação, então mesmo um formato novo é recuperável.
+ */
+const CAMINHOS_ID = [
+  ['transaction_id'],
+  ['transaction', 'id'],
+  ['transaction', 'transaction_id'],
+  ['transaction', 'code'],
+  ['order', 'transaction_id'],
+  ['order', 'id'],
+  ['order', 'code'],
+  ['order_id'],
+  ['code'],
+  ['id'],
+];
+
+function buscar(obj: any, caminho: string[]): string | null {
+  let atual = obj;
+  for (const parte of caminho) {
+    if (atual == null || typeof atual !== 'object') return null;
+    atual = atual[parte];
+  }
+  if (typeof atual === 'string' && atual.trim() !== '') return atual.trim();
+  if (typeof atual === 'number') return String(atual);
+  return null;
+}
+
+function extrairId(body: any): string | null {
+  for (const caminho of CAMINHOS_ID) {
+    const valor = buscar(body, caminho);
+    if (valor) return valor;
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
   }
 
+  const texto = await req.text();
+
   let body: any;
   try {
-    body = await req.json();
+    body = JSON.parse(texto);
   } catch {
-    return json({ error: 'Invalid JSON' }, 400);
+    // Nem JSON válido: guarda o texto cru para inspeção depois.
+    await supabase.from('payt_webhook_raw').insert({
+      body: { _corpo_nao_json: texto.slice(0, 20000) },
+      motivo: 'corpo não é JSON válido',
+    });
+    return json({ ok: true, stored: true, skipped: 'invalid json' });
   }
 
-  // Valida chave de integração (se configurada como secret)
+  // A chave é o que separa a Payt de qualquer um: continua sendo 401 e não grava.
   if (INTEGRATION_KEY && body.integration_key !== INTEGRATION_KEY) {
     return json({ error: 'Unauthorized' }, 401);
   }
 
-  // Ignora pedidos de teste
-  if (body.test === true) {
-    return json({ ok: true, skipped: 'test order' });
+  const payt_id = extrairId(body);
+
+  // Grava o bruto antes de decidir qualquer coisa. A partir daqui nada se perde.
+  const { data: bruto, error: erroBruto } = await supabase
+    .from('payt_webhook_raw')
+    .insert({ payt_id, body })
+    .select('id')
+    .single();
+
+  if (erroBruto) {
+    // Falhou o registro bruto: aí sim devolve erro, para a Payt reenviar.
+    console.error('Falha ao gravar payload bruto:', erroBruto.message);
+    return json({ error: erroBruto.message }, 500);
   }
 
-  // Ignora eventos que não são de pedido
-  if (body.type !== 'order') {
-    return json({ ok: true, skipped: `event type: ${body.type}` });
-  }
+  const encerrar = async (motivo: string, processado = false) => {
+    await supabase
+      .from('payt_webhook_raw')
+      .update({ processado, motivo })
+      .eq('id', bruto.id);
+    return json({ ok: true, stored: true, payt_id, motivo });
+  };
 
-  const payt_id = body.transaction_id as string;
-  if (!payt_id) {
-    return json({ error: 'transaction_id ausente' }, 400);
-  }
+  if (body.test === true) return encerrar('pedido de teste', true);
+  if (body.type !== 'order') return encerrar(`tipo de evento: ${body.type}`);
+  if (!payt_id) return encerrar('não achei o id da transação no payload');
 
   // Data: usa paid_at quando disponível, senão updated_at
   const rawDate: string =
@@ -49,14 +108,17 @@ Deno.serve(async (req) => {
   const data = rawDate.slice(0, 10) || null;
 
   // Valor: centavos → reais
-  const valor = typeof body.transaction?.total_price === 'number'
-    ? body.transaction.total_price / 100
-    : 0;
+  const centavos =
+    body.transaction?.total_price ??
+    body.transaction?.price ??
+    body.total_price;
+  const valor = typeof centavos === 'number' ? centavos / 100 : 0;
 
   const status: string = body.status ?? 'unknown';
 
   // Produto principal
-  const produto: string | null = body.product?.name ?? null;
+  const produto: string | null =
+    body.product?.name ?? body.products?.[0]?.name ?? null;
 
   // UTMs — utm_content tem formato "Nome do Ad|ad_id::token"
   const sources = body.link?.sources ?? {};
@@ -100,8 +162,17 @@ Deno.serve(async (req) => {
 
   if (error) {
     console.error('Erro ao salvar venda:', error.message);
+    await supabase
+      .from('payt_webhook_raw')
+      .update({ motivo: `erro ao gravar venda: ${error.message}` })
+      .eq('id', bruto.id);
     return json({ error: error.message }, 500);
   }
+
+  await supabase
+    .from('payt_webhook_raw')
+    .update({ processado: true })
+    .eq('id', bruto.id);
 
   return json({ ok: true, payt_id, status, utm_content });
 });
