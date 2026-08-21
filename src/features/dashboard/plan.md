@@ -1477,3 +1477,26 @@ ausência de dado.
 
 **Resíduo:** a edge function `sync-notion-criativos` segue publicada, sem cron e sem
 nenhuma referência no front. Dorme, mas está lá.
+
+### Segunda passada, depois de olhar a tela
+
+Quatro problemas apontados pela Jessica, todos procedentes.
+
+- [x] **O filtro de período e conta ficava fixo no cabeçalho**, mas só a aba Criativos
+      Meta olha para ele. Um controle que não muda nada em três das quatro telas é pior
+      que nenhum: quem mexe e não vê efeito conclui que a tela quebrou. Agora aparece só
+      na aba que o usa
+- [x] **A lista era confusa.** Virou tabela de verdade: cabeçalho clicável para ordenar
+      com indicador de direção, coluna de editor visível, conta sob o nome do anúncio, e
+      agrupamento opcional por editor com os totais de cada um
+- [x] **Metade da lista era ruído** — 195 dos 376 anúncios do período gastaram menos de
+      R$ 50. Ficam atrás de um clique, com a contagem à vista: esconder sem dizer seria
+      pior que a poluição
+- [x] **"Definir card" não dizia nada.** Virou "Ligar a um card de Produção", e o diálogo
+      explica o porquê: o card guarda quem editou e qual era a hipótese, e o nome sozinho
+      não basta porque editores diferentes usam o mesmo nome
+
+**E um defeito meu:** a etapa "Impressões" mostrava um travessão acima do número. Impressão
+não tem taxa — eu tratei todas as etapas como percentual e o resultado parecia dado
+faltando onde havia dado. Os 22% de anúncios realmente sem hipótese são os sem card; o
+resto das métricas está completo (0% sem hook, retenção, conexão ou checkout).
