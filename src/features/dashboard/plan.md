@@ -1055,3 +1055,40 @@ Removidas as metas de teste. Para embasar as reais, derivado dos parâmetros atu
 
 Abaixo de 1,34 a conta dá prejuízo antes mesmo do custo fixo. Hoje só a
 "Lembrancinha - TSL" (1,71) e a "Workshop Buquê - TSL" (1,79) passam do segundo patamar.
+
+### Segunda passada: filtro de CA e a série na tela
+
+- [x] **Filtro de conta na própria página.** A lista sai dos mesmos dados dos cards, com
+      o gasto/dia ao lado, ordenada por escala. Isso desenterrou um defeito: a página já
+      filtrava por `contaId`, mas com `hideFilters` **não havia controle nenhum** — uma
+      conta escolhida no Resumo filtrava Tendências de forma invisível. Conta selecionada
+      que não gastou na janela agora é dita pelo nome, com caminho de volta, em vez de
+      tela vazia ou limpeza silenciosa
+- [x] **A série diária de cada métrica** (`fn_tendencias` passou a devolver `serie` e
+      `serie_corte`). A tela existia para separar sinal de ruído e mostrava só dois
+      números: "estável" tinha de ser aceito na palavra. Agora se vê a nuvem de pontos,
+      a divisa entre as janelas e as duas médias comparadas
+
+      Sem faixa de ruído desenhada em volta da linha, de propósito: ela é a precisão da
+      diferença entre médias, não a dispersão dos dias. Ali pareceria certa e estaria
+      medindo outra coisa
+- [x] Ajuda das métricas saiu para tooltip e legenda (eram 180 repetições do mesmo texto);
+      metodologia virou uma linha com o resto atrás de um clique; grupos de diagnóstico
+      fecham quando não têm nada a dizer e abrem sozinhos quando têm movimento; cabeçalho
+      do card leva investido, receita, vendas e ROAS; esqueleto no lugar de "Carregando..."
+
+#### Três classes que não existem no CSS gerado deste projeto
+
+Mesma assinatura de sempre: **falharam em silêncio e pareciam certas**, e o `tsc` passou
+limpo nas três.
+
+| Classe | O que acontecia |
+|---|---|
+| `stroke-muted-foreground/40` | `stroke: none` — metade das linhas do gráfico invisível |
+| `normal-case` | resumo do grupo saía em CAIXA ALTA, herdada do botão |
+| `sm:grid` | container em `display: block`, colunas declaradas e ignoradas |
+
+Só apareceram porque a verificação mediu `getComputedStyle` na tela, não o screenshot —
+no print, uma linha que falta não chama atenção. Todas trocadas por `currentColor` com
+classes `text-*`, que este projeto comprovadamente gera. **Regra que fica: em SVG, cor vem
+de `text-*` + `currentColor`, nunca de `stroke-*`/`fill-*`.**

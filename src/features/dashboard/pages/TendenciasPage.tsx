@@ -1,9 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
-import { TrendingUp, TrendingDown, Minus, AlertCircle, HelpCircle } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Minus, AlertCircle, HelpCircle,
+  Megaphone, ChevronDown, ChevronRight,
+} from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,8 +21,9 @@ import { cn } from "@/lib/utils";
  *
  * Então a comparação é entre médias de janelas, e só vira "alta" ou "queda" o que
  * excede duas vezes o erro padrão da diferença. O resto é "estável" — que é uma
- * resposta, não uma ausência dela. A faixa de ruído aparece ao lado de cada variação
- * justamente para que "estável" seja verificável, e não uma afirmação a ser aceita.
+ * resposta, não uma ausência dela. A série diária aparece ao lado de cada métrica
+ * justamente para que "estável" seja uma coisa que se vê, e não uma afirmação a ser
+ * aceita: os pontos do período atual caindo dentro da nuvem do anterior.
  */
 
 type Direcao = "alta" | "queda" | "estável" | "sem base";
@@ -38,14 +44,18 @@ interface Tendencia {
   meta: number | null;
   /** `piso` quer ficar acima (ROAS), `teto` quer ficar abaixo (CPA). */
   meta_direcao: "piso" | "teto" | null;
+  /** Valor de cada dia, em ordem, cobrindo janela anterior + atual. */
+  serie: number[] | null;
+  /** Quantos pontos de `serie` pertencem à janela anterior. */
+  serie_corte: number | null;
 }
 
 /**
  * Como cada métrica se comporta e o que significa subir.
  *
- * `bom` diz se a alta é boa. Em CPA e investimento não é — pintar toda alta de verde
- * faria a cor mentir, que é o mesmo defeito de mostrar número truncado com cara de
- * número certo.
+ * `bomSubir` diz se a alta é boa. Em CPA e investimento não é — pintar toda alta de
+ * verde faria a cor mentir, que é o mesmo defeito de mostrar número truncado com cara
+ * de número certo.
  */
 type Formato = "moeda" | "numero" | "x" | "pct";
 
@@ -55,7 +65,7 @@ const METRICAS: Record<string, { formato: Formato; bomSubir: boolean | null; aju
   "Ticket médio":          { formato: "moeda",  bomSubir: true,  ajuda: "Receita por venda" },
   Receita:                 { formato: "moeda",  bomSubir: true,  ajuda: "Média por dia" },
   Vendas:                  { formato: "numero", bomSubir: true,  ajuda: "Média por dia" },
-  Investimento:            { formato: "moeda",  bomSubir: null,  ajuda: "Gastar mais não é bom nem ruim — quem julga é o ROAS" },
+  Investimento:            { formato: "moeda",  bomSubir: null,  ajuda: "Média por dia. Gastar mais não é bom nem ruim — quem julga é o ROAS" },
   CPA:                     { formato: "moeda",  bomSubir: false, ajuda: "Custo por venda" },
   // Leilão
   CPM:                     { formato: "moeda",  bomSubir: false, ajuda: "Custo por mil impressões — o que o Meta cobra" },
@@ -129,6 +139,9 @@ const FAIXA_PADRAO = "14d";
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+const curto = (d: Date) =>
+  `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+
 /**
  * Dias entre duas datas, inclusivo.
  *
@@ -149,6 +162,84 @@ function formatar(valor: number | null, formato: string) {
   return formatNumber(Math.round(valor * 10) / 10);
 }
 
+/** Cor da variação: cinza quando estável ou quando subir não é bom nem ruim. */
+function corDaDirecao(t: Tendencia) {
+  const bomSubir = METRICAS[t.metrica]?.bomSubir;
+  if (t.direcao === "estável" || t.direcao === "sem base" || bomSubir === null) return "neutro";
+  return ((t.variacao_pct ?? 0) >= 0) === bomSubir ? "bom" : "ruim";
+}
+
+/**
+ * A série diária, com a divisa entre as duas janelas.
+ *
+ * Os tracejados horizontais são as duas médias comparadas — exatamente o que a
+ * variação ao lado mede. A nuvem de pontos em volta deles é o motivo de a tela exigir
+ * que a diferença passe do ruído antes de chamá-la de tendência.
+ *
+ * Deliberadamente **não** desenha a faixa de ruído: ela é a precisão da diferença
+ * entre médias, não a dispersão dos dias. Uma faixa dessas em volta da linha diária
+ * pareceria certa e estaria medindo outra coisa — os dias cairiam fora dela o tempo
+ * todo sem que isso significasse nada.
+ */
+function Serie({ t, largura = 68, altura = 22 }: { t: Tendencia; largura?: number; altura?: number }) {
+  const s = t.serie;
+  if (!s || s.length < 3) return <div style={{ width: largura, height: altura }} />;
+
+  const corte = Math.min(Math.max(t.serie_corte ?? 0, 0), s.length);
+  const min = Math.min(...s);
+  const max = Math.max(...s);
+  const amplitude = max - min || Math.abs(max) || 1;
+  const px = (i: number) => (s.length === 1 ? largura / 2 : (i / (s.length - 1)) * largura);
+  const py = (v: number) => altura - 2 - ((v - min) / amplitude) * (altura - 4);
+
+  const pontos = (ini: number, fim: number) =>
+    s.slice(ini, fim).map((v, k) => `${px(ini + k).toFixed(1)},${py(v).toFixed(1)}`).join(" ");
+
+  const tom = corDaDirecao(t);
+  const cor = tom === "bom" ? "text-success" : tom === "ruim" ? "text-destructive" : "text-muted-foreground";
+
+  // A linha atual começa no último ponto da anterior, senão o gráfico abre um buraco
+  // na divisa exatamente onde a leitura precisa de continuidade.
+  const iniAtual = corte > 0 ? corte - 1 : 0;
+
+  const nivel = (valor: number | null, de: number, ate: number, classe: string, opacidade: number) =>
+    valor === null || valor === undefined || ate <= de ? null : (
+      <line
+        x1={px(de)} x2={px(ate)} y1={py(valor)} y2={py(valor)}
+        className={classe} stroke="currentColor" strokeOpacity={opacidade}
+        strokeWidth={1} strokeDasharray="2 2"
+      />
+    );
+
+  // Tudo pinta com `currentColor` a partir de uma classe `text-*`, e não com
+  // `stroke-*`: as variantes de opacidade de `stroke` não existem no CSS gerado deste
+  // projeto e saíam como `stroke: none` — linha invisível, sem erro nenhum.
+  return (
+    <svg width={largura} height={altura} className={cn("shrink-0 overflow-hidden", cor)} aria-hidden="true">
+      {nivel(t.anterior, 0, Math.max(corte - 1, 0), "text-muted-foreground", 0.5)}
+      {nivel(t.atual, iniAtual, s.length - 1, cor, 0.6)}
+      {corte > 0 && corte < s.length && (
+        <line
+          x1={px(corte - 0.5)} x2={px(corte - 0.5)} y1={0} y2={altura}
+          className="text-muted-foreground" stroke="currentColor" strokeOpacity={0.3} strokeWidth={1}
+        />
+      )}
+      {corte > 1 && (
+        <polyline
+          points={pontos(0, corte)} fill="none" strokeWidth={1.25}
+          className="text-muted-foreground" stroke="currentColor" strokeOpacity={0.45}
+          strokeLinejoin="round" strokeLinecap="round"
+        />
+      )}
+      <polyline
+        points={pontos(iniAtual, s.length)} fill="none" strokeWidth={1.5}
+        stroke="currentColor" strokeLinejoin="round" strokeLinecap="round"
+      />
+      <circle cx={px(s.length - 1)} cy={py(s[s.length - 1])} r={1.75} fill="currentColor" />
+    </svg>
+  );
+}
+
 /**
  * Situação contra a meta da conta, quando existe.
  *
@@ -165,7 +256,7 @@ function Meta({ t, formato }: { t: Tendencia; formato: string }) {
   return (
     <span
       className={cn(
-        "rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
+        "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
         bate ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
       )}
       title={t.meta_direcao === "teto" ? `Meta: no máximo ${alvo}` : `Meta: no mínimo ${alvo}`}
@@ -178,29 +269,30 @@ function Meta({ t, formato }: { t: Tendencia; formato: string }) {
 /** Variação com a faixa de ruído ao lado, para "estável" ser verificável. */
 function Variacao({ t }: { t: Tendencia }) {
   if (t.direcao === "sem base") {
-    return <span className="text-xs text-muted-foreground/60">sem base de comparação</span>;
+    return (
+      <span
+        className="text-[10px] leading-tight text-muted-foreground/60"
+        title="Dias com gasto de menos para comparar"
+      >
+        sem base
+      </span>
+    );
   }
 
-  const bomSubir = METRICAS[t.metrica]?.bomSubir;
-  const subiu = (t.variacao_pct ?? 0) >= 0;
+  const tom = corDaDirecao(t);
   const estavel = t.direcao === "estável";
-
-  const cor = estavel || bomSubir === null
-    ? "text-muted-foreground"
-    : subiu === bomSubir
-      ? "text-success"
-      : "text-destructive";
-
+  const subiu = (t.variacao_pct ?? 0) >= 0;
+  const cor = tom === "bom" ? "text-success" : tom === "ruim" ? "text-destructive" : "text-muted-foreground";
   const Icone = estavel ? Minus : subiu ? TrendingUp : TrendingDown;
 
   return (
     <div className="flex flex-col items-end gap-0.5">
       <span className={cn("flex items-center gap-1 text-sm font-medium tabular-nums", cor)}>
-        <Icone className="h-3.5 w-3.5" />
+        <Icone className="h-3.5 w-3.5 shrink-0" />
         {t.variacao_pct === null ? "—" : `${t.variacao_pct > 0 ? "+" : ""}${t.variacao_pct.toFixed(1)}%`}
       </span>
       {t.ruido_pct !== null && (
-        <span className="text-[10px] tabular-nums text-muted-foreground/60">
+        <span className="text-[10px] leading-none tabular-nums text-muted-foreground/60">
           ruído ±{t.ruido_pct.toFixed(0)}%
         </span>
       )}
@@ -208,13 +300,196 @@ function Variacao({ t }: { t: Tendencia }) {
   );
 }
 
+/**
+ * Uma linha de métrica: nome, série, os dois valores, a variação.
+ *
+ * A explicação da métrica saiu para o `title` e para a legenda do painel de ajuda.
+ * Repetida embaixo de doze métricas em quinze cards, ela somava cento e oitenta
+ * linhas de texto idêntico e dobrava a altura de cada card.
+ */
+function Linha({ t, nome, amplo }: { t: Tendencia; nome: string; amplo?: boolean }) {
+  const cfg = METRICAS[nome];
+  return (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span
+          className="truncate text-sm text-foreground decoration-dotted underline-offset-4 hover:underline"
+          title={cfg?.ajuda}
+        >
+          {nome}
+        </span>
+        <Meta t={t} formato={cfg?.formato ?? "numero"} />
+      </div>
+      <Serie t={t} largura={amplo ? 190 : 68} altura={amplo ? 30 : 22} />
+      <div className="shrink-0 text-right text-sm tabular-nums">
+        <span className="text-muted-foreground/60">{formatar(t.anterior, cfg?.formato ?? "numero")}</span>
+        <span className="mx-1 text-muted-foreground/40">→</span>
+        <span className="font-medium text-foreground">{formatar(t.atual, cfg?.formato ?? "numero")}</span>
+      </div>
+      <div className="w-[68px] shrink-0 text-right">
+        <Variacao t={t} />
+      </div>
+    </div>
+  );
+}
+
+interface ContaResumo { id: string; nome: string; produto: string | null; gasto: number }
+
+/**
+ * Card de uma conta.
+ *
+ * Os grupos de diagnóstico (Leilão, Criativo, Funil) começam fechados quando não têm
+ * nada a dizer. Doze métricas abertas em quinze cards viram parede de números, e a
+ * pergunta que se faz aqui é "o que mudou", não "quanto deu tudo". Um grupo com
+ * movimento fora do ruído abre sozinho — esconder justamente o que saiu do ruído
+ * seria trocar ruído visual por informação perdida.
+ */
+function CartaoConta({ conta, linhas, qtdDias, unica }: {
+  conta: ContaResumo; linhas: Tendencia[]; qtdDias: number; unica: boolean;
+}) {
+  const [manual, setManual] = useState<Record<string, boolean>>({});
+  const achar = (nome: string) => linhas.find(d => d.metrica === nome);
+
+  const receita = achar("Receita")?.atual ?? null;
+  const vendas = achar("Vendas")?.atual ?? null;
+  const roas = achar("ROAS");
+  const diasComGasto = linhas[0]?.dias_atual ?? 0;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border/60 pb-2.5">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h3 className="truncate text-sm font-medium text-foreground">{conta.nome}</h3>
+          {conta.produto && (
+            <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] capitalize text-muted-foreground">
+              {conta.produto}
+            </span>
+          )}
+        </div>
+        {/* A escala da conta antes das métricas: qual decisão é a cara, e o que a
+            conta devolveu. Sem isso, uma de R$ 90/dia e outra de R$ 2.000/dia têm o
+            mesmo peso visual e a leitura começa pelo alfabeto. */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs tabular-nums text-muted-foreground">
+          <span title="Investido no período">{formatCurrency((conta.gasto || 0) * diasComGasto)}</span>
+          {receita !== null && (
+            <>
+              <span className="text-muted-foreground/30">·</span>
+              <span title="Receita atribuída no período">{formatCurrency(receita * diasComGasto)}</span>
+            </>
+          )}
+          {vendas !== null && (
+            <>
+              <span className="text-muted-foreground/30">·</span>
+              <span title="Vendas atribuídas no período">
+                {formatNumber(Math.round(vendas * diasComGasto))} vendas
+              </span>
+            </>
+          )}
+          {roas?.atual != null && (
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 font-medium",
+                roas.meta != null
+                  ? roas.atual >= roas.meta
+                    ? "bg-success/15 text-success"
+                    : "bg-destructive/15 text-destructive"
+                  : "bg-secondary text-foreground",
+              )}
+              title="ROAS da janela atual"
+            >
+              {roas.atual.toFixed(2)}x
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Conta única fica em uma coluna só, e a largura que sobra vai para o gráfico.
+          Duas colunas caberiam, mas a 295px cada uma o nome da métrica era truncado
+          para "RO..." — e trocar o nome da métrica por mais densidade é trocar o que
+          se lê pelo que se rola. */}
+      <div>
+        {GRUPOS.map(g => {
+          const doGrupo = g.metricas
+            .map(nome => ({ nome, t: achar(nome) }))
+            .filter((l): l is { nome: string; t: Tendencia } => !!l.t);
+          if (doGrupo.length === 0) return null;
+
+          const emMovimento = doGrupo.filter(
+            l => l.t.direcao === "alta" || l.t.direcao === "queda",
+          ).length;
+          const padrao = unica || g.titulo === "Resultado" || emMovimento > 0;
+          const aberto = manual[g.titulo] ?? padrao;
+
+          return (
+            <div key={g.titulo} className="mb-3 last:mb-0">
+              <button
+                onClick={() => setManual(m => ({ ...m, [g.titulo]: !aberto }))}
+                className="mb-1.5 flex w-full items-center gap-1 text-[10px] font-medium text-muted-foreground/50 transition-colors hover:text-muted-foreground"
+              >
+                {aberto ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                {/* O `uppercase` fica só no título: aplicado no botão inteiro, ele
+                    engolia o resumo do grupo, e `normal-case` não existe no CSS
+                    gerado deste projeto para desfazer. */}
+                <span className="uppercase tracking-wider">{g.titulo}</span>
+                {!aberto && (
+                  <span className="ml-1">
+                    {emMovimento > 0
+                      ? `· ${emMovimento} em movimento`
+                      : `· ${doGrupo.length} estáveis`}
+                  </span>
+                )}
+              </button>
+              {aberto && (
+                <div className="space-y-2">
+                  {doGrupo.map(({ nome, t }) => <Linha key={nome} t={t} nome={nome} amplo={unica} />)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {diasComGasto > 0 && diasComGasto < qtdDias && (
+        <p className="mt-3 border-t border-border/60 pt-2 text-[10px] text-muted-foreground/60">
+          {diasComGasto} de {qtdDias} dias com gasto na janela atual — dia sem
+          investimento fica de fora, porque conta parada não é conta piorando
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Carregando com a forma do que vai aparecer, em vez de uma palavra no vazio. */
+function Esqueleto() {
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {[0, 1, 2, 3].map(i => (
+        <div key={i} className="animate-pulse rounded-lg border border-border bg-card p-4">
+          <div className="mb-3 h-4 w-40 rounded bg-secondary" />
+          <div className="space-y-2.5">
+            {[0, 1, 2, 3, 4, 5].map(k => (
+              <div key={k} className="flex items-center gap-3">
+                <div className="h-3 flex-1 rounded bg-secondary/70" />
+                <div className="h-3 w-16 rounded bg-secondary/70" />
+                <div className="h-3 w-12 rounded bg-secondary/70" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function TendenciasPage() {
-  const { contaId } = useFilters();
+  const { contaId, setContaId } = useFilters();
   const [faixa, setFaixa] = useState(FAIXA_PADRAO);
   const [dados, setDados] = useState<Tendencia[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  /** Vendas de tráfego do período que nenhuma conta reivindica. Ver {@link avisoSemConta}. */
+  const [comoFunciona, setComoFunciona] = useState(false);
+  const [contaAberta, setContaAberta] = useState(false);
+  /** Vendas de tráfego do período que nenhuma conta reivindica. */
   const [semConta, setSemConta] = useState({ vendas: 0, total: 0 });
 
   const escolhida = FAIXAS.find(f => f.chave === faixa) ?? FAIXAS[2];
@@ -266,78 +541,146 @@ export default function TendenciasPage() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  const visiveis = contaId ? dados.filter(d => d.conta_id === contaId) : dados;
-
   /**
-   * Só contas que gastaram na janela atual, ordenadas por escala.
+   * Contas que gastaram na janela, ordenadas por escala.
    *
-   * Conta parada não tem tendência a mostrar — ela aparecia com "sem base de
-   * comparação" e ocupava espaço sem dizer nada. E a ordem é o investimento médio
-   * do dia, decrescente: quem está recebendo mais dinheiro é quem exige decisão
-   * primeiro, não quem vem antes no alfabeto.
+   * Vem de `dados` e não do recorte, senão escolher uma conta esvaziaria a própria
+   * lista do seletor e deixaria a usuária sem caminho de volta. Conta parada fica de
+   * fora: ela aparecia com "sem base de comparação" e ocupava espaço sem dizer nada.
+   * A ordem é o investimento médio do dia, decrescente — quem está recebendo mais
+   * dinheiro é quem exige decisão primeiro, não quem vem antes no alfabeto.
    */
-  const contas = [...new Map(
-    visiveis.map(d => [d.conta_id, { id: d.conta_id, nome: d.conta, produto: d.produto }]),
-  ).values()]
-    .map(c => ({
-      ...c,
-      gasto: visiveis.find(d => d.conta_id === c.id && d.metrica === "Investimento")?.atual ?? 0,
-    }))
-    .filter(c => c.gasto > 0)
-    .sort((a, b) => b.gasto - a.gasto);
+  const contas = useMemo<ContaResumo[]>(() => (
+    [...new Map(
+      dados.map(d => [d.conta_id, { id: d.conta_id, nome: d.conta, produto: d.produto }]),
+    ).values()]
+      .map(c => ({
+        ...c,
+        gasto: dados.find(d => d.conta_id === c.id && d.metrica === "Investimento")?.atual ?? 0,
+      }))
+      .filter(c => c.gasto > 0)
+      .sort((a, b) => b.gasto - a.gasto)
+  ), [dados]);
 
+  const contaEscolhida = contas.find(c => c.id === contaId) ?? null;
+  const visiveis = contaId ? dados.filter(d => d.conta_id === contaId) : dados;
+  const cards = contaId ? contas.filter(c => c.id === contaId) : contas;
   const movimentos = visiveis.filter(d => d.direcao === "alta" || d.direcao === "queda");
+  const gastoTotal = contas.reduce((s, c) => s + c.gasto, 0);
+
+  /** A conta veio selecionada de outra tela e não gastou nesta janela. */
+  const contaForaDaJanela = !!contaId && !contaEscolhida && !loading && dados.length > 0;
+  const nomeForaDaJanela = dados.find(d => d.conta_id === contaId)?.conta;
 
   return (
     <DashboardLayout title="Tendências" hideFilters>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
-            {FAIXAS.filter(f => f.grupo === "periodo").map(f => (
+      {/* Uma linha só de controles: o recorte por conta, a janela, e a frase que diz
+          exatamente o que está sendo comparado com o quê. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {/* O filtro de conta é da página, não do cabeçalho: a lista sai da mesma
+            janela dos cards, então nunca oferece uma conta que a tela não mostra — e o
+            recorte deixa de ser invisível quando chega selecionado de outra tela. */}
+        <Popover open={contaAberta} onOpenChange={setContaAberta}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("h-9 gap-1.5 text-xs font-medium", contaId && "border-primary/50 text-primary")}
+            >
+              <Megaphone className="h-3.5 w-3.5" />
+              <span className="max-w-[180px] truncate">
+                {contaEscolhida ? contaEscolhida.nome : contaId ? "Conta sem gasto" : "Todas as contas"}
+              </span>
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <div className="flex min-w-[280px] flex-col py-1">
               <button
-                key={f.chave}
-                onClick={() => setFaixa(f.chave)}
+                onClick={() => { setContaId(null); setContaAberta(false); }}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  faixa === f.chave
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  "flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                  contaId === null && "bg-accent font-semibold text-accent-foreground",
                 )}
               >
-                {f.rotulo}
+                <span className="flex-1">Todas as contas</span>
+                <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                  {formatCurrency(gastoTotal)}/dia
+                </span>
               </button>
-            ))}
-          </div>
 
-          {/* Separado porque é outra pergunta: aqui a base é uma média longa, não o
-              período anterior de mesmo tamanho. */}
-          <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
-            <span className="px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-              Hoje
-            </span>
-            {FAIXAS.filter(f => f.grupo === "hoje").map(f => (
-              <button
-                key={f.chave}
-                onClick={() => setFaixa(f.chave)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  faixa === f.chave
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                )}
-              >
-                {f.rotulo}
-              </button>
-            ))}
-          </div>
+              <div className="my-1 border-t border-border" />
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                Com gasto na janela
+              </p>
+
+              {contas.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">Nenhuma conta gastou nesta janela</p>
+              ) : contas.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => { setContaId(c.id); setContaAberta(false); }}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                    contaId === c.id && "bg-accent font-semibold text-accent-foreground",
+                  )}
+                >
+                  <span className="flex-1 truncate">{c.nome}</span>
+                  {/* O gasto ao lado do nome dá a escala sem precisar entrar na conta. */}
+                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                    {formatCurrency(c.gasto)}/dia
+                  </span>
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+          {FAIXAS.filter(f => f.grupo === "periodo").map(f => (
+            <button
+              key={f.chave}
+              onClick={() => setFaixa(f.chave)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                faixa === f.chave
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+            >
+              {f.rotulo}
+            </button>
+          ))}
         </div>
 
-        <p className="text-xs text-muted-foreground">
+        {/* Separado porque é outra pergunta: aqui a base é uma média longa, não o
+            período anterior de mesmo tamanho. */}
+        <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+          <span className="px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            Hoje
+          </span>
+          {FAIXAS.filter(f => f.grupo === "hoje").map(f => (
+            <button
+              key={f.chave}
+              onClick={() => setFaixa(f.chave)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                faixa === f.chave
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+              )}
+            >
+              {f.rotulo}
+            </button>
+          ))}
+        </div>
+
+        <p className="ml-auto text-xs text-muted-foreground">
           {escolhida.diasBase
-            ? `Compara hoje com a média dos ${escolhida.diasBase} dias anteriores`
+            ? `${curto(periodo.fim)} contra a média dos ${escolhida.diasBase} dias anteriores`
             : qtdDias === 1
-              ? "Compara ontem com anteontem"
-              : `Compara ${qtdDias} dias com os ${qtdDias} anteriores`}
+              ? `${curto(periodo.ini)} contra o dia anterior`
+              : `${curto(periodo.ini)}–${curto(periodo.fim)} contra os ${qtdDias} dias anteriores`}
         </p>
       </div>
 
@@ -374,23 +717,57 @@ export default function TendenciasPage() {
         </div>
       )}
 
-      {/* A explicação fica na tela, não num tooltip: sem ela, "estável" parece o
-          painel não ter achado nada, quando é o contrário — ele achou que a variação
-          cabe dentro da oscilação normal da conta. */}
-      <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-border bg-card px-3.5 py-2.5">
-        <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          O ROAS diário destas contas oscila entre 31% e 86% da própria média, então
-          comparar dias soltos desenharia ruído com cara de tendência. Aqui a variação
-          só vira <span className="text-foreground">alta</span> ou{" "}
-          <span className="text-foreground">queda</span> quando passa da faixa de ruído
-          mostrada ao lado dela. Abaixo disso é <span className="text-foreground">estável</span> —
-          e isso é uma resposta.
-        </p>
+      {/* A regra fica numa linha, sempre visível; o porquê e as definições ficam a um
+          clique. Antes o parágrafo inteiro ocupava a dobra em toda visita, junto com
+          dois avisos amarelos — a tela abria com três blocos de texto antes do
+          primeiro número. */}
+      <div className="mb-5 rounded-lg border border-border bg-card">
+        <button
+          onClick={() => setComoFunciona(v => !v)}
+          className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left"
+        >
+          <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="flex-1 text-xs leading-relaxed text-muted-foreground">
+            A variação só vira <span className="text-foreground">alta</span> ou{" "}
+            <span className="text-foreground">queda</span> quando passa da faixa de ruído
+            mostrada ao lado dela. Abaixo disso é{" "}
+            <span className="text-foreground">estável</span> — e isso é uma resposta.
+          </p>
+          <span className="shrink-0 text-xs text-muted-foreground/70">
+            {comoFunciona ? "menos" : "como isso é calculado"}
+          </span>
+        </button>
+
+        {comoFunciona && (
+          <div className="space-y-3 border-t border-border/60 px-3.5 py-3 sm:pl-[42px]">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              O ROAS diário destas contas oscila entre 31% e 86% da própria média — a
+              "Lembrancinha - TSL" vai de 0,53 a 3,43 em torno de 1,69. Comparar dias
+              soltos desenharia ruído com cara de tendência. Por isso a comparação é
+              entre as médias das duas janelas, e a diferença precisa passar de duas
+              vezes o erro padrão dela para ser chamada de tendência.
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Cada métrica é a razão dos totais da janela, nunca a média das razões
+              diárias: um dia de R$ 30 e um de R$ 3.000 não podem pesar igual. No
+              gráfico de cada linha, a parte clara é a janela anterior e a escura é a
+              atual; os tracejados horizontais são as duas médias que estão sendo
+              comparadas.
+            </p>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+              {Object.entries(METRICAS).map(([nome, cfg]) => (
+                <div key={nome} className="flex gap-2 text-[11px]">
+                  <span className="w-36 shrink-0 text-foreground">{nome}</span>
+                  <span className="text-muted-foreground/70">{cfg.ajuda}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {loading ? (
-        <div className="flex h-64 items-center justify-center text-muted-foreground">Carregando...</div>
+        <Esqueleto />
       ) : erro ? (
         <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
           <AlertCircle className="h-6 w-6 text-destructive" />
@@ -402,7 +779,28 @@ export default function TendenciasPage() {
             Tentar de novo
           </button>
         </div>
-      ) : contas.length === 0 ? (
+      ) : contaForaDaJanela ? (
+        /* Recorte herdado de outra tela. Limpar sozinho seria mais rápido e menos
+           honesto: a usuária escolheu esta conta em algum lugar e merece saber por que
+           ela não está aqui. */
+        <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+          <Megaphone className="h-6 w-6 text-muted-foreground" />
+          <div>
+            <p className="font-medium text-foreground">
+              {nomeForaDaJanela ?? "A conta selecionada"} não teve gasto nesta janela
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Sem investimento não há tendência a medir. Escolha outra janela ou volte para todas as contas.
+            </p>
+          </div>
+          <button
+            onClick={() => setContaId(null)}
+            className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-secondary"
+          >
+            Ver todas as contas
+          </button>
+        </div>
+      ) : cards.length === 0 ? (
         <div className="flex h-64 items-center justify-center text-center text-muted-foreground">
           Nenhuma conta com gasto nas duas janelas
         </div>
@@ -414,10 +812,14 @@ export default function TendenciasPage() {
               {movimentos.length === 0
                 ? "Nenhum movimento fora da faixa de ruído"
                 : `${movimentos.length} movimento${movimentos.length > 1 ? "s" : ""} fora da faixa de ruído`}
+              {contaEscolhida && (
+                <span className="ml-1.5 font-normal text-muted-foreground">em {contaEscolhida.nome}</span>
+              )}
             </h3>
             {movimentos.length === 0 ? (
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Tudo que mudou nesta janela cabe dentro da oscilação normal das contas.
+                Tudo que mudou nesta janela cabe dentro da oscilação normal
+                {contaEscolhida ? " desta conta" : " das contas"}.
                 {qtdDias <= 7
                   ? " Janelas curtas quase nunca acusam nada: um dia ou uma semana têm ruído demais. Tente 14 ou 30 dias."
                   : " Janelas maiores enxergam movimentos mais lentos — vale tentar 30 dias ou o mês passado."}
@@ -428,7 +830,7 @@ export default function TendenciasPage() {
                  obrigava a recompor mentalmente qual conta tem qual problema — que é
                  justamente a pergunta que se faz aqui. */
               <div className="space-y-3">
-                {contas
+                {cards
                   .filter(c => movimentos.some(m => m.conta_id === c.id))
                   .map(c => {
                     const doConta = movimentos
@@ -436,26 +838,23 @@ export default function TendenciasPage() {
                       .sort((a, b) => Math.abs(b.variacao_pct ?? 0) - Math.abs(a.variacao_pct ?? 0));
                     return (
                       <div key={c.id}>
-                        <div className="mb-1.5 flex items-baseline gap-2">
-                          <span className="text-xs font-medium text-foreground">{c.nome}</span>
-                          <span className="text-[10px] text-muted-foreground/60">
-                            {doConta.length} movimento{doConta.length > 1 ? "s" : ""}
-                          </span>
-                        </div>
-                        <div className="space-y-1.5 border-l border-border/60 pl-3">
+                        {!contaEscolhida && (
+                          <div className="mb-1.5 flex items-baseline gap-2">
+                            <button
+                              onClick={() => setContaId(c.id)}
+                              className="text-xs font-medium text-foreground transition-colors hover:text-primary"
+                              title="Ver só esta conta"
+                            >
+                              {c.nome}
+                            </button>
+                            <span className="text-[10px] text-muted-foreground/60">
+                              {doConta.length} movimento{doConta.length > 1 ? "s" : ""}
+                            </span>
+                          </div>
+                        )}
+                        <div className="space-y-2 border-l border-border/60 pl-3">
                           {doConta.map((m, i) => (
-                            <div key={i} className="flex items-baseline justify-between gap-3 text-sm">
-                              <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                                {m.metrica}
-                              </span>
-                              <span className="shrink-0 tabular-nums text-muted-foreground">
-                                {formatar(m.anterior, METRICAS[m.metrica]?.formato ?? "numero")} →{" "}
-                                {formatar(m.atual, METRICAS[m.metrica]?.formato ?? "numero")}
-                              </span>
-                              <div className="w-24 shrink-0 text-right">
-                                <Variacao t={m} />
-                              </div>
-                            </div>
+                            <Linha key={i} t={m} nome={m.metrica} amplo={!!contaEscolhida} />
                           ))}
                         </div>
                       </div>
@@ -465,69 +864,16 @@ export default function TendenciasPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {contas.map(c => {
-              const doConta = visiveis.filter(d => d.conta_id === c.id);
-              return (
-                <div key={c.id} className="rounded-lg border border-border bg-card p-4">
-                  <div className="mb-3 flex items-baseline justify-between gap-2">
-                    <h3 className="truncate text-sm font-medium text-foreground">{c.nome}</h3>
-                    {c.produto && (
-                      <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] capitalize text-muted-foreground">
-                        {c.produto}
-                      </span>
-                    )}
-                  </div>
-                  <div className="space-y-3">
-                    {GRUPOS.map(g => {
-                      const linhas = g.metricas
-                        .map(nome => ({ nome, t: doConta.find(d => d.metrica === nome) }))
-                        .filter(l => l.t);
-                      if (linhas.length === 0) return null;
-                      return (
-                        <div key={g.titulo}>
-                          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
-                            {g.titulo}
-                          </div>
-                          <div className="space-y-2">
-                            {linhas.map(({ nome, t }) => {
-                              const cfg = METRICAS[nome];
-                              return (
-                                <div key={nome} className="flex items-baseline justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-sm text-foreground">{nome}</span>
-                                      <Meta t={t!} formato={cfg.formato} />
-                                    </div>
-                                    <div className="text-[10px] leading-snug text-muted-foreground/60">
-                                      {cfg.ajuda}
-                                    </div>
-                                  </div>
-                                  <div className="flex shrink-0 items-baseline gap-3">
-                                    <span className="tabular-nums text-sm text-muted-foreground">
-                                      {formatar(t!.anterior, cfg.formato)} → {formatar(t!.atual, cfg.formato)}
-                                    </span>
-                                    <div className="w-20 text-right">
-                                      <Variacao t={t!} />
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {doConta[0] && doConta[0].dias_atual < qtdDias && (
-                    <p className="mt-3 border-t border-border/60 pt-2 text-[10px] text-muted-foreground/60">
-                      {doConta[0].dias_atual} de {qtdDias} dias com gasto na janela atual — dia
-                      sem investimento fica de fora, porque conta parada não é conta piorando
-                    </p>
-                  )}
-                </div>
-              );
-            })}
+          <div className={cn("grid grid-cols-1 gap-4", !contaEscolhida && "lg:grid-cols-2")}>
+            {cards.map(c => (
+              <CartaoConta
+                key={c.id}
+                conta={c}
+                linhas={visiveis.filter(d => d.conta_id === c.id)}
+                qtdDias={qtdDias}
+                unica={!!contaEscolhida}
+              />
+            ))}
           </div>
         </>
       )}
