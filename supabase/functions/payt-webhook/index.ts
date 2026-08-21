@@ -11,10 +11,13 @@ const INTEGRATION_KEY = Deno.env.get('PAYT_INTEGRATION_KEY');
 /**
  * Onde a Payt pode colocar o identificador da transação.
  *
- * A versão anterior olhava só `transaction_id` e devolvia 400 quando não achava.
- * Como o corpo era descartado junto, 46 upsells de agosto sumiram sem deixar
- * rastro — só apareceram ao conciliar com um export manual. Hoje o corpo é
- * gravado antes de qualquer validação, então mesmo um formato novo é recuperável.
+ * A versão anterior olhava só `transaction_id` e devolvia 400 quando não achava,
+ * descartando o corpo junto. Capturando os eventos crus deu para ver que quem
+ * caía nesse caso era o `lost_cart` — carrinho abandonado, que não tem transação
+ * nenhuma — e não o upsell, como se supôs a princípio.
+ *
+ * Hoje o corpo é gravado antes de qualquer validação, então mesmo um formato novo
+ * fica recuperável em vez de virar um 400 sem rastro.
  */
 const CAMINHOS_ID = [
   ['transaction_id'],
@@ -96,7 +99,18 @@ Deno.serve(async (req) => {
   };
 
   if (body.test === true) return encerrar('pedido de teste', true);
-  if (body.type !== 'order') return encerrar(`tipo de evento: ${body.type}`);
+
+  // `upsell` é uma venda como qualquer outra, só que disparada depois do checkout.
+  // O filtro antigo aceitava apenas `order` e descartava esses eventos em silêncio,
+  // com 200 — foi assim que 46 vendas de agosto, R$ 10.220,70, nunca chegaram.
+  if (body.type !== 'order' && body.type !== 'upsell') {
+    return encerrar(`tipo de evento: ${body.type}`);
+  }
+
+  // Carrinho abandonado não é venda: chega como `order` mas sem transação nenhuma.
+  // Era ele que provocava os 400 do webhook antigo, não o upsell.
+  if (body.status === 'lost_cart') return encerrar('carrinho abandonado', true);
+
   if (!payt_id) return encerrar('não achei o id da transação no payload');
 
   // Data: usa paid_at quando disponível, senão updated_at
@@ -107,10 +121,13 @@ Deno.serve(async (req) => {
     '';
   const data = rawDate.slice(0, 10) || null;
 
-  // Valor: centavos → reais
+  // Valor: centavos → reais. A Payt zera `total_price` ao estornar, então um valor
+  // zerado não significa venda de zero — cai para os campos que sobrevivem.
   const centavos =
-    body.transaction?.total_price ??
-    body.transaction?.price ??
+    (body.transaction?.total_price || null) ??
+    (body.transaction?.price_without_installments || null) ??
+    (body.transaction?.price || null) ??
+    (body.product?.price || null) ??
     body.total_price;
   const valor = typeof centavos === 'number' ? centavos / 100 : 0;
 
@@ -139,6 +156,14 @@ Deno.serve(async (req) => {
   const cliente_nome:  string | null = body.customer?.name  ?? null;
   const cliente_email: string | null = body.customer?.email ?? null;
 
+  // O upsell se identifica de duas formas no payload: pelo `type` do evento e pelo
+  // `upsell_code`. Guardar aqui elimina a heurística de "segunda compra do mesmo
+  // cliente em 30 min", que marcava compra dupla legítima como upsell.
+  const tipo_venda =
+    body.type === 'upsell' || (typeof body.upsell_code === 'string' && body.upsell_code.trim() !== '')
+      ? 'Upsell'
+      : 'Venda Direta';
+
   // Upsert por payt_id — se a Payt reenviar (ex: reembolso), atualiza o status
   const { error } = await supabase.from('vendas_payt').upsert(
     {
@@ -147,6 +172,7 @@ Deno.serve(async (req) => {
       valor,
       status,
       produto,
+      tipo_venda,
       utm_content,
       utm_ad_id,
       utm_source,

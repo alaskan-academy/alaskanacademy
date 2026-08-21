@@ -762,3 +762,45 @@ conciliados — então as duas fontes continuam batendo.
 
 Os dois testes que falharam na primeira tentativa eram erro de aritmética meu nas
 expectativas, não no código. Foi para isso que eles foram escritos.
+
+### O upsell revelado, e a correção do que eu diagnostiquei errado
+
+A usuária notou vendas de back-end na tabela "Conversão de upsells". Estava certa: dos
+51 marcados em agosto, **46 eram upsell de verdade e 5 eram falso positivo da minha
+heurística** — Velaroma Artesanal, Kit Natal, Guia das Velas, Arte Floral e um Handify,
+todos segunda compra por checkout normal.
+
+Investigando, o `payt_webhook_raw` — criado ontem — já tinha capturado o primeiro
+evento de upsell da história, e ele **desmente o diagnóstico que eu registrei**:
+
+| id | `type` | `status` | O que aconteceu |
+|---|---|---|---|
+| 8 | **upsell** | waiting_payment | descartado pelo filtro `type !== 'order'`, com **200** |
+| 10 | order | **lost_cart** | sem `transaction_id` → **400** |
+
+Ou seja, eram **duas causas diferentes**, e eu atribuí os 400 ao upsell. Os 400 eram
+carrinho abandonado. O upsell sumia em silêncio, com 200 — que é pior, porque nem
+aparecia nos logs de erro.
+
+O payload de upsell traz `type: "upsell"`, `upsell_code`, `transaction_id` no topo e
+até `link` com UTM completa.
+
+- [x] **Webhook v26**: aceita `type: 'upsell'`, ignora `lost_cart` explicitamente, e
+      grava `tipo_venda` a partir de `type`/`upsell_code`
+- [x] **Heurística de sessão aposentada.** Vira no-op em vez de ser apagada, porque
+      `fn_processar_venda_payt` a chama e removê-la quebraria o processamento
+- [x] Histórico realinhado: só é upsell o que a Payt chamou de upsell. A tabela agora
+      mostra os 3 produtos reais, 46 conversões
+- [x] Valor no webhook ganhou a mesma cascata de recuperação da normalização, porque a
+      Payt zera `total_price` no estorno
+
+### Duas colunas de percentual, e o card de não aprovadas legível
+
+- [x] **`% vendas` e `% fat.`** nas tabelas de order bump e upsell. Respondem a
+      perguntas diferentes: a primeira mede o poder de conversão da oferta, a segunda o
+      quanto ela move o resultado. Um item pode converter pouco e pesar muito
+- [x] **Card "Não aprovadas" refeito.** O número grande passou a ser o que de fato
+      ficou pelo caminho — total menos o recuperado — com o percentual do faturamento
+      ao lado. Era isso que confundia: o bruto parecia receita perdida e um terço dele
+      não era. Layout em duas colunas em vez de quatro, porque o card divide a largura
+      com outros dois e sobram ~250px

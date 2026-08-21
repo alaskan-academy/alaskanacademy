@@ -841,9 +841,14 @@ export default function OverviewPage() {
                   />
                 </div>
                 <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {/* Duas colunas de percentual porque respondem a perguntas
+                      diferentes: "% vendas" é quantas das vendas do período levaram o
+                      item — mede o poder de conversão da oferta. "% fat." é quanto ele
+                      pesa no faturamento — mede o quanto move o resultado. Um item pode
+                      converter pouco e pesar muito, ou o contrário. */}
                   <Painel titulo="Conversão de order bumps">
                     <Tabela
-                      colunas={["OB", "Tipo", "Conv.", "Receita", "Taxa"]}
+                      colunas={["OB", "Tipo", "Conv.", "% vendas", "Receita", "% fat."]}
                       vazio="Sem conversões no período"
                       linhas={obsData.map((r, i) => (
                         <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-secondary/40">
@@ -854,22 +859,28 @@ export default function OverviewPage() {
                             </span>
                           </td>
                           <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(r.total_convertidos || 0)}</td>
+                          <td className="px-4 py-2 tabular-nums text-muted-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(1)}%</td>
                           <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(r.receita_total_ob || 0)}</td>
-                          <td className="px-4 py-2 tabular-nums text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
+                          <td className="px-4 py-2 tabular-nums text-muted-foreground">
+                            {(pctReceita(r.receita_total_ob) ?? 0).toFixed(1)}%
+                          </td>
                         </tr>
                       ))}
                     />
                   </Painel>
                   <Painel titulo="Conversão de upsells">
                     <Tabela
-                      colunas={["Upsell", "Conv.", "Receita", "Taxa"]}
+                      colunas={["Upsell", "Conv.", "% vendas", "Receita", "% fat."]}
                       vazio="Sem upsells no período"
                       linhas={upsellData.map((r, i) => (
                         <tr key={i} className="border-b border-border/50 last:border-0 hover:bg-secondary/40">
                           <td className="px-4 py-2 text-foreground">{r.nome_upsell}</td>
                           <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(r.total_upsells || 0)}</td>
+                          <td className="px-4 py-2 tabular-nums text-muted-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(1)}%</td>
                           <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(r.receita_total || 0)}</td>
-                          <td className="px-4 py-2 tabular-nums text-foreground">{(Number(r.taxa_conversao_pct) || 0).toFixed(2)}%</td>
+                          <td className="px-4 py-2 tabular-nums text-muted-foreground">
+                            {(pctReceita(r.receita_total) ?? 0).toFixed(1)}%
+                          </td>
                         </tr>
                       ))}
                     />
@@ -884,42 +895,67 @@ export default function OverviewPage() {
                   <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Não aprovadas
                   </span>
-                  <div className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
-                    {formatCurrency((kpis.pendVal || 0) + (kpis.cancelVal || 0) + (kpis.expVal || 0))}
-                  </div>
-                  <div className="mt-2 space-y-1 text-xs">
-                    {[
-                      ["Pendentes", kpis.qtdPend, kpis.pendVal],
-                      ["Canceladas", kpis.qtdCanc, kpis.cancelVal],
-                      ["Expiradas", kpis.qtdExp, kpis.expVal],
-                    ].map(([rot, qtd, val]) => (
-                      <div key={rot as string} className="flex justify-between text-muted-foreground">
-                        <span>{rot as string}</span>
-                        <span className="tabular-nums">
-                          {(qtd as number) || 0} · {formatCurrency((val as number) || 0)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {(() => {
+                    // O card mostra a tentativa que não virou dinheiro. O número
+                    // grande é o que de fato ficou pelo caminho — o total menos o que
+                    // a pessoa refez e pagou —, porque era isso que confundia: o
+                    // bruto parecia receita perdida e um terço dele não era.
+                    const total =
+                      (kpis.pendVal || 0) + (kpis.cancelVal || 0) + (kpis.expVal || 0);
+                    const qtdTotal =
+                      (kpis.qtdPend || 0) + (kpis.qtdCanc || 0) + (kpis.qtdExp || 0);
+                    const recuperado = kpis.valRecuperadas || 0;
+                    const perdido = Math.max(total - recuperado, 0);
+                    const pctDoFat = pctReceita(perdido);
 
-                  {/* Nem toda não aprovada é receita perdida: a pessoa gera outro PIX,
-                      tenta outro cartão, e paga. Sem esta linha o card sugeria um
-                      buraco de checkout maior do que existe — quase um terço do valor
-                      voltou como venda. */}
-                  {(kpis.qtdRecuperadas || 0) > 0 && (
-                    <div className="mt-2 border-t border-border/60 pt-2 text-xs">
-                      <div className="flex justify-between text-success">
-                        <span>Viraram venda depois</span>
-                        <span className="tabular-nums">
-                          {kpis.qtdRecuperadas} · {formatCurrency(kpis.valRecuperadas || 0)}
-                        </span>
-                      </div>
-                      <p className="mt-1 leading-snug text-muted-foreground">
-                        Mesma pessoa, mesmo produto, em até 7 dias. O resto é que ficou
-                        pelo caminho.
-                      </p>
-                    </div>
-                  )}
+                    const linhas: [string, number, number][] = [
+                      ["Expiradas", kpis.qtdExp || 0, kpis.expVal || 0],
+                      ["Canceladas", kpis.qtdCanc || 0, kpis.cancelVal || 0],
+                      ["Pendentes", kpis.qtdPend || 0, kpis.pendVal || 0],
+                    ];
+
+                    return (
+                      <>
+                        <div className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
+                          {formatCurrency(perdido)}
+                        </div>
+                        <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                          ficou pelo caminho
+                          {pctDoFat !== undefined && ` · ${pctDoFat.toFixed(1)}% do faturamento`}
+                        </p>
+
+                        {recuperado > 0 && (
+                          <p className="mt-2 rounded bg-success/10 px-2 py-1.5 text-xs leading-snug text-success">
+                            {formatCurrency(recuperado)} de {formatCurrency(total)} viraram
+                            venda depois — mesma pessoa, mesmo produto, em até 7 dias
+                          </p>
+                        )}
+
+                        {/* Duas colunas, não quatro: o card divide a largura com outros
+                            dois e sobram ~250px. Contagem e percentual descem para uma
+                            segunda linha em corpo menor, o que também os hierarquiza
+                            abaixo do valor, que é o que se lê primeiro. */}
+                        <div className="mt-3 space-y-2 border-t border-border/60 pt-2.5">
+                          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                            {formatNumber(qtdTotal)} tentativas · {formatCurrency(total)}
+                          </div>
+                          {linhas.map(([rot, qtd, val]) => (
+                            <div key={rot} className="flex items-baseline justify-between gap-2 text-xs">
+                              <div className="min-w-0">
+                                <div className="text-muted-foreground">{rot}</div>
+                                <div className="text-[10px] tabular-nums text-muted-foreground/60">
+                                  {formatNumber(qtd)} · {qtdTotal > 0 ? ((qtd / qtdTotal) * 100).toFixed(0) : 0}%
+                                </div>
+                              </div>
+                              <span className="shrink-0 tabular-nums text-muted-foreground">
+                                {formatCurrency(val)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 <Metrica
                   rotulo="Reembolsos"
