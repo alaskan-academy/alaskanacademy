@@ -56,12 +56,32 @@ function periodoAnt(start?: string, end?: string) {
   };
 }
 
-const VarBadge = ({ atual, anterior }: { atual: number; anterior: number }) => {
+/**
+ * Variação contra o período anterior.
+ *
+ * `tom` existe porque subir não quer dizer melhorar em todo indicador. Em CPA, uma
+ * alta é piora; em investimento, não é nem uma coisa nem outra. Pintar tudo de
+ * verde para cima faria a cor mentir — que é o mesmo defeito, em outra forma, de
+ * mostrar um número truncado com cara de número certo.
+ */
+const VarBadge = ({
+  atual, anterior, tom = "positivo",
+}: {
+  atual: number;
+  anterior: number;
+  tom?: "positivo" | "inverso" | "neutro";
+}) => {
   if (!anterior) return null;
   const v = ((atual - anterior) / anterior) * 100;
+  const subiu = v >= 0;
+  const cor =
+    tom === "neutro"  ? "text-muted-foreground"
+    : tom === "inverso" ? (subiu ? "text-destructive" : "text-success")
+    : (subiu ? "text-success" : "text-destructive");
+
   return (
-    <span className={cn("flex items-center gap-0.5 text-xs mt-1", v >= 0 ? "text-success" : "text-destructive")}>
-      {v >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+    <span className={cn("flex items-center gap-0.5 text-xs mt-1", cor)}>
+      {subiu ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
       {Math.abs(v).toFixed(1)}% vs anterior
     </span>
   );
@@ -390,6 +410,8 @@ export default function OverviewPage() {
       qtdAprov: antQtd,
       ticketMedio: ticketMedio(antReceita, antQtd),
       roas: roas(antReceita, antInv),
+      investimento: antInv,
+      cpa: cpa(antInv, antQtd),
     });
 
     setLastUpdate(new Date());
@@ -702,6 +724,13 @@ export default function OverviewPage() {
                   rotulo="Investimento Meta"
                   valor={formatCurrency(kpis.investimento || 0)}
                   detalhe={!kpis.investimento ? "sem dados de ads no período" : undefined}
+                  /* Tom neutro: gastar mais não é bom nem ruim por si só — o que
+                     julga é o ROAS ao lado. */
+                  rodape={
+                    kpis.investimento
+                      ? <VarBadge atual={kpis.investimento} anterior={kpisAnt.investimento} tom="neutro" />
+                      : undefined
+                  }
                 />
                 <Metrica
                   rotulo="ROAS"
@@ -713,6 +742,12 @@ export default function OverviewPage() {
                   rotulo="CPA"
                   valor={kpis.cpa ? formatCurrency(kpis.cpa) : "—"}
                   detalhe="custo por venda aprovada"
+                  /* Invertido: CPA subindo é piora, e verde diria o contrário. */
+                  rodape={
+                    kpis.cpa
+                      ? <VarBadge atual={kpis.cpa} anterior={kpisAnt.cpa} tom="inverso" />
+                      : undefined
+                  }
                 />
               </div>
             )}

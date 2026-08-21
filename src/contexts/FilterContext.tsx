@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, ReactNode } from 'react';
-import { subDays, startOfDay, endOfDay, format } from 'date-fns';
+import { subDays, subMonths, startOfDay, endOfDay, startOfMonth, endOfMonth, format } from 'date-fns';
 import { inicioDiaBRT, fimDiaBRT } from '@/lib/periodo';
 
-type DatePreset = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'custom';
+type DatePreset = 'all' | 'today' | 'yesterday' | '7d' | '30d' | 'thisMonth' | 'lastMonth' | 'custom';
 
 interface FilterContextType {
   datePreset: DatePreset;
@@ -45,6 +45,12 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
       case 'yesterday': { const y = subDays(now, 1); return { start: startOfDay(y), end: endOfDay(y) }; }
       case '7d':        return { start: startOfDay(subDays(now, 7)), end: endOfDay(now) };
       case '30d':       return { start: startOfDay(subDays(now, 30)), end: endOfDay(now) };
+      // Fecha em hoje, não no fim do mês: incluir dias que ainda não aconteceram
+      // faria o rateio do custo fixo cobrar o mês inteiro contra a receita parcial,
+      // e a margem apareceria pior do que é até o último dia.
+      case 'thisMonth': return { start: startOfMonth(now), end: endOfDay(now) };
+      case 'lastMonth': { const m = subMonths(now, 1);
+                          return { start: startOfMonth(m), end: endOfMonth(m) }; }
       case 'custom':    return { start: startOfDay(customStart), end: endOfDay(customEnd) };
     }
   }, [datePreset, customStart, customEnd]);

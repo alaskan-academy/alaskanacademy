@@ -13,6 +13,8 @@ const DATE_OPTIONS = [
   { key: "yesterday", label: "Ontem" },
   { key: "7d", label: "7 dias" },
   { key: "30d", label: "30 dias" },
+  { key: "thisMonth", label: "Este mês" },
+  { key: "lastMonth", label: "Mês passado" },
 ] as const;
 
 export default function GlobalFilters() {
@@ -46,13 +48,9 @@ export default function GlobalFilters() {
     }
   };
 
-  const dateLabelMap: Record<string, string> = {
-    all: "Todos",
-    today: "Hoje",
-    yesterday: "Ontem",
-    "7d": "7 dias",
-    "30d": "30 dias",
-  };
+  const dateLabelMap: Record<string, string> = Object.fromEntries(
+    DATE_OPTIONS.map(o => [o.key, o.label]),
+  );
 
   const dateLabel =
     datePreset === "custom" && startDateStr && endDateStr
