@@ -437,3 +437,15 @@ Validação (01–20/08): Tráfego 600 vendas / R$ 55.112,53 · Back-end 660 / R
 - [x] `OverviewPage` caiu de 998 para 875 linhas; a maior parte do que saiu era montagem de query
 
 **O segmento Tráfego revela o custo da atribuição quebrada:** ele carrega 100% do investimento mas só 48% da receita, então aparece com margem negativa. Não é erro de cálculo — é o buraco de UTM aparecendo com preço. Enquanto 53% da receita não tiver `ad_id`, o ROAS por segmento não é confiável
+
+### Testes nas fórmulas financeiras
+
+- [x] **`src/lib/financeiro.ts`** — as contas que decidem se o negócio dá lucro saíram de dentro do `fetchData`, onde estavam misturadas com montagem de query e por isso não tinham como ser testadas. Viraram funções puras: recebem números e devolvem números, sem conhecer Supabase, período nem segmento
+- [x] **23 testes**, cobrindo a cascata do pago ao lucro, o rateio do custo fixo, a participação do recorte no total, ticket/ROAS/CPA e a taxa da plataforma. Divisor zero devolve zero em vez de `NaN` — um `NaN` que escapa some no `formatCurrency`, e sumir é pior que aparecer errado
+- [x] **Bloco de regressão com agosto/2026 real**, ancorado no retrato conciliado com o export da Payt. Se uma fórmula mudar de sentido, esses valores param de fechar
+- [x] **Verificados por mutação**, porque teste que passa por construção não vale nada. Quatro defeitos plantados de propósito, todos pegos: esquecer os reembolsos na cascata (2 falhas), deixar a divisão por zero virar `Infinity` (3), tirar o teto de 1 da participação (1), ratear o mês por 31 dias (4)
+- [x] A página passou a **usar** as funções — teste que protege código que ninguém chama não protege nada. Conferido no navegador: os dez números da tela ficaram idênticos aos de antes da extração
+
+**Nota sobre o `tsc`:** ele passou limpo com um `const dias` declarado duas vezes no mesmo escopo, que o navegador pegou na hora como `SyntaxError`. Typecheck verde não substitui abrir a tela.
+
+- [ ] O custo fixo no filtro "Todos" continua assumindo um mês cheio. É aproximação ruim — todo o histórico custaria vários meses — mas foi preservada para não mudar número sem aviso

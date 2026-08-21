@@ -22,6 +22,15 @@ import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { inicioDiaBRT, fimDiaBRT } from "@/lib/periodo";
+import {
+  calcularResultado,
+  ratearCustoFixo,
+  participacao,
+  ticketMedio,
+  roas,
+  cpa,
+  taxaPlataformaPct,
+} from "@/lib/financeiro";
 
 /** Origem da venda. Tráfego = venda com ad_id do Meta; back-end = sem ad_id. */
 type Segmento = "trafego" | "backend" | "misto";
@@ -32,16 +41,15 @@ const SEGMENTOS: { key: Segmento; label: string; descricao: string }[] = [
   { key: "misto",   label: "Misto",    descricao: "Todas as vendas do período" },
 ];
 
-function custoFixoProp(mensal: number, start?: string, end?: string) {
-  if (!mensal) return 0;
-  if (!start || !end) return mensal;
-  const dias = Math.max(1, differenceInDays(parseISO(end), parseISO(start)) + 1);
-  return (mensal / 30) * dias;
+/** Dias do período, inclusivo nas duas pontas. 0 quando não há período definido. */
+function diasDoPeriodo(start?: string, end?: string) {
+  if (!start || !end) return 0;
+  return Math.max(1, differenceInDays(parseISO(end), parseISO(start)) + 1);
 }
 
 function periodoAnt(start?: string, end?: string) {
   if (!start || !end) return { start: undefined, end: undefined };
-  const dias = Math.max(1, differenceInDays(parseISO(end), parseISO(start)) + 1);
+  const dias = diasDoPeriodo(start, end);
   return {
     start: format(subDays(parseISO(start), dias), "yyyy-MM-dd"),
     end: format(subDays(parseISO(start), 1), "yyyy-MM-dd"),
@@ -221,17 +229,12 @@ export default function OverviewPage() {
     const juros = num(d.juros);
     const receita = num(d.receita);
     const taxaPlat = num(d.taxa_plataforma);
-    // Percentual sobre a receita, não sobre o pago: senão o juro de parcelamento
-    // faria a taxa parecer maior do que a Payt cobra.
-    const taxaPlatPct = receita > 0 ? (taxaPlat / receita) * 100 : 0;
+    const taxaPlatPct = taxaPlataformaPct(taxaPlat, receita);
 
     // Custos e impostos só existem no total do período; são rateados pela
     // participação deste recorte no faturamento. O investimento em ads é a exceção:
     // pertence 100% ao tráfego pago.
-    const fatTotalPeriodo = num(d.fat_bruto_total);
-    const share = fatTotalPeriodo > 0
-      ? Math.min(fatBruto / fatTotalPeriodo, 1)
-      : (fatBruto > 0 ? 1 : 0);
+    const share = participacao(fatBruto, num(d.fat_bruto_total));
 
     const fiscal = d.fiscal ?? {};
     const reembolsosV = num(fiscal.reembolsos) * share;
@@ -241,20 +244,32 @@ export default function OverviewPage() {
     const simplesPct = num(fiscal.simples_pct);
     const metaPct = num(fiscal.meta_pct);
     const custoMensal = num(fiscal.custo_fixo_mensal);
-    const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr) * share;
+    // Sem período definido (filtro "Todos") cai em 30 dias, ou seja, um mês cheio.
+    // É o comportamento antigo e continua sendo uma aproximação ruim: "todo o
+    // histórico" custaria vários meses de custo fixo, não um. Enquanto o número não
+    // for confiável nesse recorte, ao menos não muda sem aviso.
+    const diasCusto = diasDoPeriodo(startDateStr, endDateStr) || 30;
+    const custoFixo = ratearCustoFixo(custoMensal, diasCusto) * share;
 
-    // Tudo a partir de `receita` (sem juros), não do pago pelo cliente: quem paga o
-    // juro é o cliente e quem recebe é a adquirente — nunca foi dinheiro da casa.
-    const fatLiquido = receita - taxaPlat - impSimples;
-    const lucro = receita - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
-    const lucroCC = lucro - custoFixo;
-    const margemPct = receita > 0 ? (lucro / receita) * 100 : 0;
-    const margemCcPct = receita > 0 ? (lucroCC / receita) * 100 : 0;
-    const roas = investimento > 0 ? receita / investimento : 0;
+    const resultado = calcularResultado({
+      receita,
+      taxaPlataforma: taxaPlat,
+      reembolsos: reembolsosV,
+      impostoSimples: impSimples,
+      impostoMeta: impMeta,
+      investimento,
+      custoFixo,
+    });
+    const fatLiquido = resultado.faturamentoLiquido;
+    const lucro = resultado.lucroOperacional;
+    const lucroCC = resultado.lucroComCustoFixo;
+    const margemPct = resultado.margemPct;
+    const margemCcPct = resultado.margemComCustoFixoPct;
 
     const qtdAprov = num(d.qtd_aprovadas);
-    const ticketMedio = qtdAprov > 0 ? receita / qtdAprov : 0;
-    const cpa = investimento > 0 && qtdAprov > 0 ? investimento / qtdAprov : 0;
+    const roasPeriodo = roas(receita, investimento);
+    const ticketMedioPeriodo = ticketMedio(receita, qtdAprov);
+    const cpaPeriodo = cpa(investimento, qtdAprov);
 
     // Não aprovadas e perdas vêm agrupadas por status.
     const naoAprov = d.nao_aprovadas ?? {};
@@ -354,11 +369,12 @@ export default function OverviewPage() {
     );
 
     setKpis({
-      cpa, juros, receita, fatBruto, fatLiquido, lucro, lucroCC,
+      juros, receita, fatBruto, fatLiquido, lucro, lucroCC,
+      cpa: cpaPeriodo, roas: roasPeriodo, ticketMedio: ticketMedioPeriodo,
       taxaPlat, taxaPlatPct, reembolsosV, impSimples, impMeta,
       investimento, custoFixo, custoMensal,
-      margemPct, margemCcPct, roas, simplesPct, metaPct,
-      qtdAprov, ticketMedio, taxaOb, taxaUp, receitaOb, receitaUp,
+      margemPct, margemCcPct, simplesPct, metaPct,
+      qtdAprov, taxaOb, taxaUp, receitaOb, receitaUp,
       qtdBackend, valBackend, pctBackend,
       qtdPend: pendentes.qtd, pendVal: pendentes.valor,
       qtdCanc: canceladas.qtd, cancelVal: canceladas.valor,
@@ -372,8 +388,8 @@ export default function OverviewPage() {
     setKpisAnt({
       fatBruto: num(a?.fat_bruto),
       qtdAprov: antQtd,
-      ticketMedio: antQtd > 0 ? antReceita / antQtd : 0,
-      roas: antInv > 0 ? antReceita / antInv : 0,
+      ticketMedio: ticketMedio(antReceita, antQtd),
+      roas: roas(antReceita, antInv),
     });
 
     setLastUpdate(new Date());
@@ -393,8 +409,7 @@ export default function OverviewPage() {
   const custoLabel = () => {
     if (!kpis.custoMensal) return null;
     if (!startDateStr || !endDateStr) return "mensal";
-    const dias = Math.max(1, differenceInDays(parseISO(endDateStr), parseISO(startDateStr)) + 1);
-    return `${dias}d`;
+    return `${diasDoPeriodo(startDateStr, endDateStr)}d`;
   };
 
   const abasDisponiveis = ABAS.filter(a => !(a.key === "trafego" && segmento === "backend"));
