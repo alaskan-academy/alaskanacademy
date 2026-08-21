@@ -905,3 +905,29 @@ seria repetir, em escala menor, o problema que o painel veio resolver.
 
 - [ ] Os 20,1% "(sem origem)" continuam sem explicação. Vale investigar antes de tratar
       como resíduo aceitável
+
+### O upsell pertence ao anúncio que trouxe o cliente
+
+Pergunta da usuária: *"o upsell está em back-end e não em tráfego, certo?"*. Estava — e
+estava errado. O upsell não tem `ad_id` porque acontece depois do checkout, mas só
+existe porque um anúncio trouxe aquele cliente. Em resposta direta, essa receita é do
+anúncio.
+
+A ligação é o **`cart_id`**: a Payt manda o mesmo nos dois eventos. Conferido nos
+capturados desde a v26 — todos casam com a venda original, e herdaram
+"Saponaria Brasil - TSL" e "Workshop Buquê - TSL".
+
+- [x] `vendas.cart_id` + `fn_herdar_origem_do_upsell()`, idempotente e por carrinho
+- [x] **`ad_id_meta` fica nulo de propósito.** Não houve clique naquele anúncio para
+      esta venda; copiá-lo mentiria sobre o que aconteceu. Herdam-se a conta e a marca
+      de tráfego, que é o que a atribuição precisa
+- [x] Os 46 upsells do backfill não têm `cart_id` — o campo não existia no export. Para
+      eles o pai é achado pelo cliente, na venda não-upsell mais próxima em até 6h.
+      Parece a heurística aposentada, mas o uso é outro e bem mais seguro: lá ela
+      **decidia** o que era upsell e errava; aqui a Payt já afirmou, e ela só acha o pai
+- [x] A normalização passou a gravar `cart_id` e chamar a herança a cada evento, porque
+      o upsell chega depois do pai e a ordem varia
+
+**Efeito em agosto:** 43 dos 49 upsells passam para tráfego (R$ 9.986,30 de
+R$ 11.111,70), e o ROAS do segmento vai de **1,43 para 1,56**. Os 6 que ficaram são de
+carrinhos cujo pai também não veio de anúncio.
