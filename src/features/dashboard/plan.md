@@ -545,3 +545,40 @@ este projeto passou o dia corrigindo.
 
 - [ ] Confirmar, na primeira venda pós-correção, que o `ad_id` passou a chegar. Se
       chegar, `trafego_pago` fica só como marca histórica e a UTM resolve na origem
+
+### Os três alertas que restavam, conferidos um a um
+
+**1. "55% da receita sem atribuição" — não estava resolvido, e o alerta media a coisa
+errada.** Dos R$ 21.062,32, R$ 17.176,80 (81,5%) eram as 201 vendas históricas do
+"Desconto de Aula", já marcadas como `trafego_pago`. O `ad_id` delas nunca vai
+existir. E o texto virou mentira depois da correção: o checkout **tem** UTM agora.
+
+Alerta que aponta para o que não se pode consertar treina quem lê a ignorá-lo, e aí
+falha quando o próximo checkout quebrar de verdade. Passou a medir receita de **origem
+desconhecida** — exclui `trafego_pago`. Caiu de **54,8% para 10,1%** (R$ 3.885,52 em
+7 dias), abaixo do limiar, e o alerta silenciou. O que sobra é back-end legítimo
+(suporte, recuperação, vitrine de alunas) mais a fuga normal de rastreio dos links de
+tráfego, que já rastreiam de 92% a 100%.
+
+**2. Venda sem produto — cadastrada.** Era `282O8JD`, R$ 297,00, "Workshop Desafios na
+Sala de Aula", code Payt `L9Q6EN`, que não existia em `ofertas`. Registrada com
+produto `velas` — o mesmo da conta "Desafios na Sala - TSL" e do "Curso Velas
+Perfeitas 2.0" que a conta vendia antes. Alerta limpo.
+
+**3. "Métricas do Meta sem atualizar" — estava correto, e a causa era minha.**
+O cron `meta-sync-horario` chamava `net.http_post()`, mas a extensão `pg_net` nunca
+foi instalada neste projeto. Criei o job sem verificar isso. Falhava de hora em hora
+com `schema "net" does not exist`.
+
+Instalada a extensão, o sync rodou e gravou métricas de 21/08. E apareceu um segundo
+job quebrado pelo mesmo motivo, que ninguém sabia: **`cs-sync-daily`** — o extrato da
+Conta Simples, do módulo Financeiro — falhando **desde pelo menos 18/08**.
+
+- [x] **Alerta `cron_falhando`**, nascido daí. Olha a **última** execução de cada job
+      ativo, não a janela inteira: um job que falhou e se recuperou não deve continuar
+      gritando. Já acusa os dois
+- [ ] Conferir na próxima execução (01:00 e 10:00) que os dois voltaram sozinhos
+
+A lição que fica: eu montei um agendamento e não verifiquei que ele funcionava. Foi o
+alerta `fonte_parada` — escrito horas antes, para outro caso — que pegou. Um sistema
+que se acusa pega até o erro de quem o construiu.
