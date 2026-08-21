@@ -31,6 +31,7 @@ import {
   cpa,
   taxaPlataformaPct,
 } from "@/lib/financeiro";
+import { LembreteConferencia } from "@/features/dashboard/components/LembreteConferencia";
 
 /**
  * Origem da venda.
@@ -496,6 +497,10 @@ export default function OverviewPage() {
 
   return (
     <DashboardLayout title="Visão Geral">
+      {/* Cobra a conferência contra a Payt. Fica no topo do Resumo porque é aqui que
+          os números que ela confere são lidos. */}
+      <LembreteConferencia />
+
       {/* ── Origem do tráfego + atualizar ───────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">

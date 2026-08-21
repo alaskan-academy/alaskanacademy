@@ -1267,3 +1267,68 @@ Configurações. O defeito era real no arquivo e inalcançável na tela.
 **A lição:** "o código faz X" e "a usuária consegue fazer X" são afirmações diferentes, e
 eu apresentei a primeira como se fosse a segunda. Vale o mesmo hábito de sempre — abrir a
 tela, não só ler o arquivo.
+
+## Reconciliação contra a Payt (21/08)
+
+Comparação manual do dia 21/08 contra o relatório da Payt. **O faturamento bruto bateu no
+centavo — R$ 7.063,03 nos dois lados.** As três diferenças, e o que cada uma é:
+
+| Métrica | Nosso | Payt/UTMify | O que é |
+|---|---|---|---|
+| Faturamento bruto | 7.063,03 | 7.063,03 | idêntico |
+| Gasto e imposto Meta | −2,4% | | atraso de sync (último às 16:00) |
+| Vendas | 60 pedidos | ~96 itens | eles contam order bump como venda; 60 + 36 bumps = 96 |
+| Imposto sobre vendas | 659,65 | 706,30 | **base diferente: juros de parcelamento** |
+| Taxa da plataforma | 442,25 | 529,73 | nossa é a comissão medida; a deles parece 7,5% fixo |
+
+**A que vale decisão:** o bruto carrega R$ 466,55 de juros de parcelamento, dinheiro que
+fica com a adquirente. Cobramos Simples sobre a receita **sem** juros; eles cobram sobre o
+bruto **com**. São ~R$ 1.400/mês de imposto, e nós pagamos menos — bom se estivermos
+certos, risco se não. **Pergunta para o contador, não para o código.**
+
+Também: a margem deles é sobre o líquido (43,4%), a nossa sobre o bruto. Os dois números
+nunca vão bater e nenhum está errado.
+
+## Testes de `fn_tendencias`
+
+- [x] `supabase/tests/fn_tendencias.test.sql` — 17 asserções, todas passando
+
+Cada uma é um defeito que apareceu ou apareceria:
+
+- ROAS como razão dos totais e não média das razões — no cenário, 9 dias de razão 4,00 e
+  um de 0,11 dariam média 3,61 contra o valor certo de **0,46**
+- AOV, CPA e Vendas ignoram upsell no denominador; Receita e ROAS o somam no numerador
+- Uma alta de 30% que cabe dentro do ruído do próprio histórico permanece **estável** —
+  é o comportamento que dá sentido à tela inteira
+- Série cobre as duas janelas com o corte no lugar certo; conta sem gasto fica de fora;
+  `p_dias_ant` encurta a janela atual sem encurtar a base
+
+O arquivo tem `BEGIN`/`ROLLBACK` **e** limpeza explícita, de propósito: o MCP do Supabase
+ignora a transação, e numa sessão anterior sete linhas de teste ficaram em produção por
+confiar só no rollback. Rodado, verificado que sobrou zero linha, e conferidos os
+controles — 60 vendas do dia e 7 contas ativas intactas.
+
+## Lembrete de conferência no Resumo
+
+`conferencias_payt` registra cada conferência; `LembreteConferencia` cobra quando passa
+de 7 dias e abre o diálogo que faz a comparação.
+
+**Cadência: quinzenal nos dois primeiros ciclos, mensal depois.** A troca sai do próprio
+histórico, não de uma data no calendário — ninguém precisa lembrar de afrouxar. Os dois
+primeiros são apertados porque é quando ainda não se sabe se o dashboard e a Payt andam
+juntos; confirmado duas vezes, mensal basta, e um lembrete que aparece demais vira parte
+do cenário. O período proposto emenda no fim do último conferido, para não sobrepor nem
+deixar buraco: um dia que nunca entrou em conferência nenhuma é onde um defeito se esconde.
+
+A tela busca os **próprios** números e pede só os da Payt — se pedisse os dois, um erro de
+digitação de um lado passaria por divergência do outro. Compara sobre `fat_bruto` (com
+juros), que é a base do relatório da Payt; comparar contra a receita sem juros acusaria
+divergência todo dia. Acima de 1% marca como divergente, e o diálogo diz para registrar
+mesmo assim: divergência anotada e não explicada vale mais que divergência que ninguém
+escreveu.
+
+**Por que isto e não um alerta automático:** os alertas do projeto cobrem *ausência* de
+dado. A classe que mais custou — reembolso descontado duas vezes, média de razões, upsell
+no denominador — é dado presente e errado, que não dispara nada porque parece normal.
+Nenhum código pega isso sozinho: o dashboard não tem contra o que se comparar. O que dá
+para garantir é que a comparação humana aconteça e que a tela cobre quando atrasar.
