@@ -1,40 +1,39 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, AlertCircle, ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-interface FonteSaude {
-  fonte: string;
-  rotulo: string;
-  ultimo_evento: string | null;
-  horas_atras: number | null;
-  defasado: boolean;
-}
-
-function formatarAtraso(horas: number | null) {
-  if (horas === null) return 'nunca';
-  if (horas < 48) return `${Math.round(horas)}h`;
-  const dias = Math.round(horas / 24);
-  return dias < 60 ? `${dias} dias` : `${Math.round(dias / 30)} meses`;
+interface Alerta {
+  codigo: string;
+  severidade: 'critico' | 'atencao';
+  titulo: string;
+  detalhe: string;
 }
 
 /**
- * Avisa quando alguma fonte de dados parou de atualizar.
+ * Alertas de saúde e coerência dos dados.
  *
- * Existe porque as três fontes do dashboard já morreram em silêncio por 3 meses:
- * as páginas seguiam exibindo números velhos sem sinal nenhum, o que leva a decidir
- * com dado errado achando que está certo. Não renderiza nada quando está tudo em dia.
+ * Existe porque todo defeito encontrado até aqui produziu um número plausível: três
+ * fontes paradas por meses, conversões do Meta somadas oito vezes, metade do gasto
+ * invisível, juros contados como receita. Nada disso pareceu erro na tela — o
+ * dashboard estava confiantemente errado, que é pior que estar quebrado.
+ *
+ * As checagens ficam em `vw_alertas`, no banco, e não aqui: assim valem para qualquer
+ * consumidor dos dados e podem ser conferidas por SQL. Não renderiza nada quando está
+ * tudo em ordem.
  */
 export function IngestStatusBanner() {
-  const [fontes, setFontes] = useState<FonteSaude[]>([]);
+  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [aberto, setAberto] = useState(false);
 
   useEffect(() => {
     let ativo = true;
 
     const carregar = async () => {
       const { data } = await supabase
-        .from('vw_ingest_health')
-        .select('fonte, rotulo, ultimo_evento, horas_atras, defasado');
-      if (ativo) setFontes((data as FonteSaude[]) || []);
+        .from('vw_alertas')
+        .select('codigo, severidade, titulo, detalhe');
+      if (ativo) setAlertas((data as Alerta[]) ?? []);
     };
 
     carregar();
@@ -45,23 +44,75 @@ export function IngestStatusBanner() {
     };
   }, []);
 
-  const defasadas = fontes.filter(f => f.defasado);
-  if (defasadas.length === 0) return null;
+  if (alertas.length === 0) return null;
+
+  const criticos = alertas.filter(a => a.severidade === 'critico');
+  const grave = criticos.length > 0;
+  // Um alerta se explica sozinho; vários viram lista fechada para não empurrar o
+  // conteúdo da página para baixo todo dia.
+  const expandido = aberto || alertas.length === 1;
 
   return (
-    <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-      <div className="min-w-0 text-xs">
-        <p className="font-medium text-amber-200">
-          {defasadas.length === 1 ? 'Uma fonte de dados está desatualizada' : `${defasadas.length} fontes de dados estão desatualizadas`}
-        </p>
-        <p className="mt-0.5 text-amber-200/70">
-          {defasadas
-            .map(f => `${f.rotulo} — sem atualização há ${formatarAtraso(f.horas_atras)}`)
-            .join(' · ')}
-          . Os números abaixo podem não refletir a operação atual.
-        </p>
-      </div>
+    <div
+      className={cn(
+        'mb-4 rounded-lg border',
+        grave ? 'border-destructive/40 bg-destructive/10' : 'border-amber-500/30 bg-amber-500/10',
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setAberto(v => !v)}
+        disabled={alertas.length === 1}
+        className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left"
+      >
+        {grave ? (
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        ) : (
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+        )}
+
+        <div className="min-w-0 flex-1 text-xs">
+          <p className={cn('font-medium', grave ? 'text-destructive' : 'text-amber-200')}>
+            {alertas.length === 1
+              ? alertas[0].titulo
+              : `${alertas.length} avisos sobre os dados${criticos.length > 0 ? ` · ${criticos.length} crítico${criticos.length > 1 ? 's' : ''}` : ''}`}
+          </p>
+          {alertas.length === 1 && (
+            <p className={cn('mt-0.5', grave ? 'text-destructive/80' : 'text-amber-200/70')}>
+              {alertas[0].detalhe}
+            </p>
+          )}
+        </div>
+
+        {alertas.length > 1 && (
+          <ChevronDown
+            className={cn(
+              'mt-0.5 h-4 w-4 shrink-0 transition-transform',
+              grave ? 'text-destructive' : 'text-amber-400',
+              aberto && 'rotate-180',
+            )}
+          />
+        )}
+      </button>
+
+      {expandido && alertas.length > 1 && (
+        <ul className="space-y-2 border-t border-border/30 px-3.5 py-2.5 text-xs">
+          {alertas.map(a => (
+            <li key={a.codigo} className="flex items-start gap-2">
+              <span
+                className={cn(
+                  'mt-1 h-1.5 w-1.5 shrink-0 rounded-full',
+                  a.severidade === 'critico' ? 'bg-destructive' : 'bg-amber-400',
+                )}
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-foreground">{a.titulo}</p>
+                <p className="mt-0.5 text-muted-foreground">{a.detalhe}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

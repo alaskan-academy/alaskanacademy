@@ -607,28 +607,30 @@ export default function OverviewPage() {
                 <span className="text-muted-foreground">antes do custo fixo</span>
               </div>
 
-              {/* A margem operacional diz se o funil se paga; esta diz se a empresa se
-                  paga. Mostrar só a primeira dava a entender que o dia foi bem melhor
-                  do que foi — hoje são 23,6% contra 9,3%. */}
+              {/* Mesma estrutura do bloco acima, em escala menor: rótulo, valor, badge.
+                  O paralelismo é o que faz as duas margens se lerem como um par —
+                  antes o valor ia para a direita e quebrava o ritmo.
+                  A margem operacional diz se o funil se paga; esta, se a empresa se
+                  paga. Hoje são 25,2% contra 11,2%. */}
               {(kpis.custoFixo || 0) > 0 && (
-                <div className="mt-3 border-t border-border/60 pt-3">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-xs text-muted-foreground">Depois do custo fixo</span>
-                    <span
-                      className={cn(
-                        "text-lg font-bold tabular-nums",
-                        (kpis.lucroCC || 0) >= 0 ? "text-success" : "text-destructive",
-                      )}
-                    >
-                      {formatCurrency(kpis.lucroCC || 0)}
-                    </span>
+                <div className="mt-4 border-t border-border/60 pt-3">
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Depois do custo fixo
+                  </span>
+                  <div
+                    className={cn(
+                      "mt-1 text-2xl font-bold tabular-nums",
+                      (kpis.lucroCC || 0) >= 0 ? "text-success" : "text-destructive",
+                    )}
+                  >
+                    {formatCurrency(kpis.lucroCC || 0)}
                   </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <span className={cn("rounded bg-secondary px-2 py-0.5 font-semibold", margemCcCor)}>
                       margem {formatPercent(kpis.margemCcPct || 0)}
                     </span>
                     <span className="text-muted-foreground">
-                      inclui {formatCurrency(kpis.custoFixo || 0)} de custo fixo
+                      −{formatCurrency(kpis.custoFixo || 0)} de custo fixo
                     </span>
                   </div>
                 </div>
