@@ -426,6 +426,8 @@ export default function OverviewPage() {
       qtdPend: pendentes.qtd, pendVal: pendentes.valor,
       qtdCanc: canceladas.qtd, cancelVal: canceladas.valor,
       qtdExp: expiradas.qtd, expVal: expiradas.valor,
+      qtdRecuperadas: num(d.recuperadas?.qtd),
+      valRecuperadas: num(d.recuperadas?.valor),
     });
 
     const a = (anterior?.data ?? null) as any;
@@ -902,6 +904,25 @@ export default function OverviewPage() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Nem toda não aprovada é receita perdida: a pessoa gera outro PIX,
+                      tenta outro cartão, e paga. Sem esta linha o card sugeria um
+                      buraco de checkout maior do que existe — quase um terço do valor
+                      voltou como venda. */}
+                  {(kpis.qtdRecuperadas || 0) > 0 && (
+                    <div className="mt-2 border-t border-border/60 pt-2 text-xs">
+                      <div className="flex justify-between text-success">
+                        <span>Viraram venda depois</span>
+                        <span className="tabular-nums">
+                          {kpis.qtdRecuperadas} · {formatCurrency(kpis.valRecuperadas || 0)}
+                        </span>
+                      </div>
+                      <p className="mt-1 leading-snug text-muted-foreground">
+                        Mesma pessoa, mesmo produto, em até 7 dias. O resto é que ficou
+                        pelo caminho.
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <Metrica
                   rotulo="Reembolsos"

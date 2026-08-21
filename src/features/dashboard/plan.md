@@ -689,3 +689,48 @@ pode consertar ensina a ignorar o vermelho.
 As duas migrações trocaram a expressão por substituição no DDL existente, com
 `RAISE EXCEPTION` se o trecho não for encontrado — reescrever à mão uma view e uma
 função longas só para mudar uma expressão é convite a erro de digitação.
+
+### Reembolso, cancelamento e a receita que não foi perdida
+
+A usuária desconfiou dos números de reembolso e chargeback. Conferido contra o export
+da Payt, e ela estava certa: **o export registra 14 estornos, o banco mostrava 1.**
+
+**Causa: usávamos o campo errado.** O payload traz dois status, e eles discordam:
+
+| `status` (topo) | `transaction.payment_status` | Qtd | O que é de fato |
+|---|---|---|---|
+| canceled | **refunded** | 32 | reembolso contado como cancelamento |
+| canceled | **refused** | 311 | cartão recusado |
+| canceled | **expired** | 375 | expirou, não foi cancelado |
+
+Reembolso e cancelamento são sinais de negócio opostos — um é quem pagou e pediu o
+dinheiro de volta, o outro é quem nunca pagou. A normalização passou a preferir
+`payment_status`, com `status` de fallback para os registros de importação antigos.
+
+**Segunda causa, pior: o estorno destruía o valor da venda.** O evento de reembolso
+chega com `total_price: 0` — a Payt zera o preço ao estornar — e o upsert sobrescrevia
+a venda boa que já estava gravada. Agora o valor cai para `price_without_installments`,
+depois para o preço do produto, e o `ON CONFLICT` nunca troca um valor bom por zero.
+
+Resultado, contra o export de 01–20/08:
+
+| | Export | Banco (antes) | Banco (depois) |
+|---|---|---|---|
+| Reembolsos | 14 · R$ 1.294,07 | 1 · R$ 297,00 | **14 · R$ 1.313,80** |
+| Chargebacks | 2 · R$ 399,96 | 2 · R$ 297,00 | **2 · R$ 399,96** |
+
+Contagem exata nos dois. Sobram R$ 19,73 (1,5%) nos reembolsos: em 6 vendas só o preço
+de tabela sobreviveu (R$ 67,00 contra os R$ 66,33 pagos com desconto), porque o valor
+exato foi destruído antes de existir o `payt_webhook_raw`. Daqui pra frente não
+acontece: todo evento fica guardado.
+
+### Nem toda não aprovada é receita perdida
+
+Observação da usuária: *"talvez esteja contabilizando vendas pendentes de pessoas que
+geraram um novo pix ou tentaram novamente e pagaram no final"*. Medido — **132 das 458
+não aprovadas (R$ 15.857,34, quase um terço) são de cliente que comprou o mesmo produto
+em até 7 dias.**
+
+- [x] `fn_overview` devolve `recuperadas`, e o card "Não aprovadas" mostra quanto
+      voltou como venda. Sem isso o número sugeria um buraco de checkout um terço maior
+      do que existe
