@@ -613,3 +613,19 @@ numerá-los de 1 a 4. Sem ele cai em `orderbump_1`, o que já acontece com 227 i
 
 A lição vale mais que a tela: **alerta que exagera a consequência faz pedir solução
 maior que o problema.** O texto errado custou uma tela que resolve algo cosmético.
+
+**Removida a pedido da usuária**, e o motivo é bom: *"se a tela não serve para nada
+prefiro remover, para não ter ruído de informação"*. Menu com item que não resolve
+nada cobra atenção toda vez que alguém procura outra coisa.
+
+Duas pontas soltas fechadas junto:
+- O alerta `venda_sem_categoria` mandava "cadastre em Configurações → Ofertas Payt".
+  Alerta que aponta para tela inexistente é pior que alerta nenhum — passou a descrever
+  só o efeito
+- A política `authenticated_write` em `ofertas`, criada para a tela, foi revogada. Sem
+  tela, nada no cliente escreve nessa tabela; a normalização roda como `service_role`,
+  que tem política própria. Permissão aberta sem consumidor é superfície à toa
+
+O que ficou do episódio: o texto errado do alerta (corrigido), a oferta `L9Q6EN`
+cadastrada, e a descoberta de que `ofertas` não tinha política de escrita — que teria
+mordido qualquer tela futura apontada para ela.

@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ContasAnunciosTab } from "@/features/editores/components/ContasAnunciosTab";
-import { OfertasPaytTab } from "@/features/admin/components/OfertasPaytTab";
 import { GerenciarUsuariosTab } from "@/features/admin/components/GerenciarUsuariosTab";
 import { ConfiguracaoTab } from "@/features/editores/components/ConfiguracaoTab";
 import { EmpresasOfertasTab } from "@/features/editores/components/EmpresasOfertasTab";
@@ -18,14 +17,14 @@ import { AtivosContent } from "@/features/ads/pages/AtivosPage";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
-  Shield, CreditCard, Tag, Building2, SlidersHorizontal,
+  Shield, CreditCard, Building2, SlidersHorizontal,
   ClipboardList, BarChart3, Radio, Users, Layers,
 } from "lucide-react";
 
 // ─── Estrutura da nav ─────────────────────────────────────────────────────────
 
 type SectionId =
-  | 'ativos' | 'contas' | 'ofertas' | 'empresas' | 'fiscal'
+  | 'ativos' | 'contas' | 'empresas' | 'fiscal'
   | 'criterios' | 'criativos'
   | 'radar'
   | 'usuarios' | 'setores';
@@ -41,7 +40,6 @@ const GROUPS: GroupDef[] = [
     items: [
       { id: 'ativos',   label: 'Ativos',             icon: Shield           },
       { id: 'contas',   label: 'Contas de Anúncios', icon: CreditCard       },
-      { id: 'ofertas',  label: 'Ofertas Payt',        icon: Tag              },
       { id: 'empresas', label: 'Empresas e Ofertas', icon: Building2        },
       { id: 'fiscal',   label: 'Parâmetros Fiscais', icon: SlidersHorizontal },
     ],
@@ -254,7 +252,6 @@ export default function SettingsPage() {
     switch (active) {
       case 'ativos':    return <AtivosSection />;
       case 'contas':    return <ContasAnunciosTab />;
-      case 'ofertas':   return <OfertasPaytTab />;
       case 'empresas':  return <EmpresasOfertasTab />;
       case 'fiscal':    return <FiscalTab />;
       case 'criterios': return <ConfiguracaoTab />;
