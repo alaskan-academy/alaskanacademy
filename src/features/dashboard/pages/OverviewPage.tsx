@@ -358,7 +358,6 @@ export default function OverviewPage() {
     setProdData(
       (d.por_produto ?? []).map((p: any) => ({
         produto: p.produto,
-        categoria: p.categoria,
         vendas_aprovadas: num(p.vendas),
         faturamento_principal: num(p.faturamento_principal),
         ticket_medio: num(p.ticket_medio),
@@ -900,13 +899,15 @@ export default function OverviewPage() {
                       >
                         <div className="min-w-0 pr-4">
                           <span className="text-sm font-medium text-foreground">{r.produto}</span>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                            {r.categoria && (
-                              <span className="rounded bg-secondary px-1.5 py-0.5 capitalize">{r.categoria}</span>
-                            )}
-                            <span>
-                              {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
-                            </span>
+                          {/* A etiqueta de categoria saiu daqui: era redundante em 99,2%
+                              do volume ("Curso Saponaria Brasil · Saponaria", "Fábrica
+                              das Velas de Lembrancinha · Velas"). Informava em 10 das
+                              1.308 vendas do mês e cobrava espaço em todas as linhas.
+                              O campo segue existindo e é usado no agrupamento por
+                              categoria da página de Vendas, onde não há nome de produto
+                              para tornar a informação óbvia. */}
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
                           </div>
                         </div>
                         <div className="text-right">

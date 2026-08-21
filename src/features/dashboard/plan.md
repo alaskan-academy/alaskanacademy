@@ -629,3 +629,23 @@ Duas pontas soltas fechadas junto:
 O que ficou do episódio: o texto errado do alerta (corrigido), a oferta `L9Q6EN`
 cadastrada, e a descoberta de que `ofertas` não tinha política de escrita — que teria
 mordido qualquer tela futura apontada para ela.
+
+### Etiqueta de categoria removida da aba Produtos
+
+A usuária estranhou as etiquetas ("Curso Saponaria Brasil · Saponaria") depois de a
+tela de Ofertas sair, achando que sumiriam junto. Não sumiriam: a tela editava o campo,
+não o criava — `produto` é preenchido sozinho quando a venda chega, casando o código do
+produto contra a tabela `ofertas`.
+
+Medido se valia a pena manter, em agosto:
+
+| Veredito | Linhas | Vendas |
+|---|---|---|
+| Redundante — o nome já diz | 5 | **1.298** |
+| Acrescenta informação | 6 | 10 |
+| Sem categoria | 1 | 1 |
+
+**Redundante em 99,2% do volume.** Ocupava espaço em toda linha para informar em 0,8%
+dos casos. Removida da Visão Geral; o campo continua existindo e segue útil no
+agrupamento "Por Produto" da página de Vendas, onde não há nome de produto ao lado
+para tornar a categoria óbvia.
