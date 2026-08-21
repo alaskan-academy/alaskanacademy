@@ -14,22 +14,21 @@ describe('cascata do pago ao lucro', () => {
     const r = calcularResultado({
       receita: 1000,
       taxaPlataforma: 60,
-      reembolsos: 40,
       impostoSimples: 100,
       impostoMeta: 50,
       investimento: 300,
       custoFixo: 200,
     });
 
-    expect(r.lucroOperacional).toBe(450);
-    expect(r.lucroComCustoFixo).toBe(250);
+    // 1000 − 60 − 100 − 50 − 300
+    expect(r.lucroOperacional).toBe(490);
+    expect(r.lucroComCustoFixo).toBe(290);
   });
 
   it('o faturamento líquido para na taxa e no Simples, sem tocar em ads', () => {
     const r = calcularResultado({
       receita: 1000,
       taxaPlataforma: 60,
-      reembolsos: 40,
       impostoSimples: 100,
       impostoMeta: 50,
       investimento: 300,
@@ -44,7 +43,6 @@ describe('cascata do pago ao lucro', () => {
     const r = calcularResultado({
       receita: 1000,
       taxaPlataforma: 0,
-      reembolsos: 0,
       impostoSimples: 0,
       impostoMeta: 0,
       investimento: 750,
@@ -59,7 +57,6 @@ describe('cascata do pago ao lucro', () => {
     const r = calcularResultado({
       receita: 1000,
       taxaPlataforma: 0,
-      reembolsos: 0,
       impostoSimples: 0,
       impostoMeta: 0,
       investimento: 0,
@@ -76,7 +73,6 @@ describe('cascata do pago ao lucro', () => {
     const r = calcularResultado({
       receita: 100,
       taxaPlataforma: 6,
-      reembolsos: 0,
       impostoSimples: 10,
       impostoMeta: 12,
       investimento: 200,
@@ -92,7 +88,6 @@ describe('cascata do pago ao lucro', () => {
     const r = calcularResultado({
       receita: 0,
       taxaPlataforma: 0,
-      reembolsos: 0,
       impostoSimples: 0,
       impostoMeta: 0,
       investimento: 500,
@@ -103,6 +98,31 @@ describe('cascata do pago ao lucro', () => {
     expect(r.lucroOperacional).toBe(-500);
     expect(r.margemPct).toBe(0);
     expect(Number.isNaN(r.margemPct)).toBe(false);
+  });
+
+  it('não desconta reembolso, porque a venda estornada já saiu da receita', () => {
+    // A venda reembolsada perde o status `aprovada`, e a receita só soma aprovadas.
+    // Descontar o estorno de novo contaria a mesma perda duas vezes — era o que a
+    // cascata fazia, e ficou visível quando a classificação de reembolso foi
+    // corrigida e o valor saltou de R$ 594 para R$ 1.714.
+    //
+    // Se alguém reintroduzir a dedução, a assinatura de `EntradaResultado` deixa de
+    // compilar; este teste guarda o raciocínio.
+    const semEstorno = calcularResultado({
+      receita: 1000, taxaPlataforma: 60, impostoSimples: 100,
+      impostoMeta: 50, investimento: 300, custoFixo: 0,
+    });
+
+    // Mês com 200 de estorno: a receita já chega 200 menor, e nada mais é subtraído.
+    const comEstorno = calcularResultado({
+      receita: 800, taxaPlataforma: 60, impostoSimples: 100,
+      impostoMeta: 50, investimento: 300, custoFixo: 0,
+    });
+
+    expect(semEstorno.lucroOperacional).toBe(490);
+    expect(comEstorno.lucroOperacional).toBe(290);
+    // A perda aparece uma vez só: exatamente os 200 que saíram da receita.
+    expect(semEstorno.lucroOperacional - comEstorno.lucroOperacional).toBe(200);
   });
 });
 
@@ -184,7 +204,6 @@ describe('regressão: agosto/2026, 01 a 20', () => {
   const agosto = {
     receita: 128236.46,
     taxaPlataforma: 7776.21,
-    reembolsos: 594.0,
     impostoSimples: 12823.66,
     impostoMeta: 9193.15,
     investimento: 73545.06,
@@ -199,10 +218,11 @@ describe('regressão: agosto/2026, 01 a 20', () => {
   it('fecha o lucro e a margem do período', () => {
     const r = calcularResultado(agosto);
 
-    expect(r.lucroOperacional).toBeCloseTo(24304.38, 2);
-    expect(r.lucroComCustoFixo).toBeCloseTo(8304.38, 2);
-    expect(r.margemPct).toBeCloseTo(18.9528, 3);
-    expect(r.margemComCustoFixoPct).toBeCloseTo(6.4758, 3);
+    // 128.236,46 − 7.776,21 − 12.823,66 − 9.193,15 − 73.545,06
+    expect(r.lucroOperacional).toBeCloseTo(24898.38, 2);
+    expect(r.lucroComCustoFixo).toBeCloseTo(8898.38, 2);
+    expect(r.margemPct).toBeCloseTo(19.416, 2);
+    expect(r.margemComCustoFixoPct).toBeCloseTo(6.939, 2);
   });
 
   it('mostra o custo fixo consumindo dois terços do lucro', () => {

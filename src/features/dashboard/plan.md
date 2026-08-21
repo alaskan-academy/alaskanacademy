@@ -734,3 +734,31 @@ em até 7 dias.**
 - [x] `fn_overview` devolve `recuperadas`, e o card "Não aprovadas" mostra quanto
       voltou como venda. Sem isso o número sugeria um buraco de checkout um terço maior
       do que existe
+
+### O reembolso estava sendo contado duas vezes
+
+Pergunta da usuária ao ver o lucro cair: *"não estava baseando em vendas aprovadas?"*.
+Estava — e é justamente por isso que a dedução estava errada.
+
+Verificado: das 16 vendas estornadas de agosto, **zero está dentro da receita**. A
+receita soma só `status = 'aprovada'`, e a venda estornada perde esse status no momento
+do estorno. Ela já saiu. Descontar "Reembolsos" da receita contava a mesma perda de
+novo.
+
+O defeito era antigo e passava despercebido porque o valor era pequeno (R$ 594). Ficou
+visível quando a classificação de reembolso foi corrigida e o número saltou para
+R$ 1.713,76 — a usuária estranhou a queda do lucro e puxou o fio.
+
+- [x] `reembolsos` saiu de `calcularResultado` e da cascata. O número continua na aba
+      Perdas, onde informa sem distorcer
+- [x] Teste novo guarda o raciocínio: compara um mês com e sem estorno e verifica que a
+      diferença no lucro é exatamente o que saiu da receita, uma vez só
+- [x] Bloco de regressão recalculado
+
+**Consequência do modelo, registrada porque não é óbvia:** um estorno reduz
+retroativamente a receita do mês em que a venda aconteceu, não do mês em que foi
+estornada. É o mesmo critério do export da Payt, contra o qual estes números são
+conciliados — então as duas fontes continuam batendo.
+
+Os dois testes que falharam na primeira tentativa eram erro de aritmética meu nas
+expectativas, não no código. Foi para isso que eles foram escritos.

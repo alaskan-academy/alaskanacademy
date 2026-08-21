@@ -21,10 +21,19 @@ function razao(numerador: number, denominador: number): number {
 }
 
 export interface EntradaResultado {
-  /** Receita sem juros de parcelamento. */
+  /**
+   * Receita sem juros de parcelamento, só de vendas aprovadas.
+   *
+   * Note que reembolso e chargeback **não** entram como dedução em lugar nenhum, e
+   * isso é proposital: a venda estornada deixa de ter status `aprovada`, então já
+   * saiu daqui. Descontá-la de novo contaria a mesma perda duas vezes.
+   *
+   * A consequência é que um estorno reduz retroativamente a receita do mês em que a
+   * venda aconteceu, não do mês em que foi estornada. É o mesmo critério do export
+   * da Payt, contra o qual esses números são conciliados.
+   */
   receita: number;
   taxaPlataforma: number;
-  reembolsos: number;
   impostoSimples: number;
   impostoMeta: number;
   investimento: number;
@@ -54,7 +63,6 @@ export function calcularResultado(e: EntradaResultado): Resultado {
   const lucroOperacional =
     e.receita -
     e.taxaPlataforma -
-    e.reembolsos -
     e.impostoSimples -
     e.impostoMeta -
     e.investimento;

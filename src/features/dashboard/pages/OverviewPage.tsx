@@ -285,7 +285,6 @@ export default function OverviewPage() {
     const share = participacao(fatBruto, num(d.fat_bruto_total));
 
     const fiscal = d.fiscal ?? {};
-    const reembolsosV = num(fiscal.reembolsos) * share;
     const impSimples = num(fiscal.imposto_simples) * share;
     const impMeta = num(fiscal.imposto_meta) * share;
     const investimento = segmento === "backend" ? 0 : num(fiscal.investimento_meta);
@@ -302,7 +301,7 @@ export default function OverviewPage() {
     const resultado = calcularResultado({
       receita,
       taxaPlataforma: taxaPlat,
-      reembolsos: reembolsosV,
+
       impostoSimples: impSimples,
       impostoMeta: impMeta,
       investimento,
@@ -418,7 +417,7 @@ export default function OverviewPage() {
     setKpis({
       juros, receita, fatBruto, fatLiquido, lucro, lucroCC,
       cpa: cpaPeriodo, roas: roasPeriodo, ticketMedio: ticketMedioPeriodo,
-      taxaPlat, taxaPlatPct, reembolsosV, impSimples, impMeta,
+      taxaPlat, taxaPlatPct, impSimples, impMeta,
       investimento, custoFixo, custoMensal,
       margemPct, margemCcPct, simplesPct, metaPct,
       qtdAprov, taxaOb, taxaUp, receitaOb, receitaUp,
@@ -715,12 +714,10 @@ export default function OverviewPage() {
                   pct={pctReceita(kpis.taxaPlat)}
                   negativo
                 />
-                <Linha
-                  rotulo="Reembolsos"
-                  valor={formatCurrency(kpis.reembolsosV || 0)}
-                  pct={pctReceita(kpis.reembolsosV)}
-                  negativo
-                />
+                {/* Reembolso saiu da cascata de propósito. A venda estornada perde o
+                    status `aprovada` e some da receita no ato — descontá-la aqui
+                    contaria a mesma perda duas vezes. O número continua visível na
+                    aba Perdas, que é onde ele informa sem distorcer o resultado. */}
                 <Linha
                   rotulo={`Simples (${formatPercent(kpis.simplesPct || 0)})`}
                   valor={formatCurrency(kpis.impSimples || 0)}
