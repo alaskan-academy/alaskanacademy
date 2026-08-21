@@ -582,3 +582,34 @@ Conta Simples, do módulo Financeiro — falhando **desde pelo menos 18/08**.
 A lição que fica: eu montei um agendamento e não verifiquei que ele funcionava. Foi o
 alerta `fonte_parada` — escrito horas antes, para outro caso — que pegou. Um sistema
 que se acusa pega até o erro de quem o construiu.
+
+### Tela de Ofertas Payt — e a revisão do que ela vale
+
+Construída em Configurações → Ofertas Payt: lista as 54 ofertas, destaca as 10 sem
+produto, permite editar produto/tipo e criar oferta nova. A tabela `ofertas` não tinha
+tela nenhuma — as duas telas que dizem "ofertas" no menu apontam para outras tabelas
+(`ofertas_editores` e `copytrack_offers`). Também faltava política de escrita: a
+tabela tinha RLS ativa e só `SELECT`, então a tela salvaria em silêncio.
+
+**Mas a usuária questionou o propósito, e ela estava certa.** Medindo em vez de
+defender:
+
+| Onde `produto` poderia importar | Depende dele? |
+|---|---|
+| Aba **Produtos** da Visão Geral | **Não** — agrupa por `produto_nome`, o nome real da Payt |
+| Join gasto de anúncio ↔ receita | Sim, mas pelo lado da **conta**, que já tem tela própria |
+| Aba "Por Produto" da página de Vendas | Sim — sem categoria cai em "Outros" |
+
+E o join do gasto foi testado: R$ 73.545,06 no Meta contra R$ 73.545,06 chegando na
+conta do lucro, **diferença de R$ 0,00**. Nada estava sendo perdido.
+
+`tipo` vale ainda menos: o webhook manda os order bumps, e o cadastro só serve para
+numerá-los de 1 a 4. Sem ele cai em `orderbump_1`, o que já acontece com 227 itens.
+
+- [x] **O alerta que motivou a tela estava com o texto errado.** Dizia que a venda sem
+      produto "fica de fora do recorte por produto" — não fica. A aba Produtos tem 12
+      linhas e a venda sem categoria é uma delas, com o nome certo e a etiqueta em
+      branco. Renomeado para `venda_sem_categoria`, com o efeito real descrito
+
+A lição vale mais que a tela: **alerta que exagera a consequência faz pedir solução
+maior que o problema.** O texto errado custou uma tela que resolve algo cosmético.
