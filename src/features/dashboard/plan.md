@@ -984,3 +984,17 @@ avisa quando `links_trafego_sem_utm` puder ser esvaziada.
 
 Enquanto isso o remendo é inofensivo: ele só age na ausência de `ad_id`, então a venda
 que chega rastreada passa por ele sem ser tocada.
+
+### Duas regras discordando sobre a mesma decisão
+
+O alerta `remendo_utm_resolvido` dizia *"já pode sair"* com **2 de 81** vendas
+rastreadas — 2,5%. Ele disparava com uma única venda com `ad_id`, enquanto a decisão
+automatizada agendada exige 80% em pelo menos 5 vendas.
+
+Conselho errado: remover o remendo ali faria 97% das vendas voltarem a cair em
+back-end. Alinhado ao mesmo critério, e agora ele distingue os dois estados — "voltando
+parcialmente" informa, "restabelecida" recomenda.
+
+Vale registrar o padrão: **quando a mesma decisão tem duas regras em lugares
+diferentes, uma delas está errada.** É a terceira vez nesta sessão — antes foram a
+perda de venda estornada (view × função) e a classificação de upsell (heurística × Payt).
