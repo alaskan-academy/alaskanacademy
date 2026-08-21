@@ -1043,18 +1043,38 @@ vendas dela enquanto o gasto aparece inteiro.
 - [x] A tela avisa quantas vendas de tráfego do período não têm conta identificada, e
       que por isso CPA, ROAS e conversões estão subestimados
 
-### Meta de ROAS: o número que a estrutura de custo sustenta
+### Meta de ROAS: calculada, não digitada
 
-Removidas as metas de teste. Para embasar as reais, derivado dos parâmetros atuais
-(taxa Payt 6,10%, Simples 10%, imposto Meta 12,5% sobre o gasto):
+`fn_metas_sugeridas(p_dias, p_margem)` deriva o alvo da estrutura de custo real, e a aba
+Contas de Anúncios mostra o número junto dos insumos que o produziram. Uma meta escrita
+à mão envelhece calada: o Simples muda de faixa, a taxa da Payt muda com o mix de
+parcelamento, o custo fixo sobe — e o número na tela segue cobrando a conta por um alvo
+que não corresponde mais a nada. **A taxa da Payt nem é parâmetro: é medida do que ela de
+fato cobrou** — 5,95% nos últimos 30 dias, não os 6,10% que eu havia estimado.
 
-| | |
-|---|---|
-| ROAS de equilíbrio | **1,34** |
-| ROAS com 30% de margem | **1,74** |
+Dois pares, porque são duas perguntas:
 
-Abaixo de 1,34 a conta dá prejuízo antes mesmo do custo fixo. Hoje só a
-"Lembrancinha - TSL" (1,71) e a "Workshop Buquê - TSL" (1,79) passam do segundo patamar.
+| | Equilíbrio | Margem de 30% |
+|---|---|---|
+| **Campanha** (marginal, sem custo fixo) | 1,34 | 2,08 |
+| **Operação** (custo fixo rateado) | 1,63 | 2,53 |
+
+Custo fixo não entra na decisão de campanha porque não muda se ela ligar ou desligar;
+entra na da operação, que é a que paga a conta de luz. O CPA sai do ROAS pelo ticket de
+cada conta — o alvo da "Lembrancinha" (R$ 118) não serve para os "Desafios na Sala"
+(R$ 297).
+
+#### Correção: o 1,74 que eu havia dado não era margem de 30%
+
+Era o equilíbrio multiplicado por 1,30 — "30% acima do equilíbrio", que rende cerca de
+**19%** de margem. Margem de verdade é lucro sobre faturamento, e resolve para 2,08
+(campanha) ou 2,53 (operação). Não é diferença de arredondamento: nenhuma conta chega
+perto de 2,53 hoje.
+
+A fórmula foi validada contra o resultado real — no ROAS de 1,73 dos últimos 30 dias ela
+devolve margem de 5,08%, e o P&L do período fecha em 5,09%. Por R$ 1 investido, com
+R = ROAS: `lucro = R·(1 − taxa − simples) − 1 − imposto_meta − fixo_rateado`; o
+equilíbrio zera o lucro e a margem `m` resolve `lucro/R = m`.
 
 ### Segunda passada: filtro de CA e a série na tela
 
@@ -1092,3 +1112,94 @@ Só apareceram porque a verificação mediu `getComputedStyle` na tela, não o s
 no print, uma linha que falta não chama atenção. Todas trocadas por `currentColor` com
 classes `text-*`, que este projeto comprovadamente gera. **Regra que fica: em SVG, cor vem
 de `text-*` + `currentColor`, nunca de `stroke-*`/`fill-*`.**
+
+## Auditoria da aba Contas de Anúncios
+
+Provocada por *"esta área realmente é necessária?"*. A resposta medida: sim, mas o texto
+da tela dizia que ela configurava a atribuição de vendas — e **nenhuma função ou view do
+banco lê `produto_payt`**. A atribuição vai por `ad_id` → `metricas_meta` →
+`ad_account_id`. Mesmo defeito da tela Ofertas Payt: uma tela explicada por uma premissa
+falsa manda procurar problema no lugar errado.
+
+| Campo | Quem usa de verdade | Decisão |
+|---|---|---|
+| `produto_payt` | só a aba Criativos (casa anúncio e venda pelo par `ad_id` + produto) | mantido, com conferência automática ao lado |
+| `roas_meta` / `cpa_meta` | Tendências | mantido — é o motivo vivo de abrir a tela |
+| `ativo` | **`meta-insights-sync` só coleta métrica de conta ativa** | mantido, agora com confirmação |
+| `account_id` (coluna) | referência cruzada com o Gerenciador | virou linha sob o nome; a largura foi para o que se edita |
+| Caixa "Como funciona a atribuição" | ninguém — descrevia regra que não existe | reescrita para o que cada campo faz |
+
+- [x] **O toggle "Ativo" corta a coleta de dados** e disparava em um clique, sem dizer
+      isso. Conta desligada some das telas por CA, e os dias parados não voltam ao
+      religar. Agora confirma, e o texto diz o que se perde
+- [x] **Onze das dezoito contas nunca tiveram uma única métrica** e a ordem alfabética as
+      punha no topo — a tela abria com "CA2, CA3, CA4" e campos de exemplo. Ficam atrás
+      de "mostrar 11 contas paradas"
+- [x] `overflow-hidden` no container da tabela escondia 728 dos 1.102px: **os campos de
+      meta e o próprio botão Salvar estavam inalcançáveis** no painel de Configurações,
+      que dá 374px. Virou `overflow-x-auto`
+
+### `produto_payt`: removido, não automatizado pela metade
+
+Primeira versão desta seção propunha manter o campo e só mostrar o derivado ao lado,
+como conferência. A Jessica rejeitou — *"podemos simplesmente passar a vender outro
+produto na CA ou até mesmo vender mais de um, o ideal é que fosse totalmente
+automático"* — e ao medir, ela estava certa por um motivo pior do que o previsto: **o
+campo não era só manual, ele perdia venda.**
+
+A aba Criativos casava anúncio e venda pela chave `ad_id + produto configurado na
+conta`. Quem não batesse com o texto simplesmente sumia:
+
+| | |
+|---|---|
+| Anúncios que vendem mais de um produto | 12 de 204 |
+| Vendas descartadas pelo filtro em 60 dias | **57** |
+| Receita invisível por causa disso | **R$ 6.874** |
+
+A "Workshop Buquê - TSL" vende Workshop Buquê (490) **e** Kit Completo (33); o campo
+cabia um. O anúncio que trouxe as 33 aparecia como se tivesse parado de vender.
+
+- [x] A chave passou a ser o `ad_id` sozinho, que já é único por anúncio. Se um anúncio
+      vendeu dois produtos, ele vendeu os dois — somar é a resposta certa, filtrar era a
+      errada
+- [x] O produto que a busca do Notion usa sai das vendas do próprio anúncio, não de um
+      campo da conta: acompanha sozinho quando a CA troca de oferta
+- [x] A coluna editável virou **"Vende (60 dias)"**, somente leitura, com a lista de
+      produtos e a contagem de cada um — `fn_produto_derivado` devolve todos, não o
+      campeão. `ad_accounts.produto_payt` ficou sem nenhum leitor; a coluna segue no
+      banco para não perder o histórico, mas nada mais escreve nela
+
+**A lição repetida:** meia automação — derivar o valor e ainda pedir confirmação humana —
+teria mantido o defeito de pé, porque o campo continuaria sendo a fonte da verdade. O que
+resolveu foi remover a pergunta, não facilitá-la.
+
+## Checkout sem UTM: `checkouts_origem`
+
+O "back-end sem origem" — R$ 7.359 em 75 vendas — não era falha de atribuição na maior
+parte: é suporte, recuperação no WhatsApp, oferta na área de membros e upsell, que
+legitimamente não carregam UTM. Classificado pela Jessica:
+
+| Checkout / produto | Origem |
+|---|---|
+| Saponaria Brasil Suporte R$67 · Oferta Personalizada | suporte |
+| Fábrica das Velas — Desconto e Acesso Vitalício | recuperação no WhatsApp |
+| Saponaria Brasil Rev2/Rev5/Rev6 · VSL 03 · Oferta Relâmpago | **tráfego** — só perdeu a UTM |
+| Vendas no Artesanato — oferta de aluna | área de membros |
+| Seguidoras - Saponaria Brasil | link da bio |
+| Handify Artesanato Completo *(e "Assinatura")* | back-end — acesso anual |
+| Workshop Primeira Venda *(e "Assinatura")* · Saboaria Energética | upsell |
+
+**Tabela, não `UPDATE` solto:** um update resolveria as 75 vendas de hoje e deixaria as
+de amanhã sem origem de novo.
+
+**Chave composta, não só o checkout:** três dos casos não têm `link_titulo` nenhum, e o
+mesmo link "Assinatura" é back-end quando vende Handify e upsell quando vende o Workshop
+Primeira Venda. Nulo significa "qualquer" e a regra mais específica ganha.
+
+Marcar os "Rev" como `trafego_pago` os faz aparecer no aviso de *tráfego sem conta
+identificada* em vez de sumirem num back-end que eles não são — a tela passa a dizer a
+verdade sobre eles.
+
+- [x] **Workshop Buquê de Velas Rev1 / Rev2 / Rev3** confirmados como tráfego pela
+      Jessica, fechando a lista: **zero vendas sem origem** nos últimos 30 dias, contra
+      as 75 de R$ 7.359 de onde isto partiu

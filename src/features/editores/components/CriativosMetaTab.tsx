@@ -221,9 +221,11 @@ const colMap = Object.fromEntries(ALL_COLS.map(c => [c.key, c])) as Record<ColKe
 // ─── componente principal ─────────────────────────────────────────────────────
 export function CriativosMetaTab() {
   const [rows, setRows]         = useState<any[]>([]);
-  const [paytByAdId, setPaytByAdId] = useState<Record<string, { vendas: number; valor: number }>>({});
+  // `produtos` guarda o que cada anúncio vendeu, com a contagem: um anúncio pode ter
+  // vendido mais de um produto, e o dominante serve para achar o projeto no Notion.
+  const [paytByAdId, setPaytByAdId] = useState<Record<string, { vendas: number; valor: number; produtos: Record<string, number> }>>({});
   const [paytByKey,  setPaytByKey]  = useState<Record<string, { vendas: number; valor: number }>>({});
-  const [accountMap, setAccountMap] = useState<Record<string, { nome: string; produto_payt: string | null }>>({});
+  const [accountMap, setAccountMap] = useState<Record<string, { nome: string }>>({});
   const [loading, setLoading]   = useState(true);
   const [preset, setPreset]     = useState<Preset>('28d');
   const [customStart, setCustomStart] = useState(ago(28));
@@ -275,20 +277,19 @@ export function CriativosMetaTab() {
         .not('utm_content', 'is', null),
       supabase
         .from('ad_accounts')
-        .select('id, nome, produto_payt')
+        .select('id, nome')
         .eq('ativo', true),
     ]);
 
-    // mapa de contas: id → { nome, produto_payt }
-    const am: Record<string, { nome: string; produto_payt: string | null }> = {};
+    const am: Record<string, { nome: string }> = {};
     for (const c of contasRes.data || []) {
-      am[c.id] = { nome: c.nome, produto_payt: c.produto_payt };
+      am[c.id] = { nome: c.nome };
     }
 
     // Dois mapas de atribuição:
     // pmById: keyed por ad_id do Meta (extraído do utm_content) — matching exato
     // pmByKey: keyed por "utm_content|campanha_id|adset_id" — fallback para vendas sem utm_ad_id
-    const pmById:  Record<string, { vendas: number; valor: number }> = {};
+    const pmById:  Record<string, { vendas: number; valor: number; produtos: Record<string, number> }> = {};
     const pmByKey: Record<string, { vendas: number; valor: number }> = {};
 
     for (const v of paytRes.data || []) {
@@ -297,11 +298,23 @@ export function CriativosMetaTab() {
       const valor = Number(v.valor || 0);
 
       if (adId) {
-        // chave: ad_id + produto — garante que só contamos vendas do produto correto por conta
-        const key = adId + '|' + prod;
-        if (!pmById[key]) pmById[key] = { vendas: 0, valor: 0 };
-        pmById[key].vendas += 1;
-        pmById[key].valor  += valor;
+        /**
+         * Chave é o `ad_id` sozinho.
+         *
+         * Antes era `ad_id + produto da conta`, para "só contar vendas do produto
+         * correto". Só que o produto vinha de um campo digitado à mão em
+         * `ad_accounts`, que cabe um produto só — e a "Workshop Buquê - TSL" vende
+         * dois: Workshop Buquê (490 vendas) e Kit Completo (33). As 33 não batiam com
+         * o campo e **sumiam da atribuição**, junto com outras 24 espalhadas: 57
+         * vendas e R$ 6.874 em 60 dias, com o anúncio parecendo que parou de vender.
+         *
+         * O `ad_id` já é único por anúncio. Se um anúncio vende dois produtos, ele
+         * vendeu os dois — somar é a resposta certa, e filtrar era a errada.
+         */
+        if (!pmById[adId]) pmById[adId] = { vendas: 0, valor: 0, produtos: {} };
+        pmById[adId].vendas += 1;
+        pmById[adId].valor  += valor;
+        if (prod) pmById[adId].produtos[prod] = (pmById[adId].produtos[prod] || 0) + 1;
       } else {
         // fallback: match por nome+campanha+adset
         const utmCamp   = (v.utm_campaign as string | null) || '';
@@ -433,9 +446,9 @@ export function CriativosMetaTab() {
       // 3. Meta compras_meta (fallback final)
       let paytVendas = 0, paytFaturamento = 0, foundPayt = false;
 
-      // Tentativa 1: match por ad_id + produto da conta (exato e por produto)
+      // Tentativa 1: match por ad_id (exato)
       const conta = accountMap[m.ad_account_id];
-      const byId = m.ad_id ? paytByAdId[m.ad_id + '|' + (conta?.produto_payt || '')] : null;
+      const byId = m.ad_id ? paytByAdId[m.ad_id] : null;
       if (byId) {
         paytVendas      = byId.vendas;
         paytFaturamento = byId.valor;
@@ -462,7 +475,13 @@ export function CriativosMetaTab() {
       const roas = inv > 0 ? faturamento / inv : 0;
 
       // Lookup Notion: exact → fallback without suffix (- cópia, - VSL, etc.)
-      const produtoPayt = conta?.produto_payt ?? '';
+      //
+      // O produto sai das vendas do próprio anúncio, não de um campo da conta: é o que
+      // ele de fato vendeu, acompanha sozinho quando a CA muda de oferta, e não some
+      // quando ela passa a vender dois.
+      const produtoPayt = byId
+        ? (Object.entries(byId.produtos).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '')
+        : '';
       const adNomeLower = String(m.ad_nome || '').trim().toLowerCase();
       const produtoLower = produtoPayt.toLowerCase();
       const notionInfo = pickBest(notionMap[adNomeLower], produtoLower) ?? (() => {
