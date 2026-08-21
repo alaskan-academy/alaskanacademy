@@ -34,19 +34,20 @@ import { cn } from '@/lib/utils';
  * Juntá-los em "sem dono" fazia a tela dizer 83 onde o número real de anúncios sem card
  * é 11 — e escondia a hipótese de seis que tinham card, só não tinham responsável.
  */
-type Vinculo = 'confirmado' | 'sugerido' | 'ambiguo' | 'sem_responsavel' | 'sem_card' | 'fora_do_recorte';
+type Vinculo = 'confirmado' | 'sugerido' | 'por_data' | 'sem_responsavel' | 'sem_card' | 'fora_do_recorte';
 
 const VINCULO: Record<Vinculo, { curto: string; comoResolver: string }> = {
-  confirmado:      { curto: 'confirmado',        comoResolver: '' },
-  sugerido:        { curto: '',                  comoResolver: '' },
-  ambiguo:         { curto: 'vários editores',   comoResolver: 'cards de editores diferentes usam este nome — só ligando ao card certo para saber de quem é' },
-  sem_responsavel: { curto: 'sem responsável',   comoResolver: 'o card existe e não tem editor atribuído — isso se resolve no card, em Produção' },
-  sem_card:        { curto: 'sem card',          comoResolver: 'nenhum card postado do tipo criativo tem este nome' },
-  fora_do_recorte: { curto: 'card arquivado',    comoResolver: 'existe card com este nome, mas arquivado ou de outro tipo' },
+  confirmado:      { curto: '',                comoResolver: '' },
+  sugerido:        { curto: '',                comoResolver: '' },
+  por_data:        { curto: '',                comoResolver: '' },
+  sem_responsavel: { curto: 'sem responsável', comoResolver: 'o card existe e não tem editor atribuído — isso se resolve no card, em Produção' },
+  sem_card:        { curto: 'sem card',        comoResolver: 'nenhum card postado do tipo criativo tem este nome' },
+  fora_do_recorte: { curto: 'card arquivado',  comoResolver: 'existe card com este nome, mas arquivado ou de outro tipo' },
 };
 
 interface Anuncio {
   ad_id: string; ad_nome: string; conta_id: string; conta: string;
+  estreia: string;
   investimento: number; impressoes: number; cliques_link: number;
   video_3s: number; video_75pct: number; checkouts: number; visualizacoes: number;
   vendas: number; receita: number;
@@ -73,7 +74,7 @@ const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
  * anúncio é lucrativo.
  */
 const MIN_IMPRESSOES = 1000;
-const MIN_VENDAS = 3;
+const MIN_VENDAS = 5;
 
 /**
  * Abaixo disso, o financeiro por anúncio não é subestimado: é ficção.
@@ -105,26 +106,24 @@ const AVALIACAO_COR: Record<string, string> = {
 type Coluna = 'nome' | 'investimento' | 'receita' | 'roas' | 'cpa' | 'hook' | 'ctr';
 
 /**
- * De onde vem a venda. **Uma de cada vez, nunca somadas.**
+ * Esta tela usa a **conversão do Meta**, não a venda da Payt.
  *
- * A Payt é o dinheiro que entrou, mas some quando o checkout perde a UTM — a conta
- * "Saponaria" tem 736 vendas no mês e só 9 carregam identificação de anúncio. O Meta
- * credita a si conversões por janela de visualização e reporta 865 no mesmo período.
- * São réguas diferentes medindo a mesma coisa: somar contaria a venda duas vezes, e
- * escolher em silêncio esconderia qual régua está em uso.
+ * A régua da Payt depende da UTM chegar no checkout, e ela some justamente onde mais
+ * importa: a conta "Saponaria" tem 736 vendas no mês com apenas 9 identificadas por
+ * anúncio. Um editor comparando criativos ali veria zeros que não são desempenho, são
+ * ausência de dado.
+ *
+ * O Meta credita a si a conversão sem depender de UTM, então cobre todos os anúncios da
+ * mesma forma — que é o que um ranking exige. Em compensação ele conta a mais, porque
+ * credita janela de visualização. Serve para **comparar anúncios entre si**, e não como
+ * faturamento: o caixa continua sendo o Resumo, que usa a Payt.
  */
-export type Fonte = 'payt' | 'meta';
-
-const vendasDe  = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.vendas_meta : a.vendas);
-const receitaDe = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.receita_meta : a.receita);
-const roasDe = (a: Anuncio, f: Fonte) =>
-  (a.investimento > 0 ? receitaDe(a, f) / a.investimento : null);
-const cpaDe = (a: Anuncio, f: Fonte) => {
-  const v = vendasDe(a, f);
-  return v > 0 ? a.investimento / v : null;
-};
-const refRoas = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.conta_roas_meta : a.conta_roas);
-const refCpa  = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.conta_cpa_meta : a.conta_cpa);
+const vendasDe  = (a: Anuncio) => a.vendas_meta;
+const receitaDe = (a: Anuncio) => a.receita_meta;
+const roasDe = (a: Anuncio) => (a.investimento > 0 ? a.receita_meta / a.investimento : null);
+const cpaDe  = (a: Anuncio) => (a.vendas_meta > 0 ? a.investimento / a.vendas_meta : null);
+const refRoas = (a: Anuncio) => a.conta_roas_meta;
+const refCpa  = (a: Anuncio) => a.conta_cpa_meta;
 const hookDe = (a: Anuncio) => razao(a.video_3s, a.impressoes);
 const ctrDe  = (a: Anuncio) => razao(a.cliques_link, a.impressoes);
 /**
@@ -207,7 +206,6 @@ export function CriativosMetaTab() {
   const [soPendentes, setSoPendentes] = useState(false);
   const [verPoucoInvestimento, setVerPoucoInvestimento] = useState(false);
   const [agrupar, setAgrupar] = useState(false);
-  const [fonte, setFonte] = useState<Fonte>('payt');
   const [col, setCol] = useState<Coluna>('investimento');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [aberto, setAberto] = useState<string | null>(null);
@@ -269,14 +267,6 @@ export function CriativosMetaTab() {
   }, [dados]);
   const totalPendentes = Object.values(pendentes).reduce((s, l) => s + l.length, 0);
 
-  const contasCegas = useMemo(() => {
-    // Só faz sentido na régua da Payt: a conversão do Meta não depende da UTM.
-    if (fonte === 'meta') return [];
-    const m = new Map<string, number>();
-    dados.forEach(a => { if (a.conta_pct_atribuido < MIN_ATRIBUICAO) m.set(a.conta, a.conta_pct_atribuido); });
-    return [...m.entries()].map(([nome, pct]) => ({ nome, pct }));
-  }, [dados, fonte]);
-
   /**
    * Quanto o Meta infla, medido onde dá para medir.
    *
@@ -285,6 +275,7 @@ export function CriativosMetaTab() {
    * porque credita janela de visualização: quem viu o anúncio e comprou depois por outro
    * caminho entra como conversão dele.
    */
+  /** Só para dizer o tamanho da diferença no rodapé. */
   const inflacaoMeta = useMemo(() => {
     const bons = dados.filter(a => a.conta_pct_atribuido >= MIN_ATRIBUICAO);
     const payt = bons.reduce((s, a) => s + a.receita, 0);
@@ -310,9 +301,9 @@ export function CriativosMetaTab() {
     const chave = (a: Anuncio): number | string => {
       switch (col) {
         case 'nome': return a.ad_nome ?? '';
-        case 'receita': return receitaDe(a, fonte);
-        case 'roas': return roasDe(a, fonte) ?? -1;
-        case 'cpa': return cpaDe(a, fonte) ?? Number.MAX_SAFE_INTEGER;
+        case 'receita': return receitaDe(a);
+        case 'roas': return roasDe(a) ?? -1;
+        case 'cpa': return cpaDe(a) ?? Number.MAX_SAFE_INTEGER;
         case 'hook': return hookDe(a) ?? -1;
         case 'ctr': return ctrDe(a) ?? -1;
         default: return a.investimento;
@@ -326,7 +317,7 @@ export function CriativosMetaTab() {
       }
       return (x - y) * sinal;
     });
-  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, soPendentes, busca, col, dir, fonte]);
+  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, soPendentes, busca, col, dir]);
 
   /** Lista plana ou em blocos por editor, na mesma ordenação escolhida. */
   const blocos = useMemo(() => {
@@ -358,25 +349,23 @@ export function CriativosMetaTab() {
       .slice(0, 5)
       .map(a => ({ nome: a.ad_nome || a.ad_id, editor: a.editor, valor: valor(a) as number }));
 
-    const comVenda = (a: Anuncio) =>
-      vendasDe(a, fonte) >= MIN_VENDAS &&
-      (fonte === 'meta' || a.conta_pct_atribuido >= MIN_ATRIBUICAO);
+    const comVenda = (a: Anuncio) => vendasDe(a) >= MIN_VENDAS;
     const comImpressao = (a: Anuncio) => a.impressoes >= MIN_IMPRESSOES;
 
     return [
-      { titulo: 'Maior ROAS',      itens: topo(comVenda, a => roasDe(a, fonte)),      formato: 'x'     as const, ajuda: `mín. ${MIN_VENDAS} vendas` },
-      { titulo: 'Menor CPA',       itens: topo(comVenda, a => cpaDe(a, fonte), false), formato: 'moeda' as const, ajuda: `mín. ${MIN_VENDAS} vendas` },
-      { titulo: 'Maior receita',   itens: topo(comVenda, a => receitaDe(a, fonte)),   formato: 'moeda' as const, ajuda: 'no período' },
+      { titulo: 'Maior ROAS',      itens: topo(comVenda, a => roasDe(a)),      formato: 'x'     as const, ajuda: `mín. ${MIN_VENDAS} vendas` },
+      { titulo: 'Menor CPA',       itens: topo(comVenda, a => cpaDe(a), false), formato: 'moeda' as const, ajuda: `mín. ${MIN_VENDAS} vendas` },
+      { titulo: 'Mais vendas',     itens: topo(comVenda, a => vendasDe(a)),    formato: 'inteiro' as const, ajuda: 'conversões no período' },
       { titulo: 'Melhor hook 3s',  itens: topo(comImpressao, hookDe),                 formato: 'pct'   as const, ajuda: `mín. ${formatNumber(MIN_IMPRESSOES)} impressões` },
       { titulo: 'Melhor CTR',      itens: topo(comImpressao, ctrDe),                  formato: 'pct'   as const, ajuda: `mín. ${formatNumber(MIN_IMPRESSOES)} impressões` },
       { titulo: 'Melhor retenção', itens: topo(comImpressao, retencaoDe),             formato: 'pct'   as const, ajuda: 'assistiram 75% do vídeo' },
     ];
-  }, [visiveis, fonte]);
+  }, [visiveis]);
 
   const totais = visiveis.reduce((acc, a) => ({
     investimento: acc.investimento + a.investimento,
-    receita: acc.receita + receitaDe(a, fonte),
-    vendas: acc.vendas + vendasDe(a, fonte),
+    receita: acc.receita + receitaDe(a),
+    vendas: acc.vendas + vendasDe(a),
   }), { investimento: 0, receita: 0, vendas: 0 });
 
   return (
@@ -384,9 +373,8 @@ export function CriativosMetaTab() {
       <div>
         <h3 className="text-base font-semibold">Criativos Meta</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          O que cada anúncio entregou, ao lado da hipótese que o card de Produção registrou.
-          Vendas contam a compra principal e os order bumps — upsell é receita do funil, não
-          do criativo. As taxas são comparadas com a média da própria conta no período.
+          Cada anúncio com a hipótese que o card registrou. Vendas são as conversões que o
+          Meta credita ao anúncio, e cada taxa é comparada com a média da conta no período.
         </p>
       </div>
 
@@ -414,46 +402,14 @@ export function CriativosMetaTab() {
         </div>
       )}
 
-      {contasCegas.length > 0 && !loading && (
-        <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-200/90">
-            <span className="text-amber-100">
-              Receita, ROAS e CPA não são confiáveis em {contasCegas.map(c => c.nome).join(', ')}
-            </span>{' '}
-            — só {contasCegas.map(c => `${c.pct.toFixed(0)}%`).join(' e ')} das vendas dessas
-            contas chegam com anúncio identificado. Esses números aparecem em cinza: não são
-            desempenho ruim, é venda que existe e não sabemos de qual criativo veio. Hook, CTR e
-            retenção seguem válidos, porque não dependem da venda.
-            {fonte === 'payt' && (
-              <>
-                {' '}
-                <button onClick={() => setFonte('meta')}
-                        className="text-amber-100 underline underline-offset-2">
-                  Ver pela conversão do Meta
-                </button>{' '}
-                cobre esse buraco — com a ressalva de que o Meta credita janela de
-                visualização e conta mais que a Payt.
-              </>
-            )}
-          </p>
-        </div>
-      )}
-
-      {fonte === 'meta' && !loading && (
-        <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-border bg-secondary/30 px-3.5 py-2.5">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-            <span className="text-foreground">Estes números são a conta do Meta, não o seu caixa.</span>{' '}
-            Ele credita a si quem viu o anúncio e comprou depois por outro caminho
-            {inflacaoMeta && inflacaoMeta > 1.05
-              ? `, e nas contas onde dá para comparar ele reporta ${inflacaoMeta.toFixed(1)}× a receita que a Payt registrou`
-              : ''}
-            . Servem para <span className="text-foreground">comparar anúncios entre si</span> —
-            especialmente onde a UTM falhou — e não para somar faturamento. Nunca misture com a
-            régua da Payt no mesmo raciocínio.
-          </p>
-        </div>
+            {!loading && (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Vendas aqui são as conversões que o <span className="text-foreground">Meta</span>{' '}
+          credita ao anúncio — cobrem todos os anúncios igualmente, inclusive onde a UTM
+          falhou, mas contam a mais porque incluem quem viu e comprou depois por outro
+          caminho{inflacaoMeta && inflacaoMeta > 1.05 ? `: cerca de ${inflacaoMeta.toFixed(1)}× o que a Payt registra` : ''}.
+          Servem para comparar anúncios entre si, não como faturamento — o caixa está no Resumo.
+        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -477,23 +433,6 @@ export function CriativosMetaTab() {
           <option value="todos">Todos os editores</option>
           {editores.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
         </select>
-
-        {/* Duas réguas para a mesma coisa. Uma de cada vez, e dita em voz alta — a tela
-            inteira usa a mesma fonte, senão dois anúncios lado a lado estariam sendo
-            medidos por critérios diferentes sem ninguém perceber. */}
-        <div className="inline-flex items-center gap-1 rounded-md border border-border p-0.5">
-          {(['payt', 'meta'] as Fonte[]).map(f => (
-            <button key={f} onClick={() => setFonte(f)}
-                    title={f === 'payt'
-                      ? 'Venda da nossa base, ligada ao anúncio pela UTM: é o dinheiro que entrou, mas some quando o checkout perde a UTM'
-                      : 'Conversão que o próprio Meta credita ao anúncio, incluindo janela de visualização: cobre o buraco da UTM, mas superestima'}
-                    className={cn('rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                      fonte === f ? 'bg-primary/15 text-primary'
-                                  : 'text-muted-foreground hover:bg-secondary')}>
-              {f === 'payt' ? 'Venda Payt' : 'Conversão Meta'}
-            </button>
-          ))}
-        </div>
 
         <button onClick={() => setAgrupar(v => !v)}
                 className={cn('rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
@@ -576,7 +515,6 @@ export function CriativosMetaTab() {
                       onToggle={() => setAberto(aberto === a.ad_id ? null : a.ad_id)}
                       onVincular={() => setVincular(a)}
                       ehMeu={!!user && a.editor_id === user.id}
-                      fonte={fonte}
                     />
                   ))}
                 </Fragment>
@@ -619,11 +557,12 @@ export function CriativosMetaTab() {
 function MiniRank({ titulo, itens, formato, ajuda }: {
   titulo: string;
   itens: { nome: string; editor: string | null; valor: number }[];
-  formato: 'pct' | 'moeda' | 'x';
+  formato: 'pct' | 'moeda' | 'x' | 'inteiro';
   ajuda: string;
 }) {
   const fmt = (v: number) => formato === 'pct' ? `${v.toFixed(1)}%`
-    : formato === 'x' ? `${v.toFixed(2)}x` : formatCurrency(v);
+    : formato === 'x' ? `${v.toFixed(2)}x`
+    : formato === 'inteiro' ? formatNumber(v) : formatCurrency(v);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3">
@@ -655,22 +594,22 @@ function MiniRank({ titulo, itens, formato, ajuda }: {
   );
 }
 
-function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu, fonte }: {
-  a: Anuncio; expandido: boolean; onToggle: () => void; onVincular: () => void;
-  ehMeu: boolean; fonte: Fonte;
+function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
+  a: Anuncio; expandido: boolean; onToggle: () => void; onVincular: () => void; ehMeu: boolean;
 }) {
   const hook = hookDe(a), ctr = ctrDe(a);
   const conexao = razao(a.visualizacoes, a.cliques_link);
   const retencao = retencaoDe(a);
-  const vendas = vendasDe(a, fonte), receita = receitaDe(a, fonte);
+  const vendas = vendasDe(a), receita = receitaDe(a);
   const convCheckout = razao(vendas, a.checkouts);
-  const roas = roasDe(a, fonte), cpa = cpaDe(a, fonte);
+  const roas = roasDe(a), cpa = cpaDe(a);
 
   const poucaImpressao = a.impressoes < MIN_IMPRESSOES;
   const poucaVenda = vendas < MIN_VENDAS;
   // A conta não sabe de onde vieram as vendas — mas isso só cega a régua da Payt; a
   // conversão do Meta não depende da UTM.
-  const cego = fonte === 'payt' && a.conta_pct_atribuido < MIN_ATRIBUICAO;
+  // A conversão do Meta não depende da UTM, então nenhuma conta fica cega aqui.
+  const cego = false;
   const semCard = !a.producao_id;
 
   return (
@@ -692,7 +631,10 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu, fonte }: {
               </span>
             )}
           </div>
-          <div className="truncate text-[10px] text-muted-foreground/60">{a.conta}</div>
+          <div className="truncate text-[10px] text-muted-foreground/60">
+            {a.conta}
+            {a.projeto && <span className="text-muted-foreground/45"> · {a.projeto}</span>}
+          </div>
         </td>
         <td className="max-w-[130px] px-3 py-2">
           {a.editor
@@ -709,12 +651,12 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu, fonte }: {
           </span>
         </td>
         <td className="px-3 py-2 text-right">
-          <Valor v={roas} ref_={refRoas(a, fonte)} formato="x" cinza={cego || poucaVenda}
+          <Valor v={roas} ref_={refRoas(a)} formato="x" cinza={cego || poucaVenda}
                  titulo={cego ? 'A conta não identifica de qual anúncio vêm as vendas'
                               : 'Poucas vendas para concluir'} />
         </td>
         <td className="px-3 py-2 text-right">
-          <Valor v={cpa} ref_={refCpa(a, fonte)} formato="moeda" invertido cinza={cego || poucaVenda}
+          <Valor v={cpa} ref_={refCpa(a)} formato="moeda" invertido cinza={cego || poucaVenda}
                  titulo={cego ? 'A conta não identifica de qual anúncio vêm as vendas'
                               : 'Poucas vendas para concluir'} />
         </td>
@@ -771,7 +713,7 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu, fonte }: {
               <Etapa rotulo="Conexão" valor={conexao === null ? '—' : `${conexao.toFixed(1)}%`}
                      sob={formatNumber(a.visualizacoes)} fraco={poucaImpressao} />
               <Etapa rotulo="Checkout → venda" valor={convCheckout === null ? '—' : `${convCheckout.toFixed(1)}%`}
-                     sob={`${formatNumber(vendas)} ${fonte === 'meta' ? 'conversões' : 'vendas'}`}
+                     sob={`${formatNumber(vendas)} conversões`}
                      fraco={poucaVenda || cego} />
             </div>
 
@@ -896,9 +838,9 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
             <div className="text-sm font-medium text-foreground">{anuncio.ad_nome}</div>
             <div className="text-[11px] text-muted-foreground">
               {anuncio.conta} · {formatCurrency(anuncio.investimento)} investidos ·{' '}
-              {anuncio.vendas} vendas
-              {anuncio.vinculo === 'ambiguo' &&
-                ` · ${anuncio.candidatos} editores diferentes têm card com este nome`}
+              {anuncio.vendas_meta} conversões
+              {anuncio.candidatos > 1 &&
+                ` · ${anuncio.candidatos} editores têm card com este nome; o escolhido foi o mais próximo da estreia`}
             </div>
           </div>
 

@@ -1555,3 +1555,45 @@ liderava a lista. Não é retenção excepcional — o vídeo tem menos de quatr
 75% dele acontece antes da marca de 3s e o denominador fica menor que o numerador. Um em
 352, e era o primeiro colocado. Fora do ranking, e no detalhe aparece como "n/a — vídeo
 curto demais".
+
+### A data resolve o dono, e a régua passa a ser só o Meta
+
+A Jessica contestou os "81 anúncios sem editor": *"tem sim, cara!"*. Estava certa.
+
+**O nome do criativo é reaproveitado a cada campanha.** "AD 006 H01 V01" tem **nove cards**
+com esse nome, de maio de 2024 a julho de 2026, de editoras diferentes. Comparando só
+texto, isso vira "vários editores" e o anúncio fica órfão.
+
+Mas o dono é sabível: **o card é criado antes de o anúncio ir ao ar.** Um anúncio que
+estreou em agosto de 2026 pertence ao card de julho de 2026, não ao de 2024. A regra passa
+a ser o card com responsável mais próximo da estreia — o último criado antes dela, ou o
+primeiro depois se nenhum a antecede.
+
+- [x] Resolve **todos os 64** ambíguos. De 376 anúncios, **359 têm editor e projeto**;
+      sobram 11 sem card e 6 com card sem responsável
+- [x] O `vinculo` distingue quem tinha um candidato só (`sugerido`) de quem foi decidido
+      pela data (`por_data`) — a escolha fica auditável em vez de sumir num número
+
+Eu havia rejeitado "pegar o card mais recente" como palpite, e estava certo sobre aquela
+formulação: sem âncora, escolher o mais recente é arbitrário. Com a estreia do anúncio como
+âncora, deixa de ser palpite e vira regra.
+
+**Custou uma lição de desempenho:** a primeira versão usava subconsulta correlacionada por
+anúncio e estourava o limite de 8 segundos do PostgREST — a tela ficava vazia sem dizer por
+quê. Reescrita com função de janela, roda em 1 segundo.
+
+### Só a régua do Meta nesta tela
+
+- [x] O seletor de fonte saiu. A área usa **conversão do Meta**, sempre
+
+A régua da Payt depende da UTM chegar ao checkout, e some justamente onde mais importa: na
+conta "Saponaria" são 736 vendas com 9 identificadas. Um editor comparando criativos ali
+veria zeros que não são desempenho, são ausência de dado. O Meta cobre todos os anúncios da
+mesma forma, que é o que um ranking exige — em troca conta a mais, cerca de 1,3× o que a
+Payt registra, porque credita janela de visualização. A tela diz isso e lembra que o caixa
+está no Resumo.
+
+- [x] Mínimo de 5 conversões para entrar nos rankings (era 3): deixa 64 dos 181 anúncios
+      relevantes elegíveis, folga suficiente para um top 5 e piso bem mais firme
+- [x] "Maior receita" virou "Mais vendas"; o projeto aparece ao lado da conta; e o texto do
+      topo encolheu para duas linhas
