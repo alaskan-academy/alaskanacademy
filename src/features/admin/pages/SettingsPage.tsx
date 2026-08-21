@@ -11,21 +11,20 @@ import { GerenciarUsuariosTab } from "@/features/admin/components/GerenciarUsuar
 import { ConfiguracaoTab } from "@/features/editores/components/ConfiguracaoTab";
 import { EmpresasOfertasTab } from "@/features/editores/components/EmpresasOfertasTab";
 import { RadarConfigTab } from "@/features/radar/components/RadarConfigTab";
-import { AvaliarCriativoTab } from "@/features/editores/components/AvaliarCriativoTab";
 import { SetoresTab } from "@/features/admin/components/SetoresTab";
 import { AtivosContent } from "@/features/ads/pages/AtivosPage";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import {
   Shield, CreditCard, Building2, SlidersHorizontal,
-  ClipboardList, BarChart3, Radio, Users, Layers,
+  ClipboardList, Radio, Users, Layers,
 } from "lucide-react";
 
 // ─── Estrutura da nav ─────────────────────────────────────────────────────────
 
 type SectionId =
   | 'ativos' | 'contas' | 'empresas' | 'fiscal'
-  | 'criterios' | 'criativos'
+  | 'criterios'
   | 'radar'
   | 'usuarios' | 'setores';
 
@@ -48,7 +47,6 @@ const GROUPS: GroupDef[] = [
     label: 'AVALIAÇÕES',
     items: [
       { id: 'criterios', label: 'Critérios de avaliação de editores', icon: ClipboardList },
-      { id: 'criativos', label: 'Performance de Criativos',           icon: BarChart3     },
     ],
   },
   {
@@ -255,7 +253,6 @@ export default function SettingsPage() {
       case 'empresas':  return <EmpresasOfertasTab />;
       case 'fiscal':    return <FiscalTab />;
       case 'criterios': return <ConfiguracaoTab />;
-      case 'criativos': return <AvaliarCriativoTab />;
       case 'radar':     return <RadarConfigTab />;
       case 'usuarios':  return <GerenciarUsuariosTab />;
       case 'setores':   return <SetoresTab />;
