@@ -427,3 +427,13 @@ Validação (01–20/08): Tráfego 600 vendas / R$ 55.112,53 · Back-end 660 / R
 | Token Meta | Revogação derruba o sync | System User Token + heartbeat em `ingest_health` alerta em < 25h |
 | LTV estimado | Exige histórico de recompra | Só calcular com N mínimo; senão "dados insuficientes" |
 | Lacuna 19/05–hoje | 3 meses sem vendas gravadas | Verificar se a Payt permite replay/export do período para backfill |
+
+### Visão Geral passa a agregar no banco
+
+- [x] **A página somava as linhas no JavaScript e o PostgREST cortava em 1.000 sem avisar.** Era o defeito por trás de *"o faturamento já passou dos 120mil e aqui no dash nem chega a isso"*: 200 OK com mil linhas, soma truncada para menos, nenhum sinal de erro. Os últimos 30 dias têm 1.959 vendas aprovadas — quase o dobro do teto. Agora uma chamada a `fn_overview()` devolve tudo agregado
+- [x] **A view `vw_faturamento_liquido` não tem coluna `funil_id`, e a página filtrava por ela.** Com um funil selecionado o PostgREST devolvia erro, a página ignorava, e imposto, reembolso, investimento e custo fixo viravam zero em silêncio. O bloco fiscal passou para dentro da `fn_overview()`, com o rateio por `fat_bruto_total`
+- [x] **Falha de leitura agora aparece como falha.** Antes, erro na busca deixava a tela com zeros — com a mesma cara de um período sem vendas. Zero e "não consegui ler" são coisas diferentes, e confundi-los é a raiz de metade dos defeitos deste dashboard
+- [x] Conferido contra o banco nos últimos 30 dias: 1.959 vendas, R$ 184.273,43 pago, R$ 4.047,65 de juros, R$ 180.225,78 de receita, R$ 10.966,44 de taxa e R$ 105.697,88 de investimento — os seis números batem exatamente
+- [x] `OverviewPage` caiu de 998 para 875 linhas; a maior parte do que saiu era montagem de query
+
+**O segmento Tráfego revela o custo da atribuição quebrada:** ele carrega 100% do investimento mas só 48% da receita, então aparece com margem negativa. Não é erro de cálculo — é o buraco de UTM aparecendo com preço. Enquanto 53% da receita não tiver `ad_id`, o ROAS por segmento não é confiável

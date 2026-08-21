@@ -9,8 +9,6 @@ import {
   Target,
   TrendingUp,
   BarChart3,
-  RefreshCcw,
-  Clock,
   Percent,
   Receipt,
   BadgeDollarSign,
@@ -23,7 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
 import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { inicioDiaBRT, fimDiaBRT, diaBRT } from "@/lib/periodo";
+import { inicioDiaBRT, fimDiaBRT } from "@/lib/periodo";
 
 /** Origem da venda. Tráfego = venda com ad_id do Meta; back-end = sem ad_id. */
 type Segmento = "trafego" | "backend" | "misto";
@@ -176,346 +174,206 @@ export default function OverviewPage() {
   const [remData, setRemData] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    // data_venda é timestamptz: comparar com data solta faria o Postgres ler em UTC
-    // e puxar as 21h–23h59 BRT do dia anterior para dentro do período.
-    const inicio = startISO;
-    const fim = endISO;
 
-    // Segmenta por presença de ad_id_meta. Não usamos utm_source porque ele chega
-    // corrompido da Payt (valores como "FBjLj6a5696504d5dca326db9199b"), enquanto o
-    // ad_id sobrevive intacto.
-    const porSegmento = (q: any, prefixo = "") => {
-      const col = `${prefixo}ad_id_meta`;
-      if (segmento === "trafego") return q.not(col, "is", null);
-      if (segmento === "backend") return q.is(col, null);
-      return q;
-    };
-
-    // Faturamento
-    let q1 = supabase.from("vw_faturamento_liquido").select("*");
-    if (startDateStr && endDateStr) q1 = q1.gte("data", startDateStr).lte("data", endDateStr);
-    if (funilId) q1 = q1.eq("funil_id", funilId);
-
-    // OBs (via venda_itens com join para filtrar por data)
-    let q2 = supabase
-      .from("venda_itens")
-      .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas!inner(data_venda,produto,status,ad_id_meta)")
-      .eq("converteu", true)
-      .eq("vendas.status", "aprovada");
-    q2 = porSegmento(q2, "vendas.");
-    if (inicio && fim) q2 = q2.gte("vendas.data_venda", inicio).lte("vendas.data_venda", fim);
-    if (funilId) q2 = q2.eq("vendas.funil_id", funilId);
-
-    // Upsells (são vendas separadas com is_upsell = true)
-    // + buscar nomes reais de upsells da tabela ofertas para filtrar
-    let qUp = supabase
-      .from("vendas")
-      .select("id,pedido_id,produto,produto_nome,valor_total,valor_oferta_principal,data_venda")
-      .eq("status", "aprovada")
-      .eq("is_upsell", true)
-      .not("pedido_id", "like", "TEST%")
-      .not("pedido_id", "like", "LC-%");
-    qUp = porSegmento(qUp);
-    if (inicio && fim) qUp = qUp.gte("data_venda", inicio).lte("data_venda", fim);
-    if (funilId) qUp = qUp.eq("funil_id", funilId);
-
-    // Vendas aprovadas (para contagem e ticket)
-    let q4 = supabase
-      .from("vendas")
-      .select("valor_total,valor_sem_juros,juros_parcelamento,valor_oferta_principal,produto,produto_nome,data_venda,ad_id_meta,taxa_plataforma_valor,is_upsell,link_titulo")
-      .eq("status", "aprovada")
-      .not("pedido_id", "like", "TEST%")
-      .not("pedido_id", "like", "LC-%");
-    q4 = porSegmento(q4);
-    if (inicio && fim) q4 = q4.gte("data_venda", inicio).lte("data_venda", fim);
-    if (funilId) q4 = q4.eq("funil_id", funilId);
-
-    // Vendas pendentes + canceladas + expiradas (TODOS os não aprovados)
-    let q5 = supabase
-      .from("vendas")
-      .select("valor_total,status")
-      .in("status", ["pendente", "cancelada", "expirada"])
-      .not("pedido_id", "like", "TEST%")
-      .not("pedido_id", "like", "LC-%");
-    q5 = porSegmento(q5);
-    if (inicio && fim) q5 = q5.gte("data_venda", inicio).lte("data_venda", fim);
-    if (funilId) q5 = q5.eq("funil_id", funilId);
-
-    // Reembolsos e chargebacks. Antes vinham de `vw_reembolsos`, que agrega a tabela
-    // inteira sem recorte de data — os cards mostravam o total histórico ao lado de
-    // "Não aprovadas", que respeita o período. Agora saem de `vendas`, no mesmo filtro.
-    let q6 = supabase
-      .from("vendas")
-      .select("valor_total,valor_reembolsado,status")
-      .in("status", ["reembolsada", "chargeback"])
-      .not("pedido_id", "like", "TEST%")
-      .not("pedido_id", "like", "LC-%");
-    q6 = porSegmento(q6);
-    if (inicio && fim) q6 = q6.gte("data_venda", inicio).lte("data_venda", fim);
-    if (funilId) q6 = q6.eq("funil_id", funilId);
-
-    // Produtos — será calculado a partir de vendasRows (q4)
-
-    // Vendas back-end = sem ad_id do Meta. Antes usava `utm_source is null`, o que
-    // classificava errado: o utm_source chega corrompido e nem sempre nulo.
-    let q8 = supabase
-      .from("vendas")
-      .select("valor_total,produto")
-      .eq("status", "aprovada")
-      .is("ad_id_meta", null)
-      .not("pedido_id", "like", "TEST%")
-      .not("pedido_id", "like", "LC-%");
-    if (inicio && fim) q8 = q8.gte("data_venda", inicio).lte("data_venda", fim);
-    if (funilId) q8 = q8.eq("funil_id", funilId);
-
-    // Período anterior
+    // Uma chamada só, agregando no banco.
+    //
+    // Antes a página buscava as linhas de `vendas` e somava no JavaScript. O
+    // PostgREST corta em 1.000 linhas por padrão e não avisa — devolve 200 com mil
+    // linhas. Agosto tem mais de 1.300 vendas aprovadas, então o faturamento
+    // aparecia truncado para menos, sem parecer erro em lugar nenhum.
+    //
+    // `startISO`/`endISO` já vêm com o offset de Brasília: `data_venda` é
+    // timestamptz e comparar com data solta faria o Postgres ler em UTC, puxando as
+    // 21h–23h59 do dia anterior para dentro do período.
     const ant = periodoAnt(startDateStr, endDateStr);
-    let qA1 = supabase.from("vw_faturamento_liquido").select("faturamento_bruto,investimento_meta");
-    if (ant.start && ant.end) qA1 = qA1.gte("data", ant.start).lte("data", ant.end);
-    if (funilId) qA1 = qA1.eq("funil_id", funilId);
+    const argsBase = { p_segmento: segmento, p_funil: funilId ?? null };
 
-    let qA2 = supabase
-      .from("vendas")
-      .select("id")
-      .eq("status", "aprovada")
-      .not("pedido_id", "like", "TEST%")
-      .not("pedido_id", "like", "LC-%");
-    if (ant.start && ant.end) qA2 = qA2.gte("data_venda", inicioDiaBRT(ant.start)).lte("data_venda", fimDiaBRT(ant.end));
-    if (funilId) qA2 = qA2.eq("funil_id", funilId);
+    const [atual, anterior] = await Promise.all([
+      supabase.rpc("fn_overview", { ...argsBase, p_inicio: startISO, p_fim: endISO }),
+      ant.start && ant.end
+        ? supabase.rpc("fn_overview", {
+            ...argsBase,
+            p_inicio: inicioDiaBRT(ant.start),
+            p_fim: fimDiaBRT(ant.end),
+          })
+        : Promise.resolve({ data: null, error: null }),
+    ]);
 
-    const [r1, r2, rUp, r4, r5, r6, r8, rA1, rA2] = await Promise.all([q1, q2, qUp, q4, q5, q6, q8, qA1, qA2]);
+    if (atual.error || !atual.data) {
+      // Erro visível em vez de tela com zeros: zero e "não consegui ler" são coisas
+      // diferentes, e confundi-los foi a origem de metade dos defeitos que este
+      // dashboard já teve.
+      console.error("fn_overview:", atual.error?.message);
+      setErro(atual.error?.message ?? "Não foi possível carregar os dados.");
+      setLoading(false);
+      return;
+    }
+    setErro(null);
 
-    const fatRows = r1.data || [];
-    const vendasRows = r4.data || [];
+    const d = atual.data as any;
+    const num = (v: any) => Number(v ?? 0);
 
-    // O faturamento vem de `vendas` (e não da view) porque a view agrega por dia/produto
-    // e não sabe distinguir tráfego de back-end. Calculando das vendas, Misto fecha
-    // exatamente como Tráfego + Back-end.
-    // `fatBruto` é o que o cliente pagou. Os juros de parcelamento saem antes do resto:
-    // quem paga é o cliente e quem recebe é a adquirente — nunca foi dinheiro da casa.
-    // Contá-los como receita inflaria ticket médio, margem e ROAS de uma vez só.
-    const fatBruto = vendasRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
-    const juros = vendasRows.reduce((s: number, r: any) => s + Number(r.juros_parcelamento || 0), 0);
-    const receita = vendasRows.reduce(
-      (s: number, r: any) => s + Number(r.valor_sem_juros ?? r.valor_total ?? 0), 0);
-
-    // Custos e impostos só existem no total; são rateados pela participação do segmento
-    // no faturamento. O investimento em ads é a exceção: pertence 100% ao tráfego pago.
-    const fatTotalPeriodo = fatRows.reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
-    const share = fatTotalPeriodo > 0 ? Math.min(fatBruto / fatTotalPeriodo, 1) : (fatBruto > 0 ? 1 : 0);
-
-    // Taxa vem das próprias vendas, não da view: a view agrupa pelo dia em UTC e
-    // divergiria do faturamento, que já respeita o limite do dia em BRT.
-    const taxaPlat = vendasRows.reduce((s: number, r: any) => s + Number(r.taxa_plataforma_valor || 0), 0);
+    const fatBruto = num(d.fat_bruto);
+    const juros = num(d.juros);
+    const receita = num(d.receita);
+    const taxaPlat = num(d.taxa_plataforma);
     // Percentual sobre a receita, não sobre o pago: senão o juro de parcelamento
     // faria a taxa parecer maior do que a Payt cobra.
     const taxaPlatPct = receita > 0 ? (taxaPlat / receita) * 100 : 0;
-    const reembolsosV = fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos || 0), 0) * share;
-    const impSimples = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_simples || 0), 0) * share;
-    const impMeta = fatRows.reduce((s: number, r: any) => s + Number(r.imposto_meta_ads || 0), 0) * share;
-    const investimentoTotal = fatRows.reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
-    const investimento = segmento === "backend" ? 0 : investimentoTotal;
-    const simplesPct = fatRows.length > 0 ? Number(fatRows[0].simples_pct || 0) : 0;
-    const metaPct = fatRows.length > 0 ? Number(fatRows[0].meta_pct || 0) : 0;
-    const custoMensal = fatRows.length > 0 ? Number(fatRows[0].custo_fixo || 0) : 0;
+
+    // Custos e impostos só existem no total do período; são rateados pela
+    // participação deste recorte no faturamento. O investimento em ads é a exceção:
+    // pertence 100% ao tráfego pago.
+    const fatTotalPeriodo = num(d.fat_bruto_total);
+    const share = fatTotalPeriodo > 0
+      ? Math.min(fatBruto / fatTotalPeriodo, 1)
+      : (fatBruto > 0 ? 1 : 0);
+
+    const fiscal = d.fiscal ?? {};
+    const reembolsosV = num(fiscal.reembolsos) * share;
+    const impSimples = num(fiscal.imposto_simples) * share;
+    const impMeta = num(fiscal.imposto_meta) * share;
+    const investimento = segmento === "backend" ? 0 : num(fiscal.investimento_meta);
+    const simplesPct = num(fiscal.simples_pct);
+    const metaPct = num(fiscal.meta_pct);
+    const custoMensal = num(fiscal.custo_fixo_mensal);
     const custoFixo = custoFixoProp(custoMensal, startDateStr, endDateStr) * share;
-    // Tudo a partir de `receita` (sem juros), não do pago pelo cliente.
+
+    // Tudo a partir de `receita` (sem juros), não do pago pelo cliente: quem paga o
+    // juro é o cliente e quem recebe é a adquirente — nunca foi dinheiro da casa.
     const fatLiquido = receita - taxaPlat - impSimples;
     const lucro = receita - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
     const lucroCC = lucro - custoFixo;
     const margemPct = receita > 0 ? (lucro / receita) * 100 : 0;
     const margemCcPct = receita > 0 ? (lucroCC / receita) * 100 : 0;
     const roas = investimento > 0 ? receita / investimento : 0;
-    // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
-    const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
-    const qtdAprov = vendasPrincipal.length;
+
+    const qtdAprov = num(d.qtd_aprovadas);
     const ticketMedio = qtdAprov > 0 ? receita / qtdAprov : 0;
-
-    // Pendentes/canceladas/expiradas
-    const naoAprov = r5.data || [];
-    const pendentes = naoAprov.filter((r: any) => r.status === "pendente");
-    const canceladas = naoAprov.filter((r: any) => r.status === "cancelada");
-    const expiradas = naoAprov.filter((r: any) => r.status === "expirada");
-    const pendVal = pendentes.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
-    const cancelVal = canceladas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
-    const expVal = expiradas.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
-
-    // OBs: todos os venda_itens convertidos (já filtrados por data/produto/aprovada)
-    const allItems = r2.data || [];
-    const obMap = new Map<string, { nome_ob: string; tipo_ob: string; total_convertidos: number; receita_total_ob: number; vendas_com_ob: Set<string> }>();
-    for (const item of allItems) {
-      const ex = obMap.get(item.code_payt) || { nome_ob: item.nome, tipo_ob: item.tipo, total_convertidos: 0, receita_total_ob: 0, vendas_com_ob: new Set<string>() };
-      ex.total_convertidos += 1;
-      ex.receita_total_ob += Number(item.valor || 0);
-      ex.vendas_com_ob.add(item.venda_id);
-      obMap.set(item.code_payt, ex);
-    }
-    const obsRows = [...obMap.values()].map(o => ({
-      ...o,
-      vendas_com_ob: o.vendas_com_ob.size,
-      taxa_conversao_pct: qtdAprov > 0 ? (o.vendas_com_ob.size / qtdAprov) * 100 : 0,
-    })).sort((a, b) => b.taxa_conversao_pct - a.taxa_conversao_pct);
-    const receitaOb = obsRows.reduce((s, r) => s + r.receita_total_ob, 0);
-    const allObVendas = new Set(allItems.map((i: any) => i.venda_id)).size;
-    const taxaOb = qtdAprov > 0 ? (allObVendas / qtdAprov) * 100 : 0;
-    setObsData(obsRows);
-
-    // Upsell é resolvido no banco (`is_upsell`): compra seguinte do mesmo cliente em
-    // até 30 min, de produto diferente. Antes a tela cruzava ainda com os nomes
-    // cadastrados em `ofertas` como tipo='upsell' — e como o upsell muda a cada funil
-    // e a cada teste, esse cadastro nunca acompanha e a lista aparecia sempre vazia.
-    const upVendas = rUp.data || [];
-    const upGrouped = new Map<string, { nome_upsell: string; total_upsells: number; receita_total: number }>();
-    for (const v of upVendas) {
-      const nome = v.produto_nome || `Upsell ${v.produto ?? ""}`.trim();
-      const key = nome;
-      const ex = upGrouped.get(key) || { nome_upsell: nome, total_upsells: 0, receita_total: 0 };
-      ex.total_upsells += 1;
-      ex.receita_total += Number(v.valor_total || 0);
-      upGrouped.set(key, ex);
-    }
-    const upsRows = [...upGrouped.values()].sort((a, b) => b.total_upsells - a.total_upsells);
-    const receitaUp = upsRows.reduce((s, r) => s + r.receita_total, 0);
-    const taxaUp = qtdAprov > 0 ? (upVendas.length / qtdAprov) * 100 : 0;
-    setUpsellData(upsRows.map(u => ({ ...u, taxa_conversao_pct: qtdAprov > 0 ? (u.total_upsells / qtdAprov) * 100 : 0 })));
-
-    // Vendas backend (sem tráfego pago)
-    const backendRows = r8.data || [];
-    const qtdBackend = backendRows.length;
-    const valBackend = backendRows.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
-    const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
-
-    // Percentuais sobre a base do período: aprovadas + as próprias perdas.
-    const perdas = r6.data || [];
-    const reembolsadas = perdas.filter((r: any) => r.status === "reembolsada");
-    const chargebacks = perdas.filter((r: any) => r.status === "chargeback");
-    const valReemb = reembolsadas.reduce((s: number, r: any) => s + Number(r.valor_reembolsado ?? r.valor_total ?? 0), 0);
-    const valCb = chargebacks.reduce((s: number, r: any) => s + Number(r.valor_total || 0), 0);
-    const baseReemb = qtdAprov + reembolsadas.length;
-    const baseCb = qtdAprov + reembolsadas.length + chargebacks.length;
-    setRemData({
-      qtd_reembolsos: reembolsadas.length,
-      valor_reembolsos: valReemb,
-      pct_reembolsos: baseReemb > 0 ? (reembolsadas.length / baseReemb) * 100 : 0,
-      qtd_chargeback: chargebacks.length,
-      valor_chargeback: valCb,
-      pct_chargeback: baseCb > 0 ? (chargebacks.length / baseCb) * 100 : 0,
-    });
-    // Compute prodData from vendasRows (already filtered by date/product)
-    // Agrupa pelo nome real vindo da Payt. `produto` é o enum de categoria — só
-    // 6 valores — e não distingue "Curso Saponaria Brasil" de "Arte Floral em Sabonetes".
-    const prodMap = new Map<string, { produto: string; categoria: string; vendas_aprovadas: number; faturamento_principal: number; faturamento_total: number }>();
-    // Upsell fica de fora: tem painel próprio em Monetização, e listá-lo aqui
-    // contava a mesma venda duas vezes.
-    for (const v of vendasPrincipal.filter((r: any) => !r.is_upsell)) {
-      const p = v.produto_nome || v.produto || "Sem produto";
-      const existing = prodMap.get(p) || { produto: p, categoria: v.produto || "", vendas_aprovadas: 0, faturamento_principal: 0, faturamento_total: 0 };
-      existing.vendas_aprovadas += 1;
-      existing.faturamento_principal += Number(v.valor_oferta_principal || 0);
-      // sem juros, para o TM refletir o preco e nao o custo do parcelamento
-      existing.faturamento_total += Number(v.valor_sem_juros ?? v.valor_total ?? 0);
-      prodMap.set(p, existing);
-    }
-    const computedProdData = [...prodMap.values()].map(p => ({
-      ...p,
-      ticket_medio: p.vendas_aprovadas > 0 ? p.faturamento_total / p.vendas_aprovadas : 0,
-    }));
-    setProdData(computedProdData.sort((a, b) => b.vendas_aprovadas - a.vendas_aprovadas));
-
-    // Série diária para o gráfico. O dia é calculado em BRT — a Payt entrega paid_at
-    // em horário de Brasília e ~5% das vendas caem entre 21h e 23h59, que em UTC
-    // seriam contadas no dia seguinte.
-    const diaMap = new Map<string, { dia: string; faturamento: number; vendas: number }>();
-    for (const v of vendasPrincipal) {
-      if (!v.data_venda) continue;
-      const dia = diaBRT(v.data_venda);
-      const ex = diaMap.get(dia) || { dia, faturamento: 0, vendas: 0 };
-      ex.faturamento += Number(v.valor_sem_juros ?? v.valor_total ?? 0);
-      ex.vendas += 1;
-      diaMap.set(dia, ex);
-    }
-    const investimentoDia = investimento > 0 && diaMap.size > 0 ? investimento / diaMap.size : 0;
-    setSerieDiaria(
-      [...diaMap.values()]
-        .sort((a, b) => a.dia.localeCompare(b.dia))
-        .map(d => ({
-          ...d,
-          rotulo: format(parseISO(d.dia), "dd/MM"),
-          investimento: investimentoDia,
-          lucro: d.faturamento * (fatBruto > 0 ? lucro / fatBruto : 0),
-        })),
-    );
-
-    // Receita por link de checkout, com quanto de cada um chega rastreado.
-    // Serve para achar o link que precisa de UTM: hoje 41,5% da receita vem de links
-    // com 0% de atribuição e cai inteira em "back-end" sem ser back-end de verdade.
-    const linkMap = new Map<string, { link: string; vendas: number; rastreadas: number; valor: number }>();
-    for (const v of vendasPrincipal) {
-      const nome = v.link_titulo || "(sem link identificado)";
-      const ex = linkMap.get(nome) || { link: nome, vendas: 0, rastreadas: 0, valor: 0 };
-      ex.vendas += 1;
-      if (v.ad_id_meta) ex.rastreadas += 1;
-      ex.valor += Number(v.valor_sem_juros ?? v.valor_total ?? 0);
-      linkMap.set(nome, ex);
-    }
-    setLinkData(
-      [...linkMap.values()]
-        .map(l => ({ ...l, pct_rastreado: l.vendas > 0 ? (l.rastreadas / l.vendas) * 100 : 0 }))
-        .sort((a, b) => b.valor - a.valor),
-    );
-
     const cpa = investimento > 0 && qtdAprov > 0 ? investimento / qtdAprov : 0;
 
-    setKpis({
-      cpa,
-      juros,
-      receita,
-      fatBruto,
-      fatLiquido,
-      lucro,
-      lucroCC,
-      taxaPlat,
-      taxaPlatPct,
-      reembolsosV,
-      impSimples,
-      impMeta,
-      investimento,
-      custoFixo,
-      custoMensal,
-      margemPct,
-      margemCcPct,
-      roas,
-      simplesPct,
-      metaPct,
-      qtdAprov,
-      ticketMedio,
-      taxaOb,
-      taxaUp,
-      receitaOb,
-      receitaUp,
-      qtdBackend,
-      valBackend,
-      pctBackend,
-      qtdPend: pendentes.length,
-      pendVal,
-      qtdCanc: canceladas.length,
-      cancelVal,
-      qtdExp: expiradas.length,
-      expVal,
+    // Não aprovadas e perdas vêm agrupadas por status.
+    const naoAprov = d.nao_aprovadas ?? {};
+    const perdas = d.perdas ?? {};
+    const grupo = (o: any, chave: string) => ({
+      qtd: num(o?.[chave]?.qtd),
+      valor: num(o?.[chave]?.valor),
+    });
+    const pendentes = grupo(naoAprov, "pendente");
+    const canceladas = grupo(naoAprov, "cancelada");
+    const expiradas = grupo(naoAprov, "expirada");
+    const reembolsadas = grupo(perdas, "reembolsada");
+    const chargebacks = grupo(perdas, "chargeback");
+
+    // Percentuais sobre a base do período: aprovadas + as próprias perdas.
+    const baseReemb = qtdAprov + reembolsadas.qtd;
+    const baseCb = baseReemb + chargebacks.qtd;
+    setRemData({
+      qtd_reembolsos: reembolsadas.qtd,
+      valor_reembolsos: reembolsadas.valor,
+      pct_reembolsos: baseReemb > 0 ? (reembolsadas.qtd / baseReemb) * 100 : 0,
+      qtd_chargeback: chargebacks.qtd,
+      valor_chargeback: chargebacks.valor,
+      pct_chargeback: baseCb > 0 ? (chargebacks.qtd / baseCb) * 100 : 0,
     });
 
-    // Período anterior
-    const antFat = (rA1.data || []).reduce((s: number, r: any) => s + Number(r.faturamento_bruto || 0), 0);
-    const antInv = (rA1.data || []).reduce((s: number, r: any) => s + Number(r.investimento_meta || 0), 0);
-    const antQtd = (rA2.data || []).length;
+    const obs = (d.order_bumps ?? []).map((o: any) => ({
+      nome_ob: o.nome,
+      tipo_ob: o.tipo,
+      total_convertidos: num(o.qtd),
+      receita_total_ob: num(o.receita),
+      vendas_com_ob: num(o.vendas_com_ob),
+      taxa_conversao_pct: qtdAprov > 0 ? (num(o.vendas_com_ob) / qtdAprov) * 100 : 0,
+    }));
+    setObsData([...obs].sort((a: any, b: any) => b.taxa_conversao_pct - a.taxa_conversao_pct));
+    const receitaOb = obs.reduce((s: number, o: any) => s + o.receita_total_ob, 0);
+    const taxaOb = qtdAprov > 0 ? (num(d.vendas_com_ob) / qtdAprov) * 100 : 0;
+
+    // Upsell é resolvido no banco. `is_upsell` vem de `tipo_venda`, campo da própria
+    // Payt, e não mais da heurística de segunda compra em 30 min — que marcava
+    // compra dupla legítima como upsell e perdia upsell fora da janela.
+    const ups = (d.upsells ?? []).map((u: any) => ({
+      nome_upsell: u.nome,
+      total_upsells: num(u.qtd),
+      receita_total: num(u.receita),
+      taxa_conversao_pct: qtdAprov > 0 ? (num(u.qtd) / qtdAprov) * 100 : 0,
+    }));
+    setUpsellData(ups);
+    const receitaUp = ups.reduce((s: number, u: any) => s + u.receita_total, 0);
+    const taxaUp = qtdAprov > 0 ? (num(d.qtd_upsells) / qtdAprov) * 100 : 0;
+
+    const qtdBackend = num(d.qtd_backend);
+    const valBackend = num(d.receita_backend);
+    const pctBackend = qtdAprov > 0 ? (qtdBackend / qtdAprov) * 100 : 0;
+
+    // Agrupado pelo nome real vindo da Payt. `produto` é o enum de categoria — só 6
+    // valores — e não distingue "Curso Saponaria Brasil" de "Arte Floral em
+    // Sabonetes". Upsell fica de fora: tem painel próprio em Monetização, e
+    // listá-lo aqui contava a mesma venda duas vezes.
+    setProdData(
+      (d.por_produto ?? []).map((p: any) => ({
+        produto: p.produto,
+        categoria: p.categoria,
+        vendas_aprovadas: num(p.vendas),
+        faturamento_principal: num(p.faturamento_principal),
+        ticket_medio: num(p.ticket_medio),
+      })),
+    );
+
+    // Receita por link de checkout, com quanto de cada um chega rastreado. Serve
+    // para achar o link que precisa de UTM: um link com 0% de atribuição cai
+    // inteiro em "back-end" sem ser back-end de verdade.
+    setLinkData(
+      (d.por_link ?? []).map((l: any) => ({
+        link: l.link,
+        vendas: num(l.vendas),
+        valor: num(l.valor),
+        pct_rastreado: num(l.pct_rastreado),
+      })),
+    );
+
+    // O dia já vem calculado em BRT pelo banco: a Payt entrega `paid_at` em horário
+    // de Brasília e ~5% das vendas caem entre 21h e 23h59, que em UTC seriam
+    // contadas no dia seguinte.
+    const dias = d.por_dia ?? [];
+    const investimentoDia = investimento > 0 && dias.length > 0 ? investimento / dias.length : 0;
+    const margemSobreBruto = fatBruto > 0 ? lucro / fatBruto : 0;
+    setSerieDiaria(
+      dias.map((x: any) => ({
+        dia: x.dia,
+        faturamento: num(x.faturamento),
+        vendas: num(x.vendas),
+        rotulo: format(parseISO(x.dia), "dd/MM"),
+        investimento: investimentoDia,
+        lucro: num(x.faturamento) * margemSobreBruto,
+      })),
+    );
+
+    setKpis({
+      cpa, juros, receita, fatBruto, fatLiquido, lucro, lucroCC,
+      taxaPlat, taxaPlatPct, reembolsosV, impSimples, impMeta,
+      investimento, custoFixo, custoMensal,
+      margemPct, margemCcPct, roas, simplesPct, metaPct,
+      qtdAprov, ticketMedio, taxaOb, taxaUp, receitaOb, receitaUp,
+      qtdBackend, valBackend, pctBackend,
+      qtdPend: pendentes.qtd, pendVal: pendentes.valor,
+      qtdCanc: canceladas.qtd, cancelVal: canceladas.valor,
+      qtdExp: expiradas.qtd, expVal: expiradas.valor,
+    });
+
+    const a = (anterior?.data ?? null) as any;
+    const antReceita = num(a?.receita);
+    const antQtd = num(a?.qtd_aprovadas);
+    const antInv = segmento === "backend" ? 0 : num(a?.fiscal?.investimento_meta);
     setKpisAnt({
-      fatBruto: antFat,
+      fatBruto: num(a?.fat_bruto),
       qtdAprov: antQtd,
-      ticketMedio: antQtd > 0 ? antFat / antQtd : 0,
-      roas: antInv > 0 ? antFat / antInv : 0,
+      ticketMedio: antQtd > 0 ? antReceita / antQtd : 0,
+      roas: antInv > 0 ? antReceita / antInv : 0,
     });
 
     setLastUpdate(new Date());
@@ -583,6 +441,23 @@ export default function OverviewPage() {
       {loading ? (
         <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">
           Carregando dados...
+        </div>
+      ) : erro ? (
+        /* Falha de leitura tem que aparecer como falha. Renderizar a tela com zeros
+           faria a página mentir com a mesma cara de sempre — que é exatamente como
+           os defeitos anteriores passaram meses sem ser vistos. */
+        <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+          <AlertCircle className="h-6 w-6 text-destructive" />
+          <div>
+            <p className="font-medium text-foreground">Não foi possível carregar os números</p>
+            <p className="mt-1 text-xs text-muted-foreground">{erro}</p>
+          </div>
+          <button
+            onClick={fetchData}
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary"
+          >
+            Tentar de novo
+          </button>
         </div>
       ) : (
         <>
