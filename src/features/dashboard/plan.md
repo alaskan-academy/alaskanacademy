@@ -846,3 +846,39 @@ checkout — por isso as duas fontes discordam sem que nenhuma esteja quebrada.
 - [ ] **O que falta é no botão da VSL que leva ao checkout**, não no checkout. Ele
       precisa repassar a query string, com `utm_content` no formato
       `Nome do Ad|{{ad.id}}` — é dele que o `ad_id` é extraído
+
+### Remendo de UTM com prazo de validade
+
+A usuária confirmou que faltava a UTM no botão e pediu para marcar como tráfego tudo
+que já foi vendido pelo "Desconto de Aula".
+
+- [x] `links_trafego_sem_utm` — tabela de uma linha só, com o motivo escrito. **Não é a
+      taxonomia de links descartada antes**: aquela classificava todo checkout por
+      natureza e envelhecia mal. Esta tem propósito único e prazo de validade
+- [x] Trigger marca `trafego_pago` sozinho enquanto a venda chegar sem `ad_id`. Quando
+      a UTM voltar, a regra fica inócua por si só, porque só se aplica na ausência dele
+- [x] 1.236 vendas do link marcadas, zero faltando
+- [x] **Alerta `remendo_utm_resolvido`** avisa quando o link voltar a rastrear, dizendo
+      que a linha pode sair da tabela. Remendo sem data de saída vira permanente e
+      ninguém lembra por que existe
+
+### O `utm_source` não estava corrompido
+
+Investigando uma venda que a Utmify atribuía ao `chatgpt.com`, o campo que eu havia
+chamado de corrompido (`FBjLj6a8778719fca...`) revelou-se **origem colada num token**:
+
+| Origem | Vendas | Receita | Desde |
+|---|---|---|---|
+| FB | 2.276 | R$ 181.268,77 | 20/05 |
+| whatsapp | 117 | R$ 8.009,22 | 21/05 |
+| area-membros-handify | 71 | R$ 2.653,77 | 21/05 |
+| instagram | 62 | R$ 4.886,36 | 22/05 |
+| site-handify | 17 | R$ 2.027,79 | 17/06 |
+| organic | 10 | R$ 659,08 | 26/05 |
+| **chatgpt.com** | **3** | **R$ 287,21** | **12/08** |
+
+Basta remover o sufixo `jLj6a[0-9a-f]+` para ter a origem legível. Isso dá um recorte
+de back-end por procedência que hoje não existe na tela — e mostra que o ChatGPT virou
+fonte de venda em agosto.
+
+- [ ] Usar isso para abrir o segmento back-end por origem, em vez de tratá-lo como bloco único
