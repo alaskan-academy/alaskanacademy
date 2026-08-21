@@ -327,6 +327,7 @@ export default function OverviewPage() {
     const lucro = receita - taxaPlat - reembolsosV - impSimples - impMeta - investimento;
     const lucroCC = lucro - custoFixo;
     const margemPct = receita > 0 ? (lucro / receita) * 100 : 0;
+    const margemCcPct = receita > 0 ? (lucroCC / receita) * 100 : 0;
     const roas = investimento > 0 ? receita / investimento : 0;
     // Vendas aprovadas = apenas produtos principais (valor_oferta_principal > 0)
     const vendasPrincipal = vendasRows.filter((r: any) => Number(r.valor_oferta_principal || 0) > 0);
@@ -485,6 +486,7 @@ export default function OverviewPage() {
       custoFixo,
       custoMensal,
       margemPct,
+      margemCcPct,
       roas,
       simplesPct,
       metaPct,
@@ -524,8 +526,11 @@ export default function OverviewPage() {
     fetchData();
   }, [fetchData]);
 
-  const margemCor =
-    kpis.margemPct > 30 ? "text-success" : kpis.margemPct >= 15 ? "text-warning" : "text-destructive";
+  const corDaMargem = (pct: number) =>
+    pct > 30 ? "text-success" : pct >= 15 ? "text-warning" : "text-destructive";
+
+  const margemCor = corDaMargem(kpis.margemPct || 0);
+  const margemCcCor = corDaMargem(kpis.margemCcPct || 0);
 
   const custoLabel = () => {
     if (!kpis.custoMensal) return null;
@@ -599,12 +604,35 @@ export default function OverviewPage() {
                 <span className={cn("rounded bg-secondary px-2 py-0.5 font-semibold", margemCor)}>
                   margem {formatPercent(kpis.margemPct || 0)}
                 </span>
-                {(kpis.custoFixo || 0) > 0 && (
-                  <span className="text-muted-foreground">
-                    c/ custo fixo {formatCurrency(kpis.lucroCC || 0)}
-                  </span>
-                )}
+                <span className="text-muted-foreground">antes do custo fixo</span>
               </div>
+
+              {/* A margem operacional diz se o funil se paga; esta diz se a empresa se
+                  paga. Mostrar só a primeira dava a entender que o dia foi bem melhor
+                  do que foi — hoje são 23,6% contra 9,3%. */}
+              {(kpis.custoFixo || 0) > 0 && (
+                <div className="mt-3 border-t border-border/60 pt-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">Depois do custo fixo</span>
+                    <span
+                      className={cn(
+                        "text-lg font-bold tabular-nums",
+                        (kpis.lucroCC || 0) >= 0 ? "text-success" : "text-destructive",
+                      )}
+                    >
+                      {formatCurrency(kpis.lucroCC || 0)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                    <span className={cn("rounded bg-secondary px-2 py-0.5 font-semibold", margemCcCor)}>
+                      margem {formatPercent(kpis.margemCcPct || 0)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      inclui {formatCurrency(kpis.custoFixo || 0)} de custo fixo
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Só vai a 4 colunas em xl: em lg, com a sidebar aberta, a coluna fica
