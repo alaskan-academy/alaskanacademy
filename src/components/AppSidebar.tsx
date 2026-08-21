@@ -1,6 +1,6 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, TrendingUp, Filter, ShoppingCart,
+  LayoutDashboard, TrendingUp, Activity, Filter, ShoppingCart,
   Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ const ALL_SUB_PAGES = [
   { path: '/funil',    label: 'Funil',       icon: Filter,          key: 'funil' },
   { path: '/vendas',   label: 'Vendas',      icon: ShoppingCart,    key: 'vendas' },
   { path: '/utm',      label: 'Análise UTM', icon: Link2,           key: 'utm' },
+  { path: '/tendencias', label: 'Tendências', icon: Activity,        key: 'tendencias' },
   { path: '/clientes', label: 'Clientes',    icon: Users,           key: 'clientes' },
 ];
 

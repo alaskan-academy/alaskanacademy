@@ -998,3 +998,60 @@ parcialmente" informa, "restabelecida" recomenda.
 Vale registrar o padrão: **quando a mesma decisão tem duas regras em lugares
 diferentes, uma delas está errada.** É a terceira vez nesta sessão — antes foram a
 perda de venda estornada (view × função) e a classificação de upsell (heurística × Payt).
+
+## Parte 2 — Tendências por conta de anúncio
+
+Rota `/tendencias`, alimentada por `fn_tendencias(p_ini, p_fim, p_dias_ant)`.
+
+**O ponto da tela é o que ela não mostra.** O ROAS diário destas contas oscila entre 31%
+e 86% da própria média — a "Lembrancinha - TSL" vai de 0,53 a 3,43 em torno de 1,69. Um
+painel que comparasse dias soltos apontaria alta ou queda todo dia e não significaria
+nada. Só vira tendência o que passa de duas vezes o erro padrão da diferença; o resto é
+**estável**, com a faixa de ruído ao lado para que isso seja verificável e não uma
+afirmação a ser aceita.
+
+**Doze métricas em quatro grupos**, porque o resultado diz *que* piorou e as etapas
+dizem *onde*: Resultado (ROAS, ticket, receita, vendas, investimento, CPA), Leilão (CPM,
+CPC), Criativo (CTR, hook), Funil (conexão da página, conversão do checkout).
+
+**Oito faixas.** Seis comparam um período com o anterior de mesmo tamanho; duas comparam
+*hoje* com uma média longa — outra pergunta, por isso separadas na barra.
+
+**Metas por conta** (`ad_accounts.roas_meta`, `cpa_meta`), editáveis em Configurações.
+Respondem "está bom o suficiente?", que é independente de "está piorando?".
+
+### Três defeitos corrigidos durante a construção
+
+- [x] **Média de razões, não razão de totais.** O comentário dizia uma coisa e o código
+      fazia outra: `avg(receita/gasto)` dá peso igual a um dia de R$ 30 e a um de
+      R$ 3.000. Na "Desafios na Sala - TSL" isso dava ROAS 1,63 onde o real era **0,85**.
+      Toda métrica virou um par (numerador, denominador) somado sobre a janela; as
+      aditivas usam denominador 1 e o resultado é a média diária
+- [x] **`diasEntre` contava um dia a mais.** `hoje` carrega a hora corrente, e o resto de
+      horas virava um dia no arredondamento: a tela dizia "15 dias" numa janela de 14
+- [x] **Dia parcial comparado com dias inteiros.** Na faixa "hoje", receita e vendas caem
+      por construção. Aviso na tela diz isso e aponta quais métricas são confiáveis
+      agora: CPM, CPC, CTR, hook e conexão são razões e não sofrem
+
+### O aviso que a usuária provocou
+
+*"hoje vs últimos 7 dias, estranho demais"* — CPA de R$ 59,96 para R$ 257,66. Não era a
+página: em 21/08 o checkout "Desconto de Aula" fez **22 vendas com apenas 4 carregando
+`ad_id`**. As outras 18 ficam como tráfego sem conta, então a Saponaria enxerga 4 das 22
+vendas dela enquanto o gasto aparece inteiro.
+
+- [x] A tela avisa quantas vendas de tráfego do período não têm conta identificada, e
+      que por isso CPA, ROAS e conversões estão subestimados
+
+### Meta de ROAS: o número que a estrutura de custo sustenta
+
+Removidas as metas de teste. Para embasar as reais, derivado dos parâmetros atuais
+(taxa Payt 6,10%, Simples 10%, imposto Meta 12,5% sobre o gasto):
+
+| | |
+|---|---|
+| ROAS de equilíbrio | **1,34** |
+| ROAS com 30% de margem | **1,74** |
+
+Abaixo de 1,34 a conta dá prejuízo antes mesmo do custo fixo. Hoje só a
+"Lembrancinha - TSL" (1,71) e a "Workshop Buquê - TSL" (1,79) passam do segundo patamar.

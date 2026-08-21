@@ -8,6 +8,7 @@ export const PAGINAS = [
   { key: 'funil',         path: '/funil',         label: 'Funil' },
   { key: 'vendas',        path: '/vendas',        label: 'Vendas' },
   { key: 'utm',           path: '/utm',           label: 'Análise UTM' },
+  { key: 'tendencias',    path: '/tendencias',    label: 'Tendências' },
   { key: 'clientes',      path: '/clientes',      label: 'Clientes' },
   { key: 'editores',      path: '/editores',      label: 'Editores' },
   { key: 'configuracoes', path: '/configuracoes', label: 'Configurações' },

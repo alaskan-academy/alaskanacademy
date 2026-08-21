@@ -17,6 +17,7 @@ import SetupPage from "./features/auth/pages/SetupPage";
 // Todas as páginas autenticadas carregam sob demanda
 const OverviewPage             = lazy(() => import("./features/dashboard/pages/OverviewPage"));
 const MetaAdsPage              = lazy(() => import("./features/ads/pages/MetaAdsPage"));
+const TendenciasPage           = lazy(() => import("./features/dashboard/pages/TendenciasPage"));
 const FunnelPage               = lazy(() => import("./features/dashboard/pages/FunnelPage"));
 const SalesPage                = lazy(() => import("./features/dashboard/pages/SalesPage"));
 const UTMPage                  = lazy(() => import("./features/ads/pages/UTMPage"));
@@ -79,6 +80,7 @@ const App = () => (
                     <Route path="/funil" element={<ProtectedRoute pageKey="funil"><FunnelPage /></ProtectedRoute>} />
                     <Route path="/vendas" element={<ProtectedRoute pageKey="vendas"><SalesPage /></ProtectedRoute>} />
                     <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
+                    <Route path="/tendencias" element={<ProtectedRoute pageKey="tendencias"><TendenciasPage /></ProtectedRoute>} />
                     <Route path="/clientes" element={<ProtectedRoute pageKey="clientes"><ClientsPage /></ProtectedRoute>} />
                     <Route path="/editores" element={<ProtectedRoute pageKey="editores"><EditorsPage /></ProtectedRoute>} />
                     <Route path="/laboratorio" element={<ProtectedRoute pageKey="laboratorio"><LaboratorioPage /></ProtectedRoute>} />

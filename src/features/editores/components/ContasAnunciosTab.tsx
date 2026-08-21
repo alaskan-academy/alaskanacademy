@@ -11,6 +11,8 @@ type Conta = {
   nome: string;
   produto_payt: string | null;
   ativo: boolean;
+  roas_meta: number | null;
+  cpa_meta: number | null;
 };
 
 export function ContasAnunciosTab() {
@@ -18,17 +20,26 @@ export function ContasAnunciosTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [metas, setMetas] = useState<Record<string, { roas: string; cpa: string }>>({});
 
   const load = async () => {
     setLoading(true);
     const { data } = await supabase
       .from('ad_accounts')
-      .select('id, account_id, nome, produto_payt, ativo')
+      .select('id, account_id, nome, produto_payt, ativo, roas_meta, cpa_meta')
       .order('nome');
     setContas(data || []);
     const initial: Record<string, string> = {};
-    (data || []).forEach(c => { initial[c.id] = c.produto_payt || ''; });
+    const metasIniciais: Record<string, { roas: string; cpa: string }> = {};
+    (data || []).forEach(c => {
+      initial[c.id] = c.produto_payt || '';
+      metasIniciais[c.id] = {
+        roas: c.roas_meta != null ? String(c.roas_meta) : '',
+        cpa:  c.cpa_meta  != null ? String(c.cpa_meta)  : '',
+      };
+    });
     setEdits(initial);
+    setMetas(metasIniciais);
     setLoading(false);
   };
 
@@ -36,13 +47,35 @@ export function ContasAnunciosTab() {
 
   const save = async (c: Conta) => {
     setSaving(c.id);
-    const { error } = await supabase
+    const m = metas[c.id] ?? { roas: '', cpa: '' };
+
+    // O `.select()` no fim devolve as linhas afetadas. Sem ele, um UPDATE barrado por
+    // RLS retorna 200 com zero linhas e o código comemora — foi assim que os parâmetros
+    // fiscais e o Caixa passaram meses "salvando" sem gravar.
+    const { data, error } = await supabase
       .from('ad_accounts')
-      .update({ produto_payt: edits[c.id] || null })
-      .eq('id', c.id);
-    if (error) toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    else toast({ title: 'Salvo' });
+      .update({
+        produto_payt: edits[c.id] || null,
+        // Campo vazio significa "sem meta", não zero: zero seria uma meta impossível
+        // de bater e a tela cobraria a conta por ela.
+        roas_meta: m.roas.trim() === '' ? null : Number(m.roas.replace(',', '.')),
+        cpa_meta:  m.cpa.trim()  === '' ? null : Number(m.cpa.replace(',', '.')),
+      })
+      .eq('id', c.id)
+      .select('id');
     setSaving(null);
+
+    if (error) {
+      toast({ title: 'Não salvou', description: error.message, variant: 'destructive' });
+    } else if (!data || data.length === 0) {
+      toast({
+        title: 'Não salvou',
+        description: 'Nenhuma linha alterada — provável falta de permissão.',
+        variant: 'destructive',
+      });
+    } else {
+      toast({ title: 'Salvo' });
+    }
   };
 
   const toggleAtivo = async (c: Conta) => {
@@ -73,6 +106,10 @@ export function ContasAnunciosTab() {
                 <th className="px-4 py-2 text-left">Conta (CA)</th>
                 <th className="px-4 py-2 text-left">Account ID</th>
                 <th className="px-4 py-2 text-left">Produto Payt (nome exato)</th>
+                {/* Metas alimentam a página de Tendências. Vazio = sem meta: a tela
+                    simplesmente não compara, em vez de assumir um alvo inventado. */}
+                <th className="px-4 py-2 text-left">ROAS mín.</th>
+                <th className="px-4 py-2 text-left">CPA máx.</th>
                 <th className="px-4 py-2 text-center">Ativo</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -88,6 +125,28 @@ export function ContasAnunciosTab() {
                       onChange={e => setEdits(prev => ({ ...prev, [c.id]: e.target.value }))}
                       placeholder="ex: Curso Velas Perfeitas 2.0"
                       className="h-8 text-xs w-72"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <Input
+                      value={metas[c.id]?.roas ?? ''}
+                      onChange={e => setMetas(prev => ({
+                        ...prev, [c.id]: { ...(prev[c.id] ?? { roas: '', cpa: '' }), roas: e.target.value },
+                      }))}
+                      placeholder="2,0"
+                      inputMode="decimal"
+                      className="h-8 w-20 text-xs"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <Input
+                      value={metas[c.id]?.cpa ?? ''}
+                      onChange={e => setMetas(prev => ({
+                        ...prev, [c.id]: { ...(prev[c.id] ?? { roas: '', cpa: '' }), cpa: e.target.value },
+                      }))}
+                      placeholder="50,00"
+                      inputMode="decimal"
+                      className="h-8 w-24 text-xs"
                     />
                   </td>
                   <td className="px-4 py-2 text-center">
