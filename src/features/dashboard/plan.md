@@ -1529,3 +1529,29 @@ para seis anúncios que tinham card — inclusive a hipótese deles, que era o p
 **A lição:** "83 anúncios sem dono" era um número que parecia medir a bagunça do cadastro
 e media a rigidez do meu casamento. Um agregado que junta causas diferentes esconde que
 uma delas é minha.
+
+### Rankings e a segunda régua de venda
+
+- [x] **Seis mini-tabelas em duas colunas** acima da tabela: maior ROAS, menor CPA, maior
+      receita, melhor hook, melhor CTR, melhor retenção. A tabela grande responde "como
+      está cada anúncio"; ela não respondia "quais são os melhores" sem reordenar seis
+      vezes e memorizar o topo de cada uma. Só entra anúncio com amostra suficiente
+- [x] **Duas fontes de venda, uma de cada vez.** `Venda Payt` é o dinheiro que entrou,
+      ligado ao anúncio pela UTM; `Conversão Meta` é o que a plataforma credita a si
+
+**Por que nunca somar:** as duas medem a mesma coisa com réguas diferentes. Na conta
+"Saponaria" a Payt vê 736 vendas com só 9 identificadas, e o Meta reporta 865 no mesmo
+período. Somar contaria a venda duas vezes; escolher em silêncio esconderia qual régua
+está em uso. A tela usa uma fonte por vez, dita em voz alta, e o aviso de conta cega some
+quando a fonte é o Meta — porque ali a UTM não faz falta.
+
+**E o Meta infla:** medido só nas contas cuja atribuição por UTM é confiável — nas outras
+a Payt está cega e a diferença não diria nada —, ele reporta **1,3× a receita** que a Payt
+registrou, porque credita janela de visualização. O número é calculado na hora e aparece
+no aviso, para o editor comparar anúncios entre si sem confundir aquilo com faturamento.
+
+**Um artefato que o ranking desenterrou:** um anúncio aparecia com **110,9% de retenção** e
+liderava a lista. Não é retenção excepcional — o vídeo tem menos de quatro segundos, então
+75% dele acontece antes da marca de 3s e o denominador fica menor que o numerador. Um em
+352, e era o primeiro colocado. Fora do ranking, e no detalhe aparece como "n/a — vídeo
+curto demais".

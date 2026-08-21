@@ -50,6 +50,8 @@ interface Anuncio {
   investimento: number; impressoes: number; cliques_link: number;
   video_3s: number; video_75pct: number; checkouts: number; visualizacoes: number;
   vendas: number; receita: number;
+  /** A conversão que o próprio Meta credita ao anúncio. Nunca somada à da Payt. */
+  vendas_meta: number; receita_meta: number;
   producao_id: string | null; editor_id: string | null; editor: string | null;
   projeto: string | null; avaliacao: string | null; status_veiculacao: string | null;
   tipo_teste: string | null; angulo_teste: string | null;
@@ -57,6 +59,7 @@ interface Anuncio {
   vinculo: Vinculo; candidatos: number;
   conta_hook: number | null; conta_ctr: number | null; conta_conexao: number | null;
   conta_cpa: number | null; conta_roas: number | null;
+  conta_cpa_meta: number | null; conta_roas_meta: number | null;
   /** Quanto das vendas da conta chega com anúncio identificado, no período. */
   conta_pct_atribuido: number;
 }
@@ -101,10 +104,45 @@ const AVALIACAO_COR: Record<string, string> = {
 
 type Coluna = 'nome' | 'investimento' | 'receita' | 'roas' | 'cpa' | 'hook' | 'ctr';
 
-const roasDe = (a: Anuncio) => (a.investimento > 0 ? a.receita / a.investimento : null);
-const cpaDe  = (a: Anuncio) => (a.vendas > 0 ? a.investimento / a.vendas : null);
+/**
+ * De onde vem a venda. **Uma de cada vez, nunca somadas.**
+ *
+ * A Payt é o dinheiro que entrou, mas some quando o checkout perde a UTM — a conta
+ * "Saponaria" tem 736 vendas no mês e só 9 carregam identificação de anúncio. O Meta
+ * credita a si conversões por janela de visualização e reporta 865 no mesmo período.
+ * São réguas diferentes medindo a mesma coisa: somar contaria a venda duas vezes, e
+ * escolher em silêncio esconderia qual régua está em uso.
+ */
+export type Fonte = 'payt' | 'meta';
+
+const vendasDe  = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.vendas_meta : a.vendas);
+const receitaDe = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.receita_meta : a.receita);
+const roasDe = (a: Anuncio, f: Fonte) =>
+  (a.investimento > 0 ? receitaDe(a, f) / a.investimento : null);
+const cpaDe = (a: Anuncio, f: Fonte) => {
+  const v = vendasDe(a, f);
+  return v > 0 ? a.investimento / v : null;
+};
+const refRoas = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.conta_roas_meta : a.conta_roas);
+const refCpa  = (a: Anuncio, f: Fonte) => (f === 'meta' ? a.conta_cpa_meta : a.conta_cpa);
 const hookDe = (a: Anuncio) => razao(a.video_3s, a.impressoes);
 const ctrDe  = (a: Anuncio) => razao(a.cliques_link, a.impressoes);
+/**
+ * Quantos dos que passaram de 3 segundos chegaram a 75% do vídeo.
+ *
+ * Pode passar de 100% quando o vídeo é curto demais: se ele tem menos de quatro
+ * segundos, 75% acontece **antes** da marca de 3s, e o denominador fica menor que o
+ * numerador. Não é retenção excepcional, é a métrica não se aplicando — e um desses
+ * liderava o ranking. Nesses casos vale nulo, e a tela diz o motivo.
+ */
+const retencaoDe = (a: Anuncio) => {
+  const r = razao(a.video_75pct, a.video_3s);
+  return r !== null && r > 100 ? null : r;
+};
+const videoCurtoDemais = (a: Anuncio) => {
+  const r = razao(a.video_75pct, a.video_3s);
+  return r !== null && r > 100;
+};
 
 /** Valor com a referência da conta ao lado — sozinho ele não diz nada. */
 function Valor({ v, ref_, formato, invertido, cinza, titulo }: {
@@ -169,6 +207,7 @@ export function CriativosMetaTab() {
   const [soPendentes, setSoPendentes] = useState(false);
   const [verPoucoInvestimento, setVerPoucoInvestimento] = useState(false);
   const [agrupar, setAgrupar] = useState(false);
+  const [fonte, setFonte] = useState<Fonte>('payt');
   const [col, setCol] = useState<Coluna>('investimento');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [aberto, setAberto] = useState<string | null>(null);
@@ -197,6 +236,9 @@ export function CriativosMetaTab() {
         conta_conexao: a.conta_conexao === null ? null : num(a.conta_conexao),
         conta_cpa: a.conta_cpa === null ? null : num(a.conta_cpa),
         conta_roas: a.conta_roas === null ? null : num(a.conta_roas),
+        vendas_meta: num(a.vendas_meta), receita_meta: num(a.receita_meta),
+        conta_cpa_meta: a.conta_cpa_meta === null ? null : num(a.conta_cpa_meta),
+        conta_roas_meta: a.conta_roas_meta === null ? null : num(a.conta_roas_meta),
         conta_pct_atribuido: num(a.conta_pct_atribuido),
       })));
     }
@@ -228,9 +270,26 @@ export function CriativosMetaTab() {
   const totalPendentes = Object.values(pendentes).reduce((s, l) => s + l.length, 0);
 
   const contasCegas = useMemo(() => {
+    // Só faz sentido na régua da Payt: a conversão do Meta não depende da UTM.
+    if (fonte === 'meta') return [];
     const m = new Map<string, number>();
     dados.forEach(a => { if (a.conta_pct_atribuido < MIN_ATRIBUICAO) m.set(a.conta, a.conta_pct_atribuido); });
     return [...m.entries()].map(([nome, pct]) => ({ nome, pct }));
+  }, [dados, fonte]);
+
+  /**
+   * Quanto o Meta infla, medido onde dá para medir.
+   *
+   * Comparado só nas contas cuja atribuição por UTM é confiável — nas outras a Payt está
+   * cega e a diferença não diria nada sobre o Meta. Nas contas boas ele conta a mais
+   * porque credita janela de visualização: quem viu o anúncio e comprou depois por outro
+   * caminho entra como conversão dele.
+   */
+  const inflacaoMeta = useMemo(() => {
+    const bons = dados.filter(a => a.conta_pct_atribuido >= MIN_ATRIBUICAO);
+    const payt = bons.reduce((s, a) => s + a.receita, 0);
+    const meta = bons.reduce((s, a) => s + a.receita_meta, 0);
+    return payt > 0 ? meta / payt : null;
   }, [dados]);
 
   const escondidos = useMemo(
@@ -251,9 +310,9 @@ export function CriativosMetaTab() {
     const chave = (a: Anuncio): number | string => {
       switch (col) {
         case 'nome': return a.ad_nome ?? '';
-        case 'receita': return a.receita;
-        case 'roas': return roasDe(a) ?? -1;
-        case 'cpa': return cpaDe(a) ?? Number.MAX_SAFE_INTEGER;
+        case 'receita': return receitaDe(a, fonte);
+        case 'roas': return roasDe(a, fonte) ?? -1;
+        case 'cpa': return cpaDe(a, fonte) ?? Number.MAX_SAFE_INTEGER;
         case 'hook': return hookDe(a) ?? -1;
         case 'ctr': return ctrDe(a) ?? -1;
         default: return a.investimento;
@@ -267,7 +326,7 @@ export function CriativosMetaTab() {
       }
       return (x - y) * sinal;
     });
-  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, soPendentes, busca, col, dir]);
+  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, soPendentes, busca, col, dir, fonte]);
 
   /** Lista plana ou em blocos por editor, na mesma ordenação escolhida. */
   const blocos = useMemo(() => {
@@ -284,10 +343,40 @@ export function CriativosMetaTab() {
                     - x.itens.reduce((s, a) => s + a.investimento, 0));
   }, [visiveis, agrupar]);
 
+  /**
+   * Rankings sobre o que está filtrado, não sobre a base inteira: se a pessoa filtrou
+   * uma conta ou um editor, o "melhor" tem que ser o melhor daquele recorte.
+   */
+  const rankings = useMemo(() => {
+    const topo = (
+      elegivel: (a: Anuncio) => boolean,
+      valor: (a: Anuncio) => number | null,
+      maiorMelhor = true,
+    ) => visiveis
+      .filter(a => elegivel(a) && valor(a) !== null)
+      .sort((x, y) => (maiorMelhor ? 1 : -1) * ((valor(y) as number) - (valor(x) as number)))
+      .slice(0, 5)
+      .map(a => ({ nome: a.ad_nome || a.ad_id, editor: a.editor, valor: valor(a) as number }));
+
+    const comVenda = (a: Anuncio) =>
+      vendasDe(a, fonte) >= MIN_VENDAS &&
+      (fonte === 'meta' || a.conta_pct_atribuido >= MIN_ATRIBUICAO);
+    const comImpressao = (a: Anuncio) => a.impressoes >= MIN_IMPRESSOES;
+
+    return [
+      { titulo: 'Maior ROAS',      itens: topo(comVenda, a => roasDe(a, fonte)),      formato: 'x'     as const, ajuda: `mín. ${MIN_VENDAS} vendas` },
+      { titulo: 'Menor CPA',       itens: topo(comVenda, a => cpaDe(a, fonte), false), formato: 'moeda' as const, ajuda: `mín. ${MIN_VENDAS} vendas` },
+      { titulo: 'Maior receita',   itens: topo(comVenda, a => receitaDe(a, fonte)),   formato: 'moeda' as const, ajuda: 'no período' },
+      { titulo: 'Melhor hook 3s',  itens: topo(comImpressao, hookDe),                 formato: 'pct'   as const, ajuda: `mín. ${formatNumber(MIN_IMPRESSOES)} impressões` },
+      { titulo: 'Melhor CTR',      itens: topo(comImpressao, ctrDe),                  formato: 'pct'   as const, ajuda: `mín. ${formatNumber(MIN_IMPRESSOES)} impressões` },
+      { titulo: 'Melhor retenção', itens: topo(comImpressao, retencaoDe),             formato: 'pct'   as const, ajuda: 'assistiram 75% do vídeo' },
+    ];
+  }, [visiveis, fonte]);
+
   const totais = visiveis.reduce((acc, a) => ({
     investimento: acc.investimento + a.investimento,
-    receita: acc.receita + a.receita,
-    vendas: acc.vendas + a.vendas,
+    receita: acc.receita + receitaDe(a, fonte),
+    vendas: acc.vendas + vendasDe(a, fonte),
   }), { investimento: 0, receita: 0, vendas: 0 });
 
   return (
@@ -336,6 +425,33 @@ export function CriativosMetaTab() {
             contas chegam com anúncio identificado. Esses números aparecem em cinza: não são
             desempenho ruim, é venda que existe e não sabemos de qual criativo veio. Hook, CTR e
             retenção seguem válidos, porque não dependem da venda.
+            {fonte === 'payt' && (
+              <>
+                {' '}
+                <button onClick={() => setFonte('meta')}
+                        className="text-amber-100 underline underline-offset-2">
+                  Ver pela conversão do Meta
+                </button>{' '}
+                cobre esse buraco — com a ressalva de que o Meta credita janela de
+                visualização e conta mais que a Payt.
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
+      {fonte === 'meta' && !loading && (
+        <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-border bg-secondary/30 px-3.5 py-2.5">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+            <span className="text-foreground">Estes números são a conta do Meta, não o seu caixa.</span>{' '}
+            Ele credita a si quem viu o anúncio e comprou depois por outro caminho
+            {inflacaoMeta && inflacaoMeta > 1.05
+              ? `, e nas contas onde dá para comparar ele reporta ${inflacaoMeta.toFixed(1)}× a receita que a Payt registrou`
+              : ''}
+            . Servem para <span className="text-foreground">comparar anúncios entre si</span> —
+            especialmente onde a UTM falhou — e não para somar faturamento. Nunca misture com a
+            régua da Payt no mesmo raciocínio.
           </p>
         </div>
       )}
@@ -362,6 +478,23 @@ export function CriativosMetaTab() {
           {editores.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
         </select>
 
+        {/* Duas réguas para a mesma coisa. Uma de cada vez, e dita em voz alta — a tela
+            inteira usa a mesma fonte, senão dois anúncios lado a lado estariam sendo
+            medidos por critérios diferentes sem ninguém perceber. */}
+        <div className="inline-flex items-center gap-1 rounded-md border border-border p-0.5">
+          {(['payt', 'meta'] as Fonte[]).map(f => (
+            <button key={f} onClick={() => setFonte(f)}
+                    title={f === 'payt'
+                      ? 'Venda da nossa base, ligada ao anúncio pela UTM: é o dinheiro que entrou, mas some quando o checkout perde a UTM'
+                      : 'Conversão que o próprio Meta credita ao anúncio, incluindo janela de visualização: cobre o buraco da UTM, mas superestima'}
+                    className={cn('rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                      fonte === f ? 'bg-primary/15 text-primary'
+                                  : 'text-muted-foreground hover:bg-secondary')}>
+              {f === 'payt' ? 'Venda Payt' : 'Conversão Meta'}
+            </button>
+          ))}
+        </div>
+
         <button onClick={() => setAgrupar(v => !v)}
                 className={cn('rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
                   agrupar ? 'border-primary/50 bg-primary/10 text-primary'
@@ -374,6 +507,15 @@ export function CriativosMetaTab() {
           {formatCurrency(totais.receita)} · {formatNumber(totais.vendas)} vendas
         </span>
       </div>
+
+      {!loading && !erro && visiveis.length > 0 && (
+        <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {rankings.map(r => (
+            <MiniRank key={r.titulo} titulo={r.titulo} itens={r.itens}
+                      formato={r.formato} ajuda={r.ajuda} />
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-1">
@@ -434,6 +576,7 @@ export function CriativosMetaTab() {
                       onToggle={() => setAberto(aberto === a.ad_id ? null : a.ad_id)}
                       onVincular={() => setVincular(a)}
                       ehMeu={!!user && a.editor_id === user.id}
+                      fonte={fonte}
                     />
                   ))}
                 </Fragment>
@@ -462,19 +605,72 @@ export function CriativosMetaTab() {
   );
 }
 
-function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
-  a: Anuncio; expandido: boolean; onToggle: () => void; onVincular: () => void; ehMeu: boolean;
+
+/**
+ * Ranking curto de uma métrica.
+ *
+ * Existe porque a tabela grande responde "como está cada anúncio" e não responde "quais
+ * são os melhores" — para isso a pessoa teria que reordenar seis vezes e memorizar o
+ * topo de cada uma. Cinco linhas por métrica cabem numa olhada.
+ *
+ * Só entra anúncio com amostra suficiente: um hook de 80% em duzentas impressões
+ * lideraria todos os rankings e não significaria nada.
+ */
+function MiniRank({ titulo, itens, formato, ajuda }: {
+  titulo: string;
+  itens: { nome: string; editor: string | null; valor: number }[];
+  formato: 'pct' | 'moeda' | 'x';
+  ajuda: string;
+}) {
+  const fmt = (v: number) => formato === 'pct' ? `${v.toFixed(1)}%`
+    : formato === 'x' ? `${v.toFixed(2)}x` : formatCurrency(v);
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-foreground">{titulo}</span>
+        <span className="text-[10px] text-muted-foreground/60" title={ajuda}>{ajuda}</span>
+      </div>
+      {itens.length === 0 ? (
+        <p className="py-3 text-center text-[11px] text-muted-foreground/60">
+          Nenhum anúncio com amostra suficiente
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {itens.map((i, k) => (
+            <div key={i.nome + k} className="flex items-baseline gap-2 text-xs">
+              <span className="w-3 shrink-0 tabular-nums text-muted-foreground/40">{k + 1}</span>
+              <span className="min-w-0 flex-1 truncate text-foreground" title={i.nome}>{i.nome}</span>
+              {i.editor && (
+                <span className="hidden max-w-[90px] shrink-0 truncate text-[10px] text-muted-foreground/60 sm:inline">
+                  {i.editor}
+                </span>
+              )}
+              <span className="shrink-0 tabular-nums font-medium text-foreground">{fmt(i.valor)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu, fonte }: {
+  a: Anuncio; expandido: boolean; onToggle: () => void; onVincular: () => void;
+  ehMeu: boolean; fonte: Fonte;
 }) {
   const hook = hookDe(a), ctr = ctrDe(a);
   const conexao = razao(a.visualizacoes, a.cliques_link);
-  const retencao = razao(a.video_75pct, a.video_3s);
-  const convCheckout = razao(a.vendas, a.checkouts);
-  const roas = roasDe(a), cpa = cpaDe(a);
+  const retencao = retencaoDe(a);
+  const vendas = vendasDe(a, fonte), receita = receitaDe(a, fonte);
+  const convCheckout = razao(vendas, a.checkouts);
+  const roas = roasDe(a, fonte), cpa = cpaDe(a, fonte);
 
   const poucaImpressao = a.impressoes < MIN_IMPRESSOES;
-  const poucaVenda = a.vendas < MIN_VENDAS;
-  // Não é amostra pequena: é a conta inteira que não sabe de onde vieram as vendas.
-  const cego = a.conta_pct_atribuido < MIN_ATRIBUICAO;
+  const poucaVenda = vendas < MIN_VENDAS;
+  // A conta não sabe de onde vieram as vendas — mas isso só cega a régua da Payt; a
+  // conversão do Meta não depende da UTM.
+  const cego = fonte === 'payt' && a.conta_pct_atribuido < MIN_ATRIBUICAO;
   const semCard = !a.producao_id;
 
   return (
@@ -509,16 +705,16 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
         <td className="px-3 py-2 text-right">
           <span className={cn('tabular-nums', cego ? 'text-muted-foreground/40' : 'text-foreground')}
                 title={cego ? 'A conta não identifica de qual anúncio vêm as vendas' : undefined}>
-            {formatCurrency(a.receita)}
+            {formatCurrency(receita)}
           </span>
         </td>
         <td className="px-3 py-2 text-right">
-          <Valor v={roas} ref_={a.conta_roas} formato="x" cinza={cego || poucaVenda}
+          <Valor v={roas} ref_={refRoas(a, fonte)} formato="x" cinza={cego || poucaVenda}
                  titulo={cego ? 'A conta não identifica de qual anúncio vêm as vendas'
                               : 'Poucas vendas para concluir'} />
         </td>
         <td className="px-3 py-2 text-right">
-          <Valor v={cpa} ref_={a.conta_cpa} formato="moeda" invertido cinza={cego || poucaVenda}
+          <Valor v={cpa} ref_={refCpa(a, fonte)} formato="moeda" invertido cinza={cego || poucaVenda}
                  titulo={cego ? 'A conta não identifica de qual anúncio vêm as vendas'
                               : 'Poucas vendas para concluir'} />
         </td>
@@ -564,14 +760,19 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
               <Etapa rotulo="Impressões" valor={formatNumber(a.impressoes)} />
               <Etapa rotulo="Hook 3s" valor={hook === null ? '—' : `${hook.toFixed(1)}%`}
                      sob={formatNumber(a.video_3s)} fraco={poucaImpressao} />
-              <Etapa rotulo="Retenção 75%" valor={retencao === null ? '—' : `${retencao.toFixed(1)}%`}
-                     sob={formatNumber(a.video_75pct)} fraco={poucaImpressao} />
+              <Etapa rotulo="Retenção 75%"
+                     valor={retencao === null
+                       ? (videoCurtoDemais(a) ? 'n/a' : '—')
+                       : `${retencao.toFixed(1)}%`}
+                     sob={videoCurtoDemais(a) ? 'vídeo curto demais' : formatNumber(a.video_75pct)}
+                     fraco={poucaImpressao || videoCurtoDemais(a)} />
               <Etapa rotulo="CTR" valor={ctr === null ? '—' : `${ctr.toFixed(1)}%`}
                      sob={formatNumber(a.cliques_link)} fraco={poucaImpressao} />
               <Etapa rotulo="Conexão" valor={conexao === null ? '—' : `${conexao.toFixed(1)}%`}
                      sob={formatNumber(a.visualizacoes)} fraco={poucaImpressao} />
               <Etapa rotulo="Checkout → venda" valor={convCheckout === null ? '—' : `${convCheckout.toFixed(1)}%`}
-                     sob={`${formatNumber(a.vendas)} vendas`} fraco={poucaVenda || cego} />
+                     sob={`${formatNumber(vendas)} ${fonte === 'meta' ? 'conversões' : 'vendas'}`}
+                     fraco={poucaVenda || cego} />
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
