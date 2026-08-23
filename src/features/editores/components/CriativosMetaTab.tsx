@@ -36,6 +36,16 @@ import { cn } from '@/lib/utils';
  */
 type Vinculo = 'confirmado' | 'sugerido' | 'por_data' | 'sem_responsavel' | 'sem_card' | 'fora_do_recorte';
 
+/**
+ * Onde o dono já está decidido — não há o que resolver e não entra no aviso.
+ *
+ * `por_data` estava de fora desta lista e caía como pendente: 38 anúncios **com editor**
+ * eram anunciados como "sem editor identificado", cada um imprimindo um travessão sem
+ * texto, porque `comoResolver` é vazio justamente por não haver nada a fazer.
+ */
+const resolvido = (v: Vinculo) =>
+  v === 'confirmado' || v === 'sugerido' || v === 'por_data';
+
 const VINCULO: Record<Vinculo, { curto: string; comoResolver: string }> = {
   confirmado:      { curto: '',                comoResolver: '' },
   sugerido:        { curto: '',                comoResolver: '' },
@@ -61,6 +71,8 @@ interface Anuncio {
   conta_hook: number | null; conta_ctr: number | null; conta_conexao: number | null;
   conta_cpa: number | null; conta_roas: number | null;
   conta_cpa_meta: number | null; conta_roas_meta: number | null;
+  /** Entrega média da conta no período — calculada aqui, razão dos totais. */
+  conta_cpm: number | null; conta_cpc: number | null;
   /** Quanto das vendas da conta chega com anúncio identificado, no período. */
   conta_pct_atribuido: number;
 }
@@ -103,7 +115,7 @@ const AVALIACAO_COR: Record<string, string> = {
   'Sem dados': 'bg-secondary text-muted-foreground',
 };
 
-type Coluna = 'nome' | 'investimento' | 'receita' | 'roas' | 'cpa' | 'hook' | 'ctr';
+type Coluna = 'nome' | 'investimento' | 'roas' | 'cpa' | 'cpm' | 'cpc' | 'hook' | 'ctr';
 
 /**
  * Esta tela usa a **conversão do Meta**, não a venda da Payt.
@@ -119,11 +131,17 @@ type Coluna = 'nome' | 'investimento' | 'receita' | 'roas' | 'cpa' | 'hook' | 'c
  * faturamento: o caixa continua sendo o Resumo, que usa a Payt.
  */
 const vendasDe  = (a: Anuncio) => a.vendas_meta;
-const receitaDe = (a: Anuncio) => a.receita_meta;
 const roasDe = (a: Anuncio) => (a.investimento > 0 ? a.receita_meta / a.investimento : null);
 const cpaDe  = (a: Anuncio) => (a.vendas_meta > 0 ? a.investimento / a.vendas_meta : null);
 const refRoas = (a: Anuncio) => a.conta_roas_meta;
 const refCpa  = (a: Anuncio) => a.conta_cpa_meta;
+/**
+ * CPM e CPC são preço de entrega, não desempenho de criativo — mas é neles que se vê
+ * o leilão: CPM subindo com o mesmo criativo é público saturando, e CPC alto com CTR
+ * bom é CPM caro, não anúncio ruim. Por isso os dois ficam ao lado do CTR.
+ */
+const cpmDe = (a: Anuncio) => (a.impressoes > 0 ? (a.investimento / a.impressoes) * 1000 : null);
+const cpcDe = (a: Anuncio) => (a.cliques_link > 0 ? a.investimento / a.cliques_link : null);
 const hookDe = (a: Anuncio) => razao(a.video_3s, a.impressoes);
 const ctrDe  = (a: Anuncio) => razao(a.cliques_link, a.impressoes);
 /**
@@ -223,7 +241,7 @@ export function CriativosMetaTab() {
       setErro(error.message); setDados([]);
     } else {
       setErro(null);
-      setDados(((data ?? []) as Anuncio[]).map(a => ({
+      const lista = ((data ?? []) as Anuncio[]).map(a => ({
         ...a,
         investimento: num(a.investimento), impressoes: num(a.impressoes),
         cliques_link: num(a.cliques_link), video_3s: num(a.video_3s),
@@ -238,7 +256,30 @@ export function CriativosMetaTab() {
         conta_cpa_meta: a.conta_cpa_meta === null ? null : num(a.conta_cpa_meta),
         conta_roas_meta: a.conta_roas_meta === null ? null : num(a.conta_roas_meta),
         conta_pct_atribuido: num(a.conta_pct_atribuido),
-      })));
+      }));
+
+      /**
+       * CPM e CPC da conta: razão dos totais, nunca média das razões.
+       *
+       * Somar o CPM de cada anúncio e dividir pela quantidade daria a um anúncio de mil
+       * impressões o mesmo peso de um de um milhão — a referência sairia errada
+       * justamente onde está o dinheiro.
+       */
+      const porConta = new Map<string, { inv: number; imp: number; cli: number }>();
+      lista.forEach(a => {
+        const t = porConta.get(a.conta_id) ?? { inv: 0, imp: 0, cli: 0 };
+        t.inv += a.investimento; t.imp += a.impressoes; t.cli += a.cliques_link;
+        porConta.set(a.conta_id, t);
+      });
+
+      setDados(lista.map(a => {
+        const t = porConta.get(a.conta_id);
+        return {
+          ...a,
+          conta_cpm: t && t.imp > 0 ? (t.inv / t.imp) * 1000 : null,
+          conta_cpc: t && t.cli > 0 ? t.inv / t.cli : null,
+        };
+      }));
     }
     setLoading(false);
   }, [startDateStr, endDateStr, contaId]);
@@ -260,7 +301,7 @@ export function CriativosMetaTab() {
   const pendentes = useMemo(() => {
     const g: Record<string, Anuncio[]> = {};
     dados.forEach(a => {
-      if (a.vinculo === 'sugerido' || a.vinculo === 'confirmado') return;
+      if (resolvido(a.vinculo)) return;
       (g[a.vinculo] ??= []).push(a);
     });
     return g;
@@ -291,7 +332,7 @@ export function CriativosMetaTab() {
     if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
     if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
     if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
-    if (soPendentes) l = l.filter(a => a.vinculo !== 'sugerido' && a.vinculo !== 'confirmado');
+    if (soPendentes) l = l.filter(a => !resolvido(a.vinculo));
     if (busca.trim()) {
       const b = busca.trim().toLowerCase();
       l = l.filter(a => a.ad_nome?.toLowerCase().includes(b)
@@ -301,7 +342,8 @@ export function CriativosMetaTab() {
     const chave = (a: Anuncio): number | string => {
       switch (col) {
         case 'nome': return a.ad_nome ?? '';
-        case 'receita': return receitaDe(a);
+        case 'cpm': return cpmDe(a) ?? Number.MAX_SAFE_INTEGER;
+        case 'cpc': return cpcDe(a) ?? Number.MAX_SAFE_INTEGER;
         case 'roas': return roasDe(a) ?? -1;
         case 'cpa': return cpaDe(a) ?? Number.MAX_SAFE_INTEGER;
         case 'hook': return hookDe(a) ?? -1;
@@ -347,7 +389,8 @@ export function CriativosMetaTab() {
       .filter(a => elegivel(a) && valor(a) !== null)
       .sort((x, y) => (maiorMelhor ? 1 : -1) * ((valor(y) as number) - (valor(x) as number)))
       .slice(0, 5)
-      .map(a => ({ nome: a.ad_nome || a.ad_id, editor: a.editor, valor: valor(a) as number }));
+      .map(a => ({ nome: a.ad_nome || a.ad_id, editor: a.editor,
+                   projeto: a.projeto, valor: valor(a) as number }));
 
     const comVenda = (a: Anuncio) => vendasDe(a) >= MIN_VENDAS;
     const comImpressao = (a: Anuncio) => a.impressoes >= MIN_IMPRESSOES;
@@ -364,9 +407,8 @@ export function CriativosMetaTab() {
 
   const totais = visiveis.reduce((acc, a) => ({
     investimento: acc.investimento + a.investimento,
-    receita: acc.receita + receitaDe(a),
     vendas: acc.vendas + vendasDe(a),
-  }), { investimento: 0, receita: 0, vendas: 0 });
+  }), { investimento: 0, vendas: 0 });
 
   return (
     <div className="space-y-4">
@@ -443,7 +485,7 @@ export function CriativosMetaTab() {
 
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {visiveis.length} anúncios · {formatCurrency(totais.investimento)} ·{' '}
-          {formatCurrency(totais.receita)} · {formatNumber(totais.vendas)} vendas
+          {formatNumber(totais.vendas)} vendas
         </span>
       </div>
 
@@ -481,9 +523,10 @@ export function CriativosMetaTab() {
                 <Cabecalho col="nome"         rotulo="Anúncio"   atual={col} dir={dir} onSort={ordenar} />
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">Editor</th>
                 <Cabecalho col="investimento" rotulo="Investido" atual={col} dir={dir} onSort={ordenar} alinhar="right" />
-                <Cabecalho col="receita"      rotulo="Receita"   atual={col} dir={dir} onSort={ordenar} alinhar="right" />
                 <Cabecalho col="roas"         rotulo="ROAS"      atual={col} dir={dir} onSort={ordenar} alinhar="right" />
                 <Cabecalho col="cpa"          rotulo="CPA"       atual={col} dir={dir} onSort={ordenar} alinhar="right" />
+                <Cabecalho col="cpm"          rotulo="CPM"       atual={col} dir={dir} onSort={ordenar} alinhar="right" />
+                <Cabecalho col="cpc"          rotulo="CPC"       atual={col} dir={dir} onSort={ordenar} alinhar="right" />
                 <Cabecalho col="hook"         rotulo="Hook"      atual={col} dir={dir} onSort={ordenar} alinhar="right" />
                 <Cabecalho col="ctr"          rotulo="CTR"       atual={col} dir={dir} onSort={ordenar} alinhar="right" />
               </tr>
@@ -493,7 +536,7 @@ export function CriativosMetaTab() {
                 <Fragment key={bloco.chave || 'todos'}>
                   {agrupar && (
                     <tr className="border-b border-border/60 bg-secondary/20">
-                      <td colSpan={9} className="px-3 py-1.5">
+                      <td colSpan={10} className="px-3 py-1.5">
                         <button onClick={() => setGruposFechados(g => ({ ...g, [bloco.chave]: !g[bloco.chave] }))}
                                 className="flex w-full items-center gap-1.5 text-xs">
                           {gruposFechados[bloco.chave] ? <ChevronRight className="h-3 w-3" />
@@ -502,7 +545,7 @@ export function CriativosMetaTab() {
                           <span className="tabular-nums text-muted-foreground">
                             · {bloco.itens.length} anúncios ·{' '}
                             {formatCurrency(bloco.itens.reduce((s, a) => s + a.investimento, 0))} investidos ·{' '}
-                            {formatCurrency(bloco.itens.reduce((s, a) => s + a.receita, 0))} de receita
+                            {formatNumber(bloco.itens.reduce((s, a) => s + vendasDe(a), 0))} vendas
                           </span>
                         </button>
                       </td>
@@ -556,7 +599,7 @@ export function CriativosMetaTab() {
  */
 function MiniRank({ titulo, itens, formato, ajuda }: {
   titulo: string;
-  itens: { nome: string; editor: string | null; valor: number }[];
+  itens: { nome: string; editor: string | null; projeto: string | null; valor: number }[];
   formato: 'pct' | 'moeda' | 'x' | 'inteiro';
   ajuda: string;
 }) {
@@ -575,16 +618,18 @@ function MiniRank({ titulo, itens, formato, ajuda }: {
           Nenhum anúncio com amostra suficiente
         </p>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {itens.map((i, k) => (
-            <div key={i.nome + k} className="flex items-baseline gap-2 text-xs">
+            <div key={i.nome + k} className="flex items-start gap-2 text-xs">
               <span className="w-3 shrink-0 tabular-nums text-muted-foreground/40">{k + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-foreground" title={i.nome}>{i.nome}</span>
-              {i.editor && (
-                <span className="hidden max-w-[90px] shrink-0 truncate text-[10px] text-muted-foreground/60 sm:inline">
-                  {i.editor}
-                </span>
-              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-foreground" title={i.nome}>{i.nome}</div>
+                {(i.projeto || i.editor) && (
+                  <div className="truncate text-[10px] text-muted-foreground/60">
+                    {[i.projeto, i.editor].filter(Boolean).join(' · ')}
+                  </div>
+                )}
+              </div>
               <span className="shrink-0 tabular-nums font-medium text-foreground">{fmt(i.valor)}</span>
             </div>
           ))}
@@ -600,9 +645,10 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
   const hook = hookDe(a), ctr = ctrDe(a);
   const conexao = razao(a.visualizacoes, a.cliques_link);
   const retencao = retencaoDe(a);
-  const vendas = vendasDe(a), receita = receitaDe(a);
+  const vendas = vendasDe(a);
   const convCheckout = razao(vendas, a.checkouts);
   const roas = roasDe(a), cpa = cpaDe(a);
+  const cpm = cpmDe(a), cpc = cpcDe(a);
 
   const poucaImpressao = a.impressoes < MIN_IMPRESSOES;
   const poucaVenda = vendas < MIN_VENDAS;
@@ -645,12 +691,6 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
         </td>
         <td className="px-3 py-2 text-right tabular-nums text-foreground">{formatCurrency(a.investimento)}</td>
         <td className="px-3 py-2 text-right">
-          <span className={cn('tabular-nums', cego ? 'text-muted-foreground/40' : 'text-foreground')}
-                title={cego ? 'A conta não identifica de qual anúncio vêm as vendas' : undefined}>
-            {formatCurrency(receita)}
-          </span>
-        </td>
-        <td className="px-3 py-2 text-right">
           <Valor v={roas} ref_={refRoas(a)} formato="x" cinza={cego || poucaVenda}
                  titulo={cego ? 'A conta não identifica de qual anúncio vêm as vendas'
                               : 'Poucas vendas para concluir'} />
@@ -659,6 +699,14 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
           <Valor v={cpa} ref_={refCpa(a)} formato="moeda" invertido cinza={cego || poucaVenda}
                  titulo={cego ? 'A conta não identifica de qual anúncio vêm as vendas'
                               : 'Poucas vendas para concluir'} />
+        </td>
+        <td className="px-3 py-2 text-right">
+          <Valor v={cpm} ref_={a.conta_cpm} formato="moeda" invertido cinza={poucaImpressao}
+                 titulo="Poucas impressões para concluir" />
+        </td>
+        <td className="px-3 py-2 text-right">
+          <Valor v={cpc} ref_={a.conta_cpc} formato="moeda" invertido cinza={poucaImpressao}
+                 titulo="Poucas impressões para concluir" />
         </td>
         <td className="px-3 py-2 text-right">
           <Valor v={hook} ref_={a.conta_hook} formato="pct" cinza={poucaImpressao}
@@ -673,7 +721,7 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
       {expandido && (
         <tr className="border-b border-border/40 bg-secondary/10">
           <td />
-          <td colSpan={8} className="space-y-3 px-3 pb-3 pt-1">
+          <td colSpan={9} className="space-y-3 px-3 pb-3 pt-1">
             {/* A hipótese primeiro: o número só significa alguma coisa contra o que se
                 queria testar. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -735,7 +783,7 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
               <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs"
                       onClick={e => { e.stopPropagation(); onVincular(); }}>
                 <Link2 className="h-3 w-3" />
-                {semCard ? 'Ligar a um card de Produção' : 'Trocar o card'}
+                {semCard ? 'Ligar a um card de Produção' : 'Trocar o card de Produção'}
               </Button>
             </div>
           </td>
