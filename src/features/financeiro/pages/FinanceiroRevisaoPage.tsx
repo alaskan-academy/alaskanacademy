@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, AlertCircle, CheckCircle2, Clock, Plus } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck } from 'lucide-react';
+import { useConfirm } from '@/hooks/use-confirm';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 
@@ -114,6 +115,9 @@ export default function FinanceiroRevisaoPage() {
   const [novoCateg,   setNovoCateg]   = useState('');
   const [novoCentro,  setNovoCentro]  = useState('');
   const [criandoNovo, setCriandoNovo] = useState(false);
+
+  const confirm = useConfirm();
+  const [confirmandoLote, setConfirmandoLote] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -257,6 +261,61 @@ export default function FinanceiroRevisaoPage() {
   };
 
   const pendentes = transacoes.filter(t => t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado').length;
+
+  /**
+   * As que as regras já classificaram sozinhas.
+   *
+   * Confirmar uma por uma no modal só faz sentido para quem precisa DECIDIR a
+   * categoria. Quando a regra já decidiu, o modal vira um clique de carimbo — e
+   * o backfill da Conta Simples de 24/08 trouxe 439 pendentes de uma vez, das
+   * quais 412 já vinham categorizadas. Sem isto aqui, revisar julho e agosto
+   * seria abrir 439 modais.
+   */
+  const prontasParaLote = transacoes.filter(
+    t => (t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado') && !!t.categoria,
+  );
+
+  const confirmarLote = async () => {
+    const ids = prontasParaLote.map(t => t.id);
+    if (ids.length === 0) return;
+
+    const ok = await confirm({
+      title: `Confirmar ${ids.length} transações`,
+      description:
+        'Todas já têm categoria definida pelas regras automáticas. Confirmar marca as ' +
+        'transações como revisadas e elas passam a contar no Caixa. As que estão sem ' +
+        'categoria continuam pendentes para você decidir uma a uma.',
+      confirmText: `Confirmar ${ids.length}`,
+      destructive: false,
+    });
+    if (!ok) return;
+
+    setConfirmandoLote(true);
+    // Em blocos: uma cláusula `in` com centenas de ids vira URL longa demais
+    // para o PostgREST engolir de uma vez.
+    let feitas = 0;
+    for (let i = 0; i < ids.length; i += 100) {
+      const bloco = ids.slice(i, i + 100);
+      const { error } = await supabase
+        .from('transacoes')
+        .update({ status_revisao: 'confirmado' })
+        .in('id', bloco);
+      if (error) {
+        setConfirmandoLote(false);
+        toast({
+          title: 'Parou no meio',
+          description: `${feitas} confirmadas antes do erro: ${error.message}`,
+          variant: 'destructive',
+        });
+        load();
+        return;
+      }
+      feitas += bloco.length;
+    }
+    setConfirmandoLote(false);
+    toast({ title: `${feitas} transações confirmadas` });
+    load();
+  };
   const hoje = new Date().toISOString().slice(0, 10);
   const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
 
@@ -306,6 +365,12 @@ export default function FinanceiroRevisaoPage() {
           ))}
         </div>
         <div className="flex gap-2">
+          {prontasParaLote.length > 0 && (
+            <Button size="sm" variant="outline" onClick={confirmarLote} disabled={confirmandoLote}>
+              <CheckCheck className="h-3.5 w-3.5 mr-1.5" />
+              {confirmandoLote ? 'Confirmando…' : `Confirmar ${prontasParaLote.length} já categorizadas`}
+            </Button>
+          )}
           <Button size="sm" onClick={() => setNovoModal(true)}>
             <Plus className="h-3.5 w-3.5 mr-1.5" />
             Novo lançamento
