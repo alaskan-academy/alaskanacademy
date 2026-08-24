@@ -89,6 +89,84 @@ interface Anuncio {
   conta_pct_atribuido: number;
 }
 
+/**
+ * Um criativo, não um anúncio.
+ *
+ * O Meta cria um `ad_id` novo toda vez que o mesmo vídeo entra em outra campanha ou
+ * conta. Em agosto isso parte 188 criativos em 280 linhas, e os 68 que rodam em mais
+ * de um anúncio carregam R$ 68.937 — 81% do investimento. A tabela ranqueava pedaços:
+ * o mesmo criativo podia ocupar três lugares com partes de si mesmo, e nenhuma delas
+ * contava a história inteira.
+ *
+ * A identidade é o **card**, não o nome: mesmo card, mesmo criativo, por definição.
+ * O nome não serve — 30 deles se repetem dentro de um mesmo projeto, em épocas
+ * diferentes. Anúncio sem card fica sozinho, porque aí não dá para afirmar nada.
+ */
+interface Criativo extends Anuncio {
+  anuncios: Anuncio[];
+}
+
+/**
+ * Soma os absolutos e deixa as taxas se recalcularem a partir deles.
+ *
+ * Nunca a média das taxas: o ROAS do `AD 015 H05 V04` é 2,36 somando, e 1,29 se
+ * tirasse média — porque a média daria o mesmo peso a um teste de R$ 126 e a uma
+ * escala de R$ 3.707. Todas as razões da tela (ROAS, CPA, CPM, CPC, hook, CTR) já
+ * derivam de investimento, impressões, cliques e vendas, então somar os absolutos
+ * corrige todas de uma vez.
+ */
+function somarCriativo(grupo: Anuncio[]): Criativo {
+  const ordenado = [...grupo].sort((a, b) => b.investimento - a.investimento);
+  const base = ordenado[0];
+  const soma = (f: (a: Anuncio) => number) => grupo.reduce((t, a) => t + f(a), 0);
+
+  /**
+   * Referência da conta ponderada pelo investimento.
+   *
+   * Se o criativo rodou em duas contas, a comparação com "a média da conta" fica
+   * ambígua. Média simples daria o mesmo peso a uma conta onde ele gastou R$ 6.000 e
+   * a outra onde gastou R$ 120; ponderando, manda quem recebeu o dinheiro.
+   */
+  const ref = (f: (a: Anuncio) => number | null) => {
+    let peso = 0, acc = 0;
+    grupo.forEach(a => {
+      const v = f(a);
+      if (v !== null && a.investimento > 0) { acc += v * a.investimento; peso += a.investimento; }
+    });
+    return peso > 0 ? acc / peso : null;
+  };
+
+  return {
+    ...base,
+    investimento: soma(a => a.investimento),
+    impressoes:   soma(a => a.impressoes),
+    cliques_link: soma(a => a.cliques_link),
+    video_3s:     soma(a => a.video_3s),
+    video_75pct:  soma(a => a.video_75pct),
+    checkouts:    soma(a => a.checkouts),
+    visualizacoes: soma(a => a.visualizacoes),
+    vendas:       soma(a => a.vendas),
+    receita:      soma(a => a.receita),
+    vendas_meta:  soma(a => a.vendas_meta),
+    receita_meta: soma(a => a.receita_meta),
+    // A estreia do criativo é a do primeiro anúncio dele a ir ao ar.
+    estreia: grupo.reduce((m, a) => (a.estreia && a.estreia < m ? a.estreia : m), base.estreia),
+    // Um vínculo confirmado à mão vale por todo o grupo.
+    vinculo: grupo.some(a => a.vinculo === 'confirmado') ? 'confirmado' : base.vinculo,
+    conta_hook:    ref(a => a.conta_hook),
+    conta_ctr:     ref(a => a.conta_ctr),
+    conta_conexao: ref(a => a.conta_conexao),
+    conta_cpa:     ref(a => a.conta_cpa),
+    conta_roas:    ref(a => a.conta_roas),
+    conta_cpa_meta:  ref(a => a.conta_cpa_meta),
+    conta_roas_meta: ref(a => a.conta_roas_meta),
+    conta_cpm: ref(a => a.conta_cpm),
+    conta_cpc: ref(a => a.conta_cpc),
+    conta_pct_atribuido: ref(a => a.conta_pct_atribuido) ?? base.conta_pct_atribuido,
+    anuncios: ordenado,
+  };
+}
+
 /** PostgREST devolve `numeric` como string; somar isso concatena. */
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 
@@ -298,6 +376,18 @@ export function CriativosMetaTab() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
+  /** Um por card; anúncio sem card responde por si. */
+  const criativos = useMemo<Criativo[]>(() => {
+    const m = new Map<string, Anuncio[]>();
+    dados.forEach(a => {
+      const k = a.producao_id ?? 'ad:' + a.ad_id;
+      const g = m.get(k);
+      if (g) g.push(a); else m.set(k, [a]);
+    });
+    return [...m.values()].map(somarCriativo);
+  }, [dados]);
+
+
   const ordenar = (c: Coluna) => {
     if (c === col) setDir(d => (d === 'desc' ? 'asc' : 'desc'));
     else { setCol(c); setDir(c === 'nome' ? 'asc' : 'desc'); }
@@ -320,7 +410,7 @@ export function CriativosMetaTab() {
    * a si mesmo e o número mudaria ao clicar nele.
    */
   const recorte = useMemo(() => {
-    let l = dados;
+    let l: Criativo[] = criativos;
     if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
     if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
     if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
@@ -331,10 +421,10 @@ export function CriativosMetaTab() {
                      || a.conta?.toLowerCase().includes(b));
     }
     return l;
-  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, busca]);
+  }, [criativos, verPoucoInvestimento, soMeus, user, editorFiltro, busca]);
 
   const pendentes = useMemo(() => {
-    const g: Record<string, Anuncio[]> = {};
+    const g: Record<string, Criativo[]> = {};
     recorte.forEach(a => {
       if (resolvido(a.vinculo)) return;
       (g[a.vinculo] ??= []).push(a);
@@ -359,8 +449,10 @@ export function CriativosMetaTab() {
     return payt > 0 ? meta / payt : null;
   }, [dados]);
 
+  // O corte de investimento vale para o criativo inteiro: um que gastou R$ 40 em três
+  // campanhas gastou R$ 120, e não deve sumir por causa do pedaço.
   const escondidos = useMemo(
-    () => dados.filter(a => a.investimento < INVESTIMENTO_RELEVANTE).length, [dados]);
+    () => criativos.filter(a => a.investimento < INVESTIMENTO_RELEVANTE).length, [criativos]);
 
 
   const visiveis = useMemo(() => {
@@ -391,7 +483,7 @@ export function CriativosMetaTab() {
   /** Lista plana ou em blocos por editor, na mesma ordenação escolhida. */
   const blocos = useMemo(() => {
     if (!agrupar) return [{ chave: '', titulo: '', itens: visiveis }];
-    const m = new Map<string, Anuncio[]>();
+    const m = new Map<string, Criativo[]>();
     visiveis.forEach(a => {
       const k = a.editor ?? 'Sem dono definido';
       if (!m.has(k)) m.set(k, []);
@@ -667,7 +759,7 @@ function MiniRank({ titulo, itens, formato, ajuda }: {
 }
 
 function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
-  a: Anuncio; expandido: boolean; onToggle: () => void; onVincular: () => void; ehMeu: boolean;
+  a: Criativo; expandido: boolean; onToggle: () => void; onVincular: () => void; ehMeu: boolean;
 }) {
   const hook = hookDe(a), ctr = ctrDe(a);
   const conexao = razao(a.visualizacoes, a.cliques_link);
@@ -697,6 +789,12 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
           <div className="flex items-center gap-1.5">
             <span className="truncate text-foreground" title={a.ad_nome}>{a.ad_nome || a.ad_id}</span>
             {ehMeu && <span className="shrink-0 rounded bg-primary/15 px-1 py-0.5 text-[9px] text-primary">meu</span>}
+            {a.anuncios.length > 1 && (
+              <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                    title="O mesmo criativo rodando em mais de um anúncio. Os números aqui somam todos.">
+                {a.anuncios.length} anúncios
+              </span>
+            )}
             {a.avaliacao && (
               <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px]',
                 AVALIACAO_COR[a.avaliacao] ?? 'bg-secondary text-muted-foreground')}>
@@ -791,6 +889,51 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
                      sob={`${formatNumber(vendas)} conversões`}
                      fraco={poucaVenda || cego} />
             </div>
+
+            {/* Onde o criativo rodou. Só aparece quando ele se parte em mais de um
+                anúncio — que é o caso de 81% do investimento. Sem isto, somar os
+                números esconderia que um pedaço foi bem e outro mal. */}
+            {a.anuncios.length > 1 && (
+              <div className="overflow-x-auto rounded-lg border border-border/60 bg-background/40">
+                <table className="w-full text-[11px]">
+                  <thead className="text-muted-foreground/60">
+                    <tr>
+                      <th className="px-3 py-1.5 text-left font-medium">Conta</th>
+                      <th className="px-3 py-1.5 text-left font-medium">Estreia</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Investido</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Vendas</th>
+                      <th className="px-3 py-1.5 text-right font-medium">ROAS</th>
+                      <th className="px-3 py-1.5 text-right font-medium">CPA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {a.anuncios.map(x => {
+                      const r = roasDe(x), c = cpaDe(x);
+                      return (
+                        <tr key={x.ad_id} className="border-t border-border/40">
+                          <td className="px-3 py-1.5 text-muted-foreground">{x.conta}</td>
+                          <td className="px-3 py-1.5 tabular-nums text-muted-foreground/70">
+                            {x.estreia ? new Date(x.estreia + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-foreground">
+                            {formatCurrency(x.investimento)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-foreground">
+                            {formatNumber(vendasDe(x))}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-foreground">
+                            {r === null ? '—' : r.toFixed(2) + 'x'}
+                          </td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-foreground">
+                            {c === null ? '—' : formatCurrency(c)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               {cego ? (
