@@ -42,7 +42,9 @@ function mesesAnteriores(yyyy: number, mm: number, n: number) {
 
 interface KPIs {
   receitaBruta: number;
-  receitaLiquida: number;
+  /** Receita menos custo operacional, em reais. A margem sozinha esconde a
+   *  escala: 3,2% de R$ 123 mil e 3,2% de R$ 12 mil são decisões diferentes. */
+  resultado: number;
   totalCustos: number;
   margemOperacional: number;
   /** Quanto saiu da conta em anúncio no período. Vem do extrato, não do Meta:
@@ -112,13 +114,15 @@ export default function FinanceiroFechamentoPage() {
       linhas.filter(f).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
 
     const receitaBruta  = soma(t => t.valor > 0 && !!t.categoria && (CAT_RECEITAS as readonly string[]).includes(t.categoria));
-    const receitaLiquida = receitaBruta;
+    // Não existe "líquida" aqui. O dinheiro chega na conta já descontado da
+    // taxa da plataforma, então o extrato só tem UM valor de receita. Bruto
+    // versus líquido é conversa da Payt, e a Payt não entra nesta tela.
     const totalCustos   = soma(t => t.valor < 0 && !!t.categoria && (CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria));
     const gastoAds      = soma(t => t.valor < 0 && t.categoria === CAT_ANUNCIOS);
-    const lucro         = receitaLiquida - totalCustos;
-    const margem        = receitaLiquida > 0 ? (lucro / receitaLiquida) * 100 : 0;
+    const resultado     = receitaBruta - totalCustos;
+    const margem        = receitaBruta > 0 ? (resultado / receitaBruta) * 100 : 0;
 
-    setKpis({ receitaBruta, receitaLiquida, totalCustos, margemOperacional: margem, gastoAds });
+    setKpis({ receitaBruta, resultado, totalCustos, margemOperacional: margem, gastoAds });
 
     // custos por categoria
     const catMap = new Map<string, number>();
@@ -174,11 +178,13 @@ export default function FinanceiroFechamentoPage() {
     if (!kpis) return;
     const linhas = [
       ['Métrica', 'Valor'],
-      ['Receita Bruta', kpis.receitaBruta.toFixed(2)],
-      ['Receita Líquida', kpis.receitaLiquida.toFixed(2)],
-      ['Total de Custos', kpis.totalCustos.toFixed(2)],
+      // Mesma ordem da tela: entrou, saiu, sobrou, margem. Planilha que segue
+      // outra sequência obriga quem lê a remontar a conta de cabeça.
+      ['Entrou na conta', kpis.receitaBruta.toFixed(2)],
+      ['Saiu da conta', kpis.totalCustos.toFixed(2)],
+      ['  dos quais em anuncios', kpis.gastoAds.toFixed(2)],
+      ['Resultado', kpis.resultado.toFixed(2)],
       ['Margem Operacional (%)', kpis.margemOperacional.toFixed(1)],
-      ['Gasto com anuncios', kpis.gastoAds.toFixed(2)],
       [],
       ['Custos por Categoria'],
       ...custosCat.map(c => [c.categoria, c.total.toFixed(2)]),
@@ -199,17 +205,24 @@ export default function FinanceiroFechamentoPage() {
     label: string; value: string; sub?: string; icon: React.ElementType; positivo?: boolean;
   }) => (
     <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] text-muted-foreground uppercase tracking-wide">{label}</span>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+      {/* `items-start` e `leading-tight`: rótulo de duas linhas ("Margem
+          operacional") desalinhava a altura dos cartões vizinhos. */}
+      <div className="flex items-start justify-between gap-2 mb-2 min-h-[2rem]">
+        <span className="text-[11px] leading-tight text-muted-foreground uppercase tracking-wide">{label}</span>
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
       </div>
-      <p className={cn('text-xl font-bold tabular-nums', positivo === false ? 'text-red-400' : positivo === true ? 'text-green-400' : '')}>{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      {/* O valor encolhe um passo em tela estreita em vez de ser cortado. Antes
+          aparecia "R$ 123.266,7" — dinheiro truncado é pior que fonte menor. */}
+      <p className={cn(
+        'text-lg lg:text-xl font-bold tabular-nums leading-tight whitespace-nowrap',
+        positivo === false ? 'text-red-400' : positivo === true ? 'text-green-400' : '',
+      )}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{sub}</p>}
     </div>
   );
 
   return (
-    <DashboardLayout title="Financeiro">
+    <DashboardLayout title="Financeiro" hideFilters>
       <FinanceiroNav />
 
       {/* Esta tela soma transação pendente junto com as revisadas. É escolha —
@@ -243,21 +256,54 @@ export default function FinanceiroFechamentoPage() {
       {!loading && kpis && (
         <>
           {/* KPI cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <KPICard label="Receita bruta" value={formatCurrency(kpis.receitaBruta)} icon={DollarSign} positivo={kpis.receitaBruta > 0} />
-            <KPICard label="Receita líquida" value={formatCurrency(kpis.receitaLiquida)} icon={TrendingUp} positivo={kpis.receitaLiquida > 0} />
-            <KPICard label="Total de custos" value={formatCurrency(kpis.totalCustos)} icon={TrendingDown} positivo={false} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+            {/* A ordem é a da conta: entrou, saiu, sobrou, e o quanto isso
+                representa. Antes o Resultado vinha em segundo, ANTES dos custos
+                que o produziram — a tela pedia para acreditar num total antes de
+                mostrar as parcelas.
+
+                Em duas colunas o agrupamento ainda ajuda: os dois fatos do
+                extrato em cima, as duas conclusões embaixo.
+
+                Um cartão de receita, não dois. "Bruta" e "líquida" mostravam o
+                MESMO número lado a lado — `receitaLiquida = receitaBruta` —, o
+                que sugere uma distinção que o extrato não tem. */}
+            <KPICard
+              label="Entrou na conta"
+              value={formatCurrency(kpis.receitaBruta)}
+              sub="categorias de receita"
+              icon={DollarSign}
+              positivo={kpis.receitaBruta > 0}
+            />
+            <KPICard
+              label="Saiu da conta"
+              value={formatCurrency(kpis.totalCustos)}
+              sub={kpis.gastoAds > 0
+                ? `${formatCurrency(kpis.gastoAds)} em anúncios`
+                : 'custos operacionais'}
+              icon={TrendingDown}
+              positivo={false}
+            />
+            <KPICard
+              label="Resultado"
+              value={formatCurrency(kpis.resultado)}
+              sub="o que sobrou no mês"
+              icon={TrendingUp}
+              positivo={kpis.resultado > 0}
+            />
             <KPICard
               label="Margem operacional"
               value={`${kpis.margemOperacional.toFixed(1)}%`}
+              sub="resultado sobre o que entrou"
               icon={Percent}
               positivo={kpis.margemOperacional >= 20}
             />
             {/* ROAS, CPL e leads saíram: não são dado de conta bancária. Quem
                 mede retorno de anúncio é o Meta Ads e o Criativos Meta, com a
-                atribuição de verdade. Aqui fica o que saiu da conta. */}
-            <KPICard label="Gasto com anúncios" value={formatCurrency(kpis.gastoAds)}
-                     sub="saída da conta" icon={Target} />
+                atribuição de verdade.
+                O gasto com anúncios virou subtítulo do total de custos: ele é
+                PARTE do total, não um irmão dele. Como quinto cartão sobrava
+                sozinho na segunda linha e sugeria ser outra grandeza. */}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">

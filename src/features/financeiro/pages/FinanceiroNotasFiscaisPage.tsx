@@ -207,7 +207,7 @@ export default function FinanceiroNotasFiscaisPage() {
   // ─── render ───────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout title="Financeiro">
+    <DashboardLayout title="Financeiro" hideFilters>
       <FinanceiroNav />
 
       {/* cabeçalho */}

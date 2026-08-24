@@ -10,28 +10,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
+import {
+  CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA,
+} from '@/features/financeiro/constants';
 import { cn } from '@/lib/utils';
 
 // ─── Grupos do DRE ────────────────────────────────────────────────────────────
-
-const RECEITAS = [
-  'Produtos', 'Coprodução', 'Serviços', 'Marketplace', 'Ofertas',
-  'Receita Financeira', 'Expansão', 'Investimentos Futuros',
-];
-
-const CUSTOS_OPERACIONAIS = [
-  'Anúncios (Facebook ADs)', 'Aplicativos e Ferramentas', 'IAs', 'WhatsApp',
-  'Departamento Pessoal', 'Freelancer', 'Contabilidade', 'Impostos e Tributos',
-  'Jurídico', 'Endereço Fiscal', 'Cursos e Formações', 'Meios de Pagamento',
-  'Material de Escritório', 'Eletrônicos', 'Eventos', 'Registros e Documentos',
-  'Recarga e Chip', 'Doações', 'Outros',
-];
-
-// "Produtos" aparece nas receitas quando positivo; quando negativo é custo (ex: compra)
-
-const SOCIOS = ['Pró-labore', 'Retirada de Lucro', 'Sócios'];
-
-const RESERVA_CAT = ['Reserva de Caixa'];
+// A classificação vem de `constants.ts`. Ela morava aqui, em cópia local, e o
+// Fechamento não a usava — foi assim que as duas telas chegaram a margens
+// diferentes para o mesmo mês sem ninguém perceber.
+//
+// "Produtos" aparece nas receitas quando positivo; quando negativo é custo.
+const RECEITAS: readonly string[] = CAT_RECEITAS;
+const CUSTOS_OPERACIONAIS: readonly string[] = CAT_CUSTOS_OPERACIONAIS;
+const SOCIOS: readonly string[] = CAT_SOCIOS;
+const RESERVA_CAT: readonly string[] = CAT_RESERVA;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,7 +61,8 @@ interface MovimentoReserva {
 function LinhasDRE({ label, totais, cats, cor }: {
   label: string;
   totais: TotalCategoria[];
-  cats: string[];
+  /** `readonly` porque as listas vêm de `constants.ts` como `as const`. */
+  cats: readonly string[];
   cor?: string;
 }) {
   const linhas = cats
@@ -259,7 +253,7 @@ export default function FinanceiroCaixaPage() {
   }
 
   return (
-    <DashboardLayout title="Caixa">
+    <DashboardLayout title="Caixa" hideFilters>
       <FinanceiroNav />
 
       {/* O DRE só conta o que passou por olho humano — `confirmado` e

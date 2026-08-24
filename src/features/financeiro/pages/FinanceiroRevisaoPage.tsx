@@ -320,7 +320,7 @@ export default function FinanceiroRevisaoPage() {
   const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
 
   return (
-    <DashboardLayout title="Financeiro">
+    <DashboardLayout title="Financeiro" hideFilters>
       <FinanceiroNav />
 
       {/* summary */}
@@ -348,8 +348,9 @@ export default function FinanceiroRevisaoPage() {
         </div>
       </div>
 
-      {/* toolbar */}
-      <div className="flex items-center justify-between gap-3 mb-4">
+      {/* toolbar — `flex-wrap` porque sem ele os botões da direita eram
+           cortados na borda em vez de descer para a linha de baixo. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex gap-1 bg-secondary rounded-lg p-1">
           {(['pendentes', 'todas'] as Filtro[]).map(f => (
             <button
@@ -364,11 +365,11 @@ export default function FinanceiroRevisaoPage() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {prontasParaLote.length > 0 && (
             <Button size="sm" variant="outline" onClick={confirmarLote} disabled={confirmandoLote}>
               <CheckCheck className="h-3.5 w-3.5 mr-1.5" />
-              {confirmandoLote ? 'Confirmando…' : `Confirmar ${prontasParaLote.length} já categorizadas`}
+              {confirmandoLote ? 'Confirmando…' : `Confirmar ${prontasParaLote.length} automáticas`}
             </Button>
           )}
           <Button size="sm" onClick={() => setNovoModal(true)}>

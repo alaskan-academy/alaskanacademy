@@ -92,7 +92,7 @@ export default function FinanceiroConciliacaoPage() {
   }, [transacoes]);
 
   return (
-    <DashboardLayout title="Financeiro">
+    <DashboardLayout title="Financeiro" hideFilters>
       <FinanceiroNav />
 
       {/* filtros */}
