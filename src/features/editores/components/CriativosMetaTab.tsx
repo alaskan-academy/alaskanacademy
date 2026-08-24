@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useCallback, Fragment } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useFilters } from '@/contexts/FilterContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Link2, AlertCircle, ChevronDown, ChevronRight, Search, ArrowUp, ArrowDown, ExternalLink } from 'lucide-react';
+import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
+import type { ProducaoNivel } from '@/features/producao/components/types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -308,12 +309,23 @@ function Cabecalho({ col, rotulo, atual, dir, onSort, alinhar }: {
 export function CriativosMetaTab() {
   const { startDateStr, endDateStr, contaId } = useFilters();
   const { user, perfil } = useAuth();
-  const navigate = useNavigate();
-
-  /** Produção já sabia abrir card assim — é o mesmo caminho das notificações. */
+  /**
+   * O card abre aqui, sobre a tela.
+   *
+   * Antes navegava para Produção, o que tirava a pessoa do recorte que ela estava
+   * analisando — filtro, ordenação, linha expandida, tudo perdido para ver um card
+   * e ter que voltar. O drawer se vira sozinho: busca o próprio criativo, histórico,
+   * comentários e as opções dos campos. Os `funis`/`perfis` que ele declara são
+   * vestigiais; a própria Produção passa vazio.
+   */
+  const [cardAberto, setCardAberto] = useState<string | null>(null);
   const abrirCard = useCallback((producaoId: string | null) => {
-    if (producaoId) navigate('/producao', { state: { criativoId: producaoId } });
-  }, [navigate]);
+    if (producaoId) setCardAberto(producaoId);
+  }, []);
+
+  /** O drawer decide o que deixa editar a partir disto. */
+  const nivel: ProducaoNivel = perfil?.is_admin ? 'socio'
+    : perfil?.cargo?.pode_aprovar ? 'head' : 'membro';
 
   const [dados, setDados] = useState<Anuncio[]>([]);
   const [loading, setLoading] = useState(true);
@@ -714,6 +726,17 @@ export function CriativosMetaTab() {
                       onFechar={() => setVincular(null)}
                       onSalvo={() => { setVincular(null); carregar(); }} />
       )}
+
+      {/* Recarrega ao fechar: se alguém mexeu no card, a tabela precisa saber. */}
+      <CriativoDrawer
+        criativoId={cardAberto}
+        onClose={() => setCardAberto(null)}
+        onUpdate={() => carregar()}
+        nivel={nivel}
+        userId={user?.id ?? ''}
+        funis={[]}
+        perfis={[]}
+      />
     </div>
   );
 }
