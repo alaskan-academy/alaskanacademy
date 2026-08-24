@@ -557,12 +557,13 @@ export function CriativosMetaTab() {
       <div>
         <h3 className="text-base font-semibold">Criativos Meta</h3>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Cada anúncio com a hipótese que o card registrou. Vendas são as conversões que o
-          Meta credita ao anúncio, e cada taxa é comparada com a média da conta no período.
+          Cada anúncio com a hipótese do card. As taxas são comparadas com a média da conta.
         </p>
       </div>
 
-      {totalPendentes > 0 && !loading && (
+      {/* Quem cria card e atribui responsável é sócio. Para o editor, este aviso é
+          barulho sobre algo que ele não pode resolver. */}
+      {totalPendentes > 0 && !loading && perfil?.is_admin && (
         <div className="flex flex-wrap items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
           <div className="min-w-0 flex-1 space-y-1">
@@ -586,13 +587,13 @@ export function CriativosMetaTab() {
         </div>
       )}
 
-            {!loading && (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Vendas aqui são as conversões que o <span className="text-foreground">Meta</span>{' '}
-          credita ao anúncio — cobrem todos os anúncios igualmente, inclusive onde a UTM
-          falhou, mas contam a mais porque incluem quem viu e comprou depois por outro
-          caminho{inflacaoMeta && inflacaoMeta > 1.05 ? `: cerca de ${inflacaoMeta.toFixed(1)}× o que a Payt registra` : ''}.
-          Servem para comparar anúncios entre si, não como faturamento — o caixa está no Resumo.
+      {/* O aviso de que isto não é caixa fica, curto: sem ele alguém soma estes
+          números como faturamento. O resto do parágrafo repetia o subtítulo. */}
+      {!loading && (
+        <p className="text-[11px] text-muted-foreground">
+          Vendas são conversões do <span className="text-foreground">Meta</span>
+          {inflacaoMeta && inflacaoMeta > 1.05 ? `, cerca de ${inflacaoMeta.toFixed(1)}× o que a Payt registra` : ''}
+          {' '}— comparam anúncios entre si, não são faturamento.
         </p>
       )}
 
