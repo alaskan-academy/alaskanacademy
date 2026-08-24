@@ -210,11 +210,21 @@ Deno.serve(async (req) => {
   /**
    * Upsert por payt_id — se a Payt reenviar (ex: reembolso), atualiza o status.
    *
-   * Com três tentativas porque a falha que já custou dinheiro foi transitória: em
-   * 24/08/2026 um índice sendo criado em `vendas` travou as escritas, o gatilho de
-   * normalização estourou o `statement_timeout` e dois eventos morreram aqui — um
-   * deles um `paid` de R$ 87,12, que ficou de fora do caixa até alguém reprocessar
-   * à mão. O evento não volta: a Payt manda uma vez, e um 500 daqui vira silêncio.
+   * Repete porque a falha que já custou dinheiro foi transitória: em 24/08/2026 um
+   * índice sendo criado em `vendas` travou as escritas e dois eventos morreram
+   * aqui, um deles um `paid` de R$ 87,12. O evento não volta: a Payt manda uma
+   * vez, e um 500 daqui vira silêncio.
+   *
+   * DUAS tentativas, não três, e com espera aleatória — e isso vem de medição, não
+   * de gosto. Na tarde de 24/08 a Payt mandou o mesmo pedido duas vezes com 1,4
+   * segundo de diferença. Os dois eventos disputaram a MESMA linha, cada tentativa
+   * levou ~15 segundos até estourar, e as duas requisições ficaram brigando por 51
+   * segundos antes de desistir juntas. A primeira versão do retry, com espera fixa
+   * de 750 ms, mantinha as duas em passo sincronizado e transformou 2 concorrentes
+   * em 6 — piorou exatamente o caso que devia resolver.
+   *
+   * A aleatoriedade desempata quem tenta primeiro; o corte em duas tentativas
+   * evita insistir por um minuto num impasse que não vai ceder.
    *
    * Só repete quando vale a pena repetir. Erro de dado — coluna que não existe,
    * violação de restrição — não melhora na segunda tentativa e cai direto no
@@ -223,13 +233,20 @@ Deno.serve(async (req) => {
   const ehTransitorio = (msg: string) =>
     /timeout|deadlock|connection|temporarily unavailable|too many|57014|40001|40P01/i.test(msg);
 
+  const TENTATIVAS = 2;
   let error: { message: string } | null = null;
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+  for (let tentativa = 1; tentativa <= TENTATIVAS; tentativa++) {
     const r = await supabase.from('vendas_payt').upsert(linha, { onConflict: 'payt_id' });
     error = r.error;
     if (!error || !ehTransitorio(error.message)) break;
-    console.warn(`tentativa ${tentativa} falhou (${error.message}); repetindo`);
-    await new Promise(segue => setTimeout(segue, tentativa * 750));
+
+    if (tentativa === TENTATIVAS) {
+      console.error(`tentativa ${tentativa} falhou (${error.message}); desistindo`);
+      break;
+    }
+    const espera = 500 + Math.floor(Math.random() * 2500);
+    console.warn(`tentativa ${tentativa} falhou (${error.message}); repetindo em ${espera}ms`);
+    await new Promise(segue => setTimeout(segue, espera));
   }
 
   if (error) {
