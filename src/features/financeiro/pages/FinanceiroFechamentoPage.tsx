@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
+import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
@@ -214,6 +215,11 @@ export default function FinanceiroFechamentoPage() {
   return (
     <DashboardLayout title="Financeiro">
       <FinanceiroNav />
+
+      {/* Esta tela soma transação pendente junto com as revisadas. É escolha —
+          o fechamento quer o retrato completo do mês —, mas até aqui era uma
+          escolha muda, e o Caixa fazia o oposto sem ninguém saber. */}
+      <AvisoRevisao inicio={primeiroDia(ano, mes)} fim={ultimoDia(ano, mes)} modo="inclui" />
 
       {/* seletor de mês */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">

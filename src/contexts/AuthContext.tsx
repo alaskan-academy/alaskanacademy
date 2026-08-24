@@ -129,7 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setPerfil(perfilData ?? null);
 
+    // `setLoading(false)` ANTES do return: sem ele, quem tem o perfil desativado
+    // fica preso em "Carregando..." para sempre, em vez de cair na tela de login.
+    // O `signOut` limpa a sessão, mas quem destrava a interface é esta linha.
     if (perfilData?.ativo === false) {
+      setPerfil(null);
+      setLoading(false);
       await supabase.auth.signOut();
       return;
     }

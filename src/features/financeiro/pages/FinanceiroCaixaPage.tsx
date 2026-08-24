@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
+import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { cn } from '@/lib/utils';
 
 // ─── Grupos do DRE ────────────────────────────────────────────────────────────
@@ -255,6 +256,11 @@ export default function FinanceiroCaixaPage() {
   return (
     <DashboardLayout title="Caixa">
       <FinanceiroNav />
+
+      {/* O DRE só conta o que passou por olho humano — `confirmado` e
+          `revisado`. O que ficou de fora precisa aparecer, senão o mês parece
+          menor do que foi e ninguém sabe por quê. */}
+      <AvisoRevisao inicio={dataInicio} fim={dataFim} modo="exclui" />
 
       {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
