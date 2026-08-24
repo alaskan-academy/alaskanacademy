@@ -168,7 +168,33 @@ export default function SalesPage() {
         })),
       );
 
-      setHourlyData((rH.data || []).sort((a: any, b: any) => (a.hora || 0) - (b.hora || 0)));
+      // A view devolve uma linha por produto (e agora por conta), entao 24 horas viram
+      // ~100 linhas. Antes so ordenava, e o grafico desenhava a mesma hora varias vezes.
+      // Os outros tres graficos ja somavam; este era o unico que nao.
+      type PorHora = {
+        hora: number; vendas_aprovadas: number; vendas_pendentes: number;
+        faturamento: number; base_taxa: number; taxa_aprovacao_pct: number;
+      };
+      const hourMap: Record<number, PorHora> = {};
+      (rH.data ?? []).forEach((r: Record<string, unknown>) => {
+        const h = Number(r.hora ?? 0);
+        if (!hourMap[h]) {
+          hourMap[h] = { hora: h, vendas_aprovadas: 0, vendas_pendentes: 0,
+                         faturamento: 0, base_taxa: 0, taxa_aprovacao_pct: 0 };
+        }
+        hourMap[h].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
+        hourMap[h].vendas_pendentes += Number(r.vendas_pendentes || 0);
+        hourMap[h].faturamento      += Number(r.faturamento || 0);
+        hourMap[h].base_taxa        += Number(r.base_taxa || 0);
+      });
+      // A taxa se recalcula sobre os totais somados. Somar as taxas de cada produto e
+      // tirar a media daria peso igual a um produto com 3 vendas e a outro com 300.
+      Object.values(hourMap).forEach((x) => {
+        x.taxa_aprovacao_pct = x.base_taxa > 0
+          ? Number(((x.vendas_aprovadas / x.base_taxa) * 100).toFixed(2))
+          : 0;
+      });
+      setHourlyData(Object.values(hourMap).sort((a, b) => a.hora - b.hora));
 
       const weekOrder = [1, 2, 3, 4, 5, 6, 0];
       const weekMap: Record<number, any> = {};
