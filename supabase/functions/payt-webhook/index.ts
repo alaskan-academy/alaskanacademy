@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
     error = r.error;
     if (!error || !ehTransitorio(error.message)) break;
     console.warn(`tentativa ${tentativa} falhou (${error.message}); repetindo`);
-    await new Promise(r => setTimeout(r, tentativa * 750));
+    await new Promise(segue => setTimeout(segue, tentativa * 750));
   }
 
   if (error) {
