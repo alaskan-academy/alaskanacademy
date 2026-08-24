@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
+import {
+  CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_ANUNCIOS,
+} from '@/features/financeiro/constants';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
@@ -42,13 +45,9 @@ interface KPIs {
   receitaLiquida: number;
   totalCustos: number;
   margemOperacional: number;
+  /** Quanto saiu da conta em anúncio no período. Vem do extrato, não do Meta:
+   *  aqui interessa o dinheiro que saiu, não o que a plataforma reporta. */
   gastoAds: number;
-  /** Houve linha em `metricas_diarias` no período? Zero medido e zero por falta
-   *  de medição são coisas diferentes, e a tela precisa distinguir. */
-  temMetrica: boolean;
-  roas: number;
-  custoLead: number;
-  leads: number;
 }
 
 interface CustoCategoria { categoria: string; total: number }
@@ -83,58 +82,54 @@ export default function FinanceiroFechamentoPage() {
     const fim    = ultimoDia(ano, mes);
     const meses  = mesesAnteriores(ano, mes, 6);
 
-    const [payt, hotmart, trans, metrics] = await Promise.all([
-      supabase
-        .from('vendas_payt')
-        .select('valor')
-        .gte('data', inicio)
-        .lte('data', fim)
-        .eq('status', 'paid'),
-      supabase
-        .from('vendas_hotmart')
-        .select('valor')
-        .gte('data', inicio)
-        .lte('data', fim)
-        .in('status', ['Aprovado', 'Completo']),
+    // Uma fonte só: o extrato. Venda de plataforma vive nas telas de Vendas.
+    const [trans] = await Promise.all([
       supabase
         .from('transacoes')
         .select('valor,categoria')
         .gte('data', inicio)
-        .lte('data', fim)
-        .neq('categoria', 'Anúncios (Facebook ADs)'),
-      supabase
-        .from('metricas_diarias')
-        .select('gasto_ads,receita,leads')
-        .gte('data', inicio)
         .lte('data', fim),
     ]);
 
-    if (payt.error || hotmart.error || trans.error || metrics.error) {
+    if (trans.error) {
       toast({ title: 'Erro ao carregar dados', variant: 'destructive' });
     }
 
-    const receitaPayt    = (payt.data    || []).reduce((s, r) => s + Number(r.valor || 0), 0);
-    const receitaHotmart = (hotmart.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
-    const receitaBruta   = receitaPayt + receitaHotmart;
-    const receitaLiquida= receitaBruta;
-    const totalCustos   = (trans.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
-    const temMetrica    = (metrics.data || []).length > 0;
-    const gastoAds      = (metrics.data || []).reduce((s, r) => s + Number(r.gasto_ads || 0), 0);
-    const leads         = (metrics.data || []).reduce((s, r) => s + Number(r.leads    || 0), 0);
-    const receitaAds    = (metrics.data || []).reduce((s, r) => s + Number(r.receita  || 0), 0);
-    const roas          = gastoAds > 0 ? receitaAds / gastoAds : 0;
-    const custoLead     = leads   > 0 ? gastoAds  / leads     : 0;
+    /* -----------------------------------------------------------------------
+     * Só extrato bancário.
+     *
+     * Antes a receita vinha da Payt e da Hotmart e o custo vinha do banco — duas
+     * bases diferentes na mesma conta de margem —, e ainda por cima a consulta
+     * de custos EXCLUÍA 'Anúncios (Facebook ADs)', porque o gasto de anúncio
+     * deveria chegar pela UTMify. A UTMify nunca foi ligada (`metricas_diarias`
+     * com zero linhas), então a maior saída do mês simplesmente não entrava.
+     *
+     * Em agosto/2026 isso dava margem de 57,1% na tela contra 3,2% no extrato:
+     * R$ 92.849,66 de anúncio fora da conta.
+     * --------------------------------------------------------------------- */
+    const linhas = trans.data || [];
+    const soma = (f: (t: { valor: number; categoria: string | null }) => boolean) =>
+      linhas.filter(f).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
+
+    const receitaBruta  = soma(t => t.valor > 0 && !!t.categoria && (CAT_RECEITAS as readonly string[]).includes(t.categoria));
+    const receitaLiquida = receitaBruta;
+    const totalCustos   = soma(t => t.valor < 0 && !!t.categoria && (CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria));
+    const gastoAds      = soma(t => t.valor < 0 && t.categoria === CAT_ANUNCIOS);
     const lucro         = receitaLiquida - totalCustos;
     const margem        = receitaLiquida > 0 ? (lucro / receitaLiquida) * 100 : 0;
 
-    setKpis({ receitaBruta, receitaLiquida, totalCustos, margemOperacional: margem, gastoAds, temMetrica, roas, custoLead, leads });
+    setKpis({ receitaBruta, receitaLiquida, totalCustos, margemOperacional: margem, gastoAds });
 
     // custos por categoria
     const catMap = new Map<string, number>();
+    // O gráfico usa a MESMA classificação do total. Antes ele somava toda
+    // saída, então "Reserva de Caixa" aparecia como custo — e transferência
+    // entre contas próprias não é custo, é caixa mudando de lugar. O gráfico
+    // dizia uma coisa e o cartão de total dizia outra, na mesma tela.
     for (const t of (trans.data || [])) {
       if (t.valor >= 0) continue;
-      const k = t.categoria || 'Sem categoria';
-      catMap.set(k, (catMap.get(k) || 0) + Math.abs(Number(t.valor)));
+      if (!t.categoria || !(CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria)) continue;
+      catMap.set(t.categoria, (catMap.get(t.categoria) || 0) + Math.abs(Number(t.valor)));
     }
     setCustosCat(
       Array.from(catMap.entries())
@@ -148,15 +143,15 @@ export default function FinanceiroFechamentoPage() {
       meses.map(async ({ yyyy, mm }) => {
         const d0 = primeiroDia(yyyy, mm);
         const d1 = ultimoDia(yyyy, mm);
-        const [p2, h2, t2] = await Promise.all([
-          supabase.from('vendas_payt').select('valor').gte('data', d0).lte('data', d1).eq('status', 'paid'),
-          supabase.from('vendas_hotmart').select('valor').gte('data', d0).lte('data', d1).in('status', ['Aprovado', 'Completo']),
-          supabase.from('transacoes').select('valor').gte('data', d0).lte('data', d1).neq('categoria', 'Anúncios (Facebook ADs)'),
-        ]);
-        const rb = (p2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0)
-                 + (h2.data || []).reduce((s, r) => s + Number(r.valor || 0), 0);
+        // Mesma regra do mês corrente: extrato, receita e custo pela mesma base.
+        const { data: t2 } = await supabase
+          .from('transacoes').select('valor,categoria').gte('data', d0).lte('data', d1);
+        const linhas2 = t2 || [];
+        const soma2 = (f: (t: { valor: number; categoria: string | null }) => boolean) =>
+          linhas2.filter(f).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
+        const rb = soma2(t => t.valor > 0 && !!t.categoria && (CAT_RECEITAS as readonly string[]).includes(t.categoria));
         const rl = rb;
-        const tc = (t2.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
+        const tc = soma2(t => t.valor < 0 && !!t.categoria && (CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria));
         const mg = rl > 0 ? ((rl - tc) / rl) * 100 : 0;
         return { label: mesLabel(yyyy, mm), receitaBruta: rb, totalCustos: tc, margem: mg };
       })
@@ -183,12 +178,7 @@ export default function FinanceiroFechamentoPage() {
       ['Receita Líquida', kpis.receitaLiquida.toFixed(2)],
       ['Total de Custos', kpis.totalCustos.toFixed(2)],
       ['Margem Operacional (%)', kpis.margemOperacional.toFixed(1)],
-      // Mesmo cuidado do cartão: sem medição, o CSV leva vazio e não zero. Uma
-      // planilha que diz "ROAS 0,00" vira decisão errada na mão da contabilidade.
-      ['Gasto Ads', kpis.temMetrica ? kpis.gastoAds.toFixed(2) : ''],
-      ['ROAS', kpis.temMetrica ? kpis.roas.toFixed(2) : ''],
-      ['CPL', kpis.temMetrica ? kpis.custoLead.toFixed(2) : ''],
-      ['Leads', kpis.temMetrica ? kpis.leads.toString() : ''],
+      ['Gasto com anuncios', kpis.gastoAds.toFixed(2)],
       [],
       ['Custos por Categoria'],
       ...custosCat.map(c => [c.categoria, c.total.toFixed(2)]),
@@ -263,21 +253,11 @@ export default function FinanceiroFechamentoPage() {
               icon={Percent}
               positivo={kpis.margemOperacional >= 20}
             />
-            {/* Estes quatro vêm da UTMify, que alimenta `metricas_diarias`. A
-                tabela está vazia desde sempre — a integração nunca foi ligada.
-                Mostrar "R$ 0,00" e "0.00x" fazia a tela afirmar que o gasto foi
-                zero e o retorno foi nulo, quando a verdade é que ninguém mediu.
-                ROAS zerado parece campanha desastrosa; quem olhasse para decidir
-                decidiria errado. */}
-            <KPICard label="Gasto ads" value={kpis.temMetrica ? formatCurrency(kpis.gastoAds) : '—'}
-                     sub={kpis.temMetrica ? 'UTMify' : 'UTMify não integrada'} icon={Target} />
-            <KPICard label="ROAS" value={kpis.temMetrica ? `${kpis.roas.toFixed(2)}x` : '—'}
-                     sub={kpis.temMetrica ? 'receita / gasto ads' : 'depende do gasto de ads'} icon={Zap}
-                     positivo={kpis.temMetrica ? kpis.roas >= 3 : undefined} />
-            <KPICard label="Custo por lead (CPL)" value={kpis.temMetrica ? formatCurrency(kpis.custoLead) : '—'}
-                     sub={kpis.temMetrica ? undefined : 'UTMify não integrada'} icon={Target} />
-            <KPICard label="Leads gerados" value={kpis.temMetrica ? kpis.leads.toLocaleString('pt-BR') : '—'}
-                     sub={kpis.temMetrica ? 'UTMify' : 'UTMify não integrada'} icon={TrendingUp} />
+            {/* ROAS, CPL e leads saíram: não são dado de conta bancária. Quem
+                mede retorno de anúncio é o Meta Ads e o Criativos Meta, com a
+                atribuição de verdade. Aqui fica o que saiu da conta. */}
+            <KPICard label="Gasto com anúncios" value={formatCurrency(kpis.gastoAds)}
+                     sub="saída da conta" icon={Target} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
