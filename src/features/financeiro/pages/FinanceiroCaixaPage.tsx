@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank,
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import {
-  CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA,
+  CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA, ehCustoOperacional,
 } from '@/features/financeiro/constants';
 import { cn } from '@/lib/utils';
 
@@ -209,8 +209,10 @@ export default function FinanceiroCaixaPage() {
     .filter(t => t.categoria && RECEITAS.includes(t.categoria) && t.total > 0)
     .reduce((a, t) => a + t.total, 0);
 
+  // Mesma regra aberta do Fechamento: toda saida e custo, menos socio e
+  // reserva. A lista fechada deixava sumir saida em categoria de receita.
   const totalCustos = totais
-    .filter(t => t.categoria && CUSTOS_OPERACIONAIS.includes(t.categoria) && t.total < 0)
+    .filter(t => ehCustoOperacional({ valor: t.total, categoria: t.categoria }))
     .reduce((a, t) => a + t.total, 0);
 
   const totalSociosRetiradas = totaisSociosNeg.reduce((a, t) => a + t.total, 0);

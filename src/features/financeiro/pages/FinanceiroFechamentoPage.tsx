@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import {
-  CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_ANUNCIOS,
+  CAT_CUSTOS_OPERACIONAIS, CAT_ANUNCIOS, ehCustoOperacional, ehReceita,
 } from '@/features/financeiro/constants';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { supabase } from '@/lib/supabase';
@@ -113,11 +113,11 @@ export default function FinanceiroFechamentoPage() {
     const soma = (f: (t: { valor: number; categoria: string | null }) => boolean) =>
       linhas.filter(f).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
 
-    const receitaBruta  = soma(t => t.valor > 0 && !!t.categoria && (CAT_RECEITAS as readonly string[]).includes(t.categoria));
+    const receitaBruta  = soma(ehReceita);
     // Não existe "líquida" aqui. O dinheiro chega na conta já descontado da
     // taxa da plataforma, então o extrato só tem UM valor de receita. Bruto
     // versus líquido é conversa da Payt, e a Payt não entra nesta tela.
-    const totalCustos   = soma(t => t.valor < 0 && !!t.categoria && (CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria));
+    const totalCustos   = soma(ehCustoOperacional);
     const gastoAds      = soma(t => t.valor < 0 && t.categoria === CAT_ANUNCIOS);
     const resultado     = receitaBruta - totalCustos;
     const margem        = receitaBruta > 0 ? (resultado / receitaBruta) * 100 : 0;
@@ -132,7 +132,8 @@ export default function FinanceiroFechamentoPage() {
     // dizia uma coisa e o cartão de total dizia outra, na mesma tela.
     for (const t of (trans.data || [])) {
       if (t.valor >= 0) continue;
-      if (!t.categoria || !(CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria)) continue;
+      if (!ehCustoOperacional(t)) continue;
+      if (!t.categoria) continue;
       catMap.set(t.categoria, (catMap.get(t.categoria) || 0) + Math.abs(Number(t.valor)));
     }
     setCustosCat(
@@ -153,9 +154,9 @@ export default function FinanceiroFechamentoPage() {
         const linhas2 = t2 || [];
         const soma2 = (f: (t: { valor: number; categoria: string | null }) => boolean) =>
           linhas2.filter(f).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
-        const rb = soma2(t => t.valor > 0 && !!t.categoria && (CAT_RECEITAS as readonly string[]).includes(t.categoria));
+        const rb = soma2(ehReceita);
         const rl = rb;
-        const tc = soma2(t => t.valor < 0 && !!t.categoria && (CAT_CUSTOS_OPERACIONAIS as readonly string[]).includes(t.categoria));
+        const tc = soma2(ehCustoOperacional);
         const mg = rl > 0 ? ((rl - tc) / rl) * 100 : 0;
         return { label: mesLabel(yyyy, mm), receitaBruta: rb, totalCustos: tc, margem: mg };
       })
