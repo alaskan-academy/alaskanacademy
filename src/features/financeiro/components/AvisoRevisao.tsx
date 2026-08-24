@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
 
@@ -27,22 +26,30 @@ export function AvisoRevisao({
 }) {
   const navigate = useNavigate();
   const [qtd, setQtd] = useState(0);
-  const [valor, setValor] = useState(0);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     let vivo = true;
-    supabase
-      .from('transacoes')
-      .select('valor')
-      .gte('data', inicio)
-      .lte('data', fim)
-      .in('status_revisao', ['pendente', 'auto_categorizado'])
-      .then(({ data }) => {
-        if (!vivo) return;
-        const linhas = data ?? [];
-        setQtd(linhas.length);
-        setValor(linhas.reduce((s, r) => s + Math.abs(Number(r.valor || 0)), 0));
-      });
+    // Conta, não soma. A primeira versão somava o valor absoluto das pendentes e
+    // exibia "R$ 263.188,85" ao lado de "total de custos R$ 42.488,41" — número
+    // maior que a tela inteira, porque juntava entrada com saída e incluía
+    // movimentação que não é custo. Parecia contradição e não ajudava ninguém.
+    // "187 de 187" diz na hora o tamanho do problema.
+    Promise.all([
+      supabase
+        .from('transacoes')
+        .select('id', { count: 'exact', head: true })
+        .gte('data', inicio).lte('data', fim)
+        .in('status_revisao', ['pendente', 'auto_categorizado']),
+      supabase
+        .from('transacoes')
+        .select('id', { count: 'exact', head: true })
+        .gte('data', inicio).lte('data', fim),
+    ]).then(([r1, r2]) => {
+      if (!vivo) return;
+      setQtd(r1.count ?? 0);
+      setTotal(r2.count ?? 0);
+    });
     return () => { vivo = false; };
   }, [inicio, fim]);
 
@@ -60,8 +67,9 @@ export function AvisoRevisao({
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
       <span className="text-xs">
         <span className="font-medium text-amber-200">
-          {qtd} {qtd === 1 ? 'transação ainda não revisada' : 'transações ainda não revisadas'}
-          {' '}({formatCurrency(valor)})
+          {qtd === total
+            ? `Nenhuma das ${total} transações do período foi revisada`
+            : `${qtd} de ${total} transações do período ainda não foram revisadas`}
         </span>
         <span className="mt-0.5 block text-amber-200/70">
           {modo === 'inclui'

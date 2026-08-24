@@ -63,6 +63,9 @@ interface AuthContextType {
   user: User | null;
   perfil: Perfil | null;
   loading: boolean;
+  /** Preenchido quando o backend não respondeu a tempo. Null quando está tudo bem. */
+  falhaDeConexao: string | null;
+  tentarDeNovo: () => void;
   canAccess: (key: string) => boolean;
   reloadPermissions: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<string | null>;
@@ -71,11 +74,30 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+/**
+ * `cargo` e `setor` chegam do PostgREST como vínculo embutido, e ele devolve
+ * array mesmo quando a relação é para-um. O tipo aqui diz "objeto", então quem
+ * lê `perfil.cargo.pode_aprovar` pegaria `undefined` se viesse array — e todo
+ * Head viraria membro em silêncio, sem erro nenhum na tela.
+ *
+ * Normalizar na fronteira aceita as duas formas e mata o `as` que escondia a
+ * divergência do tsc.
+ */
+function normalizarPerfil(linha: unknown): Perfil | null {
+  if (!linha || typeof linha !== 'object') return null;
+  const p = linha as Record<string, unknown>;
+  const umSo = <T,>(v: unknown): T | null =>
+    Array.isArray(v) ? ((v[0] ?? null) as T | null) : ((v ?? null) as T | null);
+  return { ...p, cargo: umSo<Cargo>(p.cargo), setor: umSo<Setor>(p.setor) } as Perfil;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]           = useState<User | null>(null);
   const [perfil, setPerfil]       = useState<Perfil | null>(null);
   const [allowed, setAllowed]     = useState<Set<string>>(new Set(PAGINAS.map(p => p.key)));
   const [loading, setLoading]     = useState(true);
+  const [falhaDeConexao, setFalhaDeConexao] = useState<string | null>(null);
+  const [tentativa, setTentativa] = useState(0);
 
   const loadPerfil = async (uid: string) => {
     const { data } = await supabase
@@ -83,8 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select('nome, is_admin, ativo, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
       .eq('id', uid)
       .single();
-    setPerfil(data ?? null);
-    return data;
+    const perfilNormalizado = normalizarPerfil(data);
+    setPerfil(perfilNormalizado);
+    return perfilNormalizado;
   };
 
   const loadPermissions = async (uid: string, isAdmin: boolean) => {
@@ -110,24 +133,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadPermissions(user.id, perfil.is_admin);
   };
 
-  const boot = async (u: User | null) => {
-    setUser(u);
-    if (!u) { setPerfil(null); setLoading(false); return; }
-
-    // Fetch perfil e permissions em paralelo — economiza um round trip
-    const [{ data: perfilData }, { data: permsData }] = await Promise.all([
-      supabase
-        .from('perfis')
-        .select('nome, is_admin, ativo, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
-        .eq('id', u.id)
-        .single(),
-      supabase
-        .from('permissoes_paginas')
-        .select('pagina, permitido')
-        .eq('usuario_id', u.id),
+  /**
+    * Espera no máximo `ms` e desiste.
+    *
+    * Sem isto, uma indisponibilidade do backend deixa a tela em "Carregando..."
+    * para sempre — foi o que aconteceu em 24/08, quando a camada de conexão do
+    * Supabase travou e o dash inteiro virou um spinner sem explicação. Spinner
+    * eterno é a pior mensagem de erro possível: a pessoa não sabe se espera, se
+    * recarrega, ou se o problema é dela.
+    */
+  const comLimite = <T,>(promessa: PromiseLike<T>, ms = 15000): Promise<T> =>
+    Promise.race([
+      Promise.resolve(promessa),
+      new Promise<T>((_, rejeita) =>
+        setTimeout(() => rejeita(new Error('tempo esgotado')), ms)),
     ]);
 
-    setPerfil(perfilData ?? null);
+  const boot = async (u: User | null) => {
+    setUser(u);
+    if (!u) { setPerfil(null); setLoading(false); setFalhaDeConexao(null); return; }
+
+    let perfilData: Perfil | null = null;
+    let permsData: { pagina: string; permitido: boolean }[] | null = null;
+
+    try {
+      // Fetch perfil e permissions em paralelo — economiza um round trip
+      const [rPerfil, rPerms] = await comLimite(Promise.all([
+        supabase
+          .from('perfis')
+          .select('nome, is_admin, ativo, radar_pode_criar, cargo_id, setor_id, cargo:cargos(id,nome,ordem,pode_aprovar), setor:setores(id,nome)')
+          .eq('id', u.id)
+          .single(),
+        supabase
+          .from('permissoes_paginas')
+          .select('pagina, permitido')
+          .eq('usuario_id', u.id),
+      ]));
+      perfilData = normalizarPerfil(rPerfil.data);
+      permsData  = rPerms.data as { pagina: string; permitido: boolean }[] | null;
+      setFalhaDeConexao(null);
+    } catch {
+      // Não desloga: a sessão pode estar boa e o servidor é que está fora.
+      // Deslogar aqui faria a pessoa perder o login por causa de uma queda.
+      setFalhaDeConexao('Não consegui falar com o servidor.');
+      setLoading(false);
+      return;
+    }
+
+    setPerfil(perfilData);
 
     // `setLoading(false)` ANTES do return: sem ele, quem tem o perfil desativado
     // fica preso em "Carregando..." para sempre, em vez de cair na tela de login.
@@ -157,6 +210,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Refaz o boot quando a pessoa clica em "tentar de novo". Fica separado do
+  // efeito acima porque aquele só pode rodar uma vez — reassinar o
+  // onAuthStateChange a cada tentativa duplicaria os listeners.
+  useEffect(() => {
+    if (tentativa === 0) return;
+    setLoading(true);
+    setFalhaDeConexao(null);
+    supabase.auth.getSession().then(({ data }) => boot(data.session?.user ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tentativa]);
+
+  const tentarDeNovo = () => setTentativa(t => t + 1);
+
   const signIn = async (email: string, password: string): Promise<string | null> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error ? error.message : null;
@@ -181,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, perfil, loading, canAccess, reloadPermissions, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, perfil, loading, falhaDeConexao, tentarDeNovo, canAccess, reloadPermissions, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

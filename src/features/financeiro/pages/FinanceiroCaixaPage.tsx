@@ -194,10 +194,15 @@ export default function FinanceiroCaixaPage() {
       const { data: cfg } = await supabase.from('caixa_config').select('*').limit(1).single();
       if (cfg) setConfig(cfg as CaixaConfig);
 
+      // O mesmo filtro do resto da tela. Sem ele, esta seção contava transação
+      // não revisada enquanto o DRE logo acima a ignorava: em 24/08 o DRE
+      // mostrava R$ 0,00 e a reserva mostrava −R$ 1.559,21 com movimentos de
+      // agosto. Duas regras diferentes na mesma página, e nenhuma delas escrita.
       const { data: mov } = await supabase
         .from('transacoes')
         .select('id, data, descricao, valor')
         .eq('categoria', 'Reserva de Caixa')
+        .in('status_revisao', ['confirmado', 'revisado'])
         .order('data', { ascending: false });
 
       setMovimentos((mov ?? []) as MovimentoReserva[]);

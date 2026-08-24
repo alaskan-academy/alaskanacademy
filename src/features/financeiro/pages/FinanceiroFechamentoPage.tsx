@@ -43,6 +43,9 @@ interface KPIs {
   totalCustos: number;
   margemOperacional: number;
   gastoAds: number;
+  /** Houve linha em `metricas_diarias` no período? Zero medido e zero por falta
+   *  de medição são coisas diferentes, e a tela precisa distinguir. */
+  temMetrica: boolean;
   roas: number;
   custoLead: number;
   leads: number;
@@ -115,6 +118,7 @@ export default function FinanceiroFechamentoPage() {
     const receitaBruta   = receitaPayt + receitaHotmart;
     const receitaLiquida= receitaBruta;
     const totalCustos   = (trans.data || []).filter(t => t.valor < 0).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
+    const temMetrica    = (metrics.data || []).length > 0;
     const gastoAds      = (metrics.data || []).reduce((s, r) => s + Number(r.gasto_ads || 0), 0);
     const leads         = (metrics.data || []).reduce((s, r) => s + Number(r.leads    || 0), 0);
     const receitaAds    = (metrics.data || []).reduce((s, r) => s + Number(r.receita  || 0), 0);
@@ -123,7 +127,7 @@ export default function FinanceiroFechamentoPage() {
     const lucro         = receitaLiquida - totalCustos;
     const margem        = receitaLiquida > 0 ? (lucro / receitaLiquida) * 100 : 0;
 
-    setKpis({ receitaBruta, receitaLiquida, totalCustos, margemOperacional: margem, gastoAds, roas, custoLead, leads });
+    setKpis({ receitaBruta, receitaLiquida, totalCustos, margemOperacional: margem, gastoAds, temMetrica, roas, custoLead, leads });
 
     // custos por categoria
     const catMap = new Map<string, number>();
@@ -179,10 +183,12 @@ export default function FinanceiroFechamentoPage() {
       ['Receita Líquida', kpis.receitaLiquida.toFixed(2)],
       ['Total de Custos', kpis.totalCustos.toFixed(2)],
       ['Margem Operacional (%)', kpis.margemOperacional.toFixed(1)],
-      ['Gasto Ads', kpis.gastoAds.toFixed(2)],
-      ['ROAS', kpis.roas.toFixed(2)],
-      ['CPL', kpis.custoLead.toFixed(2)],
-      ['Leads', kpis.leads.toString()],
+      // Mesmo cuidado do cartão: sem medição, o CSV leva vazio e não zero. Uma
+      // planilha que diz "ROAS 0,00" vira decisão errada na mão da contabilidade.
+      ['Gasto Ads', kpis.temMetrica ? kpis.gastoAds.toFixed(2) : ''],
+      ['ROAS', kpis.temMetrica ? kpis.roas.toFixed(2) : ''],
+      ['CPL', kpis.temMetrica ? kpis.custoLead.toFixed(2) : ''],
+      ['Leads', kpis.temMetrica ? kpis.leads.toString() : ''],
       [],
       ['Custos por Categoria'],
       ...custosCat.map(c => [c.categoria, c.total.toFixed(2)]),
@@ -257,10 +263,21 @@ export default function FinanceiroFechamentoPage() {
               icon={Percent}
               positivo={kpis.margemOperacional >= 20}
             />
-            <KPICard label="Gasto ads" value={formatCurrency(kpis.gastoAds)} sub="UTMify" icon={Target} />
-            <KPICard label="ROAS" value={`${kpis.roas.toFixed(2)}x`} sub="receita / gasto ads" icon={Zap} positivo={kpis.roas >= 3} />
-            <KPICard label="Custo por lead (CPL)" value={formatCurrency(kpis.custoLead)} icon={Target} />
-            <KPICard label="Leads gerados" value={kpis.leads.toLocaleString('pt-BR')} sub="UTMify" icon={TrendingUp} />
+            {/* Estes quatro vêm da UTMify, que alimenta `metricas_diarias`. A
+                tabela está vazia desde sempre — a integração nunca foi ligada.
+                Mostrar "R$ 0,00" e "0.00x" fazia a tela afirmar que o gasto foi
+                zero e o retorno foi nulo, quando a verdade é que ninguém mediu.
+                ROAS zerado parece campanha desastrosa; quem olhasse para decidir
+                decidiria errado. */}
+            <KPICard label="Gasto ads" value={kpis.temMetrica ? formatCurrency(kpis.gastoAds) : '—'}
+                     sub={kpis.temMetrica ? 'UTMify' : 'UTMify não integrada'} icon={Target} />
+            <KPICard label="ROAS" value={kpis.temMetrica ? `${kpis.roas.toFixed(2)}x` : '—'}
+                     sub={kpis.temMetrica ? 'receita / gasto ads' : 'depende do gasto de ads'} icon={Zap}
+                     positivo={kpis.temMetrica ? kpis.roas >= 3 : undefined} />
+            <KPICard label="Custo por lead (CPL)" value={kpis.temMetrica ? formatCurrency(kpis.custoLead) : '—'}
+                     sub={kpis.temMetrica ? undefined : 'UTMify não integrada'} icon={Target} />
+            <KPICard label="Leads gerados" value={kpis.temMetrica ? kpis.leads.toLocaleString('pt-BR') : '—'}
+                     sub={kpis.temMetrica ? 'UTMify' : 'UTMify não integrada'} icon={TrendingUp} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
