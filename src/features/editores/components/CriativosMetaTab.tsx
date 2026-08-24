@@ -1057,9 +1057,12 @@ interface Card {
 /**
  * Diz qual card de Produção é este anúncio.
  *
- * Grava `producoes.ad_id_meta`. Depois de confirmado, o vínculo para de depender do
- * nome — que é o ponto: em 18% dos anúncios o mesmo nome existe em cards de editores
- * diferentes, e escolher "o mais recente" sempre devolveria alguém sem nunca acusar erro.
+ * Grava em `producao_ads`. Depois disso o vínculo para de depender do nome — que é o
+ * ponto: `AD 006 H01 V01` existe em 18 projetos, e escolher "o mais próximo na data"
+ * sempre devolvia alguém sem nunca acusar erro.
+ *
+ * A escolha aqui é `manual` e o robô horário não a desfaz: ele só grava vínculo que
+ * ainda não existe.
  */
 function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
   anuncio: Anuncio; podeEditar: boolean; onFechar: () => void; onSalvo: () => void;
@@ -1101,11 +1104,17 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
 
   const salvar = async (cardId: string) => {
     setSalvando(true);
-    // Um anúncio pertence a um card só: solta o vínculo anterior antes de criar o novo,
-    // senão o índice único recusa e o clique vira erro sem explicação.
-    await supabase.from('producoes').update({ ad_id_meta: null }).eq('ad_id_meta', anuncio.ad_id);
+    // Um anúncio pertence a um card só — `ad_id` é a chave da tabela, então o upsert
+    // troca o card sem precisar apagar antes. O card, esse sim, se repete: o mesmo
+    // criativo sobe como vários anúncios no Meta.
     const { data, error } = await supabase
-      .from('producoes').update({ ad_id_meta: anuncio.ad_id }).eq('id', cardId).select('id');
+      .from('producao_ads')
+      // `fixado_em` vai explícito: o default da coluna só vale na inserção, e sem
+      // isto a troca de card guardaria a data do vínculo antigo.
+      .upsert({ ad_id: anuncio.ad_id, producao_id: cardId, origem: 'manual',
+                fixado_em: new Date().toISOString() },
+              { onConflict: 'ad_id' })
+      .select('ad_id');
     setSalvando(false);
 
     if (error || !data?.length) {
