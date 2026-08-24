@@ -182,6 +182,12 @@ Deno.serve(async (req) => {
           valor: isDebitBanking(tx) ? -Math.abs(raw) : Math.abs(raw),
           status_revisao: 'pendente',
           fonte: 'conta_simples',
+          // A resposta inteira, não só os campos que a tela usa hoje. Se a
+          // Conta Simples devolver link de comprovante, ele está aqui — antes
+          // era descartado todo dia sem ninguém saber o que se perdia. Mesmo
+          // princípio de `vendas_payt.payload_raw`, que hoje de manhã foi o
+          // que permitiu reprocessar venda à mão em vez de perdê-la.
+          payload_raw: tx,
         };
       });
 
@@ -205,6 +211,7 @@ Deno.serve(async (req) => {
           valor: isCashOut ? -Math.abs(amountBrl) : Math.abs(amountBrl),
           status_revisao: 'pendente',
           fonte: 'conta_simples_cartao',
+          payload_raw: tx,
         };
       });
 
