@@ -1,6 +1,6 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, TrendingUp, Activity, Filter, ShoppingCart,
+  Home, LayoutDashboard, TrendingUp, Activity, Filter, ShoppingCart,
   Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,8 @@ import { toast } from '@/hooks/use-toast';
 import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
 const ALL_SUB_PAGES = [
-  { path: '/',         label: 'Resumo',      icon: LayoutDashboard, key: 'overview' },
+  { path: '/',         label: 'Início',      icon: Home,            key: 'inicio' },
+  { path: '/resumo',   label: 'Resumo',      icon: LayoutDashboard, key: 'overview' },
   { path: '/meta-ads', label: 'Meta Ads',    icon: TrendingUp,      key: 'meta-ads' },
   { path: '/funil',    label: 'Funil',       icon: Filter,          key: 'funil' },
   { path: '/vendas',   label: 'Vendas',      icon: ShoppingCart,    key: 'vendas' },

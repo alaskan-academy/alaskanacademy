@@ -3,7 +3,13 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 export const PAGINAS = [
-  { key: 'overview',      path: '/',              label: 'Resumo' },
+  // `inicio` vem primeiro de propósito: quando alguém não tem acesso à página
+  // que pediu, o ProtectedRoute manda para a primeira desta lista que ele possa
+  // ver. Antes isso significava cair no Resumo financeiro, ou em Meta Ads, ou
+  // no que estivesse por acaso no topo — dependia do que estava marcado no
+  // Acessos, e ninguém tinha decidido.
+  { key: 'inicio',        path: '/',              label: 'Início' },
+  { key: 'overview',      path: '/resumo',        label: 'Resumo' },
   { key: 'meta-ads',      path: '/meta-ads',      label: 'Meta Ads' },
   { key: 'funil',         path: '/funil',         label: 'Funil' },
   { key: 'vendas',        path: '/vendas',        label: 'Vendas' },
