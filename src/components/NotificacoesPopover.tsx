@@ -70,6 +70,11 @@ export function NotificacoesPopover({ userId, collapsed }: Props) {
 
   const handleClick = (n: Notificacao) => {
     setOpen(false);
+
+    // Recado mora no Inicio. Sem isto a notificacao abriria e nao levaria a
+    // lugar nenhum, que e pior do que nao notificar.
+    if (n.referencia_tipo === 'recado') { navigate('/'); return; }
+
     const isCriativo =
       n.referencia_tipo === 'criativo' ||
       (!!n.referencia_id && ['criativo_alteracao', 'mencao_comentario'].includes(n.tipo));
