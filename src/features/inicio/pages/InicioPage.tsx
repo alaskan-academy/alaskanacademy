@@ -11,6 +11,7 @@ import { ChevronLeft, ChevronRight, Plus, Loader2 } from 'lucide-react';
 import { Agenda } from '../components/Agenda';
 import { EventoDrawer } from '../components/EventoDrawer';
 import { EventoFormModal } from '../components/EventoFormModal';
+import { SaudeSistema } from '../components/SaudeSistema';
 import { horaCurta, type Evento, type ItemAgenda } from '../types';
 
 const MESES = [
@@ -186,7 +187,7 @@ export default function InicioPage() {
   };
 
   return (
-    <DashboardLayout title="Início" hideFilters>
+    <DashboardLayout title="Início" hideFilters hideAvisos={ehAdmin}>
       <div className="flex flex-col gap-4">
 
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -198,6 +199,9 @@ export default function InicioPage() {
             {ehAdmin ? 'Novo evento' : 'Registrar folga'}
           </Button>
         </div>
+
+        {/* ---- saúde do sistema: só admin e sócio ---- */}
+        {ehAdmin && <SaudeSistema />}
 
         {/* ---- agenda ---- */}
         <section className="rounded-xl border border-border bg-card p-4 md:p-5">

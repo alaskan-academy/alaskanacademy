@@ -10,10 +10,14 @@ export function DashboardLayout({
   children,
   title,
   hideFilters,
+  hideAvisos,
 }: {
   children: ReactNode;
   title: string;
   hideFilters?: boolean;
+  /** O Início traz os mesmos avisos num painel completo; a faixa aqui seria a
+   *  mesma informação duas vezes na mesma tela. */
+  hideAvisos?: boolean;
 }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
   const { contaId } = useFilters();
@@ -47,7 +51,7 @@ export function DashboardLayout({
           </div>
         </header>
         <main className="p-4 md:p-6 animate-fade-in">
-          <IngestStatusBanner />
+          {!hideAvisos && <IngestStatusBanner />}
           {children}
         </main>
       </div>
