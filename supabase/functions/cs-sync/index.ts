@@ -219,16 +219,36 @@ Deno.serve(async (req) => {
     if (bankingRows.length > 0) await upsertBatch(bankingRows as Record<string, unknown>[]);
     if (cardRows.length > 0)    await upsertBatch(cardRows    as Record<string, unknown>[]);
 
+    // ── 3b. Payload nas linhas que já existiam
+    // O upsert acima usa `ignoreDuplicates`, que é o que protege
+    // `status_revisao` de voltar para "pendente" em transação já revisada. O
+    // efeito colateral é que linha antiga nunca recebia `payload_raw`: depois
+    // do primeiro sync, 1.120 transações tinham payload em exatamente uma.
+    // Esta passada escreve só aquela coluna.
+    const paraGravar = [...bankingRows, ...cardRows].map(r => ({
+      ref:     r.referencia_externa,
+      payload: r.payload_raw,
+    }));
+    let payloadsGravados = 0;
+    for (let i = 0; i < paraGravar.length; i += 200) {
+      const { data, error } = await supabase.rpc('fn_gravar_payloads', {
+        p_linhas: paraGravar.slice(i, i + 200),
+      });
+      if (error) console.warn('[cs-sync] payload_raw falhou:', error.message);
+      else payloadsGravados += Number(data ?? 0);
+    }
+
     // ── 4. Auto-categorização via regras_categoria
     const { data: categorized, error: catError } = await supabase.rpc('aplicar_regras_categoria');
     if (catError) console.warn('[cs-sync] Auto-categorização falhou:', catError.message);
 
-    console.log(`[cs-sync] OK: ${bankingRows.length} banking, ${cardRows.length} cartão, ${categorized ?? 0} categorizados`);
+    console.log(`[cs-sync] OK: ${bankingRows.length} banking, ${cardRows.length} cartão, ${categorized ?? 0} categorizados, ${payloadsGravados} payloads`);
     return json({
       ok:          true,
       banking:     { fetched: bankingRows.length },
       card:        { fetched: cardRows.length },
       categorized: categorized ?? 0,
+      payloads:    payloadsGravados,
       period:      { startDate, endDate },
     });
   } catch (err) {
