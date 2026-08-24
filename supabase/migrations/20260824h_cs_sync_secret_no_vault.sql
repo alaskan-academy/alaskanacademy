@@ -25,7 +25,7 @@
 --            'Header x-sync-secret da edge function cs-sync.');
 --
 -- ---------------------------------------------------------------------------
--- PASSO 2 — colar o novo valor no secret da edge function (MANUAL)
+-- PASSO 2 — colar o novo valor no secret da edge function (FEITO em 24/08)
 -- ---------------------------------------------------------------------------
 -- No SQL editor do Supabase, ler o valor:
 --
@@ -39,7 +39,7 @@
 -- a tomar 401 até o passo 3. A janela é segura: o `cs-sync-daily` roda às 10h.
 --
 -- ---------------------------------------------------------------------------
--- PASSO 3 — o agendamento passa a ler do vault (ESTE ARQUIVO)
+-- PASSO 3 — o agendamento passa a ler do vault (APLICADO em 24/08)
 -- ---------------------------------------------------------------------------
 -- O comando deixa de conter o segredo e passa a referenciá-lo. `cron.schedule`
 -- com nome existente substitui, então rodar de novo é seguro.
@@ -63,14 +63,13 @@ select cron.schedule(
 );
 
 -- ---------------------------------------------------------------------------
--- PASSO 4 — conferir
+-- PASSO 4 — conferido em 24/08
 -- ---------------------------------------------------------------------------
---   select command ilike '%decrypted_secrets%' as usa_vault,
---          command ~ '[0-9a-f]{32}'            as ainda_tem_segredo
---     from cron.job where jobname = 'cs-sync-daily';
---
--- e disparar uma janela de um dia, checando `net._http_response` por 200 (e não
--- 401, que seria o secret da função ainda no valor antigo).
+-- Resultado da conferência:
+--   * chamada de teste com o valor do vault -> HTTP 200 (401 seria segredo errado)
+--   * `cron.job.command` lê do vault e não tem mais nenhum hash no texto
+--   * o agendamento roda como `postgres`, que tem USAGE em `vault` e SELECT em
+--     `vault.decrypted_secrets` — confirmado, não suposto
 --
 -- ---------------------------------------------------------------------------
 -- O QUE CONTINUA EM TEXTO PURO
