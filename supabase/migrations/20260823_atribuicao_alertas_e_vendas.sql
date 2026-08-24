@@ -81,3 +81,54 @@ comment on column public.ad_accounts.projeto_id is
   'o nome do criativo se repete em dezenas de projetos, entao sem isso a data escolhia ao acaso.';
 
 commit;
+
+-- ---------------------------------------------------------------------------
+-- 6. O alerta de ingestão do Meta disparava todo dia sem motivo
+-- ---------------------------------------------------------------------------
+-- `vw_ingest_health` media o Meta por `max(metricas_meta.data)` — a data A QUE O
+-- DADO SE REFERE, não quando ele chegou. Como `data` é um DATE, virar timestamp a
+-- coloca na meia-noite UTC: com limiar de 25h o alerta acendia todo dia entre a
+-- virada e a chegada do dado novo. Media 27h com o sync tendo rodado há 4.
+--
+-- Medir por `criado_em`/`atualizado_em` também não serve: de madrugada os anúncios
+-- não gastam, o sync roda e não altera linha nenhuma. A pergunta real é se a tarefa
+-- rodou, e a resposta está em `cron.job_run_details`.
+--
+-- O ramo da Payt continua medindo o dado, e ali está certo: ela é webhook, não
+-- tarefa agendada — se não chega venda há horas, é sinal legítimo.
+
+create or replace function public.fn_ultima_execucao_cron(p_jobname text)
+ returns timestamptz
+ language sql
+ stable
+ security definer
+ set search_path = public, cron, pg_temp
+as $function$
+  select max(d.start_time)
+    from cron.job j
+    join cron.job_run_details d on d.jobid = j.jobid
+   where j.jobname = p_jobname and d.status = 'succeeded';
+$function$;
+
+revoke all on function public.fn_ultima_execucao_cron(text) from public;
+grant execute on function public.fn_ultima_execucao_cron(text) to authenticated;
+
+-- Limiar de 3h: `meta-sync-horario` roda de hora em hora, entao tolera duas perdas.
+create or replace view public.vw_ingest_health as
+select 'payt'::text as fonte,
+       'Vendas (Payt)'::text as rotulo,
+       max(criado_em) as ultimo_evento,
+       count(*) as registros,
+       round(extract(epoch from now() - max(criado_em)) / 3600::numeric, 1) as horas_atras,
+       6::numeric as limiar_horas,
+       (extract(epoch from now() - max(criado_em)) / 3600::numeric) > 6::numeric as defasado
+  from vendas_payt
+union all
+select 'meta'::text,
+       'Métricas de anúncios (Meta)'::text,
+       public.fn_ultima_execucao_cron('meta-sync-horario'),
+       count(*),
+       round(extract(epoch from now() - public.fn_ultima_execucao_cron('meta-sync-horario')) / 3600::numeric, 1),
+       3::numeric,
+       (extract(epoch from now() - public.fn_ultima_execucao_cron('meta-sync-horario')) / 3600::numeric) > 3::numeric
+  from metricas_meta;
