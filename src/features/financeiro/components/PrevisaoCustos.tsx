@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, CalendarClock, Check } from 'lucide-react';
+import { AlertTriangle, Ban, CalendarClock, Check, RotateCcw } from 'lucide-react';
 
 /**
  * Quanto ainda deve sair este mês, e de onde.
@@ -43,6 +43,10 @@ interface Recorrencia {
   ja_saiu: boolean;
   valor_no_mes: number;
   data_no_mes: string | null;
+  encerrada: boolean;
+  encerrada_em: string | null;
+  /** Cobrou de novo depois de encerrada. */
+  reativada: boolean;
 }
 
 /** Descritor de extrato é ruído legível: "EBN *CAPCUT CURITIBA BR" ou
@@ -104,7 +108,11 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
   const resumo = useMemo(() => {
     const previsto = previsoes.reduce((a, p) => a + p.previsto, 0);
     const realizado = previsoes.reduce((a, p) => a + p.realizado, 0);
-    const pendentes = recorrencias.filter(r => !r.ja_saiu);
+    // Encerrada não é pendência. Membify e Lovable foram cancelados e ficavam
+    // em "não veio" para sempre — o detector acertava o fato (o histórico
+    // previa, o extrato não tem) e errava a conclusão, porque a diferença
+    // entre cartão recusado e contrato encerrado não está no banco.
+    const pendentes = recorrencias.filter(r => !r.ja_saiu && !r.encerrada);
     return {
       previsto,
       realizado,
@@ -119,6 +127,30 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
   const hoje = new Date();
   const mesCorrente = hoje.getFullYear() === ano && hoje.getMonth() === mes;
   const diaHoje = hoje.getDate();
+
+  /** Alterna "paramos de pagar". Atualiza a lista em memória em vez de refazer
+   *  as duas consultas: a linha muda de seção na hora e o resumo acompanha. */
+  async function alternarEncerrada(r: Recorrencia) {
+    const encerrando = !r.encerrada;
+    const hojeIso = new Date().toISOString().slice(0, 10);
+
+    const { error } = encerrando
+      ? await supabase.from('recorrencias_encerradas')
+          .insert({ chave: r.chave, descricao: r.descricao, encerrada_em: hojeIso })
+      : await supabase.from('recorrencias_encerradas')
+          .delete().eq('chave', r.chave);
+
+    if (error) { setErro(error.message); return; }
+
+    setRecorrencias(lista => lista.map(x =>
+      x.chave === r.chave
+        ? { ...x, encerrada: encerrando, encerrada_em: encerrando ? hojeIso : null, reativada: false }
+        : x,
+    ));
+  }
+
+  const ativas = recorrencias.filter(r => !r.encerrada);
+  const encerradas = recorrencias.filter(r => r.encerrada);
 
   if (carregando) {
     return <Moldura><p className="text-sm text-muted-foreground text-center py-8">Carregando…</p></Moldura>;
@@ -235,69 +267,131 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
               que aqui é de uns 560px. Com o nome em cima e os números embaixo,
               cabe sem cortar e sem rolagem lateral. */}
           <ul className="space-y-0">
-            {recorrencias.map(r => {
-              const atrasado = mesCorrente && !r.ja_saiu && r.dia_tipico < diaHoje;
-              const fixo = r.desvio < r.valor_tipico * 0.05;
-              return (
-                <li
-                  key={r.chave}
-                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/50 py-2 last:border-0"
-                >
-                  <span className="text-foreground min-w-0 flex-1 truncate" title={r.descricao}>
-                    {nomeLimpo(r.descricao)}
-                  </span>
-
-                  <span className="tabular-nums whitespace-nowrap text-foreground">
-                    {formatCurrency(r.valor_tipico)}
-                    {!fixo && (
-                      <span
-                        className="ml-0.5 text-muted-foreground"
-                        title={`Varia entre os meses — desvio de ${formatCurrency(r.desvio)}`}
-                      >
-                        ~
-                      </span>
-                    )}
-                  </span>
-
-                  <span className="w-14 shrink-0 text-right text-xs text-muted-foreground whitespace-nowrap">
-                    dia {r.dia_tipico}
-                  </span>
-
-                  <span className="w-24 shrink-0 text-right whitespace-nowrap">
-                    {r.ja_saiu ? (
-                      <span
-                        className="inline-flex items-center gap-1 text-xs text-green-400"
-                        title={`Saiu ${r.data_no_mes ? `em ${r.data_no_mes.split('-').reverse().join('/')}` : 'neste mês'}`}
-                      >
-                        <Check className="h-3 w-3 shrink-0" />
-                        {formatCurrency(r.valor_no_mes)}
-                      </span>
-                    ) : atrasado ? (
-                      <span
-                        className="inline-flex items-center gap-1 text-xs text-amber-400"
-                        title="Costuma cair antes de hoje e ainda não apareceu no extrato"
-                      >
-                        <AlertTriangle className="h-3 w-3 shrink-0" />
-                        não veio
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <CalendarClock className="h-3 w-3 shrink-0" />
-                        previsto
-                      </span>
-                    )}
-                  </span>
-
-                  {r.categoria && (
-                    <span className="w-full text-[11px] text-muted-foreground/70">{r.categoria}</span>
-                  )}
-                </li>
-              );
-            })}
+            {ativas.map(r => (
+              <Linha
+                key={r.chave}
+                r={r}
+                atrasado={mesCorrente && !r.ja_saiu && r.dia_tipico < diaHoje}
+                onAlternar={() => alternarEncerrada(r)}
+              />
+            ))}
           </ul>
+
+          {/* Encerradas ficam à vista, apagadas, e não somem da tela. Escondê-las
+              esconderia junto o caso perigoso: serviço cancelado que volta a
+              cobrar sem ninguém pedir. */}
+          {encerradas.length > 0 && (
+            <div className="mt-4 border-t border-border pt-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground/70 mb-1">
+                Paramos de pagar
+              </p>
+              <ul className="space-y-0">
+                {encerradas.map(r => (
+                  <Linha key={r.chave} r={r} atrasado={false} onAlternar={() => alternarEncerrada(r)} />
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </Moldura>
+  );
+}
+
+function Linha({
+  r, atrasado, onAlternar,
+}: {
+  r: Recorrencia;
+  atrasado: boolean;
+  onAlternar: () => void;
+}) {
+  const fixo = r.desvio < r.valor_tipico * 0.05;
+
+  return (
+    <li
+      className={cn(
+        'group flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-border/50 py-2 last:border-0',
+        r.encerrada && !r.reativada && 'opacity-50',
+      )}
+    >
+      <span
+        className={cn('min-w-0 flex-1 truncate', r.encerrada ? 'text-muted-foreground' : 'text-foreground')}
+        title={r.descricao}
+      >
+        {nomeLimpo(r.descricao)}
+      </span>
+
+      <span className={cn('tabular-nums whitespace-nowrap', r.encerrada ? 'text-muted-foreground' : 'text-foreground')}>
+        {formatCurrency(r.valor_tipico)}
+        {!fixo && (
+          <span
+            className="ml-0.5 text-muted-foreground"
+            title={`Varia entre os meses — desvio de ${formatCurrency(r.desvio)}`}
+          >
+            ~
+          </span>
+        )}
+      </span>
+
+      <span className="w-14 shrink-0 text-right text-xs text-muted-foreground whitespace-nowrap">
+        dia {r.dia_tipico}
+      </span>
+
+      <span className="w-24 shrink-0 text-right whitespace-nowrap">
+        {r.reativada ? (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-red-400 font-medium"
+            title={`Marcada como encerrada em ${r.encerrada_em} e voltou a cobrar`}
+          >
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            cobrou
+          </span>
+        ) : r.encerrada ? (
+          <span className="text-xs text-muted-foreground">encerrada</span>
+        ) : r.ja_saiu ? (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-green-400"
+            title={`Saiu ${r.data_no_mes ? `em ${r.data_no_mes.split('-').reverse().join('/')}` : 'neste mês'}`}
+          >
+            <Check className="h-3 w-3 shrink-0" />
+            {formatCurrency(r.valor_no_mes)}
+          </span>
+        ) : atrasado ? (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-amber-400"
+            title="Costuma cair antes de hoje e ainda não apareceu no extrato"
+          >
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            não veio
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <CalendarClock className="h-3 w-3 shrink-0" />
+            previsto
+          </span>
+        )}
+      </span>
+
+      {/* Sempre no DOM, visível no hover e no foco. Se aparecesse só no hover
+          via montagem condicional, ninguém chegaria nele pelo teclado. */}
+      <button
+        type="button"
+        onClick={onAlternar}
+        className={cn(
+          'w-6 shrink-0 text-center text-muted-foreground opacity-0 transition-opacity',
+          'group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded',
+        )}
+        title={r.encerrada ? 'Voltamos a pagar' : 'Paramos de pagar'}
+        aria-label={r.encerrada ? `Voltamos a pagar ${nomeLimpo(r.descricao)}` : `Paramos de pagar ${nomeLimpo(r.descricao)}`}
+      >
+        {r.encerrada ? <RotateCcw className="h-3 w-3 mx-auto" /> : <Ban className="h-3 w-3 mx-auto" />}
+      </button>
+
+      {r.categoria && (
+        <span className="w-full text-[11px] text-muted-foreground/70">{r.categoria}</span>
+      )}
+    </li>
   );
 }
 
