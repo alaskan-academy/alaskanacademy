@@ -74,7 +74,6 @@ select cron.schedule(
 -- ---------------------------------------------------------------------------
 -- O QUE CONTINUA EM TEXTO PURO
 -- ---------------------------------------------------------------------------
--- `meta-sync-diario` e `meta-sync-horario` carregam a `service_role` no header
--- `Authorization`. É exposição maior que a do cs-sync — a service_role ignora
--- RLS por completo —, e o remédio é o mesmo padrão deste arquivo. Fica para
--- quando este ciclo estiver provado.
+-- Nada. `meta-sync-diario` e `meta-sync-horario` foram resolvidos no mesmo dia,
+-- em 20260824i — sem rotação, porque a service_role não vazou e trocá-la
+-- exigiria rotacionar o JWT secret do projeto inteiro.
