@@ -110,7 +110,11 @@ export function EventoFormModal({
     <Dialog open={aberto} onOpenChange={v => !v && onFechar()}>
       <DialogContent className="max-h-[88vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base">{editando ? 'Editar evento' : 'Novo evento'}</DialogTitle>
+          {/* O botao que abre este modal diz "Registrar folga" para quem nao e
+              admin; o titulo tem que dizer a mesma coisa. */}
+          <DialogTitle className="text-base">
+            {editando ? 'Editar evento' : ehAdmin ? 'Novo evento' : 'Registrar folga'}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
