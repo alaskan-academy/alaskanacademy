@@ -828,16 +828,28 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
   const [buscando, setBuscando] = useState(true);
   const [termo, setTermo] = useState(anuncio.ad_nome ?? '');
   const [salvando, setSalvando] = useState(false);
+  const [erroBusca, setErroBusca] = useState<string | null>(null);
 
   const procurar = useCallback(async (t: string) => {
     setBuscando(true);
-    const { data } = await supabase
+    /**
+     * O vínculo com `perfis` vai pelo nome da **coluna**, como no resto do projeto.
+     *
+     * Estava pelo nome da constraint, `producoes_responsavel_id_fkey`, que não existe: a
+     * tabela foi renomeada de `criativos` para `producoes` e as chaves ficaram com o nome
+     * antigo (`criativos_responsavel_id_fkey`). O PostgREST recusava a consulta inteira,
+     * então a busca de card nunca devolveu nada — para nenhum anúncio, desde sempre.
+     */
+    const { data, error } = await supabase
       .from('producoes')
-      .select('id, nome, criado_em, avaliacao, status_veiculacao, responsavel:perfis!producoes_responsavel_id_fkey(nome)')
+      .select('id, nome, criado_em, avaliacao, status_veiculacao, responsavel:perfis!responsavel_id(nome)')
       .eq('fase', 'postado').eq('tipo', 'criativo')
       .ilike('nome', `%${t.trim()}%`)
       .order('criado_em', { ascending: false })
       .limit(25);
+    // E o erro era descartado, então a falha aparecia como "nenhum card com esse nome":
+    // uma resposta confiante e errada sobre uma consulta que nem chegou a rodar.
+    setErroBusca(error ? error.message : null);
     setCards((data ?? []) as unknown as Card[]);
     setBuscando(false);
   }, []);
@@ -911,6 +923,10 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
           <div className="max-h-80 space-y-1 overflow-y-auto">
             {buscando ? (
               <p className="py-6 text-center text-xs text-muted-foreground">Buscando...</p>
+            ) : erroBusca ? (
+              <p className="py-6 text-center text-xs text-destructive">
+                A busca falhou — {erroBusca}
+              </p>
             ) : cards.length === 0 ? (
               <p className="py-6 text-center text-xs text-muted-foreground">
                 Nenhum card postado do tipo criativo com esse nome.
