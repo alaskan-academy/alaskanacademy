@@ -12,7 +12,10 @@ import { Agenda } from '../components/Agenda';
 import { EventoDrawer } from '../components/EventoDrawer';
 import { EventoFormModal } from '../components/EventoFormModal';
 import { SaudeSistema } from '../components/SaudeSistema';
+import { MuralRecados } from '../components/MuralRecados';
 import { horaCurta, type Evento, type ItemAgenda } from '../types';
+
+const DIA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -143,6 +146,31 @@ export default function InicioPage() {
     return m;
   }, [perfis]);
 
+  /**
+   * Quem está fora no período aberto.
+   *
+   * Sai dos mesmos eventos que a agenda já desenhou — nenhuma consulta a mais.
+   * Existe porque folga é a informação que todo mundo usa e que se perde no meio
+   * da grade: saber que a quinta não tem a Jaqueline muda o que se combina na
+   * segunda.
+   */
+  const fora = useMemo(() => {
+    return itens
+      .filter(i => i.tipo === 'folga')
+      .sort((a, b) => a.data.localeCompare(b.data))
+      .map(i => {
+        const id = i.evento?.pessoa_id;
+        const cheio = (id && nomes[id]) || i.titulo.replace(/^Folga\s*[—-]\s*/, '');
+        const d = new Date(i.data + 'T00:00:00');
+        return {
+          chave: i.chave,
+          item: i,
+          quem: cheio.split(' ')[0],
+          dia: DIA_SEMANA[d.getDay()],
+        };
+      });
+  }, [itens, nomes]);
+
   const mover = (passo: number) => {
     setAncora(a => vista === 'semana'
       ? new Date(a.getFullYear(), a.getMonth(), a.getDate() + passo * 7)
@@ -202,6 +230,26 @@ export default function InicioPage() {
 
         {/* ---- saúde do sistema: só admin e sócio ---- */}
         {ehAdmin && <SaudeSistema />}
+
+        {/* ---- quem está fora ---- */}
+        {fora.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-teal-400/25 bg-teal-400/[0.06] px-4 py-2.5 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-teal-300/80">
+              {vista === 'semana' ? 'fora nesta semana' : 'fora neste mês'}
+            </span>
+            {fora.map((f, i) => (
+              <button
+                key={f.chave}
+                type="button"
+                onClick={() => setAberto(f.item)}
+                className="text-teal-100/90 hover:text-teal-50 hover:underline"
+              >
+                {f.quem} <span className="text-teal-300/70">na {f.dia}</span>
+                {i < fora.length - 1 && <span className="text-teal-300/40">,</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ---- agenda ---- */}
         <section className="rounded-xl border border-border bg-card p-4 md:p-5">
@@ -313,6 +361,8 @@ export default function InicioPage() {
             </div>
           )}
         </section>
+        {/* ---- mural ---- */}
+        <MuralRecados ehAdmin={ehAdmin} userId={user?.id ?? ''} />
       </div>
 
       <EventoDrawer
