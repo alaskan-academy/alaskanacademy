@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +21,7 @@ const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 's
 
 interface LinhaView {
   mes: string;
+  centro_custo: string;
   categoria: string;
   gasto: number;
   lancamentos: number;
@@ -51,7 +52,7 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
 
     supabase
       .from('vw_custos_categoria_mes')
-      .select('mes, categoria, gasto, lancamentos')
+      .select('mes, centro_custo, categoria, gasto, lancamentos')
       .gte('mes', inicioIso)
       .then(({ data, error }) => {
         if (!vivo) return;
@@ -63,31 +64,50 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
     return () => { vivo = false; };
   }, [meses]);
 
-  const { colunas, matriz, totalGeral } = useMemo(() => {
+  const { colunas, grupos, totalGeral } = useMemo(() => {
     const cols = Array.from(new Set(linhas.map(l => l.mes))).sort();
 
-    const porCategoria = new Map<string, Map<string, number>>();
+    /** Soma por chave e devolve a série alinhada com `cols`. */
+    const serie = (mapa: Map<string, number>) => {
+      const valores = cols.map(c => mapa.get(c) ?? 0);
+      return { valores, total: valores.reduce((a, b) => a + b, 0), pico: Math.max(...valores, 0) };
+    };
+
+    // Centro de custo é o nível que a Conta Simples preenche e que o DRE soma;
+    // a categoria mora dentro dele. Duas Maps em vez de uma estrutura aninhada
+    // porque a soma do centro tem de contar TODOS os lançamentos dele, e não
+    // apenas os que caíram numa categoria conhecida.
+    const porCentro = new Map<string, Map<string, number>>();
+    const porCentroCategoria = new Map<string, Map<string, Map<string, number>>>();
+
     for (const l of linhas) {
-      if (!porCategoria.has(l.categoria)) porCategoria.set(l.categoria, new Map());
-      porCategoria.get(l.categoria)!.set(l.mes, Number(l.gasto));
+      const gasto = Number(l.gasto);
+
+      if (!porCentro.has(l.centro_custo)) porCentro.set(l.centro_custo, new Map());
+      const mCentro = porCentro.get(l.centro_custo)!;
+      mCentro.set(l.mes, (mCentro.get(l.mes) ?? 0) + gasto);
+
+      if (!porCentroCategoria.has(l.centro_custo)) porCentroCategoria.set(l.centro_custo, new Map());
+      const cats = porCentroCategoria.get(l.centro_custo)!;
+      if (!cats.has(l.categoria)) cats.set(l.categoria, new Map());
+      const mCat = cats.get(l.categoria)!;
+      mCat.set(l.mes, (mCat.get(l.mes) ?? 0) + gasto);
     }
 
-    const mat = Array.from(porCategoria.entries())
-      .map(([categoria, porMes]) => {
-        const valores = cols.map(c => porMes.get(c) ?? 0);
-        return {
-          categoria,
-          valores,
-          total: valores.reduce((a, b) => a + b, 0),
-          pico: Math.max(...valores),
-        };
-      })
+    const gs = Array.from(porCentro.entries())
+      .map(([centro, mapa]) => ({
+        centro,
+        ...serie(mapa),
+        categorias: Array.from(porCentroCategoria.get(centro)!.entries())
+          .map(([categoria, m]) => ({ categoria, ...serie(m) }))
+          .sort((a, b) => b.total - a.total),
+      }))
       .sort((a, b) => b.total - a.total);
 
     return {
       colunas: cols,
-      matriz: mat,
-      totalGeral: mat.reduce((a, m) => a + m.total, 0),
+      grupos: gs,
+      totalGeral: gs.reduce((a, g) => a + g.total, 0),
     };
   }, [linhas]);
 
@@ -109,7 +129,7 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
     );
   }
 
-  if (matriz.length === 0) {
+  if (grupos.length === 0) {
     return (
       <div className="bg-card border border-border rounded-lg p-5">
         <Titulo />
@@ -120,7 +140,7 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
     );
   }
 
-  const totaisPorMes = colunas.map((_, i) => matriz.reduce((a, m) => a + m.valores[i], 0));
+  const totaisPorMes = colunas.map((_, i) => grupos.reduce((a, g) => a + g.valores[i], 0));
 
   return (
     <div className="bg-card border border-border rounded-lg p-5">
@@ -131,7 +151,7 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left font-medium text-muted-foreground pb-2 pr-3">Categoria</th>
+              <th className="text-left font-medium text-muted-foreground pb-2 pr-3">Centro de custo</th>
               {colunas.map(c => (
                 <th key={c} className="text-right font-medium text-muted-foreground pb-2 px-2 whitespace-nowrap">
                   {rotuloMes(c)}
@@ -142,46 +162,38 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
             </tr>
           </thead>
           <tbody>
-            {matriz.map(linha => {
-              const fatia = totalGeral > 0 ? (linha.total / totalGeral) * 100 : 0;
-              return (
-                <tr key={linha.categoria} className="border-b border-border/50 last:border-0">
-                  <td className="py-1.5 pr-3 text-foreground">{linha.categoria}</td>
-                  {linha.valores.map((v, i) => (
-                    <td
-                      key={colunas[i]}
-                      title={v ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'sem lançamento'}
-                      className={cn(
-                        'py-1.5 px-2 text-right tabular-nums',
-                        v ? 'text-foreground' : 'text-muted-foreground/40',
-                      )}
-                      style={
-                        // Intensidade relativa ao pico da própria linha: mostra o
-                        // mês em que a categoria fugiu do padrão dela mesma.
-                        v && linha.pico > 0
-                          ? { backgroundColor: `rgb(248 113 113 / ${(v / linha.pico) * 0.13})` }
-                          : undefined
-                      }
-                    >
-                      {num(v)}
-                    </td>
+            {grupos.map(g => (
+              <Fragment key={g.centro}>
+                <tr className="border-t border-border/70">
+                  <td className="pt-2.5 pb-1 pr-3 font-medium text-foreground">{g.centro}</td>
+                  {g.valores.map((v, i) => (
+                    <Celula key={colunas[i]} valor={v} pico={g.pico} forte />
                   ))}
-                  <td className="py-1.5 pl-3 text-right tabular-nums font-medium text-foreground">
-                    {num(linha.total)}
+                  <td className="pt-2.5 pb-1 pl-3 text-right tabular-nums font-semibold text-foreground">
+                    {num(g.total)}
                   </td>
-                  <td className="py-1.5 pl-2">
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full rounded-full bg-red-400/70" style={{ width: `${fatia}%` }} />
-                      </div>
-                      <span className="text-[11px] text-muted-foreground tabular-nums w-8 text-right">
-                        {fatia.toFixed(0)}%
-                      </span>
-                    </div>
+                  <td className="pt-2.5 pb-1 pl-2">
+                    <Fatia valor={g.total} total={totalGeral} />
                   </td>
                 </tr>
-              );
-            })}
+
+                {/* A categoria só ganha linha própria quando o centro tem mais de
+                    uma. "Anúncios" com uma categoria só repetiria os mesmos
+                    números duas vezes seguidas e não diria nada. */}
+                {g.categorias.length > 1 && g.categorias.map(c => (
+                  <tr key={c.categoria}>
+                    <td className="py-1 pl-4 pr-3 text-muted-foreground">{c.categoria}</td>
+                    {c.valores.map((v, i) => (
+                      <Celula key={colunas[i]} valor={v} pico={c.pico} />
+                    ))}
+                    <td className="py-1 pl-3 text-right tabular-nums text-muted-foreground">
+                      {num(c.total)}
+                    </td>
+                    <td />
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-border font-semibold">
@@ -199,6 +211,43 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
   );
 }
 
+function Celula({ valor, pico, forte }: { valor: number; pico: number; forte?: boolean }) {
+  return (
+    <td
+      title={valor ? valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'sem lançamento'}
+      className={cn(
+        'px-2 text-right tabular-nums',
+        forte ? 'pt-2.5 pb-1 font-medium' : 'py-1',
+        valor ? (forte ? 'text-foreground' : 'text-muted-foreground') : 'text-muted-foreground/40',
+      )}
+      style={
+        // Intensidade relativa ao pico da PRÓPRIA linha: mostra o mês em que
+        // aquela linha fugiu do padrão dela mesma. Normalizado pelo total geral,
+        // tudo que não é Anúncios viraria uma faixa cinza uniforme.
+        valor && pico > 0
+          ? { backgroundColor: `rgb(248 113 113 / ${(valor / pico) * (forte ? 0.13 : 0.07)})` }
+          : undefined
+      }
+    >
+      {num(valor)}
+    </td>
+  );
+}
+
+function Fatia({ valor, total }: { valor: number; total: number }) {
+  const pct = total > 0 ? (valor / total) * 100 : 0;
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
+        <div className="h-full rounded-full bg-red-400/70" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[11px] text-muted-foreground tabular-nums w-8 text-right">
+        {pct.toFixed(0)}%
+      </span>
+    </div>
+  );
+}
+
 function Titulo() {
   return (
     <div className="mb-4">
@@ -206,8 +255,8 @@ function Titulo() {
         Onde estão os custos
       </h2>
       <p className="text-xs text-muted-foreground/70 mt-0.5">
-        Valores em reais, sem centavos. Sócios e reserva de caixa ficam de fora — são
-        movimentação, não custo.
+        Centro de custo vem da Conta Simples; a categoria é o detalhe dentro dele. Valores
+        em reais, sem centavos. Sócios e reserva ficam de fora — são movimentação, não custo.
       </p>
     </div>
   );
