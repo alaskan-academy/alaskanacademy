@@ -179,6 +179,13 @@ export function AppSidebar() {
         </div>
       </div>
       )}
+
+      {/* Era o bloco acima, com `flex-1`, que empurrava o rodapé (nome, sino e
+          sair) para o fim da barra. Escondendo o bloco para quem não é sócio, o
+          rodapé subia e ficava colado no último item do menu. Este espaçador
+          repõe o esticamento só quando o bloco não existe — quem é sócio
+          continua com o comportamento de antes, inclusive a rolagem do grupo. */}
+      {subPages.length === 0 && <div className="flex-1" />}
     </>
   );
 
