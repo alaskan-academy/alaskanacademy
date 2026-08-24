@@ -189,27 +189,48 @@ Deno.serve(async (req) => {
       ? 'Upsell'
       : 'Venda Direta';
 
-  // Upsert por payt_id — se a Payt reenviar (ex: reembolso), atualiza o status
-  const { error } = await supabase.from('vendas_payt').upsert(
-    {
-      payt_id,
-      data,
-      valor,
-      status,
-      produto,
-      tipo_venda,
-      utm_content,
-      utm_ad_id,
-      utm_source,
-      utm_medium,
-      utm_campaign,
-      utm_term,
-      cliente_nome,
-      cliente_email,
-      payload_raw: body,
-    },
-    { onConflict: 'payt_id' },
-  );
+  const linha = {
+    payt_id,
+    data,
+    valor,
+    status,
+    produto,
+    tipo_venda,
+    utm_content,
+    utm_ad_id,
+    utm_source,
+    utm_medium,
+    utm_campaign,
+    utm_term,
+    cliente_nome,
+    cliente_email,
+    payload_raw: body,
+  };
+
+  /**
+   * Upsert por payt_id — se a Payt reenviar (ex: reembolso), atualiza o status.
+   *
+   * Com três tentativas porque a falha que já custou dinheiro foi transitória: em
+   * 24/08/2026 um índice sendo criado em `vendas` travou as escritas, o gatilho de
+   * normalização estourou o `statement_timeout` e dois eventos morreram aqui — um
+   * deles um `paid` de R$ 87,12, que ficou de fora do caixa até alguém reprocessar
+   * à mão. O evento não volta: a Payt manda uma vez, e um 500 daqui vira silêncio.
+   *
+   * Só repete quando vale a pena repetir. Erro de dado — coluna que não existe,
+   * violação de restrição — não melhora na segunda tentativa e cai direto no
+   * registro do motivo.
+   */
+  const ehTransitorio = (msg: string) =>
+    /timeout|deadlock|connection|temporarily unavailable|too many|57014|40001|40P01/i.test(msg);
+
+  let error: { message: string } | null = null;
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const r = await supabase.from('vendas_payt').upsert(linha, { onConflict: 'payt_id' });
+    error = r.error;
+    if (!error || !ehTransitorio(error.message)) break;
+    console.warn(`tentativa ${tentativa} falhou (${error.message}); repetindo`);
+    await new Promise(r => setTimeout(r, tentativa * 750));
+  }
 
   if (error) {
     console.error('Erro ao salvar venda:', error.message);
