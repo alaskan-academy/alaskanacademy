@@ -91,7 +91,11 @@ export function PorProjetoView({ nivel, userId }: Props) {
       if (filtroStatus.length)  q = q.in('status_veiculacao', filtroStatus);
       const { data } = await q;
       if (!data || data.length === 0) break;
-      all = all.concat(data as CriativoRow[]);
+      // `responsavel` chega como array do PostgREST mesmo sendo para-um.
+      all = all.concat(data.map(r => ({
+        ...r,
+        responsavel: Array.isArray(r.responsavel) ? (r.responsavel[0] ?? null) : r.responsavel,
+      })) as CriativoRow[]);
       if (data.length < PAGE) break;
       from += PAGE;
     }

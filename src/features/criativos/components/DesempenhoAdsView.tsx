@@ -41,6 +41,7 @@ interface PostadoRow {
   responsavel_id: string | null;
   projeto_id: string | null;
   funil_ids: string[];
+  funil_video: string | null;
   responsavel: { id: string; nome: string } | null;
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
