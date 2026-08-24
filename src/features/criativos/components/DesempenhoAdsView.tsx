@@ -190,7 +190,9 @@ export function DesempenhoAdsView() {
     const [pg1, pg2, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
       supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(0, 999),
       supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(1000, 1999),
-      supabase.from('perfis').select('id,nome,is_admin,cargo,setor_id,setor,ativo').eq('ativo', true).order('nome'),
+      supabase.from('perfis')
+        .select('id,nome,is_admin,cargo_id,setor_id,cargo:cargos(id,nome),setor:setores(id,nome),ativo')
+        .eq('ativo', true).order('nome'),
       fetchProjetos(),
       supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'formato').order('ordem'),
       fetchFunis(),

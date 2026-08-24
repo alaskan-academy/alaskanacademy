@@ -394,20 +394,22 @@ export default function AcessosPage() {
 
   // ── Carrega setores de configuracoes ──
   const loadSetores = async () => {
+    // A tabela usa `chave`/`valor`; pedindo `key`/`value` o Postgres devolvia 400 e
+    // a lista de setores caia silenciosamente no default.
     const { data } = await supabase
       .from('configuracoes')
-      .select('value')
-      .eq('key', CONF_KEY)
+      .select('valor')
+      .eq('chave', CONF_KEY)
       .maybeSingle();
-    if (data?.value) {
-      try { setSetores(sortSetores(JSON.parse(data.value))); } catch { /* usa default */ }
+    if (data?.valor) {
+      try { setSetores(sortSetores(JSON.parse(data.valor))); } catch { /* usa default */ }
     }
   };
 
   const saveSetores = async (updated: string[]) => {
     await supabase.from('configuracoes').upsert(
-      { key: CONF_KEY, value: JSON.stringify(updated) },
-      { onConflict: 'key' },
+      { chave: CONF_KEY, valor: JSON.stringify(updated) },
+      { onConflict: 'chave' },
     );
     setSetores(updated);
   };

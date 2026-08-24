@@ -117,7 +117,9 @@ export function AvaliacaoView({ userId }: Props) {
       supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'avaliacao').order('ordem'),
       supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'formato').order('ordem'),
       fetchProjetos(),
-      supabase.from('perfis').select('id,nome,is_admin,cargo,setor_id,setor,ativo').eq('ativo', true).order('nome'),
+      supabase.from('perfis')
+        .select('id,nome,is_admin,cargo_id,setor_id,cargo:cargos(id,nome),setor:setores(id,nome),ativo')
+        .eq('ativo', true).order('nome'),
       fetchFunis(),
     ]);
     if (opS?.length) setOpStatus(opS.map(d => d.valor as string));
