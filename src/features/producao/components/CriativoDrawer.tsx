@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
@@ -417,6 +417,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         </AlertDialog>
         <Sheet open onOpenChange={v => !v && handleAttemptClose()}>
           <SheetContent side="right" className="p-0 flex flex-col" style={sheetStyle}>
+            <SheetTitle className="sr-only">Carregando o card</SheetTitle>
             <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">Carregando...</div>
           </SheetContent>
         </Sheet>
@@ -930,15 +931,20 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         )}>
           <div className="flex-1 min-w-0">
             {editing ? (
-              <Input
-                className={cn('font-semibold', expanded ? 'h-9 text-base' : 'h-7 text-sm')}
-                value={val('nome')}
-                onChange={e => ch('nome', e.target.value)}
-              />
+              <>
+                <SheetTitle className="sr-only">{criativo.nome}</SheetTitle>
+                <Input
+                  className={cn('font-semibold', expanded ? 'h-9 text-base' : 'h-7 text-sm')}
+                  value={val('nome')}
+                  onChange={e => ch('nome', e.target.value)}
+                />
+              </>
             ) : (
-              <h2 className={cn('font-semibold text-foreground leading-snug', expanded ? 'text-xl' : 'text-sm')}>
-                {criativo.nome}
-              </h2>
+              <SheetTitle asChild>
+                <h2 className={cn('font-semibold text-foreground leading-snug', expanded ? 'text-xl' : 'text-sm')}>
+                  {criativo.nome}
+                </h2>
+              </SheetTitle>
             )}
             <div className="flex items-center gap-1.5 mt-1.5">
               <TipoBadge tipo={criativo.tipo} />
