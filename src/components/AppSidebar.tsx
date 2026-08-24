@@ -13,7 +13,6 @@ import { toast } from '@/hooks/use-toast';
 import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
 const ALL_SUB_PAGES = [
-  { path: '/',         label: 'Início',      icon: Home,            key: 'inicio' },
   { path: '/resumo',   label: 'Resumo',      icon: LayoutDashboard, key: 'overview' },
   { path: '/meta-ads', label: 'Meta Ads',    icon: TrendingUp,      key: 'meta-ads' },
   { path: '/funil',    label: 'Funil',       icon: Filter,          key: 'funil' },
@@ -24,6 +23,9 @@ const ALL_SUB_PAGES = [
 ];
 
 const ALL_FIXED_ITEMS = [
+  // O Início é a porta de entrada de todo mundo, então mora na lista achatada e
+  // não dentro do seletor de dashboards — aquele grupo é do funil e só sócio vê.
+  { path: '/',              label: 'Início',        icon: Home,          key: 'inicio',       adminOnly: false, sectorOnly: null },
   { path: '/processos',     label: 'Processos',     icon: GraduationCap, key: 'processos',    adminOnly: false, sectorOnly: null },
   { path: '/laboratorio',   label: 'Laboratório',   icon: FlaskConical,  key: 'laboratorio',  adminOnly: false, sectorOnly: null },
   { path: '/acessos',       label: 'Acessos',       icon: KeyRound,      key: 'acessos',      adminOnly: false, sectorOnly: null },
