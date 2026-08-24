@@ -34,7 +34,8 @@ import { cn } from '@/lib/utils';
  * Juntá-los em "sem dono" fazia a tela dizer 83 onde o número real de anúncios sem card
  * é 11 — e escondia a hipótese de seis que tinham card, só não tinham responsável.
  */
-type Vinculo = 'confirmado' | 'sugerido' | 'por_data' | 'sem_responsavel' | 'sem_card' | 'fora_do_recorte';
+type Vinculo = 'confirmado' | 'sugerido' | 'por_data' | 'sem_responsavel' | 'sem_card'
+             | 'fora_do_recorte' | 'outro_projeto';
 
 /**
  * Onde o dono já está decidido — não há o que resolver e não entra no aviso.
@@ -53,7 +54,18 @@ const VINCULO: Record<Vinculo, { curto: string; comoResolver: string }> = {
   sem_responsavel: { curto: 'sem responsável', comoResolver: 'o card existe e não tem editor atribuído — isso se resolve no card, em Produção' },
   sem_card:        { curto: 'sem card',        comoResolver: 'nenhum card postado do tipo criativo tem este nome' },
   fora_do_recorte: { curto: 'card arquivado',  comoResolver: 'existe card com este nome, mas arquivado ou de outro tipo' },
+  outro_projeto:   { curto: 'card de outro projeto',
+                     comoResolver: 'existe card com este nome, mas nenhum do projeto desta conta — o card certo precisa ser criado em Produção, ou o anúncio ligado ao card à mão' },
 };
+
+/**
+ * Um estado desconhecido não pode derrubar a tela.
+ *
+ * `VINCULO[a.vinculo]` era lido direto, então qualquer valor novo vindo do banco —
+ * como `outro_projeto`, criado depois — quebrava a linha inteira com "undefined".
+ */
+const vinculoDe = (v: Vinculo) =>
+  VINCULO[v] ?? { curto: v, comoResolver: 'estado desconhecido vindo do banco' };
 
 interface Anuncio {
   ad_id: string; ad_nome: string; conta_id: string; conta: string;
@@ -433,7 +445,7 @@ export function CriativosMetaTab() {
                 <p key={v} className="text-[11px] leading-relaxed text-amber-200/80">
                   <span className="tabular-nums text-amber-100">{lista.length}</span>{' '}
                   ({formatCurrency(lista.reduce((s, a) => s + a.investimento, 0))}) —{' '}
-                  {VINCULO[v].comoResolver}
+                  {vinculoDe(v).comoResolver}
                 </p>
               ))}
           </div>
@@ -685,8 +697,8 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
         <td className="max-w-[130px] px-3 py-2">
           {a.editor
             ? <span className="truncate text-xs text-muted-foreground">{a.editor}</span>
-            : <span className="text-xs text-amber-400" title={VINCULO[a.vinculo].comoResolver}>
-                {VINCULO[a.vinculo].curto}
+            : <span className="text-xs text-amber-400" title={vinculoDe(a.vinculo).comoResolver}>
+                {vinculoDe(a.vinculo).curto}
               </span>}
         </td>
         <td className="px-3 py-2 text-right tabular-nums text-foreground">{formatCurrency(a.investimento)}</td>
@@ -736,7 +748,7 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
               ) : (
                 <span className="text-muted-foreground/60">
                   {semCard
-                    ? VINCULO[a.vinculo].comoResolver || 'sem card ligado a este anúncio'
+                    ? vinculoDe(a.vinculo).comoResolver || 'sem card ligado a este anúncio'
                     : 'o card existe mas não registrou hipótese'}
                 </span>
               )}
