@@ -160,7 +160,13 @@ export function AppSidebar() {
         })}
       </div>
 
-      {/* Dashboards */}
+      {/* Dashboards — some inteiro para quem não alcança nenhuma sub-página.
+          Na prática hoje isso é "só sócio e admin": as três pessoas não-admin não
+          têm nenhuma das páginas de dashboard liberada, e o grupo aparecia para
+          elas como um bloco que abria e não tinha nada dentro. A condição olha o
+          que a pessoa alcança em vez de checar `is_admin`, para que liberar
+          Vendas a alguém no Acessos volte a mostrar o grupo sozinho. */}
+      {subPages.length > 0 && (
       <div className={cn("py-2 flex-1 overflow-y-auto", showLabels ? "px-3" : "px-2")}>
         {showLabels && (
           <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2 px-1">
@@ -170,11 +176,9 @@ export function AppSidebar() {
 
         <div className="space-y-0.5">
           <DashboardItem label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} />
-
-
-
         </div>
       </div>
+      )}
     </>
   );
 
