@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, Fragment } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useFilters } from '@/contexts/FilterContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +8,7 @@ import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Link2, AlertCircle, ChevronDown, ChevronRight, Search, ArrowUp, ArrowDown } from 'lucide-react';
+import { Link2, AlertCircle, ChevronDown, ChevronRight, Search, ArrowUp, ArrowDown, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -198,6 +199,10 @@ const INVESTIMENTO_RELEVANTE = 50;
 
 const razao = (n: number, d: number) => (d > 0 ? (n / d) * 100 : null);
 
+/** "1 venda" e não "1 vendas" — o número vem do dado e às vezes é um. */
+const plural = (n: number, singular: string) =>
+  `${formatNumber(n)} ${n === 1 ? singular : singular + 's'}`;
+
 const AVALIACAO_COR: Record<string, string> = {
   Validado: 'bg-success/15 text-success',
   Escalado: 'bg-primary/15 text-primary',
@@ -303,6 +308,12 @@ function Cabecalho({ col, rotulo, atual, dir, onSort, alinhar }: {
 export function CriativosMetaTab() {
   const { startDateStr, endDateStr, contaId } = useFilters();
   const { user, perfil } = useAuth();
+  const navigate = useNavigate();
+
+  /** Produção já sabia abrir card assim — é o mesmo caminho das notificações. */
+  const abrirCard = useCallback((producaoId: string | null) => {
+    if (producaoId) navigate('/producao', { state: { criativoId: producaoId } });
+  }, [navigate]);
 
   const [dados, setDados] = useState<Anuncio[]>([]);
   const [loading, setLoading] = useState(true);
@@ -508,8 +519,8 @@ export function CriativosMetaTab() {
       .filter(a => elegivel(a) && valor(a) !== null)
       .sort((x, y) => (maiorMelhor ? 1 : -1) * ((valor(y) as number) - (valor(x) as number)))
       .slice(0, 5)
-      .map(a => ({ nome: a.ad_nome || a.ad_id, editor: a.editor,
-                   projeto: a.projeto, valor: valor(a) as number }));
+      .map(a => ({ nome: a.ad_nome || a.ad_id, editor: a.editor, projeto: a.projeto,
+                   producao_id: a.producao_id, valor: valor(a) as number }));
 
     const comVenda = (a: Anuncio) => vendasDe(a) >= MIN_VENDAS;
     const comImpressao = (a: Anuncio) => a.impressoes >= MIN_IMPRESSOES;
@@ -612,7 +623,7 @@ export function CriativosMetaTab() {
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
           {rankings.map(r => (
             <MiniRank key={r.titulo} titulo={r.titulo} itens={r.itens}
-                      formato={r.formato} ajuda={r.ajuda} />
+                      formato={r.formato} ajuda={r.ajuda} onAbrir={abrirCard} />
           ))}
         </div>
       )}
@@ -676,6 +687,8 @@ export function CriativosMetaTab() {
                       expandido={aberto === a.ad_id}
                       onToggle={() => setAberto(aberto === a.ad_id ? null : a.ad_id)}
                       onVincular={() => setVincular(a)}
+                      onAbrirCard={() => abrirCard(a.producao_id)}
+                      podeTrocar={!!perfil?.is_admin}
                       ehMeu={!!user && a.editor_id === user.id}
                     />
                   ))}
@@ -716,11 +729,13 @@ export function CriativosMetaTab() {
  * Só entra anúncio com amostra suficiente: um hook de 80% em duzentas impressões
  * lideraria todos os rankings e não significaria nada.
  */
-function MiniRank({ titulo, itens, formato, ajuda }: {
+function MiniRank({ titulo, itens, formato, ajuda, onAbrir }: {
   titulo: string;
-  itens: { nome: string; editor: string | null; projeto: string | null; valor: number }[];
+  itens: { nome: string; editor: string | null; projeto: string | null;
+           producao_id: string | null; valor: number }[];
   formato: 'pct' | 'moeda' | 'x' | 'inteiro';
   ajuda: string;
+  onAbrir: (producaoId: string | null) => void;
 }) {
   const fmt = (v: number) => formato === 'pct' ? `${v.toFixed(1)}%`
     : formato === 'x' ? `${v.toFixed(2)}x`
@@ -739,7 +754,11 @@ function MiniRank({ titulo, itens, formato, ajuda }: {
       ) : (
         <div className="space-y-1.5">
           {itens.map((i, k) => (
-            <div key={i.nome + k} className="flex items-start gap-2 text-xs">
+            <div key={i.nome + k}
+                 onClick={() => i.producao_id && onAbrir(i.producao_id)}
+                 className={cn('flex items-start gap-2 rounded px-1 py-0.5 -mx-1 text-xs',
+                   i.producao_id && 'cursor-pointer transition-colors hover:bg-secondary/60')}
+                 title={i.producao_id ? 'Abrir o card em Produção' : undefined}>
               <span className="w-3 shrink-0 tabular-nums text-muted-foreground/40">{k + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-foreground" title={i.nome}>{i.nome}</div>
@@ -758,8 +777,9 @@ function MiniRank({ titulo, itens, formato, ajuda }: {
   );
 }
 
-function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
-  a: Criativo; expandido: boolean; onToggle: () => void; onVincular: () => void; ehMeu: boolean;
+function LinhaAnuncio({ a, expandido, onToggle, onVincular, onAbrirCard, podeTrocar, ehMeu }: {
+  a: Criativo; expandido: boolean; onToggle: () => void; onVincular: () => void;
+  onAbrirCard: () => void; podeTrocar: boolean; ehMeu: boolean;
 }) {
   const hook = hookDe(a), ctr = ctrDe(a);
   const conexao = razao(a.visualizacoes, a.cliques_link);
@@ -874,20 +894,30 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
             <div className="grid grid-cols-3 gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2.5 sm:grid-cols-6">
               <Etapa rotulo="Impressões" valor={formatNumber(a.impressoes)} />
               <Etapa rotulo="Hook 3s" valor={hook === null ? '—' : `${hook.toFixed(1)}%`}
-                     sob={formatNumber(a.video_3s)} fraco={poucaImpressao} />
+                     sob={`${formatNumber(a.video_3s)} passaram de 3s`} fraco={poucaImpressao} />
               <Etapa rotulo="Retenção 75%"
                      valor={retencao === null
                        ? (videoCurtoDemais(a) ? 'n/a' : '—')
                        : `${retencao.toFixed(1)}%`}
-                     sob={videoCurtoDemais(a) ? 'vídeo curto demais' : formatNumber(a.video_75pct)}
+                     sob={videoCurtoDemais(a) ? 'vídeo curto demais'
+                       : `${formatNumber(a.video_75pct)} chegaram a 75%`}
                      fraco={poucaImpressao || videoCurtoDemais(a)} />
               <Etapa rotulo="CTR" valor={ctr === null ? '—' : `${ctr.toFixed(1)}%`}
-                     sob={formatNumber(a.cliques_link)} fraco={poucaImpressao} />
+                     sob={`${formatNumber(a.cliques_link)} cliques no link`} fraco={poucaImpressao} />
               <Etapa rotulo="Conexão" valor={conexao === null ? '—' : `${conexao.toFixed(1)}%`}
-                     sob={formatNumber(a.visualizacoes)} fraco={poucaImpressao} />
-              <Etapa rotulo="Checkout → venda" valor={convCheckout === null ? '—' : `${convCheckout.toFixed(1)}%`}
-                     sob={`${formatNumber(vendas)} conversões`}
-                     fraco={poucaVenda || cego} />
+                     sob={`${formatNumber(a.visualizacoes)} abriram a página`} fraco={poucaImpressao} />
+              {/* O Meta omite `initiate_checkout` quando o volume é baixo, em vez de
+                  mandar zero — e a tela mostrava isso igual a "não houve checkout".
+                  Dez anúncios com uma venda cada chegam sem checkout nenhum: se houve
+                  venda, houve checkout, logo é o Meta que não contou. */}
+              <Etapa rotulo="Checkout → venda"
+                     valor={convCheckout === null
+                       ? (a.checkouts === 0 ? 'não informado' : '—')
+                       : `${convCheckout.toFixed(1)}%`}
+                     sob={a.checkouts === 0
+                       ? `${plural(vendas, 'venda')} · o Meta não reportou checkout`
+                       : `${plural(a.checkouts, 'checkout')} · ${plural(vendas, 'venda')}`}
+                     fraco={poucaVenda || cego || a.checkouts === 0} />
             </div>
 
             {/* Onde o criativo rodou. Só aparece quando ele se parte em mais de um
@@ -950,11 +980,27 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, ehMeu }: {
                 </span>
               ) : <span />}
 
-              <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs"
-                      onClick={e => { e.stopPropagation(); onVincular(); }}>
-                <Link2 className="h-3 w-3" />
-                {semCard ? 'Ligar a um card de Produção' : 'Trocar o card de Produção'}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Produção já sabia abrir um card assim — é como as notificações
+                    fazem. Aqui só reusa o mesmo caminho. */}
+                {!semCard && (
+                  <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs"
+                          onClick={e => { e.stopPropagation(); onAbrirCard(); }}>
+                    <ExternalLink className="h-3 w-3" />
+                    Abrir card em Produção
+                  </Button>
+                )}
+                {/* Quem define o dono do anúncio é sócio, e a decisão já era dele
+                    dentro do modal. Mostrar o botão para quem não pode salvar só
+                    entrega um caminho que termina em aviso. */}
+                {podeTrocar && (
+                  <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs"
+                          onClick={e => { e.stopPropagation(); onVincular(); }}>
+                    <Link2 className="h-3 w-3" />
+                    {semCard ? 'Ligar a um card de Produção' : 'Trocar o card de Produção'}
+                  </Button>
+                )}
+              </div>
             </div>
           </td>
         </tr>
