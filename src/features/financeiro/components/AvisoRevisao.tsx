@@ -7,11 +7,15 @@ import { AlertTriangle } from 'lucide-react';
 /**
  * Diz o que a tela está fazendo com as transações ainda não revisadas.
  *
- * O Fechamento soma tudo; o Caixa & DRE só conta `confirmado` e `revisado`.
- * As duas leituras são defensáveis — o fechamento quer o retrato completo, o
- * DRE quer só o que passou por olho humano —, mas até aqui nenhuma das duas
- * dizia qual estava usando. O mesmo mês aparecia com números diferentes em
- * telas vizinhas e ninguém conseguia explicar a diferença.
+ * Hoje as duas telas somam tudo que tem categoria, inclusive o que veio de
+ * regra automática. Nem sempre foi assim: o Caixa & DRE exigia `confirmado` ou
+ * `revisado`, e como julho e agosto inteiros estavam em `auto_categorizado`, os
+ * dois meses apareciam zerados enquanto o Fechamento mostrava o movimento real.
+ * O mesmo mês com números diferentes em telas vizinhas, e nada explicando a
+ * diferença.
+ *
+ * O `modo` continua existindo porque a escolha ainda é da tela, não deste
+ * componente — o que ele garante é que a escolha esteja escrita.
  *
  * Não muda conta nenhuma: só torna a escolha visível, e some quando não há
  * pendência — aviso que aparece sempre vira moldura e ninguém lê.
@@ -73,8 +77,8 @@ export function AvisoRevisao({
         </span>
         <span className="mt-0.5 block text-amber-200/70">
           {modo === 'inclui'
-            ? 'Os números abaixo já contam com elas. O Caixa & DRE não conta — por isso os dois podem divergir até a revisão terminar.'
-            : 'Os números abaixo não contam com elas. O Fechamento conta — por isso os dois podem divergir até a revisão terminar.'}
+            ? 'Os números abaixo já contam com elas — a categoria veio de regra automática, falta o olho humano confirmar.'
+            : 'Os números abaixo não contam com elas, e por isso podem estar menores que o real.'}
           {' '}Ir para a Revisão.
         </span>
       </span>

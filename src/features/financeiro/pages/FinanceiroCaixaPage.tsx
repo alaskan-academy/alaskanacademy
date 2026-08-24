@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
+import { PrevisaoCustos } from '@/features/financeiro/components/PrevisaoCustos';
+import { MapaCustos } from '@/features/financeiro/components/MapaCustos';
 import {
   CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA, ehCustoOperacional,
 } from '@/features/financeiro/constants';
@@ -153,8 +155,13 @@ export default function FinanceiroCaixaPage() {
         .from('transacoes')
         .select('categoria, valor')
         .gte('data', dataInicio)
-        .lte('data', dataFim)
-        .in('status_revisao', ['confirmado', 'revisado']);
+        .lte('data', dataFim);
+        // Conta também o que foi auto-categorizado. Antes esta tela exigia
+        // `confirmado`/`revisado`, e como julho e agosto inteiros (440
+        // lançamentos) estavam em `auto_categorizado`, os dois meses mais
+        // recentes apareciam zerados — justamente os que interessam para
+        // projetar o próximo. Auto-categorizado já TEM categoria: o que falta é
+        // o olho humano, e o `AvisoRevisao` logo acima diz quantos são.
 
       if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
 
@@ -188,15 +195,14 @@ export default function FinanceiroCaixaPage() {
       const { data: cfg } = await supabase.from('caixa_config').select('*').limit(1).single();
       if (cfg) setConfig(cfg as CaixaConfig);
 
-      // O mesmo filtro do resto da tela. Sem ele, esta seção contava transação
-      // não revisada enquanto o DRE logo acima a ignorava: em 24/08 o DRE
-      // mostrava R$ 0,00 e a reserva mostrava −R$ 1.559,21 com movimentos de
-      // agosto. Duas regras diferentes na mesma página, e nenhuma delas escrita.
+      // Sem filtro de status, igual ao resto da tela. O que importa é que seja
+      // a MESMA regra em todo lugar: quando esta seção e o DRE usavam critérios
+      // diferentes, em 24/08 o DRE mostrava R$ 0,00 enquanto a reserva mostrava
+      // −R$ 1.559,21 com movimentos de agosto, e nada na tela explicava por quê.
       const { data: mov } = await supabase
         .from('transacoes')
         .select('id, data, descricao, valor')
         .eq('categoria', 'Reserva de Caixa')
-        .in('status_revisao', ['confirmado', 'revisado'])
         .order('data', { ascending: false });
 
       setMovimentos((mov ?? []) as MovimentoReserva[]);
@@ -261,7 +267,7 @@ export default function FinanceiroCaixaPage() {
       {/* O DRE só conta o que passou por olho humano — `confirmado` e
           `revisado`. O que ficou de fora precisa aparecer, senão o mês parece
           menor do que foi e ninguém sabe por quê. */}
-      <AvisoRevisao inicio={dataInicio} fim={dataFim} modo="exclui" />
+      <AvisoRevisao inicio={dataInicio} fim={dataFim} modo="inclui" />
 
       {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -390,6 +396,16 @@ export default function FinanceiroCaixaPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Previsibilidade e mapa de custos.
+          Ficam abaixo do DRE porque respondem a outra pergunta: o DRE fecha o
+          mês que passou, estes dois olham para o que ainda vem. Sempre no mês
+          selecionado acima — no modo YTD a previsão continua sendo do mês, que
+          é a única janela em que "ainda deve sair" quer dizer alguma coisa. */}
+      <div className="mt-6 space-y-6">
+        <PrevisaoCustos ano={ano} mes={mes} />
+        <MapaCustos meses={6} />
       </div>
 
       {/* Modal editar saldo base */}
