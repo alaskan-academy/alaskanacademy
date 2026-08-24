@@ -27,6 +27,15 @@ export const PAGINAS = [
 
 export type PaginaKey = (typeof PAGINAS)[number]['key'];
 
+/**
+ * As páginas que aparecem no Acessos para ligar e desligar.
+ *
+ * O Início fica de fora porque `canAccess` sempre o libera: mostrar um botão
+ * que não muda nada seria mentir na tela. Ele continua em `PAGINAS` porque é
+ * de lá que saem a rota e o destino de quem cai numa página sem permissão.
+ */
+export const PAGINAS_CONFIGURAVEIS = PAGINAS.filter(p => p.key !== 'inicio');
+
 interface Cargo {
   id: string;
   nome: string;
@@ -154,6 +163,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const canAccess = (key: string) => {
     if (!user) return false;
+    // O Inicio e a porta de entrada, nao um privilegio. Quem tem permissoes
+    // explicitas gravadas em `permissoes_paginas` nao tinha `inicio` entre elas
+    // -- as tres pessoas nao-admin ficariam trancadas fora justamente da pagina
+    // feita para elas, e cairiam de novo na primeira pagina da lista, que e o
+    // defeito que o Inicio veio consertar. Deixar isso depender de linha em
+    // tabela significa que um usuario novo, ou um clique errado no Acessos,
+    // reabre o problema.
+    if (key === 'inicio') return true;
     if (perfil?.is_admin) return true;
     return allowed.has(key);
   };

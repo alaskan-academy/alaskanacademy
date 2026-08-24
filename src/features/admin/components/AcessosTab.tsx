@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Trash2, Plus, Shield, KeyRound, Check, UserX, UserCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PAGINAS } from '@/contexts/AuthContext';
+import { PAGINAS_CONFIGURAVEIS } from '@/contexts/AuthContext';
 import { useConfirm } from '@/hooks/use-confirm';
 
 type Usuario   = { id: string; email: string; nome: string; is_admin: boolean; ativo: boolean; created_at: string };
@@ -16,7 +16,7 @@ type Setor     = { id: string; nome: string; cor: string | null };
 type PermMap   = Record<string, boolean>;
 type EditorOpt = { id: string; nome: string };
 
-const defaultPerms = (): PermMap => Object.fromEntries(PAGINAS.map(p => [p.key, true]));
+const defaultPerms = (): PermMap => Object.fromEntries(PAGINAS_CONFIGURAVEIS.map(p => [p.key, true]));
 
 const fnError = async (error: unknown, data: Record<string, string> | null): Promise<string | null> => {
   if (data?.error) return data.error;
@@ -137,7 +137,7 @@ export function AcessosTab() {
     setNewCargoId('');
     if (setorId) {
       const pages = setorPerms[setorId] ?? [];
-      const perms = Object.fromEntries(PAGINAS.map(p => [p.key, pages.includes(p.key)]));
+      const perms = Object.fromEntries(PAGINAS_CONFIGURAVEIS.map(p => [p.key, pages.includes(p.key)]));
       setNewPerms(perms);
     } else {
       setNewPerms(defaultPerms());
@@ -155,7 +155,7 @@ export function AcessosTab() {
     const userId = data.user.id;
     await Promise.all([
       supabase.from('permissoes_paginas').upsert(
-        PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true })),
+        PAGINAS_CONFIGURAVEIS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: newPerms[p.key] ?? true })),
         { onConflict: 'usuario_id,pagina' },
       ),
       supabase.from('perfis').update({
@@ -253,7 +253,7 @@ export function AcessosTab() {
     const pages = setorPerms[setorId] ?? [];
     if (pages.length === 0) return toast({ title: 'Setor sem páginas padrão configuradas', variant: 'destructive' });
     setApplyingSetor(userId);
-    const rows = PAGINAS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: pages.includes(p.key) }));
+    const rows = PAGINAS_CONFIGURAVEIS.map(p => ({ usuario_id: userId, pagina: p.key, permitido: pages.includes(p.key) }));
     await supabase.from('permissoes_paginas').upsert(rows, { onConflict: 'usuario_id,pagina' });
     setApplyingSetor(null);
     toast({ title: 'Permissões do setor aplicadas' });
@@ -387,7 +387,7 @@ export function AcessosTab() {
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">Páginas visíveis</p>
                     <div className="flex flex-wrap gap-2">
-                      {PAGINAS.map(p => {
+                      {PAGINAS_CONFIGURAVEIS.map(p => {
                         const allowed = permsMap[u.id]?.[p.key] ?? true;
                         return (
                           <button
@@ -524,7 +524,7 @@ export function AcessosTab() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {PAGINAS.map(p => {
+                  {PAGINAS_CONFIGURAVEIS.map(p => {
                     const allowed = newPerms[p.key] ?? true;
                     return (
                       <button key={p.key} type="button"

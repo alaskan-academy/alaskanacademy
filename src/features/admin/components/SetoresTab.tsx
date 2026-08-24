@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Pencil, Trash2, Plus, ChevronDown, Check } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
-import { PAGINAS } from '@/contexts/AuthContext';
+import { PAGINAS_CONFIGURAVEIS } from '@/contexts/AuthContext';
 
 type Setor = { id: string; nome: string; cor: string | null; ordem: number };
 type Cargo = { id: string; nome: string; multiplicador: string; cor: string | null; ordem: number; setor_id: string | null };
@@ -214,7 +214,7 @@ function SetorCard({
               Acesso padrão (páginas liberadas para este setor)
             </p>
             <div className="flex flex-wrap gap-2">
-              {PAGINAS.map(p => {
+              {PAGINAS_CONFIGURAVEIS.map(p => {
                 const active  = permissoes.includes(p.key);
                 const loading = savingPerm === p.key;
                 return (
