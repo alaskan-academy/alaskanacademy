@@ -310,14 +310,37 @@ export function CriativosMetaTab() {
   }, [dados]);
 
   /** Agrupado por problema: cada um se resolve de um jeito diferente. */
+  /**
+   * O recorte que a tabela mostra, sem o filtro "Ver só esses".
+   *
+   * O aviso contava a base inteira do período, incluindo anúncios que a tabela
+   * escondia — os de menos de R$ 50, e os de outro editor quando havia filtro. Dizia
+   * "7 anúncios sem editor" numa tela onde nem todos os sete apareciam. Agora conta o
+   * que está à vista. Fica de fora só o próprio "Ver só esses", senão o aviso contaria
+   * a si mesmo e o número mudaria ao clicar nele.
+   */
+  const recorte = useMemo(() => {
+    let l = dados;
+    if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
+    if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
+    if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
+    if (busca.trim()) {
+      const b = busca.trim().toLowerCase();
+      l = l.filter(a => a.ad_nome?.toLowerCase().includes(b)
+                     || a.editor?.toLowerCase().includes(b)
+                     || a.conta?.toLowerCase().includes(b));
+    }
+    return l;
+  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, busca]);
+
   const pendentes = useMemo(() => {
     const g: Record<string, Anuncio[]> = {};
-    dados.forEach(a => {
+    recorte.forEach(a => {
       if (resolvido(a.vinculo)) return;
       (g[a.vinculo] ??= []).push(a);
     });
     return g;
-  }, [dados]);
+  }, [recorte]);
   const totalPendentes = Object.values(pendentes).reduce((s, l) => s + l.length, 0);
 
   /**
@@ -339,18 +362,10 @@ export function CriativosMetaTab() {
   const escondidos = useMemo(
     () => dados.filter(a => a.investimento < INVESTIMENTO_RELEVANTE).length, [dados]);
 
+
   const visiveis = useMemo(() => {
-    let l = dados;
-    if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
-    if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
-    if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
+    let l = recorte;
     if (soPendentes) l = l.filter(a => !resolvido(a.vinculo));
-    if (busca.trim()) {
-      const b = busca.trim().toLowerCase();
-      l = l.filter(a => a.ad_nome?.toLowerCase().includes(b)
-                     || a.editor?.toLowerCase().includes(b)
-                     || a.conta?.toLowerCase().includes(b));
-    }
     const chave = (a: Anuncio): number | string => {
       switch (col) {
         case 'nome': return a.ad_nome ?? '';
@@ -371,7 +386,7 @@ export function CriativosMetaTab() {
       }
       return (x - y) * sinal;
     });
-  }, [dados, verPoucoInvestimento, soMeus, user, editorFiltro, soPendentes, busca, col, dir]);
+  }, [recorte, soPendentes, col, dir]);
 
   /** Lista plana ou em blocos por editor, na mesma ordenação escolhida. */
   const blocos = useMemo(() => {
