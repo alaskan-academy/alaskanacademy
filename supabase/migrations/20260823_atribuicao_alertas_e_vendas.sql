@@ -80,7 +80,6 @@ comment on column public.ad_accounts.projeto_id is
   'Projeto ao qual a conta pertence. Restringe os cards candidatos em fn_criativos_meta: '
   'o nome do criativo se repete em dezenas de projetos, entao sem isso a data escolhia ao acaso.';
 
-commit;
 
 -- ---------------------------------------------------------------------------
 -- 6. O alerta de ingestão do Meta disparava todo dia sem motivo
@@ -132,3 +131,5 @@ select 'meta'::text,
        3::numeric,
        (extract(epoch from now() - public.fn_ultima_execucao_cron('meta-sync-horario')) / 3600::numeric) > 3::numeric
   from metricas_meta;
+
+commit;
