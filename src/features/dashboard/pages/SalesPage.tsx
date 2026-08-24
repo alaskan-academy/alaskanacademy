@@ -161,10 +161,13 @@ export default function SalesPage() {
         payMap[k].canceladas += Number(r.canceladas || 0);
         payMap[k].expiradas += Number(r.expiradas || 0);
       });
+      // A taxa ja era recalculada aqui; o ticket medio nao vinha junto e a coluna
+      // mostrava R$ 0,00 para todos os meios. Os dois saem dos totais somados.
       setPaymentData(
         Object.values(payMap).map((r: any) => ({
           ...r,
           taxa_aprovacao_pct: r.total_tentativas > 0 ? ((r.aprovadas / r.total_tentativas) * 100).toFixed(1) : "0.0",
+          ticket_medio: r.aprovadas > 0 ? r.faturamento / r.aprovadas : 0,
         })),
       );
 
