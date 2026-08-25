@@ -204,3 +204,64 @@ E `link_checkout` é único por REV — confirmado por ela. É a chave-mestra.
 4. **Testes/Esteira/Concluídos viram uma tela só?**
 5. **O que fazer com os 23 registros atuais** — migrar para o modelo novo, ou
    recomeçar o cadastro com o histórico preservado?
+
+---
+
+## O que dá para aproveitar do que já existe — muito mais do que eu supunha
+
+Ela perguntou se não dava para aproveitar o cadastro atual em vez de digitar
+tudo de novo. Dá, e a resposta tem duas partes — a segunda eu não esperava.
+
+### 1. O vínculo com o projeto JÁ EXISTE, com o nome errado
+
+`funis.oferta_id` não aponta para `ofertas`. Aponta para `ofertas_editores` —
+os projetos — em **22 de 23** registros.
+
+O modelo `projeto → REV` que propus não precisa ser criado. Ele está lá,
+chamado de `oferta_id`, e por isso ninguém sabia:
+
+| Projeto | REVs | Com checkout |
+|---|---|---|
+| Saponaria Brasil | 6 | 3 |
+| Workshop Buquê de Velas | 5 | 1 |
+| Velas Lembrancinhas | 5 | 2 |
+| Handify | 2 | 0 |
+| +4 projetos com 1 REV | 4 | 1 |
+
+**Consequência:** `funis.produto` (texto livre, nulo em 14 de 23) é redundante e
+some. O nome do projeto vem da chave estrangeira.
+
+### 2. Os checkouts estão dentro das vendas
+
+O webhook da Payt guarda o checkout inteiro em `payload_webhook.link`:
+
+```json
+{ "url": "https://payt.site/A1C7m7x",
+  "title": "Workshop Buquê de Velas Rev1",
+  "sources": { "utm_source": "whatsapp", "utm_medium": "suporte" } }
+```
+
+**61 checkouts distintos** já registrados em vendas reais, com URL, nome e UTMs.
+E **12 deles dizem a REV no próprio título** — "Rev1", "Rev5" — cobrindo 1.185
+vendas.
+
+Isto inverte o trabalho dela: em vez de digitar 16 checkouts que faltam, a tela
+mostra os 61 que existem e ela confirma a qual REV cada um pertence. Os que
+trazem "Rev" no título já vêm sugeridos.
+
+E os checkouts de suporte/recuperação ("Saponaria Brasil Suporte R$67", "Oferta
+Relâmpago") são a prova de que um projeto tem checkouts que NÃO são de funil —
+são de atendimento. O modelo precisa comportar isso sem forçá-los a virar REV.
+
+### 3. A VSL vira seleção, não digitação
+
+Ela levantou: se integrar a API do VTurb, dá para só selecionar a VSL. Sim, e é
+melhor por dois motivos além do óbvio:
+
+- o identificador vem do player, então "onde está rodando a VSL h07" passa a ser
+  uma busca exata e não uma comparação de texto digitado;
+- o mesmo id serve depois para puxar a retenção (Play Rate, 1 min, Fim da Lead,
+  Pitch, Final VSL) — os cinco campos que hoje são digitados na análise.
+
+**Isso promove a integração do VTurb de "etapa 5, se der" para pré-requisito da
+tela de Funis.** Precisa ser investigada antes, não depois.
