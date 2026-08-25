@@ -223,16 +223,28 @@ export default function FinanceiroCaixaPage() {
       // a MESMA regra em todo lugar: quando esta seção e o DRE usavam critérios
       // diferentes, em 24/08 o DRE mostrava R$ 0,00 enquanto a reserva mostrava
       // −R$ 1.559,21 com movimentos de agosto, e nada na tela explicava por quê.
+      // As DUAS pontas do movimento, não só a ida.
+      //
+      // Era `.eq('categoria', 'Reserva de Caixa')`, que pega apenas o dinheiro
+      // saindo da conta para a reserva. As voltas — "Retirada do Caixa" — não
+      // entravam, então a lista só tinha negativos e o saldo da reserva ficava
+      // maior do que é: somava tudo que entrou e nada do que saiu de lá.
+      //
+      // O filtro vem do plano de contas: toda categoria de tipo `reserva`.
+      // Categoria nova de reserva criada no campo entra sozinha.
+      const cats = plano.filter(c => c.tipo === 'reserva').map(c => c.categoria);
+      if (cats.length === 0) return;
+
       const { data: mov } = await supabase
         .from('transacoes')
         .select('id, data, descricao, valor')
-        .eq('categoria', 'Reserva de Caixa')
+        .in('categoria', cats)
         .order('data', { ascending: false });
 
       setMovimentos((mov ?? []) as MovimentoReserva[]);
     }
     load();
-  }, []);
+  }, [plano]);
 
   // ── KPIs ──
   const totalReceitas = totais
