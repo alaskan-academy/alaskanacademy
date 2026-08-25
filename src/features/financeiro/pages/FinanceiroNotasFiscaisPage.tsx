@@ -108,10 +108,16 @@ export default function FinanceiroNotasFiscaisPage() {
 
       // `upsert` na tabela também: reenviar corrige em vez de duplicar.
       //
-      // As QUATRO colunas da constraint precisam aparecer no `onConflict` — o
-      // PostgREST exige correspondência exata, e declarar três das quatro
+      // As CINCO colunas da constraint precisam aparecer no `onConflict` — o
+      // PostgREST exige correspondência exata, e declarar quatro das cinco
       // devolvia "there is no unique or exclusion constraint matching the ON
       // CONFLICT specification". Nenhuma nota conseguia ser gravada.
+      //
+      // `referencia_externa` entrou na chave depois, quando os comprovantes de
+      // PIX passaram a usar esta mesma tabela: comprovante é por TRANSAÇÃO, e
+      // sem ela o segundo PIX do mês ao mesmo destinatário sobrescrevia o
+      // primeiro. Esta tela não tem referência — vai nula —, mas precisa
+      // declará-la assim mesmo, senão o PostgREST não acha a constraint.
       const { error: erroLinha } = await supabase
         .from('documentos_fiscais')
         .upsert({
@@ -121,10 +127,14 @@ export default function FinanceiroNotasFiscaisPage() {
           // Vazio em ferramenta e comprovante; 'pagamento'/'comissao' são de
           // prestador, que manda duas por mês.
           subtipo: '',
+          // Vazio, não nulo: a coluna é `not null default ''` justamente para
+          // que a unicidade funcione. Nulo não colide com nulo no Postgres, e
+          // reenviar criaria uma segunda linha em vez de corrigir a primeira.
+          referencia_externa: '',
           storage_path: caminho,
           nome_arquivo: nome,
           valor: item.valor,
-        }, { onConflict: 'competencia,fornecedor,tipo,subtipo' });
+        }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
       if (erroLinha) throw erroLinha;
 
       toast({ title: 'Enviado', description: nome });
