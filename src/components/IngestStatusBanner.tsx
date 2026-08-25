@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { AlertTriangle, AlertCircle, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,10 +10,11 @@ interface Alerta {
   severidade: 'critico' | 'atencao';
   titulo: string;
   detalhe: string;
+  area: string;
 }
 
 /**
- * Alertas de saúde e coerência dos dados.
+ * Alertas de saúde e coerência dos dados, na tela onde se resolvem.
  *
  * Existe porque todo defeito encontrado até aqui produziu um número plausível: três
  * fontes paradas por meses, conversões do Meta somadas oito vezes, metade do gasto
@@ -21,19 +24,44 @@ interface Alerta {
  * As checagens ficam em `vw_alertas`, no banco, e não aqui: assim valem para qualquer
  * consumidor dos dados e podem ser conferidas por SQL. Não renderiza nada quando está
  * tudo em ordem.
+ *
+ * Dois recortes, os dois pedidos por ela depois de ver "1 venda sem categoria de
+ * produto" no Financeiro:
+ *
+ *   por área — o banner mostrava os 13 alertas em TODAS as páginas, e o efeito
+ *   era o oposto do pretendido: quem está no Financeiro, onde não há nada a
+ *   fazer sobre uma venda, aprende a ignorar a faixa amarela — inclusive quando
+ *   ela for sobre o Financeiro.
+ *
+ *   por permissão — falam de receita, gasto e falha de integração. Para quem não
+ *   pode agir é ruído com cara de problema, e ainda expõe número que não é da
+ *   conta de todo mundo.
  */
+
+/** Primeiro segmento da rota é a área. '/' é o Início, que recebe também tudo
+ *  que não foi mapeado — saúde do sistema não é de ninguém em particular. */
+function areaDaRota(pathname: string): string {
+  const seg = pathname.split('/').filter(Boolean)[0];
+  return seg ?? 'inicio';
+}
+
 export function IngestStatusBanner() {
-  const [alertas, setAlertas] = useState<Alerta[]>([]);
+  const [todos, setTodos] = useState<Alerta[]>([]);
   const [aberto, setAberto] = useState(false);
+  const { pathname } = useLocation();
+  const { perfil } = useAuth();
+
+  const podeVer = perfil?.is_admin === true;
 
   useEffect(() => {
     let ativo = true;
+    if (!podeVer) { setTodos([]); return; }
 
     const carregar = async () => {
       const { data } = await supabase
-        .from('vw_alertas')
-        .select('codigo, severidade, titulo, detalhe');
-      if (ativo) setAlertas((data as Alerta[]) ?? []);
+        .from('vw_alertas_por_area')
+        .select('codigo, severidade, titulo, detalhe, area');
+      if (ativo) setTodos((data as Alerta[]) ?? []);
     };
 
     carregar();
@@ -42,7 +70,12 @@ export function IngestStatusBanner() {
       ativo = false;
       clearInterval(intervalo);
     };
-  }, []);
+  }, [podeVer]);
+
+  const alertas = useMemo(
+    () => todos.filter(a => a.area === areaDaRota(pathname)),
+    [todos, pathname],
+  );
 
   if (alertas.length === 0) return null;
 
