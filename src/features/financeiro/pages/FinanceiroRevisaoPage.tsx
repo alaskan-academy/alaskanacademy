@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, Clock, Plus, Check, CheckCheck, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
 import { CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { CampoCategoria } from '@/features/financeiro/components/CampoCategoria';
@@ -453,6 +453,43 @@ export default function FinanceiroRevisaoPage() {
     t => (t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado') && !!t.categoria,
   );
 
+  /** Qual linha está sendo confirmada agora, para o botão dela virar spinner
+   *  sem travar as outras. */
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
+
+  /**
+   * Confirma uma transação direto na linha, sem abrir o modal.
+   *
+   * A categoria já veio da regra; o modal só serviria para carimbar. Ela pediu
+   * isto depois de olhar as 524: quando a categoria está certa, o caminho é um
+   * clique, e o modal fica para quando há decisão a tomar.
+   *
+   * Some da lista na hora em vez de esperar o `carregar()`: a aba "Pendentes"
+   * não mostra confirmadas, e recarregar 524 linhas a cada clique deixaria a
+   * revisão insuportável.
+   */
+  const confirmarUma = async (t: Transacao) => {
+    setConfirmandoId(t.id);
+    const { error } = await supabase
+      .from('transacoes')
+      .update({ status_revisao: 'confirmado' })
+      .eq('id', t.id);
+    setConfirmandoId(null);
+
+    if (error) {
+      toast({ title: 'Não consegui confirmar', description: error.message, variant: 'destructive' });
+      return;
+    }
+
+    setTransacoes(prev =>
+      filtro === 'pendentes'
+        ? prev.filter(x => x.id !== t.id)
+        : prev.map(x => (x.id === t.id ? { ...x, status_revisao: 'confirmado' } : x)),
+    );
+    if (filtro === 'pendentes') setTotalNoBanco(n => (n === null ? n : n - 1));
+    setVersao(v => v + 1);
+  };
+
   const confirmarLote = async () => {
     const ids = prontasParaLote.map(t => t.id);
     if (ids.length === 0) return;
@@ -647,14 +684,17 @@ export default function FinanceiroRevisaoPage() {
                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-32">Valor</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-44">Categoria</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">Status</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">
+                  <span className="sr-only">Confirmar</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
               {loading && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
               )}
               {!loading && visiveis.length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">
                   {/* Com busca ativa, "Nenhuma transação pendente 🎉" seria
                       mentira comemorativa: as pendências existem, o termo é que
                       não achou nada. */}
@@ -666,6 +706,8 @@ export default function FinanceiroRevisaoPage() {
               {visiveis.map(t => {
                 const s = STATUS_LABEL[t.status_revisao] ?? STATUS_LABEL.pendente;
                 const isPendente = t.status_revisao === 'pendente';
+                const podeConfirmar =
+                  (t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado') && !!t.categoria;
                 return (
                   <tr
                     key={t.id}
@@ -710,6 +752,26 @@ export default function FinanceiroRevisaoPage() {
                       <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', s.cls)}>
                         {s.label}
                       </span>
+                    </td>
+                    {/* Confirmar sem abrir o modal.
+                        `stopPropagation` porque a linha inteira abre o modal —
+                        sem isso, um clique aqui confirmaria E abriria a janela
+                        de algo que acabou de sair da lista.
+                        Só aparece quando há categoria: sem ela não existe o que
+                        confirmar, e o caminho é o modal mesmo. */}
+                    <td className="px-4 py-3 text-right">
+                      {podeConfirmar && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Confirmar ${t.fornecedor} de ${formatCurrency(Math.abs(t.valor))}`}
+                          disabled={confirmandoId === t.id}
+                          onClick={e => { e.stopPropagation(); confirmarUma(t); }}
+                          className="h-7 px-2 text-muted-foreground hover:text-green-400 hover:bg-green-500/10"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );
