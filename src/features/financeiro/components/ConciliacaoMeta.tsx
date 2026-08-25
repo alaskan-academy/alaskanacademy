@@ -16,9 +16,16 @@ import { Info } from 'lucide-react';
  * O resultado desmonta a hipótese que motivou este bloco: o WhatsApp é da ordem
  * de R$ 280 por mês, não os R$ 9.500 que faltavam. O que sobra é um acréscimo
  * de ~14,3% sobre o que a Meta reporta, estável quando o período cresce
- * (1,158 → 1,179 → 1,166 → 1,143 no acumulado) — assinatura de imposto cobrado
- * na fatura, que a API de insights não devolve. O dashboard está configurado
- * com 12,5% em `imposto_meta_ads_pct`, abaixo do observado.
+ * (1,158 → 1,179 → 1,166 → 1,143 no acumulado) — o imposto que a Meta cobra na
+ * fatura e que a API de insights não devolve.
+ *
+ * Isto NÃO é erro a corrigir no Financeiro: o que o Facebook debita já vem com
+ * imposto, então o valor da conta é o custo real e completo. Este bloco mora na
+ * tela de Meta Ads justamente por isso — no Financeiro a regra é trabalhar só
+ * com movimentação bancária, e aqui se compara o banco com uma fonte de fora.
+ *
+ * A quem serve: quem lê ROAS e CPA nesta tela está dividindo por um
+ * investimento ~14% menor do que o que de fato saiu da conta.
  */
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];

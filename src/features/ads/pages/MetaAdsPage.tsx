@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { ConciliacaoMeta } from "@/features/financeiro/components/ConciliacaoMeta";
 
 type Nivel = "campanha" | "adset" | "ad";
 
@@ -325,6 +326,16 @@ export default function MetaAdsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* O que a Meta reporta de campanha contra o que ela debitou da conta.
+          Mora aqui, e nao no Financeiro: la a regra e trabalhar so com
+          movimentacao bancaria, e este bloco existe justamente para comparar o
+          banco com uma fonte de fora. A leitura tambem e desta tela — quem olha
+          ROAS precisa saber que a cobranca vem ~14% acima do investimento
+          reportado. */}
+      <div className="mt-6">
+        <ConciliacaoMeta meses={6} />
+      </div>
     </DashboardLayout>
   );
 }
