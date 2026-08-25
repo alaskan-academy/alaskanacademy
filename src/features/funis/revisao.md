@@ -265,3 +265,31 @@ melhor por dois motivos além do óbvio:
 
 **Isso promove a integração do VTurb de "etapa 5, se der" para pré-requisito da
 tela de Funis.** Precisa ser investigada antes, não depois.
+
+### A VSL não espera o VTurb
+
+A integração ainda não existe no projeto — precisa ser configurada. Então a VSL
+**não pode ser desenhada em cima dela**, ou a tela de Funis fica parada
+esperando.
+
+Desenho que funciona hoje e melhora depois, sem retrabalho: uma tabela `vsls`
+própria, e o REV aponta para ela.
+
+| Campo | Hoje | Quando o VTurb entrar |
+|---|---|---|
+| `nome` | digitado uma vez ("h07 v01") | continua, ou vem do player |
+| `player` | vturb / panda | idem |
+| `player_video_id` | vazio | preenchido pela API |
+| retenção | manual na análise | puxada pelo id |
+
+**Por que uma tabela e não um campo de texto no REV:** a mesma VSL roda em mais
+de um REV, e a pergunta dela é justamente "onde está rodando a h07". Com texto
+solto em cada REV, a busca vira comparação de string e erra na primeira
+divergência de grafia. Com tabela, é uma chave estrangeira e a resposta é exata.
+
+São poucas VSLs; cadastrá-las uma vez é barato. E quando a API entrar, ela
+preenche `player_video_id` nas existentes e passa a criar as novas sozinha.
+
+**Um detalhe que ela levantou:** parte das VSLs pode estar no Panda Video, não
+no VTurb — o Panda aparece nas ferramentas pagas (R$ 989 em agosto). Por isso o
+campo `player` existe desde o começo, mesmo com um player só integrado.
