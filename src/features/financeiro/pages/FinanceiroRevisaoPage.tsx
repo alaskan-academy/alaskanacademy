@@ -128,6 +128,20 @@ export default function FinanceiroRevisaoPage() {
   const [novoCentro,  setNovoCentro]  = useState('');
   const [criandoNovo, setCriandoNovo] = useState(false);
 
+  // Muda a cada salvamento, para o aviso de divergencias recarregar sozinho.
+  const [versao, setVersao] = useState(0);
+
+  /** Abre no modal uma transacao vinda do aviso de divergencias. Busca a linha
+   *  completa porque a lista de divergencias so traz o resumo. */
+  const abrirPorId = useCallback(async (id: string) => {
+    const { data } = await supabase
+      .from('vw_transacoes_revisao')
+      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao')
+      .eq('id', id)
+      .maybeSingle();
+    if (data) openModal(data as Transacao);
+  }, []);
+
   const confirm = useConfirm();
   const [confirmandoLote, setConfirmandoLote] = useState(false);
 
@@ -225,6 +239,7 @@ export default function FinanceiroRevisaoPage() {
 
       toast({ title: 'Transação categorizada' });
       setSelected(null);
+      setVersao(v => v + 1);
       load();
     } catch {
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
@@ -381,7 +396,7 @@ export default function FinanceiroRevisaoPage() {
     <DashboardLayout title="Financeiro" hideFilters>
       <FinanceiroNav />
 
-      <AvisoDivergencias />
+      <AvisoDivergencias onAbrir={abrirPorId} recarregarEm={versao} />
 
       {/* summary */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">

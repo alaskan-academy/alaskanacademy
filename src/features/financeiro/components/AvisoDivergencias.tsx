@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, ChevronDown, ChevronRight, Check, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Check, Pencil, X } from 'lucide-react';
 
 /**
  * Onde uma categoria confirmada discorda da Conta Simples, e o que fazer.
@@ -36,7 +36,15 @@ interface Grupo {
   total: number;
 }
 
-export function AvisoDivergencias() {
+export function AvisoDivergencias({
+  onAbrir, recarregarEm,
+}: {
+  /** Abre a transação no modal de edição da página. Sem isto a lista só se olha,
+   *  e o caso que não cabe no botão de lote não teria saída. */
+  onAbrir?: (id: string) => void;
+  /** Muda quando a página salva algo, para a lista refletir a correção. */
+  recarregarEm?: number;
+}) {
   const [linhas, setLinhas] = useState<Divergencia[]>([]);
   const [aberto, setAberto] = useState(false);
   const [expandido, setExpandido] = useState<string | null>(null);
@@ -49,7 +57,7 @@ export function AvisoDivergencias() {
     setLinhas(((data ?? []) as Divergencia[]).map(d => ({ ...d, valor: Number(d.valor) })));
   }, []);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => { carregar(); }, [carregar, recarregarEm]);
 
   const grupos = useMemo(() => {
     const mapa = new Map<string, Grupo>();
@@ -151,9 +159,23 @@ export function AvisoDivergencias() {
       </button>
 
       {aberto && (
-        <ul className="mt-2.5 space-y-1.5 border-t border-amber-500/20 pt-2.5">
+        <div className="mt-2 flex justify-end border-t border-amber-500/20 pt-2">
+          <button
+            type="button"
+            onClick={() => setExpandido(expandido === '*' ? null : '*')}
+            className="text-[11px] text-amber-200/70 hover:text-amber-200"
+          >
+            {expandido === '*' ? 'Recolher todas' : `Abrir todas as ${total}`}
+          </button>
+        </div>
+      )}
+
+      {aberto && (
+        <ul className="mt-1.5 space-y-1.5">
           {grupos.map(g => {
-            const abertoAqui = expandido === g.chave;
+            // '*' abre todos de uma vez, para varrer as 32 sem entrar grupo a
+            // grupo.
+            const abertoAqui = expandido === g.chave || expandido === '*';
             return (
               <li key={g.chave} className="rounded border border-amber-500/20 bg-background/30">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5 text-xs">
@@ -199,18 +221,36 @@ export function AvisoDivergencias() {
                 </div>
 
                 {abertoAqui && (
-                  <ul className="border-t border-amber-500/20 px-2 py-1.5">
+                  <ul className="border-t border-amber-500/20 px-1 py-1">
+                    {/* Cada linha abre a transação para editar. Os botões do
+                        grupo resolvem o caso em massa; este é para quando uma
+                        das 23 é exceção — e sempre há uma. */}
                     {g.itens.map(i => (
-                      <li key={i.id} className="flex flex-wrap items-baseline gap-x-2 py-0.5 text-[11px]">
-                        <span className="shrink-0 tabular-nums text-muted-foreground">
-                          {i.data.split('-').reverse().join('/')}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-foreground" title={i.descricao}>
-                          {i.fornecedor}
-                        </span>
-                        <span className="shrink-0 tabular-nums text-muted-foreground">
-                          {formatCurrency(Math.abs(i.valor))}
-                        </span>
+                      <li key={i.id}>
+                        <button
+                          type="button"
+                          onClick={() => onAbrir?.(i.id)}
+                          disabled={!onAbrir}
+                          className={cn(
+                            'flex w-full flex-wrap items-baseline gap-x-2 rounded px-1 py-1 text-left text-[11px]',
+                            onAbrir && 'hover:bg-amber-500/10',
+                          )}
+                          title={onAbrir ? `Abrir para editar — ${i.descricao}` : i.descricao}
+                        >
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {i.data.split('-').reverse().join('/')}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-foreground">
+                            {i.fornecedor}
+                          </span>
+                          <span className="shrink-0 text-amber-200/60">
+                            {i.categoria_dash} → {i.categoria_cs}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-muted-foreground">
+                            {formatCurrency(Math.abs(i.valor))}
+                          </span>
+                          {onAbrir && <Pencil className="h-2.5 w-2.5 shrink-0 text-muted-foreground/50" />}
+                        </button>
                       </li>
                     ))}
                   </ul>
