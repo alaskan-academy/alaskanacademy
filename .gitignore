@@ -36,3 +36,6 @@ lerna-debug.log*
 
 # OS
 Thumbs.db
+
+# Lixo do CLI do Supabase (npx supabase ...)
+supabase/.temp/
