@@ -24,7 +24,13 @@ interface Transacao {
   descricao: string;
   valor: number;
   categoria: string | null;
+  /** O centro cru que o CS mandou. Erra com frequência — as cobranças de
+   *  WhatsApp vinham como "Softwares e Ferramentas". Fica porque é o registro
+   *  do que a Conta Simples disse, mas não é o que se mostra. */
   centro_custo: string | null;
+  /** O grupo de verdade, resolvido por `categorias_centro` — o mesmo que o
+   *  relatório usa. É este que aparece na tabela. */
+  grupo: string | null;
   status_revisao: string;
   /** Nome resolvido pelo apelido; cai no descritor normalizado sem apelido. */
   fornecedor: string;
@@ -170,7 +176,7 @@ export default function FinanceiroRevisaoPage() {
   const abrirPorId = useCallback(async (id: string) => {
     const { data } = await supabase
       .from('vw_transacoes_revisao')
-      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao')
+      .select('id,data,descricao,valor,categoria,centro_custo,grupo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao')
       .eq('id', id)
       .maybeSingle();
     if (data) openModal(data as Transacao);
@@ -189,7 +195,7 @@ export default function FinanceiroRevisaoPage() {
     let query = supabase
       .from('vw_transacoes_revisao')
       .select(
-        'id,data,descricao,valor,categoria,centro_custo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao',
+        'id,data,descricao,valor,categoria,centro_custo,grupo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao',
         { count: 'exact' },
       )
       .order('data', { ascending: false })
@@ -696,6 +702,7 @@ export default function FinanceiroRevisaoPage() {
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-28">Data</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Descrição</th>
                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-32">Valor</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-40">Grupo</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-44">Categoria</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">Status</th>
                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-24">
@@ -705,10 +712,10 @@ export default function FinanceiroRevisaoPage() {
             </thead>
             <tbody className="divide-y divide-border/50">
               {loading && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
               )}
               {!loading && visiveis.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">
                   {/* Com busca ativa, "Nenhuma transação pendente 🎉" seria
                       mentira comemorativa: as pendências existem, o termo é que
                       não achou nada. */}
@@ -758,6 +765,14 @@ export default function FinanceiroRevisaoPage() {
                     </td>
                     <td className={cn('px-4 py-3 text-right tabular-nums font-medium', t.valor < 0 ? 'text-red-400' : 'text-green-400')}>
                       {formatCurrency(Math.abs(t.valor))}
+                    </td>
+                    {/* O grupo vem resolvido por `categorias_centro`, e não do
+                        `centro_custo` cru do CS — que erra: as cobranças de
+                        WhatsApp chegavam marcadas como "Softwares e
+                        Ferramentas". Aqui a tela mostra o mesmo que o relatório
+                        soma, senão conferir uma coisa e somar outra. */}
+                    <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[9rem]">
+                      {t.grupo || <span className="italic opacity-50">—</span>}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs truncate max-w-[10rem]">
                       {t.categoria || <span className="italic opacity-50">sem categoria</span>}
