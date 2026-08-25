@@ -60,10 +60,12 @@ export default function FinanceiroNotasFiscaisPage() {
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState<string | null>(null);
 
-  // Um input por linha seria um input por fornecedor no DOM. Um só, apontado
-  // para a linha que pediu.
-  const inputRef = useRef<HTMLInputElement>(null);
-  const alvoRef = useRef<Item | null>(null);
+  // Um input por linha, e não um input com um `alvoRef` dizendo quem pediu.
+  // Com a referência compartilhada, um segundo clique antes de o primeiro
+  // terminar sobrescreve o alvo e o arquivo vai para o fornecedor errado — a NF
+  // da ElevenLabs gravada como sendo da Spedy, sem nada denunciando na tela.
+  // Input escondido é barato; 21 deles não pesam.
+  const inputsRef = useRef<Record<string, HTMLInputElement | null>>({});
 
   const competencia = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
 
@@ -77,16 +79,20 @@ export default function FinanceiroNotasFiscaisPage() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  function pedirArquivo(item: Item) {
-    alvoRef.current = item;
-    inputRef.current?.click();
-  }
-
-  async function aoEscolherArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+  async function aoEscolherArquivo(e: React.ChangeEvent<HTMLInputElement>, item: Item) {
     const arquivo = e.target.files?.[0];
-    const item = alvoRef.current;
     e.target.value = '';                 // permite reenviar o mesmo arquivo
-    if (!arquivo || !item) return;
+    if (!arquivo) return;
+    // Um envio por vez: dois em paralelo fariam a lista recarregar por cima de
+    // si mesma, e a segunda leitura poderia chegar antes da primeira gravar.
+    // Avisa em vez de ignorar — falhar em silêncio é o pior jeito de funcionar.
+    if (enviando) {
+      toast({
+        title: 'Um envio de cada vez',
+        description: 'Espere o anterior terminar e anexe o próximo.',
+      });
+      return;
+    }
 
     setEnviando(item.fornecedor);
     try {
@@ -209,14 +215,6 @@ export default function FinanceiroNotasFiscaisPage() {
   return (
     <DashboardLayout title="Notas Fiscais" hideFilters>
       <FinanceiroNav />
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf,image/png,image/jpeg,image/webp"
-        className="hidden"
-        onChange={aoEscolherArquivo}
-      />
 
       <div className="flex items-center gap-2 mb-4">
         <Button variant="ghost" size="icon" onClick={voltar} aria-label="Mês anterior">
@@ -353,15 +351,27 @@ export default function FinanceiroNotasFiscaisPage() {
                       </button>
                     </span>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => pedirArquivo(item)}
-                      disabled={enviando === item.fornecedor}
-                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
-                    >
-                      <Upload className="h-3 w-3 shrink-0" />
-                      {enviando === item.fornecedor ? 'enviando…' : 'anexar'}
-                    </button>
+                    <>
+                      <input
+                        ref={el => { inputsRef.current[item.fornecedor] = el; }}
+                        type="file"
+                        accept="application/pdf,image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={e => aoEscolherArquivo(e, item)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => inputsRef.current[item.fornecedor]?.click()}
+                        // Desabilita durante QUALQUER envio, não só o desta
+                        // linha: dois em paralelo fariam a lista recarregar por
+                        // cima de si mesma.
+                        disabled={enviando !== null}
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                      >
+                        <Upload className="h-3 w-3 shrink-0" />
+                        {enviando === item.fornecedor ? 'enviando…' : 'anexar'}
+                      </button>
+                    </>
                   )}
                 </span>
 

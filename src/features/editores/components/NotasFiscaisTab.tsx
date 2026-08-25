@@ -66,8 +66,11 @@ export function NotasFiscaisTab() {
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
-  const alvoRef = useRef<NotaEsperada | null>(null);
+  // Um input por linha, e não um input com um `alvoRef` dizendo quem pediu.
+  // Com a referência compartilhada, um segundo clique antes de o primeiro
+  // terminar sobrescreve o alvo e o arquivo vai para a linha errada — a nota de
+  // comissão gravada como pagamento, sem nada na tela denunciando.
+  const inputsRef = useRef<Record<string, HTMLInputElement | null>>({});
 
   const mesEnvio = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
   const editorAtual = editores.find(e => e.id === editorId);
@@ -107,16 +110,22 @@ export function NotasFiscaisTab() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  function pedirArquivo(nota: NotaEsperada) {
-    alvoRef.current = nota;
-    inputRef.current?.click();
-  }
-
-  async function aoEscolherArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+  async function aoEscolherArquivo(e: React.ChangeEvent<HTMLInputElement>, nota: NotaEsperada) {
     const arquivo = e.target.files?.[0];
-    const nota = alvoRef.current;
-    e.target.value = '';
-    if (!arquivo || !nota || !editorAtual) return;
+    e.target.value = '';                 // permite reenviar o mesmo arquivo
+    if (!arquivo || !editorAtual) return;
+    // Um envio por vez: as duas notas gravam na mesma tabela e um segundo
+    // upsert no meio do primeiro deixaria a lista recarregando por cima de si
+    // mesma. Mas AVISA em vez de ignorar — falhar em silêncio é o pior jeito de
+    // funcionar, e foi assim que descobri este caminho: a nota não subia e a
+    // tela não dizia nada.
+    if (enviando) {
+      toast({
+        title: 'Um envio de cada vez',
+        description: 'Espere o anterior terminar e mande a outra nota.',
+      });
+      return;
+    }
 
     setEnviando(nota.subtipo);
     try {
@@ -192,14 +201,6 @@ export function NotasFiscaisTab() {
 
   return (
     <div className="space-y-4">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf,image/png,image/jpeg,image/webp"
-        className="hidden"
-        onChange={aoEscolherArquivo}
-      />
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" onClick={voltar} aria-label="Mês anterior">
@@ -302,18 +303,31 @@ export function NotasFiscaisTab() {
                         </button>
                       </span>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => pedirArquivo(n)}
-                        disabled={enviando === n.subtipo}
-                        className={cn(
-                          'inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs',
-                          'text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50',
-                        )}
-                      >
-                        <Upload className="h-3 w-3 shrink-0" />
-                        {enviando === n.subtipo ? 'enviando…' : 'enviar nota'}
-                      </button>
+                      <>
+                        <input
+                          ref={el => { inputsRef.current[n.subtipo] = el; }}
+                          type="file"
+                          accept="application/pdf,image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={e => aoEscolherArquivo(e, n)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => inputsRef.current[n.subtipo]?.click()}
+                          // Desabilita durante QUALQUER envio, não só o desta
+                          // linha: as duas gravam na mesma tabela, e um segundo
+                          // envio no meio do primeiro faria a lista recarregar
+                          // por cima de si mesma.
+                          disabled={enviando !== null}
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs',
+                            'text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-50',
+                          )}
+                        >
+                          <Upload className="h-3 w-3 shrink-0" />
+                          {enviando === n.subtipo ? 'enviando…' : 'enviar nota'}
+                        </button>
+                      </>
                     )}
                   </span>
                 </li>
