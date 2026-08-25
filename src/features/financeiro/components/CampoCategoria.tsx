@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
-import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 /**
  * Escolher, criar, renomear e apagar categoria no mesmo campo.
@@ -147,12 +147,14 @@ export function CampoCategoria({
         )}
       >
         <span className={valor ? 'text-foreground' : 'text-muted-foreground'}>
-          {valor || 'Escolher categoria'}
+          {valor || 'Escolher, criar ou editar categoria'}
         </span>
-        {selecionada && (
+        {selecionada ? (
           <span className="ml-2 shrink-0 text-[11px] text-muted-foreground">
             {selecionada.centro_custo}
           </span>
+        ) : (
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
         )}
       </button>
 
@@ -166,6 +168,13 @@ export function CampoCategoria({
               placeholder="Buscar ou nomear uma nova…"
               className="h-8"
             />
+            {/* Sem esta linha ninguém descobre que dá para gerenciar aqui: os
+                ícones de lápis e lixeira ficam discretos de propósito, e um
+                campo que parece um select comum não convida a testar. */}
+            <p className="mt-1.5 px-0.5 text-[11px] text-muted-foreground/70">
+              Digite um nome novo para criar · <Pencil className="inline h-2.5 w-2.5" /> renomeia ·{' '}
+              <Trash2 className="inline h-2.5 w-2.5" /> apaga
+            </p>
           </div>
 
           <div className="max-h-72 overflow-y-auto p-1">
@@ -201,7 +210,7 @@ export function CampoCategoria({
                         <button
                           type="button"
                           onClick={() => { setEditando(c.categoria); setRascunho(c.categoria); }}
-                          className="shrink-0 p-1 text-muted-foreground opacity-0 hover:text-foreground group-hover:opacity-100"
+                          className="shrink-0 p-1 text-muted-foreground/50 hover:text-foreground"
                           aria-label={`Renomear ${c.categoria}`}
                         >
                           <Pencil className="h-3 w-3" />
@@ -209,7 +218,7 @@ export function CampoCategoria({
                         <button
                           type="button"
                           onClick={() => apagar(c)}
-                          className="shrink-0 p-1 text-muted-foreground opacity-0 hover:text-red-400 group-hover:opacity-100"
+                          className="shrink-0 p-1 text-muted-foreground/50 hover:text-red-400"
                           aria-label={`Apagar ${c.categoria}`}
                         >
                           <Trash2 className="h-3 w-3" />

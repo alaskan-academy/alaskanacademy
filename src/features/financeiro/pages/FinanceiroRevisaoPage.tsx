@@ -717,15 +717,14 @@ export default function FinanceiroRevisaoPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label>Centro de custo <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-              <Select value={novoCentro} onValueChange={setNovoCentro}>
-                <SelectTrigger><SelectValue placeholder="Selecione o centro de custo…" /></SelectTrigger>
-                <SelectContent>
-                  {CENTROS_CUSTO.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Centro vem da categoria, não se escolhe à parte — este select
+                tinha ficado para trás quando o campo de categoria passou a
+                trazer o pai junto. */}
+            {novoCentro && (
+              <p className="text-xs text-muted-foreground">
+                Centro de custo: <span className="text-foreground">{novoCentro}</span>
+              </p>
+            )}
           </div>
 
           <DialogFooter className="gap-2">
