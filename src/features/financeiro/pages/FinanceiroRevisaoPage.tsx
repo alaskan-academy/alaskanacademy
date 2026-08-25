@@ -602,14 +602,12 @@ export default function FinanceiroRevisaoPage() {
                 </p>
               </div>
 
+              {/* O componente traz os dois níveis com os próprios rótulos —
+                  grupo em cima, categoria embaixo, e o de cima filtra o outro. */}
               <div className="space-y-1.5">
-                <Label>Categoria</Label>
-                {/* O centro vem junto e não se escolhe à parte: é o que mantém a
-                    hierarquia estável. Quando o centro era propriedade da
-                    transação, a mesma categoria caía em quatro centros
-                    diferentes e a matriz de custos ficava incoerente. */}
                 <CampoCategoria
                   valor={formCateg}
+                  centro={formCentro}
                   onChange={setFormCateg}
                   onCentroChange={setFormCentro}
                 />
@@ -709,9 +707,9 @@ export default function FinanceiroRevisaoPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Categoria</Label>
               <CampoCategoria
                 valor={novoCateg}
+                centro={novoCentro}
                 onChange={setNovoCateg}
                 onCentroChange={setNovoCentro}
               />
