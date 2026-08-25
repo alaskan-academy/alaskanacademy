@@ -13,7 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
-import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
+import { CENTROS_CUSTO } from '@/features/financeiro/constants';
+import { CampoCategoria } from '@/features/financeiro/components/CampoCategoria';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoDivergencias } from '@/features/financeiro/components/AvisoDivergencias';
 
@@ -603,22 +604,20 @@ export default function FinanceiroRevisaoPage() {
 
               <div className="space-y-1.5">
                 <Label>Categoria</Label>
-                <Select value={formCateg} onValueChange={setFormCateg}>
-                  <SelectTrigger><SelectValue placeholder="Selecione a categoria…" /></SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Centro de custo <span className="text-muted-foreground font-normal">(opcional)</span></Label>
-                <Select value={formCentro} onValueChange={setFormCentro}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o centro de custo…" /></SelectTrigger>
-                  <SelectContent>
-                    {CENTROS_CUSTO.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                {/* O centro vem junto e não se escolhe à parte: é o que mantém a
+                    hierarquia estável. Quando o centro era propriedade da
+                    transação, a mesma categoria caía em quatro centros
+                    diferentes e a matriz de custos ficava incoerente. */}
+                <CampoCategoria
+                  valor={formCateg}
+                  onChange={setFormCateg}
+                  onCentroChange={setFormCentro}
+                />
+                {formCentro && (
+                  <p className="text-xs text-muted-foreground">
+                    Centro de custo: <span className="text-foreground">{formCentro}</span>
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2 border border-border rounded-lg p-3 bg-muted/20">
@@ -711,12 +710,11 @@ export default function FinanceiroRevisaoPage() {
 
             <div className="space-y-1.5">
               <Label>Categoria</Label>
-              <Select value={novoCateg} onValueChange={setNovoCateg}>
-                <SelectTrigger><SelectValue placeholder="Selecione a categoria…" /></SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <CampoCategoria
+                valor={novoCateg}
+                onChange={setNovoCateg}
+                onCentroChange={setNovoCentro}
+              />
             </div>
 
             <div className="space-y-1.5">
