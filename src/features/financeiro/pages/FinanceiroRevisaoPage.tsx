@@ -37,6 +37,17 @@ interface Transacao {
 
 type Filtro = 'pendentes' | 'todas';
 
+/** Teto de linhas por carga.
+ *
+ *  Era 500 e a fila de pendentes tinha 524 — cortava 24 sem dizer nada, o mesmo
+ *  defeito que já havia escondido 700 transações na aba "Todas" e que o
+ *  comentário de `load` diz ter sido corrigido (foi, só ali).
+ *
+ *  Continua existindo teto: uma importação grande pode trazer milhares, e
+ *  carregar tudo travaria a tela. O que muda é que agora a tela DIZ quando
+ *  cortou, em vez de mostrar um número redondo e mentiroso. */
+const TETO = 1000;
+
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   pendente:          { label: 'Pendente',       cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
   auto_categorizado: { label: 'Auto',           cls: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
@@ -145,14 +156,22 @@ export default function FinanceiroRevisaoPage() {
   const confirm = useConfirm();
   const [confirmandoLote, setConfirmandoLote] = useState(false);
 
+  /** Quantas existem de verdade, contadas no banco — não quantas couberam na
+   *  tela. O contador vinha de `transacoes.length`, então com 524 pendentes e
+   *  teto de 500 ele dizia "500" e ninguém ficava sabendo das outras 24. */
+  const [totalNoBanco, setTotalNoBanco] = useState<number | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     let query = supabase
       .from('vw_transacoes_revisao')
-      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao')
+      .select(
+        'id,data,descricao,valor,categoria,centro_custo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao',
+        { count: 'exact' },
+      )
       .order('data', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(500);
+      .limit(TETO);
 
     if (filtro === 'pendentes') {
       query = query.in('status_revisao', ['pendente', 'auto_categorizado']);
@@ -165,9 +184,10 @@ export default function FinanceiroRevisaoPage() {
       query = query.gte('data', inicio).lte('data', fim);
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) toast({ title: 'Erro ao carregar transações', variant: 'destructive' });
     setTransacoes(data || []);
+    setTotalNoBanco(count ?? null);
     setLoading(false);
   }, [filtro, anoRev, mesRev]);
 
@@ -333,7 +353,14 @@ export default function FinanceiroRevisaoPage() {
     }
   };
 
-  const pendentes = transacoes.filter(t => t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado').length;
+  const carregadas = transacoes.filter(t => t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado').length;
+  /** Na aba "Pendentes" o filtro do banco já é exatamente esse, então a
+   *  contagem exata vale. Em "Todas" o recorte é por mês e a contagem do banco
+   *  inclui as confirmadas — aí o número da tela é o certo. */
+  const pendentes = filtro === 'pendentes' && totalNoBanco !== null ? totalNoBanco : carregadas;
+  /** Quantas o teto deixou de fora. Dizer isso é o mínimo: revisar acreditando
+   *  ter visto tudo é pior do que saber que faltam. */
+  const foraDaTela = Math.max(0, pendentes - carregadas);
 
   /**
    * As que as regras já classificaram sozinhas.
@@ -422,6 +449,20 @@ export default function FinanceiroRevisaoPage() {
           </div>
         </div>
       </div>
+
+      {/* O teto cortou. Dizer isso é o mínimo: revisar acreditando ter visto
+          tudo é pior do que saber que faltam. */}
+      {!loading && foraDaTela > 0 && (
+        <div className="mb-5 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm">
+          <span className="font-medium">
+            {foraDaTela} {foraDaTela === 1 ? 'transação não cabe' : 'transações não cabem'} nesta tela.
+          </span>{' '}
+          <span className="text-muted-foreground">
+            São {pendentes} no total e a tela carrega {TETO} por vez. Confirme ou categorize as
+            visíveis e {foraDaTela === 1 ? 'ela aparece' : 'elas aparecem'} na próxima carga.
+          </span>
+        </div>
+      )}
 
       {/* toolbar — `flex-wrap` porque sem ele os botões da direita eram
            cortados na borda em vez de descer para a linha de baixo. */}
