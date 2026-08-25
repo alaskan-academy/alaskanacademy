@@ -293,3 +293,73 @@ preenche `player_video_id` nas existentes e passa a criar as novas sozinha.
 **Um detalhe que ela levantou:** parte das VSLs pode estar no Panda Video, não
 no VTurb — o Panda aparece nas ferramentas pagas (R$ 989 em agosto). Por isso o
 campo `player` existe desde o começo, mesmo com um player só integrado.
+
+---
+
+## A API do VTurb, testada de verdade (26/08/2026)
+
+Chave configurada por ela, função `vturb` no ar. Não é mais suposição.
+
+**Correção:** eu disse "R$ 989 de Panda em agosto". Errado — agosto foi
+**R$ 237,70**; R$ 989 é a soma de abril a agosto. E o Panda é área de membros,
+não VSL. Toda VSL está no VTurb, então o campo `player` na tabela `vsls` não
+precisa existir.
+
+### Os 162 players, e como separar VSL de aula
+
+`/players/list` devolve `id`, `name`, `duration`, `pitch_time`.
+
+**`pitch_time > 0` é o que separa VSL de aula** — 88 dos 162. Aula e upsell curto
+vêm com `pitch_time = 0` porque ninguém configurou pitch neles. Não é campo
+pensado para isso, mas é o sinal mais limpo que existe.
+
+E o padrão de nome dela está lá: `VSL 02 H07 Saponaria`, `VSL 02 H06 Saponaria`,
+`NT 010 H01 V01`, `VSL 03 H01/H02/H03`. Dezenove players no padrão `H\d\d`.
+
+### Os testes A/B já existem dentro do VTurb
+
+Esta é a descoberta que muda o plano:
+
+```
+"Saponaria VSL 02 - VSL 02 H07 V01 vs VSL 02 H06 V01"
+  player_ids: [6a7e8ac5…, 6a7e8c4e…]   started_at: 2026-08-14
+```
+
+É exatamente o teste h06 × h07 que hoje é anotado à mão no Chat e no Obsidian.
+O VTurb guarda os dois players, o split de tráfego e as datas, e
+`/comparison_groups/stats` dá as métricas dos dois lados.
+
+**Consequência para `testes_funis`:** os testes de VSL não precisam de vencedor
+digitado. Era isso que fazia 10 dos 13 testes concluídos ficarem sem resultado.
+
+### Os cinco campos manuais da análise: todos vêm da API
+
+Medido em `VSL 02 H07 Saponaria`, 01–25/08:
+
+| Campo da planilha | Vem de | Valor |
+|---|---|---|
+| Play Rate | `play_rate` | 64,35% |
+| 1 min | curva | 69,1% |
+| Fim da Lead | curva, no segundo que ela marcar | — |
+| Pitch | `over_pitch_rate` | 28,67% |
+| Final VSL | curva / `total_finished` | 5,8% |
+
+Mais conversões (594) e faturamento por moeda, de brinde.
+
+### A armadilha do `grouped_timed` — quase entrou errado
+
+`/times/user_engagement` devolve `grouped_timed` com `timed` e `total_users`, e
+a leitura óbvia — "usuários retidos naquele segundo" — **está errada**. É um
+histograma de quanto cada pessoa assistiu no total.
+
+Lida da forma óbvia, a curva dava 6% no primeiro minuto e 47% no final. Retenção
+não sobe; foi o absurdo que denunciou o erro.
+
+A curva certa é a soma acumulada de trás para frente: retido em `t` = quem
+assistiu **ao menos** `t`. Aí dá 69,1 → 42,8 → 28,7 → 5,8, e bate duas vezes
+contra a própria API — o pitch calculado (28,7%) contra `over_pitch_rate`
+(28,67%), e o final calculado (993 pessoas) contra `total_finished` (988).
+
+**Quem for implementar: sempre conferir contra `over_pitch_rate`.** É o único
+ponto da curva que a API também calcula sozinha, então é o único lugar onde um
+erro de leitura aparece sem precisar de olho humano.
