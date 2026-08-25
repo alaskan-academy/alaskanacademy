@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
 import { CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { CampoCategoria } from '@/features/financeiro/components/CampoCategoria';
@@ -47,6 +47,11 @@ type Filtro = 'pendentes' | 'todas';
  *  carregar tudo travaria a tela. O que muda é que agora a tela DIZ quando
  *  cortou, em vez de mostrar um número redondo e mentiroso. */
 const TETO = 1000;
+
+/** Minúsculas e sem acento, para os dois lados da busca. Quem digita "anuncios"
+ *  com pressa tem de achar "Anúncios". */
+const semAcento = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   pendente:          { label: 'Pendente',       cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
@@ -115,6 +120,7 @@ export default function FinanceiroRevisaoPage() {
   const [transacoes, setTransacoes]   = useState<Transacao[]>([]);
   const [loading, setLoading]         = useState(true);
   const [filtro, setFiltro]           = useState<Filtro>('pendentes');
+  const [busca, setBusca]             = useState('');
   const [anoRev, setAnoRev]           = useState(new Date().getFullYear());
   const [mesRev, setMesRev]           = useState(new Date().getMonth());
   const [selected, setSelected]       = useState<Transacao | null>(null);
@@ -353,6 +359,42 @@ export default function FinanceiroRevisaoPage() {
     }
   };
 
+  /**
+   * Busca por nome ou por valor, na lista já carregada.
+   *
+   * Sem acento e sem caixa dos dois lados: quem procura "anuncios" tem de achar
+   * "Anúncios", e ninguém digita acento numa caixa de busca com pressa.
+   *
+   * O valor aceita as duas grafias. "1.745,88" e "1745.88" são o mesmo número, e
+   * digitar só "1745" tem de achar também — por isso a comparação é por prefixo
+   * do valor formatado, e não igualdade exata.
+   */
+  const visiveis = useMemo(() => {
+    const termo = semAcento(busca.trim());
+    if (!termo) return transacoes;
+
+    return transacoes.filter(t => {
+      if (semAcento(t.descricao ?? '').includes(termo)) return true;
+      if (semAcento(t.fornecedor ?? '').includes(termo)) return true;
+      if (semAcento(t.categoria ?? '').includes(termo)) return true;
+
+      // O valor é guardado como "1745.88" e pode ser digitado de três jeitos:
+      // "1.745,88" (como a tela mostra), "1745.88" (como o banco guarda) e
+      // "1745" (só o começo, que é como se busca com pressa). Testa as leituras
+      // possíveis em vez de escolher uma — tirar todo ponto fazia "1745.88"
+      // virar "174588" e não achar nada, calado.
+      if (/^[\d.,]+$/.test(termo)) {
+        const guardado = Math.abs(t.valor).toFixed(2);
+        const leituras = [
+          termo.replace(/\./g, '').replace(',', '.'),  // 1.745,88 -> 1745.88
+          termo.replace(',', '.'),                     // 1745.88  -> 1745.88
+        ];
+        if (leituras.some(n => n && guardado.startsWith(n))) return true;
+      }
+      return false;
+    });
+  }, [transacoes, busca]);
+
   const carregadas = transacoes.filter(t => t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado').length;
   /** Na aba "Pendentes" o filtro do banco já é exatamente esse, então a
    *  contagem exata vale. Em "Todas" o recorte é por mês e a contagem do banco
@@ -370,8 +412,13 @@ export default function FinanceiroRevisaoPage() {
    * o backfill da Conta Simples de 24/08 trouxe 439 pendentes de uma vez, das
    * quais 412 já vinham categorizadas. Sem isto aqui, revisar julho e agosto
    * seria abrir 439 modais.
+   *
+   * Sai de `visiveis` e não de `transacoes`: com a busca ativa, confirmar em
+   * lote passa a valer só para o que está na tela. É o que deixa a busca ser
+   * ferramenta de revisão — filtra "Meta Ads", confere as 292, confirma
+   * aquelas. Confirmar 524 quando a tela mostra 12 seria uma armadilha.
    */
-  const prontasParaLote = transacoes.filter(
+  const prontasParaLote = visiveis.filter(
     t => (t.status_revisao === 'pendente' || t.status_revisao === 'auto_categorizado') && !!t.categoria,
   );
 
@@ -445,7 +492,7 @@ export default function FinanceiroRevisaoPage() {
           <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
           <div>
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Total visíveis</p>
-            <p className="text-xl font-semibold">{loading ? '—' : transacoes.length}</p>
+            <p className="text-xl font-semibold">{loading ? '—' : visiveis.length}</p>
           </div>
         </div>
       </div>
@@ -508,10 +555,32 @@ export default function FinanceiroRevisaoPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
             <span className="ml-1 text-xs text-muted-foreground tabular-nums">
-              {transacoes.length} {transacoes.length === 1 ? 'lançamento' : 'lançamentos'}
+              {visiveis.length} {visiveis.length === 1 ? 'lançamento' : 'lançamentos'}
             </span>
           </div>
         )}
+        {/* Busca por nome ou valor. Fica na barra, ao lado das abas, porque é
+            usada junto com elas — e não escondida atrás de um ícone. */}
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar nome ou valor…"
+            aria-label="Buscar por nome ou valor"
+            className="h-9 pl-8 pr-8"
+          />
+          {busca && (
+            <button
+              onClick={() => setBusca('')}
+              aria-label="Limpar busca"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {prontasParaLote.length > 0 && (
             <Button size="sm" variant="outline" onClick={confirmarLote} disabled={confirmandoLote}>
@@ -553,12 +622,17 @@ export default function FinanceiroRevisaoPage() {
               {loading && (
                 <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
               )}
-              {!loading && transacoes.length === 0 && (
+              {!loading && visiveis.length === 0 && (
                 <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">
-                  {filtro === 'pendentes' ? 'Nenhuma transação pendente 🎉' : 'Nenhuma transação encontrada'}
+                  {/* Com busca ativa, "Nenhuma transação pendente 🎉" seria
+                      mentira comemorativa: as pendências existem, o termo é que
+                      não achou nada. */}
+                  {busca
+                    ? `Nada encontrado para "${busca}".`
+                    : filtro === 'pendentes' ? 'Nenhuma transação pendente 🎉' : 'Nenhuma transação encontrada'}
                 </td></tr>
               )}
-              {transacoes.map(t => {
+              {visiveis.map(t => {
                 const s = STATUS_LABEL[t.status_revisao] ?? STATUS_LABEL.pendente;
                 const isPendente = t.status_revisao === 'pendente';
                 return (
