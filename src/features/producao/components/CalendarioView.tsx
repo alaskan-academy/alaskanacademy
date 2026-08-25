@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MultiFilter } from './MultiFilter';
-import { supabase } from '@/lib/supabase';
+import { supabase, linhas, linha } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -330,7 +330,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
 
     const { data } = await q;
-    setCriativos(data ?? []);
+    setCriativos(linhas<Criativo>(data));
     setLoading(false);
   }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus]);
 

@@ -19,7 +19,7 @@ import {
   Pencil, Save, X, ExternalLink,
   Clock, MessageSquare, CornerDownLeft, Send, Maximize2, Minimize2, Copy, Trash2,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, linhas, linha } from '@/lib/supabase';
 import { fetchProjetos } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -105,7 +105,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setProjetos(pj as { id: string; nome: string }[]);
     if (edData) {
       type PerfComSetor = { id: string; nome: string; setor: { nome: string } | null };
-      const all = edData as PerfComSetor[];
+      const all = linhas<PerfComSetor>(edData);
       const filterBy = (s: string) => all.filter(p => p.setor?.nome === s).map(p => ({ id: p.id, nome: p.nome }));
       const allSimple = all.map(p => ({ id: p.id, nome: p.nome }));
       const eds = filterBy('Editor');
@@ -157,7 +157,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         .eq('criativo_id', criativoId)
         .order('criado_em', { ascending: false }),
     ]);
-    setCriativo(c);
+    setCriativo(linha<Criativo>(c));
     setHistorico(h ?? []);
     setLoading(false);
   }, [criativoId]);
@@ -175,11 +175,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const ch     = (k: string, v: string | null | string[]) => setChanges(prev => ({ ...prev, [k]: v }));
   const val    = (k: string): string => {
     if (k in changes) return (changes[k] as string | null) ?? '';
-    return ((criativo as Record<string, unknown> | null)?.[k] as string | null) ?? '';
+    return ((criativo as unknown as Record<string, unknown> | null)?.[k] as string | null) ?? '';
   };
   const valArr = (k: string): string[] => {
     if (k in changes) return (changes[k] as string[]) ?? [];
-    return ((criativo as Record<string, unknown> | null)?.[k] as string[] | null) ?? [];
+    return ((criativo as unknown as Record<string, unknown> | null)?.[k] as string[] | null) ?? [];
   };
   const toggleFunilId = (id: string) => {
     const current = valArr('funil_ids');
@@ -216,7 +216,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       usuario_id:     userId,
       tipo_alteracao: 'campo' as const,
       campo_alterado: campo,
-      valor_anterior: stringify((criativo as Record<string, unknown>)[campo]),
+      valor_anterior: stringify((criativo as unknown as Record<string, unknown>)[campo]),
       valor_novo:     stringify(valor_novo),
     }));
     if (entries.length) await supabase.from('criativo_historico').insert(entries);

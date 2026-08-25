@@ -333,16 +333,29 @@ export function RadarContent() {
 
   // Dispara sync Obsidian em background com lista fresquinha (fire & forget)
   const silentSyncObsidian = (list: Teste[]) => {
-    supabase
-      .from('configuracoes_texto')
-      .select('valor')
-      .eq('chave', 'obsidian_api_key')
-      .single()
-      .then(({ data: cfg }) => {
+    // `await` dentro de um try, e não `.then().catch()`: o builder do Supabase
+    // é `PromiseLike`, que não tem `.catch`. Funcionava por acaso — `.then()`
+    // devolve uma Promise de verdade em tempo de execução — mas o encadeamento
+    // não descrevia o que acontece, e um erro na PRIMEIRA consulta caía num
+    // `.catch` que o tipo dizia não existir.
+    //
+    // Continua sendo "dispara e esquece": o Obsidian roda na máquina de quem
+    // está usando, pode simplesmente não estar aberto, e falhar aqui não pode
+    // atrapalhar o resto da tela. Por isso o catch segue silencioso — de
+    // propósito, e agora dito.
+    void (async () => {
+      try {
+        const { data: cfg } = await supabase
+          .from('configuracoes_texto')
+          .select('valor')
+          .eq('chave', 'obsidian_api_key')
+          .single();
         if (!cfg?.valor) return;
-        runObsidianSync(cfg.valor, list).catch(() => {});
-      })
-      .catch(() => {});
+        await runObsidianSync(cfg.valor, list);
+      } catch {
+        /* Obsidian fora do ar ou sem chave: acessório, segue o jogo. */
+      }
+    })();
   };
 
   const runObsidianSync = async (apiKey: string, list: Teste[]): Promise<{ ok: number; fail: number }> => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/lib/supabase';
+import { supabase, linhas, linha } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
@@ -62,8 +62,8 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
 
     const seen = new Set<string>();
     const merged: Criativo[] = [];
-    for (const c of [...(d1 ?? []), ...(d2 ?? []), ...(d3 ?? [])]) {
-      if (!seen.has(c.id)) { seen.add(c.id); merged.push(c as Criativo); }
+    for (const c of [...linhas<Criativo>(d1), ...linhas<Criativo>(d2), ...linhas<Criativo>(d3)]) {
+      if (!seen.has(c.id)) { seen.add(c.id); merged.push(c); }
     }
     merged.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true, sensitivity: 'base' }));
 

@@ -32,8 +32,14 @@ export function CriativoCard({ criativo, onClick }: Props) {
         <p className="text-[12.5px] font-medium text-foreground leading-tight line-clamp-2 flex-1">
           {criativo.nome}
         </p>
+        {/* O `title` fica no wrapper, não no ícone: o Lucide não aceita `title`
+            como prop e o atributo se perdia — a dica ao passar o mouse
+            simplesmente não aparecia. Num span funciona, e o `aria-label` faz
+            leitores de tela anunciarem o aviso. */}
         {missingLink && (
-          <Link2Off className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" title="Sem link de vídeo editado" />
+          <span title="Sem link de vídeo editado" className="shrink-0 mt-0.5">
+            <Link2Off className="h-3 w-3 text-amber-400" aria-label="Sem link de vídeo editado" />
+          </span>
         )}
       </div>
 

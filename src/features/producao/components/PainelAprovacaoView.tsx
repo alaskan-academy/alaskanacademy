@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, CornerDownLeft, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, linhas, linha } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Criativo, ProducaoNivel } from './types';
+import type { Criativo, ProducaoNivel, Perfil } from './types';
 import { FASES_MAP, getAdjacentFases } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 
@@ -32,10 +32,13 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
   const [devolvendoId, setDevolvendoId] = useState<string | null>(null);
   const [notaDevolucao, setNotaDevolucao] = useState('');
   const [saving, setSaving] = useState(false);
-  const [perfis, setPerfis] = useState<{ id: string; nome: string }[]>([]);
+  // `Perfil` pede `is_admin`, entao a consulta traz `is_admin` -- em vez de
+  // mascarar o desencontro com um cast. O drawer nao usa o campo hoje, mas o
+  // tipo passa a descrever o que realmente chega.
+  const [perfis, setPerfis] = useState<Perfil[]>([]);
 
   useEffect(() => {
-    supabase.from('perfis').select('id,nome').then(({ data }) => setPerfis(data ?? []));
+    supabase.from('perfis').select('id,nome,is_admin').then(({ data }) => setPerfis(linhas<Perfil>(data)));
   }, []);
 
   const fasesVisiveis: string[] = nivel === 'socio'

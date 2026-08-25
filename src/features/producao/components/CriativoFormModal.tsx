@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { supabase } from '@/lib/supabase';
+import { supabase, linhas, linha } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { getDefaultFase, TIPOS_LABEL, FASES_POR_TIPO, FASES_MAP } from './constants';
 import type { CriativoTipo, Funil, Perfil } from './types';
@@ -100,7 +100,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
         }
         if (edData) {
           type PerfComSetor = { id: string; nome: string; setor: { nome: string } | null };
-          const all = edData as PerfComSetor[];
+          const all = linhas<PerfComSetor>(edData);
           const filterBy = (s: string) => all.filter(p => p.setor?.nome === s).map(p => ({ id: p.id, nome: p.nome }));
           const allSimple = all.map(p => ({ id: p.id, nome: p.nome }));
           const eds = filterBy('Editor');
