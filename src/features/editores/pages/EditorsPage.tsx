@@ -5,6 +5,7 @@ import { PerfisTab } from '@/features/editores/components/PerfisTab';
 import { AvaliacoesTab } from '@/features/editores/components/AvaliacoesTab';
 import { DesempenhoTab } from '@/features/editores/components/DesempenhoTab';
 import { CriativosMetaTab } from '@/features/editores/components/CriativosMetaTab';
+import { NotasFiscaisTab } from '@/features/editores/components/NotasFiscaisTab';
 
 const tabCls = 'data-[state=active]:bg-primary data-[state=active]:text-primary-foreground';
 
@@ -25,12 +26,14 @@ export default function EditorsPage() {
           <TabsTrigger value="avaliacoes" className={tabCls}>Avaliações</TabsTrigger>
           <TabsTrigger value="desempenho" className={tabCls}>Desempenho</TabsTrigger>
           <TabsTrigger value="criativos"  className={tabCls}>Criativos Meta</TabsTrigger>
+          <TabsTrigger value="notas"      className={tabCls}>Notas Fiscais</TabsTrigger>
         </TabsList>
 
         <TabsContent value="perfis">    <PerfisTab /></TabsContent>
         <TabsContent value="avaliacoes"><AvaliacoesTab /></TabsContent>
         <TabsContent value="desempenho"><DesempenhoTab /></TabsContent>
         <TabsContent value="criativos"> <CriativosMetaTab /></TabsContent>
+        <TabsContent value="notas">     <NotasFiscaisTab /></TabsContent>
       </Tabs>
     </DashboardLayout>
   );
