@@ -269,7 +269,20 @@ export default function FinanceiroCaixaPage() {
   const posicaoCaixa         = resultadoLiquido + totalSociosAportes + totalReserva;
 
   // ── Saldo da reserva ──
-  const movHistorico = movimentos.reduce((a, m) => a + m.valor, 0);
+  // ── Saldo da reserva ──
+  //
+  // Só os movimentos POSTERIORES à data de referência.
+  //
+  // O saldo base é uma foto: "em 25/08 a reserva tinha R$ 32.381,27". Os
+  // movimentos anteriores a essa data são justamente o que PRODUZIU esse
+  // número — somá-los de novo conta a mesma coisa duas vezes.
+  //
+  // Era `movimentos.reduce(...)` sobre a lista inteira, e o efeito aparecia na
+  // cara: ela informava o saldo real de hoje e a tela devolvia R$ 2.559,21 a
+  // menos, descontando aportes de janeiro que já estavam embutidos na foto.
+  const movHistorico = movimentos
+    .filter(m => !config?.data_referencia || m.data > config.data_referencia)
+    .reduce((a, m) => a + m.valor, 0);
   const saldoReserva = (config?.saldo_inicial ?? 0) + movHistorico;
 
   // ── Salvar config ──
@@ -397,8 +410,12 @@ export default function FinanceiroCaixaPage() {
                 <span>Saldo base ({config?.data_referencia ?? '—'})</span>
                 <span className="tabular-nums">{formatCurrency(config?.saldo_inicial ?? 0)}</span>
               </div>
+              {/* "Movimentos históricos" dizia que somava tudo, e era isso que
+                  fazia — inclusive o que já estava dentro do saldo base. O
+                  rótulo agora nomeia o recorte, para ninguém precisar adivinhar
+                  de onde sai o número. */}
               <div className="flex justify-between text-muted-foreground">
-                <span>Movimentos históricos</span>
+                <span>Movimentos desde então</span>
                 <span className={cn('tabular-nums', movHistorico >= 0 ? 'text-green-400' : 'text-red-400')}>
                   {movHistorico < 0 ? `(${formatCurrency(Math.abs(movHistorico))})` : `+${formatCurrency(movHistorico)}`}
                 </span>
