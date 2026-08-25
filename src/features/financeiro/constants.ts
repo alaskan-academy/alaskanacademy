@@ -78,8 +78,15 @@ export const CAT_CUSTOS_OPERACIONAIS = [
 /** Retirada e aporte de sócio não são custo operacional nem receita. */
 export const CAT_SOCIOS = ['Pró-labore', 'Retirada de Lucro', 'Sócios'] as const;
 
-/** Transferência entre contas próprias — não é resultado, é caixa mudando de lugar. */
-export const CAT_RESERVA = ['Reserva de Caixa'] as const;
+/**
+ * Transferência entre contas próprias — não é resultado, é caixa mudando de
+ * lugar. Vale nos DOIS sentidos: "Reserva de Caixa" é o dinheiro indo, e
+ * "Retirada do Caixa" é o mesmo dinheiro voltando.
+ *
+ * A volta precisa estar aqui, senão `ehReceita` a conta como faturamento e o
+ * Fechamento infla a receita com o próprio caixa da empresa.
+ */
+export const CAT_RESERVA = ['Reserva de Caixa', 'Retirada do Caixa', 'Investimentos Futuros'] as const;
 
 export const CAT_ANUNCIOS = 'Anúncios (Facebook ADs)';
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
@@ -11,21 +11,21 @@ import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank,
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { RecorrentesAVencer } from '@/features/financeiro/components/RecorrentesAVencer';
-import {
-  CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA, ehCustoOperacional,
-} from '@/features/financeiro/constants';
+import { ehCustoOperacional } from '@/features/financeiro/constants';
 import { cn } from '@/lib/utils';
 
 // ─── Grupos do DRE ────────────────────────────────────────────────────────────
-// A classificação vem de `constants.ts`. Ela morava aqui, em cópia local, e o
-// Fechamento não a usava — foi assim que as duas telas chegaram a margens
-// diferentes para o mesmo mês sem ninguém perceber.
+// A lista vem do BANCO, de `vw_plano_de_contas`, e não mais de `constants.ts`.
 //
-// "Produtos" aparece nas receitas quando positivo; quando negativo é custo.
-const RECEITAS: readonly string[] = CAT_RECEITAS;
-const CUSTOS_OPERACIONAIS: readonly string[] = CAT_CUSTOS_OPERACIONAIS;
-const SOCIOS: readonly string[] = CAT_SOCIOS;
-const RESERVA_CAT: readonly string[] = CAT_RESERVA;
+// Escrita no código, ela envelhecia em silêncio: toda categoria criada no campo
+// ficava invisível para o DRE. Em agosto foram R$ 10.065,58 de despesa que não
+// apareciam — Editor de Vídeo (R$ 7.468), Hospedagem, Mídia, Contábil,
+// Automação, Tokens, Domínios. A tela somava R$ 109.591,19 quando o real era
+// R$ 119.656,77, e o resultado saía inflado no mesmo tanto.
+//
+// As constantes seguem em `constants.ts` como semente para o caso de a consulta
+// falhar: melhor um DRE incompleto do que um DRE vazio.
+type Conta = { categoria: string; grupo: string; tipo: string; ordem: number; ordem_grupo: number };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -124,6 +124,7 @@ export default function FinanceiroCaixaPage() {
   const [semCategoria, setSemCategoria] = useState(0);
   const [config, setConfig] = useState<CaixaConfig | null>(null);
   const [movimentos, setMovimentos] = useState<MovimentoReserva[]>([]);
+  const [plano, setPlano] = useState<Conta[]>([]);
 
   const [editando, setEditando] = useState(false);
   const [novoSaldo, setNovoSaldo] = useState('');
@@ -138,6 +139,30 @@ export default function FinanceiroCaixaPage() {
     if (mes === 0) { setMes(11); setAno(a => a - 1); }
     else setMes(m => m - 1);
   }
+
+  // ── O plano de contas, que é a lista do DRE ──
+  // Vem antes de tudo de propósito: o efeito dos totais separa os sócios por
+  // esta lista, e se ela chegasse depois eles cairiam nos totais gerais no
+  // primeiro render e nunca mais sairiam de lá.
+  useEffect(() => {
+    supabase
+      .from('vw_plano_de_contas')
+      .select('categoria,grupo,tipo,ordem,ordem_grupo')
+      .order('ordem_grupo').order('ordem')
+      .then(({ data }) => setPlano((data ?? []) as Conta[]));
+  }, []);
+
+  // `useMemo` porque `SOCIOS` entra na lista de dependências do efeito abaixo:
+  // recriar o array a cada render faria o efeito rodar em loop.
+  const { RECEITAS, SOCIOS, RESERVA_CAT, CUSTOS_OPERACIONAIS } = useMemo(() => {
+    const doTipo = (tipo: string) => plano.filter(c => c.tipo === tipo).map(c => c.categoria);
+    return {
+      RECEITAS:            doTipo('receita'),
+      SOCIOS:              doTipo('socio'),
+      RESERVA_CAT:         doTipo('reserva'),
+      CUSTOS_OPERACIONAIS: doTipo('custo'),
+    };
+  }, [plano]);
 
   // ── Período de consulta ──
   const dataInicio = ytd
@@ -186,7 +211,7 @@ export default function FinanceiroCaixaPage() {
       setSemCategoria(semCat);
     }
     load();
-  }, [dataInicio, dataFim]);
+  }, [dataInicio, dataFim, SOCIOS]);
 
   // ── Buscar config da reserva e movimentos históricos ──
   useEffect(() => {
