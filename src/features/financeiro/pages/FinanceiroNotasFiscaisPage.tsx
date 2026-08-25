@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
+import { enviarDocumento, mensagemDeEnvio } from '@/lib/documentos';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2, FolderOpen } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
@@ -103,48 +104,49 @@ export default function FinanceiroNotasFiscaisPage() {
       const pasta = item.tipo === 'servico' ? 'servicos' : 'ferramentas';
       const caminho = `${pasta}/${competencia.slice(0, 7)}/${nome}`;
 
-      const { error: erroUpload } = await supabase.storage
-        .from('documentos')
-        .upload(caminho, arquivo, { upsert: true, contentType: arquivo.type });
-      if (erroUpload) throw erroUpload;
-
-      // `upsert` na tabela também: reenviar corrige em vez de duplicar.
-      //
-      // As CINCO colunas da constraint precisam aparecer no `onConflict` — o
-      // PostgREST exige correspondência exata, e declarar quatro das cinco
-      // devolvia "there is no unique or exclusion constraint matching the ON
-      // CONFLICT specification". Nenhuma nota conseguia ser gravada.
-      //
-      // `referencia_externa` entrou na chave depois, quando os comprovantes de
-      // PIX passaram a usar esta mesma tabela: comprovante é por TRANSAÇÃO, e
-      // sem ela o segundo PIX do mês ao mesmo destinatário sobrescrevia o
-      // primeiro. Esta tela não tem referência — vai nula —, mas precisa
-      // declará-la assim mesmo, senão o PostgREST não acha a constraint.
-      const { error: erroLinha } = await supabase
-        .from('documentos_fiscais')
-        .upsert({
-          competencia,
-          fornecedor: item.fornecedor,
-          tipo: item.tipo,
-          // Vazio em ferramenta e comprovante; 'pagamento'/'comissao' são de
-          // prestador, que manda duas por mês.
-          subtipo: '',
-          // Vazio, não nulo: a coluna é `not null default ''` justamente para
-          // que a unicidade funcione. Nulo não colide com nulo no Postgres, e
-          // reenviar criaria uma segunda linha em vez de corrigir a primeira.
-          referencia_externa: '',
-          storage_path: caminho,
-          nome_arquivo: nome,
-          valor: item.valor,
-        }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
-      if (erroLinha) throw erroLinha;
+      // Arquivo e linha como uma coisa só: se a linha falhar, o arquivo que
+      // acabou de subir é removido em vez de virar órfão no bucket. Foi assim
+      // que quatro NFs ficaram perdidas em `ferramentas/2026-08`.
+      await enviarDocumento(caminho, arquivo, async (destino) => {
+        // `upsert` na tabela também: reenviar corrige em vez de duplicar.
+        //
+        // As CINCO colunas da constraint precisam aparecer no `onConflict` — o
+        // PostgREST exige correspondência exata, e declarar quatro das cinco
+        // devolvia "there is no unique or exclusion constraint matching the ON
+        // CONFLICT specification". Nenhuma nota conseguia ser gravada.
+        //
+        // `referencia_externa` entrou na chave depois, quando os comprovantes
+        // de PIX passaram a usar esta mesma tabela: comprovante é por
+        // TRANSAÇÃO, e sem ela o segundo PIX do mês ao mesmo destinatário
+        // sobrescrevia o primeiro. Esta tela não tem referência, mas precisa
+        // declará-la assim mesmo, senão o PostgREST não acha a constraint.
+        const { error } = await supabase
+          .from('documentos_fiscais')
+          .upsert({
+            competencia,
+            fornecedor: item.fornecedor,
+            tipo: item.tipo,
+            // Vazio em ferramenta e comprovante; 'pagamento'/'comissao' são de
+            // prestador, que manda duas por mês.
+            subtipo: '',
+            // Vazio, não nulo: a coluna é `not null default ''` justamente
+            // para que a unicidade funcione. Nulo não colide com nulo no
+            // Postgres, e reenviar criaria uma segunda linha em vez de
+            // corrigir a primeira.
+            referencia_externa: '',
+            storage_path: destino,
+            nome_arquivo: nome,
+            valor: item.valor,
+          }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
+        return error;
+      });
 
       toast({ title: 'Enviado', description: nome });
       await carregar();
     } catch (err) {
       toast({
         title: 'Não consegui enviar',
-        description: err instanceof Error ? err.message : String(err),
+        description: mensagemDeEnvio(err),
         variant: 'destructive',
       });
     } finally {

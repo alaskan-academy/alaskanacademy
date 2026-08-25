@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
+import { enviarDocumento, mensagemDeEnvio } from '@/lib/documentos';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -135,30 +136,30 @@ export function NotasFiscaisTab() {
       const nome = nomeDoArquivo(nota.competencia, editorAtual.nome, nota.subtipo, extensao);
       const caminho = `servicos/${nota.competencia.slice(0, 7)}/${nome}`;
 
-      const { error: erroUpload } = await supabase.storage
-        .from('documentos').upload(caminho, arquivo, { upsert: true, contentType: arquivo.type });
-      if (erroUpload) throw erroUpload;
-
-      // As cinco colunas da chave única: declarar menos devolve "there is no
-      // unique or exclusion constraint matching the ON CONFLICT specification".
-      const { error: erroLinha } = await supabase.from('documentos_fiscais').upsert({
-        competencia: nota.competencia,
-        fornecedor: editorAtual.nome,
-        tipo: 'servico',
-        subtipo: nota.subtipo,
-        referencia_externa: '',
-        editor_id: editorAtual.id,
-        storage_path: caminho,
-        nome_arquivo: nome,
-      }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
-      if (erroLinha) throw erroLinha;
+      // Arquivo e linha como uma coisa só: se a linha falhar, o arquivo que
+      // acabou de subir é removido em vez de virar órfão no bucket.
+      await enviarDocumento(caminho, arquivo, async (destino) => {
+        // As cinco colunas da chave única: declarar menos devolve "there is no
+        // unique or exclusion constraint matching the ON CONFLICT specification".
+        const { error } = await supabase.from('documentos_fiscais').upsert({
+          competencia: nota.competencia,
+          fornecedor: editorAtual.nome,
+          tipo: 'servico',
+          subtipo: nota.subtipo,
+          referencia_externa: '',
+          editor_id: editorAtual.id,
+          storage_path: destino,
+          nome_arquivo: nome,
+        }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
+        return error;
+      });
 
       toast({ title: 'Nota enviada', description: nome });
       await carregar();
     } catch (err) {
       toast({
         title: 'Não consegui enviar',
-        description: err instanceof Error ? err.message : String(err),
+        description: mensagemDeEnvio(err),
         variant: 'destructive',
       });
     } finally {
