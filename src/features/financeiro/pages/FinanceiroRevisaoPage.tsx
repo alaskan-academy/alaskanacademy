@@ -409,6 +409,20 @@ export default function FinanceiroRevisaoPage() {
       if (semAcento(t.fornecedor ?? '').includes(termo)) return true;
       if (semAcento(t.categoria ?? '').includes(termo)) return true;
 
+      // Final do cartão. Guardado como "•••• 5187", então a comparação é só
+      // entre dígitos — assim funciona tanto digitando "5187" quanto colando
+      // "•••• 5187" da própria tela.
+      //
+      // A partir de 3 dígitos: com menos, "12" casaria com metade dos cartões e
+      // a busca viraria ruído.
+      //
+      // Um termo numérico é testado contra o cartão E contra o valor, sem
+      // escolher um. "6896" pode ser o cartão ou um lançamento de R$ 6.896 —
+      // mostrar os dois é melhor do que exigir que ela adivinhe qual busca a
+      // tela decidiu fazer.
+      const soDigitos = termo.replace(/\D/g, '');
+      if (soDigitos.length >= 3 && (t.cartao ?? '').replace(/\D/g, '').includes(soDigitos)) return true;
+
       // O valor é guardado como "1745.88" e pode ser digitado de três jeitos:
       // "1.745,88" (como a tela mostra), "1745.88" (como o banco guarda) e
       // "1745" (só o começo, que é como se busca com pressa). Testa as leituras
@@ -634,8 +648,8 @@ export default function FinanceiroRevisaoPage() {
           <Input
             value={busca}
             onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar nome ou valor…"
-            aria-label="Buscar por nome ou valor"
+            placeholder="Buscar nome, valor ou cartão…"
+            aria-label="Buscar por nome, valor ou final do cartão"
             className="h-9 pl-8 pr-8"
           />
           {busca && (
