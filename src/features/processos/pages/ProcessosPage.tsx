@@ -134,9 +134,15 @@ export default function ProcessosPage() {
 
   const handleDelete = async (cat: Categoria, e: React.MouseEvent) => {
     e.stopPropagation();
-    const ok = await confirm(
-      `Excluir a categoria "${cat.nome}"? Todos os processos vinculados também serão removidos.`
-    );
+    // Objeto, não string: `useConfirm` recebe `ConfirmOpts`, e passar texto
+    // solto fazia o aviso cair em `opts` inteiro, deixando `opts.title` vazio.
+    // O diálogo então mostrava o padrão genérico — "Esta ação não pode ser
+    // desfeita" — sem dizer QUAL categoria some nem que os processos dentro
+    // dela vão junto. O tsc apontava isso; ninguém tinha olhado.
+    const ok = await confirm({
+      title: `Excluir a categoria "${cat.nome}"?`,
+      description: 'Todos os processos vinculados a ela também serão removidos.',
+    });
     if (!ok) return;
     const { error } = await supabase
       .from('processos_categorias')

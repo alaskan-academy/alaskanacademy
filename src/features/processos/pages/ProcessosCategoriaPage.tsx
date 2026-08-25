@@ -134,7 +134,8 @@ export default function ProcessosCategoriaPage() {
 
   const handleDelete = async (a: Artigo, e: React.MouseEvent) => {
     e.stopPropagation();
-    const ok = await confirm(`Excluir o processo "${a.titulo}"?`);
+    // Objeto, não string — ver o mesmo conserto em `ProcessosPage`.
+    const ok = await confirm({ title: `Excluir o processo "${a.titulo}"?` });
     if (!ok) return;
     const { error } = await supabase
       .from('processos_artigos')

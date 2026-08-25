@@ -35,6 +35,23 @@ interface Transacao {
   cartao: string | null;
 }
 
+/**
+ * O que uma linha de CSV pode trazer.
+ *
+ * São as colunas da TABELA `transacoes`. `Omit<Transacao, ...>` parecia servir e
+ * não servia: `Transacao` é a forma da VIEW `vw_transacoes_revisao`, que inclui
+ * `fornecedor`, `fornecedor_definido`, `padrao_sugerido` e `cartao` — todos
+ * derivados na leitura, nenhum deles importável de planilha. O tsc reclamava
+ * disso desde que a view ganhou esses campos.
+ */
+type LinhaImportada = {
+  data: string;
+  descricao: string;
+  valor: number;
+  categoria: string | null;
+  centro_custo: string | null;
+};
+
 type Filtro = 'pendentes' | 'todas';
 
 /** Teto de linhas por carga.
@@ -60,7 +77,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   revisado:          { label: 'Revisado',       cls: 'bg-green-500/15 text-green-400 border-green-500/30' },
 };
 
-function parseCsv(text: string): Omit<Transacao, 'id' | 'status_revisao'>[] {
+function parseCsv(text: string): LinhaImportada[] {
   const linhas = text.split('\n').map(l => l.trim()).filter(Boolean);
   if (linhas.length < 2) return [];
 
@@ -78,7 +95,7 @@ function parseCsv(text: string): Omit<Transacao, 'id' | 'status_revisao'>[] {
 
   if (iData < 0 || iDesc < 0 || iValor < 0) return [];
 
-  const rows: Omit<Transacao, 'id' | 'status_revisao'>[] = [];
+  const rows: LinhaImportada[] = [];
 
   for (let i = 1; i < linhas.length; i++) {
     const cols = linhas[i].split(sep).map(c => c.replace(/^["']|["']$/g, '').trim());
@@ -306,11 +323,25 @@ export default function FinanceiroRevisaoPage() {
         return { categoria: null, centro_custo: null, status_revisao: 'pendente' };
       };
 
-      const inserts = rows.map(r => ({
-        ...r,
-        ...aplicarRegras(r.descricao),
-        fonte: 'conta_simples',
-      }));
+      // A categoria do ARQUIVO vence a das regras.
+      //
+      // Antes era `{...r, ...aplicarRegras(...)}`, e o espalhamento das regras
+      // vinha depois — sobrescrevendo com `null` a categoria que a planilha
+      // trazia. Quem importasse um extrato já categorizado à mão via tudo
+      // entrar como "pendente", e o trabalho de categorizar era jogado fora em
+      // silêncio. A coluna `categoria` do CSV era lida e descartada.
+      const inserts = rows.map(r => {
+        const daRegra = aplicarRegras(r.descricao);
+        const temDoArquivo = !!r.categoria;
+        return {
+          ...r,
+          categoria:    r.categoria ?? daRegra.categoria,
+          centro_custo: r.centro_custo ?? daRegra.centro_custo,
+          // Veio categorizado do arquivo: já nasce como auto, e não pendente.
+          status_revisao: temDoArquivo ? 'auto_categorizado' : daRegra.status_revisao,
+          fonte: 'conta_simples',
+        };
+      });
 
       const { error } = await supabase.from('transacoes').insert(inserts);
       if (error) throw error;
