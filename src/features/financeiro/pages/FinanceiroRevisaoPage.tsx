@@ -15,6 +15,7 @@ import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck, ChevronLeft
 import { useConfirm } from '@/hooks/use-confirm';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
+import { AvisoDivergencias } from '@/features/financeiro/components/AvisoDivergencias';
 
 interface Transacao {
   id: string;
@@ -174,9 +175,20 @@ export default function FinanceiroRevisaoPage() {
     if (!selected || !formCateg) return;
     setSaving(true);
     try {
+      // `revisado_por` é o que separa "alguém leu esta linha" de "alguém aceitou
+      // 440 de uma vez". Sem ele, as duas ficavam iguais no banco e as
+      // confirmadas em lote viravam intocáveis pela recategorização — inclusive
+      // as erradas.
+      const { data: sessao } = await supabase.auth.getUser();
       await supabase
         .from('transacoes')
-        .update({ categoria: formCateg, centro_custo: formCentro || null, status_revisao: 'confirmado' })
+        .update({
+          categoria: formCateg,
+          centro_custo: formCentro || null,
+          status_revisao: 'confirmado',
+          revisado_em: new Date().toISOString(),
+          revisado_por: sessao.user?.id ?? null,
+        })
         .eq('id', selected.id);
 
       // O nome é do FORNECEDOR, não desta linha: renomear aqui arruma o
@@ -367,6 +379,8 @@ export default function FinanceiroRevisaoPage() {
   return (
     <DashboardLayout title="Financeiro" hideFilters>
       <FinanceiroNav />
+
+      <AvisoDivergencias />
 
       {/* summary */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
