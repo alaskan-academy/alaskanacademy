@@ -126,6 +126,73 @@ diferentes — 994 linhas para o que provavelmente é uma tela com filtro.
 
 ---
 
+## Correções ao diagnóstico, depois das respostas dela
+
+### O Gerador de UTM não é ferramenta de funil — eu errei
+
+Escrevi que ele deveria virar um botão dentro do REV, porque o link seria
+derivável. Ela corrigiu: a maioria do uso é FORA dos funis — contato de
+suporte, área de membros, bio do Instagram. Os dados confirmam:
+
+| Canal | Links | Vendas (desde 01/05) | Faturamento |
+|---|---|---|---|
+| area-membros-handify | 33 | 72 | R$ 2.700 |
+| whatsapp / recuperação | 6 | 53 | R$ 3.748 |
+| instagram / bio | 8 | 52 | R$ 3.992 |
+| whatsapp / suporte | 13 | 50 | R$ 3.197 |
+| site-handify | 39 | 16 | R$ 1.763 |
+
+**Só 1 dos 134 links é de funil.** É rastreio de tráfego próprio, e está em
+Funis por acidente de história.
+
+**E é o mesmo defeito de sempre: cria e não mede.** 134 links gerados, nenhuma
+tela diz qual vendeu. Repare que 39 links do site geraram 16 vendas enquanto 6
+de recuperação geraram 53 — o canal mais eficiente por link, e ninguém sabe.
+
+**Vai para `/utm`**, que já existe e é a página de atribuição. Criar o link e
+medir o link são a mesma conversa; hoje estão em duas áreas do dash, e é por
+isso que o ciclo não fecha. O vínculo já funciona: `utm_links` casa com `vendas`
+por `source` + `medium` + `campaign` + `content`.
+
+Alerta que cai de bandeja: link com 30 dias e zero vendas — ou não é usado, ou
+está quebrado. E `whatsapp / suportelina` tem 21 vendas com ZERO links
+cadastrados: alguém montou UTM à mão fora da ferramenta.
+
+### O "produto" do funil é o PROJETO que Produção já usa
+
+`funis.produto` é texto livre e bate com `ofertas_editores.nome` com grafia
+diferente:
+
+| No funil | O projeto |
+|---|---|
+| Saponária | Saponaria Brasil |
+| Handify Completo | Handify |
+| Workshop Buquê de Velas | Workshop Buquê de Velas |
+
+Meu próprio casamento por prefixo errou "Velas de Lembrancinha" → "Workshop
+Buquê de Velas", o que prova que texto livre não casa sozinho e precisa virar
+chave estrangeira.
+
+**O modelo fica:**
+
+```
+projeto (ofertas_editores)  →  funil/REV  →  checkout · VSL · página · preço
+                                          →  testes
+```
+
+Um vocabulário só no dash inteiro: Produção, Criativos e Funis passam a falar do
+mesmo "projeto".
+
+### Cada REV é um funil, com vários testes dentro
+
+Ela confirmou. Então `funis` continua sendo a granularidade certa — o que muda é
+que ele ganha um pai (`projeto_id`) e o nome deixa de precisar carregar o
+produto.
+
+E `link_checkout` é único por REV — confirmado por ela. É a chave-mestra.
+
+---
+
 ## Perguntas que precisam de resposta antes de mexer
 
 1. **Um funil tem várias variantes (REV) ou cada REV é um funil?** Todo o resto
