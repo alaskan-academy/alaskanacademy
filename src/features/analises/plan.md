@@ -55,9 +55,85 @@ Nada disso precisa ser criado.
 
 ---
 
+## O cruzamento campanha × checkout × VSL
+
+Ela pediu para cruzar conversão de checkout com campanhas/conjuntos e com a VSL
+do funil. Conferido contra o banco, e a conclusão é boa: **a parte cara já está
+pronta e o elo que falta é outro.**
+
+### A ponte campanha ↔ venda já existe e funciona
+
+`vendas.ad_id_meta` → `metricas_meta.ad_id` → `adset_id` → `campanha_id`.
+
+| | |
+|---|---|
+| Vendas aprovadas desde 01/05 | 5.373 |
+| Vindas do Facebook | 2.514 |
+| Dessas, com `ad_id` gravado | **2.470 — 98,2%** |
+| `ad_id` que casa com `metricas_meta` | **99,96%** |
+
+Cruzar checkout com campanha e conjunto é possível **hoje**, sem construir nada.
+
+### O elo que falta é `funil_id`
+
+```
+vendas com funil_id preenchido: 0 de 5.373
+```
+
+A coluna existe em `vendas` e nunca foi preenchida. É por isso que só há 1 funil
+ativo cadastrado: a área de Funis não está ligada às vendas. Sem isso,
+"conversão do checkout do funil X" não é uma pergunta que o banco saiba
+responder — e é a pergunta central do módulo.
+
+**A solução já está em `funis`:** a tabela tem `link_checkout` e `payt_key`.
+Casar a venda com o funil por aí — o mesmo mecanismo do `fn_fornecedor`, que
+resolve fornecedor pelo descritor — preenche tudo retroativamente, sem ninguém
+digitar nada.
+
+**Isto vira a etapa 0**, antes de qualquer tela: é pré-requisito de todo o resto.
+
+### A VSL fica em Funis, não aqui
+
+Ela mesma levantou e está certa: a VSL é característica do funil, não da
+análise. Duplicar criaria dois lugares para a mesma informação.
+
+**Com uma ressalva que muda o desenho:** a VSL TROCA — o histórico mostra teste
+A/B entre h06 e h07. Um campo "VSL atual" no funil perde o histórico, e a
+análise precisa saber qual VSL estava no ar NAQUELE período, não hoje.
+
+Resposta limpa: campo no funil para a que está rodando, e a troca registrada
+como `alteracao`. O histórico sai das alterações, que é exatamente o que este
+módulo faz. Nada duplicado, e o passado fica recuperável.
+
+### O que fica de fora do rastreio, e é normal
+
+2.405 vendas desde maio (45%) não vêm de anúncio — área de membros, WhatsApp,
+Instagram, orgânico. Têm `origem` resolvida mas nunca terão `ad_id`. A tela deve
+mostrar a conversão do funil separando tráfego pago de orgânico, senão o
+denominador mistura duas coisas e o número não significa nada.
+
+---
+
 ## Etapas
 
 Cada uma entrega valor sozinha. Se parar depois da 2, já vale.
+
+### 0. Ligar a venda ao funil — pré-requisito de tudo
+
+**Banco:** função que resolve `funil_id` a partir do `link_checkout` / `payt_key`
+do funil, mais backfill das 5.373 vendas e gatilho para as novas.
+
+Sem isto, nenhuma métrica por funil existe. Com isto, o cruzamento
+checkout × campanha × conjunto passa a funcionar em cima do que já está no
+banco.
+
+**Antes de escrever qualquer linha:** conferir com ela como o checkout de cada
+funil se identifica na venda. Se um funil tiver mais de um checkout — REV1,
+REV5, REV6 são checkouts diferentes do mesmo funil —, o vínculo é
+`funil → várias variantes → checkouts`, e é a variante que interessa medir, não
+só o funil.
+
+**Entrega:** "conversão do checkout do funil X por campanha" vira uma consulta.
 
 ### 1. Registrar alterações — substitui o Google Chat
 
@@ -166,7 +242,9 @@ resultado.
 
 ## Ordem sugerida
 
-1 → 2 → 3 → 4 → 5.
+0 → 1 → 2 → 3 → 4 → 5.
+
+A 0 e pre-requisito e nao tem tela: sem ela, metrica por funil nao existe.
 
 A 1 e a 2 juntas já eliminam o Chat e a planilha, que é a dor. A 3 é o que você
 não tem hoje em lugar nenhum. A 4 mantém a ponte com o que já existe. A 5
