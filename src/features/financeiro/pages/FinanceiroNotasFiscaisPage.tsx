@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2, FolderOpen } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +34,7 @@ interface Item {
   primeiro_dia: string;
   tem_documento: boolean;
   documento_id: string | null;
+  /** Preenchido quando o espelho no Drive já rodou. */
   drive_url: string | null;
   nome_arquivo: string | null;
 }
@@ -261,6 +262,28 @@ export default function FinanceiroNotasFiscaisPage() {
                         <Check className="h-3 w-3 shrink-0" />
                         recebido
                       </button>
+                      {/* O Drive é cópia, não fonte — se o espelho falhar o
+                          arquivo continua no Storage e a tela segue funcionando.
+                          Por isso o estado aparece discreto e não como erro. */}
+                      {item.drive_url ? (
+                        <a
+                          href={item.drive_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-muted-foreground hover:text-foreground"
+                          title="Abrir no Drive"
+                          aria-label={`Abrir no Drive a nota de ${item.fornecedor}`}
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span
+                          className="text-muted-foreground/40"
+                          title="Ainda não espelhado no Drive"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => abrir(item)}
