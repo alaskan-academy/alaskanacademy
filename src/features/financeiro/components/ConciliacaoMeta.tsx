@@ -2,25 +2,23 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import { AlertTriangle } from 'lucide-react';
+import { Info } from 'lucide-react';
 
 /**
  * O que saiu para a Meta contra o que a Meta diz ter gasto em campanha.
  *
- * Anúncios são 77% dos custos e chegam como um número só. Separar campanha de
- * automação de WhatsApp não sai do extrato: são 540 lançamentos
- * "FACEBK *<id aleatório>", sem MCC, com distribuição de valor contínua de
- * R$ 0,19 a R$ 5.275 — nem o descritor nem a faixa separam.
+ * Separar campanha de automação de WhatsApp não sai do texto: são 540
+ * lançamentos "FACEBK *<id aleatório>", sem MCC, com valores de R$ 0,19 a
+ * R$ 5.275. Quem separa é o CARTÃO — a empresa usa um cartão virtual por
+ * finalidade, e •••• 4353 e •••• 7488 são os do WhatsApp. Isso estava no
+ * payload em `card.maskedNumber` o tempo todo.
  *
- * Quem separa é a categorização que a Conta Simples já tem, e o resultado é
- * forte: em agosto, o que está marcado como campanha fecha com a Meta com
- * R$ 380 de resíduo sobre R$ 90 mil. Sem separar, a diferença era de 9,9%.
- *
- * O que a tela NÃO faz é dizer que o grupo sem categoria é o WhatsApp. Ele
- * começa em 21/07 e é o candidato óbvio, mas está sem categoria porque ninguém
- * categorizou — e maio e junho têm 13% a 18% de resíduo sem um único lançamento
- * nesse grupo. Correlação forte não é atribuição, e um rateio inventado entraria
- * no DRE parecendo apurado.
+ * O resultado desmonta a hipótese que motivou este bloco: o WhatsApp é da ordem
+ * de R$ 280 por mês, não os R$ 9.500 que faltavam. O que sobra é um acréscimo
+ * de ~14,3% sobre o que a Meta reporta, estável quando o período cresce
+ * (1,158 → 1,179 → 1,166 → 1,143 no acumulado) — assinatura de imposto cobrado
+ * na fatura, que a API de insights não devolve. O dashboard está configurado
+ * com 12,5% em `imposto_meta_ads_pct`, abaixo do observado.
  */
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -28,13 +26,11 @@ const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'o
 interface Linha {
   mes: string;
   ads_meta: number | null;
-  marcado_campanha: number;
-  sem_categoria_cs: number;
+  ads_banco: number;
+  whatsapp: number;
   saiu_banco: number | null;
-  lancamentos: number | null;
-  diferenca: number | null;
-  residuo_campanha: number | null;
-  pct_diferenca: number | null;
+  residuo: number | null;
+  pct_residuo: number | null;
   mes_em_curso: boolean;
 }
 
@@ -65,9 +61,10 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
         else setLinhas((data ?? []).map((l: Linha) => ({
           ...l,
           ads_meta: l.ads_meta == null ? null : Number(l.ads_meta),
-          marcado_campanha: Number(l.marcado_campanha),
-          sem_categoria_cs: Number(l.sem_categoria_cs),
-          residuo_campanha: l.residuo_campanha == null ? null : Number(l.residuo_campanha),
+          ads_banco: Number(l.ads_banco),
+          whatsapp: Number(l.whatsapp),
+          residuo: l.residuo == null ? null : Number(l.residuo),
+          pct_residuo: l.pct_residuo == null ? null : Number(l.pct_residuo),
         })));
         setCarregando(false);
       });
@@ -78,6 +75,12 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
   // Só meses com as duas pontas: comparar contra um lado ausente não é
   // diferença, é falta de dado — e apareceria como se tudo fosse resíduo.
   const comparaveis = linhas.filter(l => l.ads_meta != null && l.saiu_banco != null);
+
+  // O acréscimo médio do período. Mês a mês ele oscila porque a Meta cobra por
+  // limite atingido e não por virada de mês; no acumulado, converge.
+  const somaMeta  = comparaveis.reduce((a, l) => a + (l.ads_meta ?? 0), 0);
+  const somaBanco = comparaveis.reduce((a, l) => a + l.ads_banco, 0);
+  const acrescimo = somaMeta > 0 ? ((somaBanco / somaMeta) - 1) * 100 : 0;
 
   if (carregando) {
     return <Moldura><p className="text-sm text-muted-foreground text-center py-8">Carregando…</p></Moldura>;
@@ -98,75 +101,67 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
   return (
     <Moldura>
       <div className="overflow-x-auto -mx-5 px-5">
-        <table className="w-full min-w-[620px] text-sm">
+        <table className="w-full min-w-[600px] text-sm">
           <thead>
             <tr className="border-b border-border">
               <th className="text-left font-medium text-muted-foreground pb-2 pr-3">Mês</th>
               <th className="text-right font-medium text-muted-foreground pb-2 px-2">Campanha (Meta)</th>
-              <th className="text-right font-medium text-muted-foreground pb-2 px-2">Marcado como ads</th>
-              <th className="text-right font-medium text-muted-foreground pb-2 px-2">Sem categoria</th>
-              <th className="text-right font-medium text-muted-foreground pb-2 pl-2">Resíduo</th>
+              <th className="text-right font-medium text-muted-foreground pb-2 px-2">Saiu (cartões de ads)</th>
+              <th className="text-right font-medium text-muted-foreground pb-2 px-2">WhatsApp</th>
+              <th className="text-right font-medium text-muted-foreground pb-2 pl-2">Acréscimo</th>
             </tr>
           </thead>
           <tbody>
-            {comparaveis.map(l => {
-              const residuo = l.residuo_campanha ?? 0;
-              const base = l.ads_meta ?? 0;
-              // 3% de folga: cobrança da Meta não cai no mesmo dia do gasto, e
-              // um resíduo pequeno é atravessamento de mês, não divergência.
-              const fecha = base > 0 && Math.abs(residuo) <= base * 0.03;
-              return (
-                <tr key={l.mes} className="border-b border-border/50 last:border-0">
-                  <td className="py-1.5 pr-3 whitespace-nowrap">
-                    <span className="text-foreground">{rotulo(l.mes)}</span>
-                    {l.mes_em_curso && (
-                      <span
-                        className="ml-1.5 text-[11px] text-muted-foreground"
-                        title="Parte do gasto já aconteceu e ainda não foi cobrada — o resíduo deste mês ainda vai mudar"
-                      >
-                        em curso
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
-                    {formatCurrency(l.ads_meta ?? 0)}
-                  </td>
-                  <td className="py-1.5 px-2 text-right tabular-nums text-foreground">
-                    {formatCurrency(l.marcado_campanha)}
-                  </td>
-                  <td className={cn(
-                    'py-1.5 px-2 text-right tabular-nums',
-                    l.sem_categoria_cs > 0 ? 'text-amber-400' : 'text-muted-foreground/40',
-                  )}>
-                    {l.sem_categoria_cs > 0 ? formatCurrency(l.sem_categoria_cs) : '—'}
-                  </td>
-                  <td className={cn(
-                    'py-1.5 pl-2 text-right tabular-nums whitespace-nowrap',
-                    fecha ? 'text-green-400' : 'text-amber-400',
-                  )}>
-                    {formatCurrency(residuo)}
-                    {base > 0 && (
-                      <span className="ml-1 text-[11px] text-muted-foreground">
-                        {((residuo / base) * 100).toFixed(0)}%
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            {comparaveis.map(l => (
+              <tr key={l.mes} className="border-b border-border/50 last:border-0">
+                <td className="py-1.5 pr-3 whitespace-nowrap">
+                  <span className="text-foreground">{rotulo(l.mes)}</span>
+                  {l.mes_em_curso && (
+                    <span
+                      className="ml-1.5 text-[11px] text-muted-foreground"
+                      title="Parte do gasto já aconteceu e ainda não foi cobrada — este mês ainda vai mudar"
+                    >
+                      em curso
+                    </span>
+                  )}
+                </td>
+                <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
+                  {formatCurrency(l.ads_meta ?? 0)}
+                </td>
+                <td className="py-1.5 px-2 text-right tabular-nums text-foreground">
+                  {formatCurrency(l.ads_banco)}
+                </td>
+                <td className={cn(
+                  'py-1.5 px-2 text-right tabular-nums',
+                  l.whatsapp > 0 ? 'text-foreground' : 'text-muted-foreground/40',
+                )}>
+                  {l.whatsapp > 0 ? formatCurrency(l.whatsapp) : '—'}
+                </td>
+                <td className="py-1.5 pl-2 text-right tabular-nums whitespace-nowrap text-amber-400">
+                  {formatCurrency(l.residuo ?? 0)}
+                  <span className="ml-1 text-[11px] text-muted-foreground">
+                    {l.pct_residuo?.toFixed(0)}%
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
 
       <div className="mt-4 flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2.5">
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <p className="text-xs text-muted-foreground leading-relaxed">
-          <strong className="font-medium text-foreground">Resíduo</strong> é o que sobra depois de
-          tirar o grupo sem categoria: quanto menor, mais a cobrança da Meta bate com a campanha
-          que ela reporta. O grupo <strong className="font-medium text-amber-300">sem categoria</strong>{' '}
-          começou em 21/07 e não está atribuído a nada — o extrato traz{' '}
-          <span className="text-foreground">FACEBK</span> com id aleatório e sem código de categoria,
-          então a separação tem de vir da marcação na Conta Simples.
+          A conta cobra <strong className="font-medium text-foreground">
+            {acrescimo.toFixed(1)}%
+          </strong>{' '}
+          a mais do que a Meta reporta como campanha no período — o percentual oscila mês a mês
+          porque a Meta cobra por limite atingido, não por virada de mês. É imposto sobre a compra
+          de mídia, que a API de insights não devolve. O dashboard está configurado com{' '}
+          <span className="text-foreground">12,5%</span> em{' '}
+          <code className="text-[11px] text-foreground">imposto_meta_ads_pct</code>.
+          {' '}O <strong className="font-medium text-foreground">WhatsApp</strong> vem separado
+          pelos cartões •••• 4353 e •••• 7488.
         </p>
       </div>
     </Moldura>
@@ -180,7 +175,7 @@ function Moldura({ children }: { children: React.ReactNode }) {
         Meta: campanha x conta
       </h2>
       <p className="text-xs text-muted-foreground/70 mb-4">
-        Anúncios são a maior linha de custo e chegam ao extrato como um número só.
+        O cartão separa o que o descritor não separa — um cartão virtual por finalidade.
       </p>
       {children}
     </div>
