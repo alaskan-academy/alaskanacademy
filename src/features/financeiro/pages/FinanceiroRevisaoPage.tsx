@@ -225,7 +225,16 @@ export default function FinanceiroRevisaoPage() {
   const openModal = (t: Transacao) => {
     setSelected(t);
     setFormCateg(t.categoria || '');
-    setFormCentro(t.centro_custo || '');
+    // `grupo`, e não `centro_custo`.
+    //
+    // A tabela mostra o grupo resolvido por `categorias_centro`; o modal
+    // mostrava o `centro_custo` cru que a Conta Simples mandou. Os dois
+    // discordam com frequência — o DARF do Ministério da Fazenda aparecia como
+    // "Impostos" na linha e "Outros" ao abrir. A mesma transação, dois grupos,
+    // conforme onde se olhasse.
+    //
+    // Vale o resolvido: é o que o relatório soma.
+    setFormCentro(t.grupo || t.centro_custo || '');
     setFormNome(t.fornecedor);
     setCriarRegra(true);
     // O padrão do apelido, não o descritor inteiro. Com o descritor, cada
