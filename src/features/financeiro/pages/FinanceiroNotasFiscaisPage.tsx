@@ -151,6 +151,43 @@ export default function FinanceiroNotasFiscaisPage() {
     if (assinado?.signedUrl) window.open(assinado.signedUrl, '_blank', 'noopener');
   }
 
+  /** Pergunta pelo `drive_url` até ele aparecer ou o tempo acabar. Devolve se
+   *  chegou, para a mensagem dizer a verdade em vez de prometer. */
+  async function esperarEspelho(documentoId: string, tetoMs: number): Promise<boolean> {
+    const ate = Date.now() + tetoMs;
+    while (Date.now() < ate) {
+      await new Promise(r => setTimeout(r, 1200));
+      const { data } = await supabase
+        .from('documentos_fiscais').select('drive_url').eq('id', documentoId).maybeSingle();
+      if (data?.drive_url) return true;
+    }
+    return false;
+  }
+
+  /** Reenvia ao Drive um documento cujo espelho falhou. Quem chama a função de
+   *  borda é o banco: o segredo não pode estar no navegador. */
+  async function reenviarEspelho(item: Item) {
+    if (!item.documento_id) return;
+    setEnviando(item.fornecedor);
+    const { data, error } = await supabase.rpc('fn_reenviar_espelho', { p_documento_id: item.documento_id });
+    if (error) {
+      toast({ title: 'Não consegui reenviar', description: error.message, variant: 'destructive' });
+    } else if (data !== 'reenviado') {
+      toast({ title: 'Não deu para reenviar', description: String(data), variant: 'destructive' });
+    } else {
+      // O espelho é assíncrono e não avisa quando termina. Esperar um tempo
+      // fixo é chute: com 2,5s a tela recarregava antes e mostrava o mesmo
+      // estado, como se o clique não tivesse feito nada. Aqui se espera o
+      // RESULTADO, com teto para não travar caso o Drive esteja fora.
+      const chegou = await esperarEspelho(item.documento_id, 15000);
+      await carregar();
+      toast(chegou
+        ? { title: 'Reenviado ao Drive' }
+        : { title: 'Reenviado, mas ainda não confirmou', description: 'Recarregue em instantes para conferir.' });
+    }
+    setEnviando(null);
+  }
+
   async function remover(item: Item) {
     const { data } = await supabase
       .from('documentos_fiscais').select('storage_path').eq('id', item.documento_id!).single();
@@ -284,12 +321,19 @@ export default function FinanceiroNotasFiscaisPage() {
                           <FolderOpen className="h-3 w-3" />
                         </a>
                       ) : (
-                        <span
-                          className="text-muted-foreground/40"
-                          title="Ainda não espelhado no Drive"
+                        // Falha de espelho não pode ser só um ícone apagado: o
+                        // arquivo está salvo, mas a contabilidade não o vê, e
+                        // sem um botão ninguém descobre nem conserta.
+                        <button
+                          type="button"
+                          onClick={() => reenviarEspelho(item)}
+                          disabled={enviando === item.fornecedor}
+                          className="text-amber-400/70 hover:text-amber-300 disabled:opacity-50"
+                          title="Não chegou ao Drive — clique para reenviar"
+                          aria-label={`Reenviar ao Drive a nota de ${item.fornecedor}`}
                         >
                           <FolderOpen className="h-3 w-3" />
-                        </span>
+                        </button>
                       )}
                       <button
                         type="button"
