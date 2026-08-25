@@ -148,7 +148,17 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
       {/* A matriz cresce com o número de meses; o scroll fica nela para a
           página nunca rolar de lado. */}
       <div className="overflow-x-auto -mx-5 px-5">
-        <table className="w-full min-w-[640px] text-sm">
+        {/* `table-fixed` com a primeira coluna presa: sem isso a coluna de nomes
+            ficava com o que sobrasse (~120px) e "Aplicativos e Ferramentas"
+            quebrava em três linhas. Cada linha ganhava uma altura e a tabela
+            virava um serrilhado impossível de percorrer com o olho. */}
+        <table className="w-full min-w-[780px] table-fixed text-sm">
+          <colgroup>
+            <col className="w-[210px]" />
+            {colunas.map(c => <col key={c} className="w-[68px]" />)}
+            <col className="w-[80px]" />
+            <col className="w-[84px]" />
+          </colgroup>
           <thead>
             <tr className="border-b border-border">
               <th className="text-left font-medium text-muted-foreground pb-2 pr-3">Centro de custo</th>
@@ -158,7 +168,7 @@ export function MapaCustos({ meses = 6 }: { meses?: number }) {
                 </th>
               ))}
               <th className="text-right font-medium text-muted-foreground pb-2 pl-3 whitespace-nowrap">Total</th>
-              <th className="pb-2 pl-2 w-20" />
+              <th className="pb-2 pl-2" />
             </tr>
           </thead>
           <tbody>
