@@ -37,6 +37,7 @@ const FinanceiroFechamentoPage = lazy(() => import("./features/financeiro/pages/
 const FinanceiroConciliacaoPage = lazy(() => import("./features/financeiro/pages/FinanceiroConciliacaoPage"));
 const FinanceiroNotasFiscaisPage = lazy(() => import("./features/financeiro/pages/FinanceiroNotasFiscaisPage"));
 const FinanceiroCaixaPage      = lazy(() => import("./features/financeiro/pages/FinanceiroCaixaPage"));
+const FinanceiroGastosPage     = lazy(() => import("./features/financeiro/pages/FinanceiroGastosPage"));
 const AcessosPage              = lazy(() => import("./features/acessos/pages/AcessosPage"));
 const ProducaoPage             = lazy(() => import("./features/producao/pages/ProducaoPage"));
 const CopywritersPage          = lazy(() => import("./features/copywriters/pages/CopywritersPage"));
@@ -95,6 +96,7 @@ const App = () => (
                     <Route path="/financeiro/conciliacao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroConciliacaoPage /></ProtectedRoute>} />
                     <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute pageKey="financeiro"><FinanceiroNotasFiscaisPage /></ProtectedRoute>} />
                     <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />
+                    <Route path="/financeiro/gastos" element={<ProtectedRoute pageKey="financeiro"><FinanceiroGastosPage /></ProtectedRoute>} />
                     <Route path="/acessos"  element={<ProtectedRoute pageKey="acessos"><AcessosPage /></ProtectedRoute>} />
                     <Route path="/producao" element={<ProtectedRoute pageKey="producao"><ProducaoPage /></ProtectedRoute>} />
                     <Route path="/criativos" element={<ProtectedRoute><CriativosPage /></ProtectedRoute>} />

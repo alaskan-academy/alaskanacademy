@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { ConciliacaoMeta } from "@/features/financeiro/components/ConciliacaoMeta";
+import { ConciliacaoMeta } from "@/features/ads/components/ConciliacaoMeta";
 
 type Nivel = "campanha" | "adset" | "ad";
 

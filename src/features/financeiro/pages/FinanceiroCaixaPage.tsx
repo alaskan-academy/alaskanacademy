@@ -10,8 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank, Pencil, ToggleLeft, ToggleRight } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
-import { PrevisaoCustos } from '@/features/financeiro/components/PrevisaoCustos';
-import { MapaCustos } from '@/features/financeiro/components/MapaCustos';
+import { RecorrentesAVencer } from '@/features/financeiro/components/RecorrentesAVencer';
 import {
   CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA, ehCustoOperacional,
 } from '@/features/financeiro/constants';
@@ -398,14 +397,12 @@ export default function FinanceiroCaixaPage() {
         </div>
       </div>
 
-      {/* Previsibilidade e mapa de custos.
-          Ficam abaixo do DRE porque respondem a outra pergunta: o DRE fecha o
-          mês que passou, estes dois olham para o que ainda vem. Sempre no mês
-          selecionado acima — no modo YTD a previsão continua sendo do mês, que
-          é a única janela em que "ainda deve sair" quer dizer alguma coisa. */}
-      <div className="mt-6 space-y-6">
-        <PrevisaoCustos ano={ano} mes={mes} />
-        <MapaCustos meses={6} />
+      {/* Só o que olha para frente. O mapa de custos e o previsto x realizado
+          foram para a aba Gastos: esta tela tinha seis blocos e nenhum deles
+          respondia direito. Aqui a pergunta é uma só — quanto temos e quanto
+          ainda sai. */}
+      <div className="mt-6">
+        <RecorrentesAVencer ano={ano} mes={mes} />
       </div>
 
       {/* Modal editar saldo base */}
