@@ -100,18 +100,25 @@ export default function FinanceiroNotasFiscaisPage() {
         .upload(caminho, arquivo, { upsert: true, contentType: arquivo.type });
       if (erroUpload) throw erroUpload;
 
-      // `upsert` na tabela também: reenviar corrige em vez de duplicar, e o
-      // índice único já impede duas linhas para o mesmo fornecedor/mês.
+      // `upsert` na tabela também: reenviar corrige em vez de duplicar.
+      //
+      // As QUATRO colunas da constraint precisam aparecer no `onConflict` — o
+      // PostgREST exige correspondência exata, e declarar três das quatro
+      // devolvia "there is no unique or exclusion constraint matching the ON
+      // CONFLICT specification". Nenhuma nota conseguia ser gravada.
       const { error: erroLinha } = await supabase
         .from('documentos_fiscais')
         .upsert({
           competencia,
           fornecedor: item.fornecedor,
           tipo: item.tipo,
+          // Vazio em ferramenta e comprovante; 'pagamento'/'comissao' são de
+          // prestador, que manda duas por mês.
+          subtipo: '',
           storage_path: caminho,
           nome_arquivo: nome,
           valor: item.valor,
-        }, { onConflict: 'competencia,fornecedor,tipo' });
+        }, { onConflict: 'competencia,fornecedor,tipo,subtipo' });
       if (erroLinha) throw erroLinha;
 
       toast({ title: 'Enviado', description: nome });
