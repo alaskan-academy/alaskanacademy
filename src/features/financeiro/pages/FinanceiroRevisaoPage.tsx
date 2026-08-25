@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck } from 'lucide-react';
+import { Upload, AlertCircle, CheckCircle2, Clock, Plus, CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
@@ -24,6 +24,13 @@ interface Transacao {
   categoria: string | null;
   centro_custo: string | null;
   status_revisao: string;
+  /** Nome resolvido pelo apelido; cai no descritor normalizado sem apelido. */
+  fornecedor: string;
+  /** false = agrupamento provisório, ainda precisa de decisão humana. */
+  fornecedor_definido: boolean | null;
+  /** O recorte que a regra deve usar. Ver comentário em `openModal`. */
+  padrao_sugerido: string;
+  cartao: string | null;
 }
 
 type Filtro = 'pendentes' | 'todas';
@@ -95,6 +102,8 @@ export default function FinanceiroRevisaoPage() {
   const [transacoes, setTransacoes]   = useState<Transacao[]>([]);
   const [loading, setLoading]         = useState(true);
   const [filtro, setFiltro]           = useState<Filtro>('pendentes');
+  const [anoRev, setAnoRev]           = useState(new Date().getFullYear());
+  const [mesRev, setMesRev]           = useState(new Date().getMonth());
   const [selected, setSelected]       = useState<Transacao | null>(null);
   const [saving, setSaving]           = useState(false);
   const [importing, setImporting]     = useState(false);
@@ -103,6 +112,7 @@ export default function FinanceiroRevisaoPage() {
   // form state inside modal (edição)
   const [formCateg,    setFormCateg]   = useState('');
   const [formCentro,   setFormCentro]  = useState('');
+  const [formNome,     setFormNome]    = useState('');
   const [criarRegra,   setCriarRegra]  = useState(true);
   const [padraoRegra,  setPadraoRegra] = useState('');
 
@@ -122,19 +132,28 @@ export default function FinanceiroRevisaoPage() {
   const load = useCallback(async () => {
     setLoading(true);
     let query = supabase
-      .from('transacoes')
-      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao')
+      .from('vw_transacoes_revisao')
+      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao,fornecedor,fornecedor_definido,padrao_sugerido,cartao')
       .order('data', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(500);
 
-    if (filtro === 'pendentes') query = query.in('status_revisao', ['pendente', 'auto_categorizado']);
+    if (filtro === 'pendentes') {
+      query = query.in('status_revisao', ['pendente', 'auto_categorizado']);
+    } else {
+      // "Todas" recortado por mês. Sem isto o limite de 500 cortava em silêncio
+      // uma base de 1.206: setecentas transações que ela acreditava ter revisado
+      // simplesmente não estavam na tela — o oposto de "garantir que nada passe".
+      const inicio = `${anoRev}-${String(mesRev + 1).padStart(2, '0')}-01`;
+      const fim = new Date(anoRev, mesRev + 1, 0).toISOString().slice(0, 10);
+      query = query.gte('data', inicio).lte('data', fim);
+    }
 
     const { data, error } = await query;
     if (error) toast({ title: 'Erro ao carregar transações', variant: 'destructive' });
     setTransacoes(data || []);
     setLoading(false);
-  }, [filtro]);
+  }, [filtro, anoRev, mesRev]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -142,8 +161,13 @@ export default function FinanceiroRevisaoPage() {
     setSelected(t);
     setFormCateg(t.categoria || '');
     setFormCentro(t.centro_custo || '');
+    setFormNome(t.fornecedor);
     setCriarRegra(true);
-    setPadraoRegra(t.descricao);
+    // O padrão do apelido, não o descritor inteiro. Com o descritor, cada
+    // cobrança do Facebook geraria uma regra própria e inútil — e um clique
+    // errado viraria lei com confiança 1,00 — foi assim que a regra
+    // "LUCAS DOS SANTOS VEIGA → Aplicativos e Ferramentas" desviou R$ 13.940.
+    setPadraoRegra(t.padrao_sugerido);
   };
 
   const salvar = async () => {
@@ -155,14 +179,35 @@ export default function FinanceiroRevisaoPage() {
         .update({ categoria: formCateg, centro_custo: formCentro || null, status_revisao: 'confirmado' })
         .eq('id', selected.id);
 
+      // O nome é do FORNECEDOR, não desta linha: renomear aqui arruma o
+      // histórico inteiro dele e todas as cobranças futuras. Editar a descrição
+      // da transação seria adulterar o que o banco mandou, e consertaria uma
+      // linha só — as outras 106 do Facebook continuariam ilegíveis.
+      const nome = formNome.trim();
+      if (nome && nome !== selected.fornecedor) {
+        const { error } = await supabase.from('fornecedores').upsert({
+          nome,
+          padrao: padraoRegra.trim() || selected.descricao,
+          tipo_match: 'contains',
+          prioridade: 50,
+          definido: true,
+          nota: null,
+        }, { onConflict: 'nome,padrao' });
+        if (error) throw error;
+      }
+
       if (criarRegra && padraoRegra.trim()) {
-        await supabase.from('regras_categoria').insert({
+        // `upsert` e não `insert`: confirmar duas vezes o mesmo fornecedor
+        // criava duas regras concorrentes com confiança 1,00, e qual ganhava
+        // dependia do comprimento do padrão. Agora a segunda corrige a primeira.
+        await supabase.from('regras_categoria').upsert({
           padrao: padraoRegra.trim(),
           tipo_match: 'contains',
           categoria: formCateg,
           centro_custo: formCentro || null,
           confianca: 1.0,
-        });
+          ativo: true,
+        }, { onConflict: 'padrao,tipo_match' });
       }
 
       toast({ title: 'Transação categorizada' });
@@ -365,6 +410,37 @@ export default function FinanceiroRevisaoPage() {
             </button>
           ))}
         </div>
+
+        {/* Só em "Todas": em "Pendentes" a lista é curta por natureza e um
+            recorte por mês esconderia pendência de outro mês. */}
+        {filtro === 'todas' && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost" size="icon" aria-label="Mês anterior"
+              onClick={() => {
+                if (mesRev === 0) { setMesRev(11); setAnoRev(a => a - 1); }
+                else setMesRev(m => m - 1);
+              }}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-medium w-28 text-center tabular-nums">
+              {['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][mesRev]} {anoRev}
+            </span>
+            <Button
+              variant="ghost" size="icon" aria-label="Próximo mês"
+              onClick={() => {
+                if (mesRev === 11) { setMesRev(0); setAnoRev(a => a + 1); }
+                else setMesRev(m => m + 1);
+              }}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <span className="ml-1 text-xs text-muted-foreground tabular-nums">
+              {transacoes.length} {transacoes.length === 1 ? 'lançamento' : 'lançamentos'}
+            </span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           {prontasParaLote.length > 0 && (
             <Button size="sm" variant="outline" onClick={confirmarLote} disabled={confirmandoLote}>
@@ -426,7 +502,28 @@ export default function FinanceiroRevisaoPage() {
                     <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">
                       {t.data.split('-').reverse().join('/')}
                     </td>
-                    <td className="px-4 py-3 font-medium max-w-xs truncate">{t.descricao}</td>
+                    {/* Nome do fornecedor em cima, descritor cru embaixo.
+                        Conferir 1.100 linhas de "FACEBK *ZXLVNXDAY2 SAO PAULO
+                        BR" é conferir ruído; o nome é onde um erro se denuncia.
+                        O descritor fica porque é o que ela vê no extrato do
+                        banco quando precisa cruzar. */}
+                    <td className="px-4 py-3 max-w-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium truncate">{t.fornecedor}</span>
+                        {t.fornecedor_definido === false && (
+                          <span
+                            className="shrink-0 text-amber-400/80"
+                            title="Agrupamento provisório — abra para dar o nome certo"
+                          >
+                            •
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/70 truncate" title={t.descricao}>
+                        {t.descricao}
+                        {t.cartao && ` · ${t.cartao}`}
+                      </div>
+                    </td>
                     <td className={cn('px-4 py-3 text-right tabular-nums font-medium', t.valor < 0 ? 'text-red-400' : 'text-green-400')}>
                       {formatCurrency(Math.abs(t.valor))}
                     </td>
@@ -462,7 +559,32 @@ export default function FinanceiroRevisaoPage() {
                     {formatCurrency(Math.abs(selected.valor))}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">{selected.data.split('-').reverse().join('/')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selected.data.split('-').reverse().join('/')}
+                  {selected.cartao && ` · ${selected.cartao}`}
+                </p>
+              </div>
+
+              {/* O nome vale para o fornecedor inteiro, não para esta linha. É
+                  o que faz uma correção arrumar o histórico todo em vez de uma
+                  transação — e é por isso que o rótulo diz "fornecedor". */}
+              <div className="space-y-1.5">
+                <Label>
+                  Nome do fornecedor
+                  {selected.fornecedor_definido === false && (
+                    <span className="ml-1.5 text-xs font-normal text-amber-400">
+                      agrupamento provisório
+                    </span>
+                  )}
+                </Label>
+                <Input
+                  value={formNome}
+                  onChange={e => setFormNome(e.target.value)}
+                  placeholder={selected.fornecedor}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Vale para todas as cobranças que casam com o padrão abaixo, passadas e futuras.
+                </p>
               </div>
 
               <div className="space-y-1.5">
