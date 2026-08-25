@@ -12,6 +12,7 @@ import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { PrevisaoCustos } from '@/features/financeiro/components/PrevisaoCustos';
 import { MapaCustos } from '@/features/financeiro/components/MapaCustos';
+import { ConciliacaoMeta } from '@/features/financeiro/components/ConciliacaoMeta';
 import {
   CAT_RECEITAS, CAT_CUSTOS_OPERACIONAIS, CAT_SOCIOS, CAT_RESERVA, ehCustoOperacional,
 } from '@/features/financeiro/constants';
@@ -406,6 +407,7 @@ export default function FinanceiroCaixaPage() {
       <div className="mt-6 space-y-6">
         <PrevisaoCustos ano={ano} mes={mes} />
         <MapaCustos meses={6} />
+        <ConciliacaoMeta meses={6} />
       </div>
 
       {/* Modal editar saldo base */}
