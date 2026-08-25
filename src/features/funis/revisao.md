@@ -363,3 +363,51 @@ contra a própria API — o pitch calculado (28,7%) contra `over_pitch_rate`
 **Quem for implementar: sempre conferir contra `over_pitch_rate`.** É o único
 ponto da curva que a API também calcula sozinha, então é o único lugar onde um
 erro de leitura aparece sem precisar de olho humano.
+
+---
+
+## Aplicado em 26/08/2026
+
+### A migração consertou dois bugs em produção, não só o modelo
+
+Depois de rodar `20260826t`:
+
+| | Antes | Depois |
+|---|---|---|
+| Funis com `ativo = true` | 1 | **5** |
+| Funis com `produto` preenchido | 9 | **23** |
+| Contradições `ativo` × `status` | 4 | 0 |
+
+Os 4 funis que voltaram estavam invisíveis em Produção — `.eq('ativo', true)`
+aparece em `dataCache.ts`, `KanbanView.tsx` e `CriativoFormModal.tsx`.
+
+**Correção ao que eu tinha dito:** quando reportei "1 funil ativo", atribuí a
+diferença à minha consulta. Não era. O app mostrava 1 também.
+
+### 88 VSLs espelhadas
+
+`vturb sincronizar` → 162 players no VTurb, 88 com `pitch_time > 0` gravados em
+`vsls`. Roda de novo sem duplicar: a chave primária é o id do player.
+
+### Casar VSL com REV pelo nome NÃO funciona — não automatizar
+
+Tentei sugerir o vínculo cruzando o nome do projeto com o número do REV dentro
+do nome do arquivo. Saíram 4 sugestões e **uma está errada**:
+
+```
+Velas Lembrancinhas · REV1  →  "CTA 1 VSL 01 Rev1 Workshop Buque de Velas.mp4"
+```
+
+"Velas" é a primeira palavra de *Velas Lembrancinhas* e também aparece em
+*Workshop Buquê de Velas*. É exatamente o mesmo erro de prefixo que já tinha me
+pegado ao casar `funis.produto` com `ofertas_editores.nome`.
+
+**25% de erro em 4 casos não vira sugestão automática.** O vínculo VSL↔REV é
+seleção manual: 23 REVs, um seletor cada, e acaba. O ganho da API não está em
+adivinhar o vínculo — está em (a) a lista vir pronta e correta, e (b) os cinco
+campos de retenção pararem de ser digitados.
+
+**Complicação real do seletor:** há nomes repetidos entre players diferentes —
+"Cópia de VSL 02 Saponaria final.mp4" aparece 3× com ids distintos. São as
+cópias que o VTurb cria para teste A/B. O seletor precisa mostrar duração e data
+ao lado do nome, senão ela escolhe entre três linhas idênticas.

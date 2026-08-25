@@ -12,14 +12,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  * nada que esta função faça, mesmo com bug, mexe nas VSLs no ar.
  *
  * Ações:
- *   players   → lista os players (id + nome). É o que transforma "qual VSL está
- *               rodando" de digitação em seleção.
- *   stats     → métricas de um player no período. Traz os cinco campos que hoje
- *               são digitados à mão na análise quinzenal.
- *   retencao  → a curva de retenção segundo a segundo, para ler qualquer marco
- *               (1 min, fim da lead, pitch) sem depender de campo fixo.
- *   testes    → os testes A/B que já existem dentro do VTurb.
- *   quota     → quanto da cota foi usada. Serve para diagnóstico.
+ *   players     → lista os players (id + nome). É o que transforma "qual VSL está
+ *                 rodando" de digitação em seleção.
+ *   sincronizar → espelha os players na tabela `vsls`.
+ *   stats       → métricas de um player no período. Traz os cinco campos que hoje
+ *                 são digitados à mão na análise quinzenal.
+ *   retencao    → a curva de retenção, para ler qualquer marco (1 min, fim da
+ *                 lead, pitch) sem depender de campo fixo. Ver a armadilha em
+ *                 `src/features/funis/revisao.md`: o dado bruto é histograma,
+ *                 não curva.
+ *   testes      → os testes A/B que já existem dentro do VTurb.
+ *   quota       → quanto da cota foi usada. Serve para diagnóstico.
  */
 
 const supabaseAdmin = createClient(
@@ -158,6 +161,41 @@ Deno.serve(async (req) => {
 
     case 'quota':
       return ok(await vturb('/quota/usage', 'GET', {}));
+
+    // Espelha os players do VTurb na tabela `vsls`.
+    //
+    // Só entra quem tem `pitch_time > 0`. Dos 162 players, 88 passam: o resto é
+    // aula da área de membros e upsell curto, onde ninguém configurou pitch.
+    // Não é um campo feito para classificar, mas é o único sinal que o VTurb dá
+    // — e errar para menos aqui é barato, porque quem faltar aparece na busca
+    // do seletor assim que alguém configurar o pitch lá.
+    case 'sincronizar': {
+      const r = await vturb('/players/list', 'GET', {});
+      if (r.erro) return ok(r);
+
+      const players = (r.dados ?? []) as Array<{
+        id: string; name: string; duration: number;
+        pitch_time: number; created_at: string;
+      }>;
+
+      const vsls = players
+        .filter((p) => p.pitch_time > 0)
+        .map((p) => ({
+          id: p.id,
+          nome: p.name,
+          duracao_seg: p.duration,
+          pitch_seg: p.pitch_time,
+          criado_em_vturb: p.created_at,
+          sincronizado_em: new Date().toISOString(),
+        }));
+
+      // `upsert` pela chave primária, que é o id do VTurb: rodar de novo não
+      // duplica nem apaga o vínculo que o REV já tem com a VSL.
+      const { error } = await supabaseAdmin.from('vsls').upsert(vsls);
+      if (error) return ok({ erro: `Falha ao gravar: ${error.message}` });
+
+      return ok({ dados: { players_no_vturb: players.length, vsls_gravadas: vsls.length } });
+    }
 
     default:
       return ok({ erro: `Ação desconhecida: ${acao}` });
