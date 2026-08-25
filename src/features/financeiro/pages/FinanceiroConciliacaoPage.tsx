@@ -278,6 +278,15 @@ export default function FinanceiroConciliacaoPage() {
                 </p>
               </div>
             </div>
+
+            {/* Esta tela e o Fechamento mostram números diferentes para o mesmo
+                mês, e sem esta linha parece erro de uma das duas. Não é: aqui é
+                o extrato inteiro, lá é só o operacional. */}
+            <p className="text-[11px] text-muted-foreground/70 leading-snug pt-2 border-t border-border">
+              É o extrato completo: inclui retirada de sócio e transferência para
+              a reserva. O Fechamento e o DRE tiram as duas, porque não são
+              resultado — por isso os números diferem.
+            </p>
           </div>
 
           <div className="bg-card border border-border rounded-xl p-4">

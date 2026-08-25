@@ -240,6 +240,12 @@ export default function FinanceiroNotasFiscaisPage() {
   const faltam = itens.filter(i => !i.tem_documento);
   const valorFaltante = faltam.reduce((a, i) => a + i.valor, 0);
 
+  // Separa o que é tarefa dela do que é espera. Um contador só, dizendo "23 de
+  // 23 ainda sem documento", faz parecer que há 23 notas para ela buscar —
+  // quando duas são de prestador e chegam sozinhas pela área dos editores.
+  const faltamDela    = faltam.filter(i => i.tipo !== 'servico');
+  const faltamEditores = faltam.filter(i => i.tipo === 'servico');
+
   return (
     <DashboardLayout title="Notas Fiscais" hideFilters>
       <FinanceiroNav />
@@ -270,7 +276,21 @@ export default function FinanceiroNotasFiscaisPage() {
             <span className="text-xs text-muted-foreground">
               {faltam.length === 0
                 ? `Todos os ${itens.length} documentos do mês foram recebidos`
-                : `${faltam.length} de ${itens.length} ainda sem documento`}
+                : (
+                  <>
+                    {faltamDela.length > 0
+                      ? `${faltamDela.length} de ${itens.length} para você buscar`
+                      : 'Nada para você buscar'}
+                    {faltamEditores.length > 0 && (
+                      <span className="text-amber-400/80">
+                        {' · '}
+                        {faltamEditores.length === 1
+                          ? '1 editor ainda não enviou a NF'
+                          : `${faltamEditores.length} editores ainda não enviaram a NF`}
+                      </span>
+                    )}
+                  </>
+                )}
             </span>
             {faltam.length > 0 && (
               <span className="text-lg font-bold tabular-nums text-amber-400 whitespace-nowrap">
@@ -397,7 +417,9 @@ export default function FinanceiroNotasFiscaisPage() {
                         className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
                       >
                         <Upload className="h-3 w-3 shrink-0" />
-                        {enviando === item.fornecedor ? 'enviando…' : 'anexar'}
+                        {enviando === item.fornecedor
+                          ? 'enviando…'
+                          : item.tipo === 'servico' ? 'anexar por ele' : 'anexar'}
                       </button>
                     </>
                   )}
@@ -407,6 +429,17 @@ export default function FinanceiroNotasFiscaisPage() {
                   <span className="w-full text-[11px] text-muted-foreground/70">
                     {item.categoria}
                     {item.tipo === 'servico' && ' · prestador'}
+                  </span>
+                )}
+
+                {/* Prestador manda a própria nota, na área dele em Editores.
+                    Antes esta linha parecia trabalho dela — "anexar", igual às
+                    ferramentas —, quando na verdade é espera. O botão continua
+                    ali para o caso de o editor mandar por fora, mas agora diz
+                    que é exceção. */}
+                {item.tipo === 'servico' && !item.tem_documento && (
+                  <span className="w-full text-[11px] text-amber-400/80">
+                    Aguardando: o editor ainda não enviou a NF.
                   </span>
                 )}
               </li>
