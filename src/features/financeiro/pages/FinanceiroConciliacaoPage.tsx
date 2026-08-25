@@ -9,16 +9,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowDownCircle, ArrowUpCircle, Scale, X } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Scale, X, Download } from 'lucide-react';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
 
 interface Transacao {
   id: string;
   data: string;
-  descricao: string;
+  /** O nome que ela deu ao fornecedor — ou o descritor, quando não há apelido. */
+  nome: string;
+  /** O descritor cru do banco, como aparece no extrato. Os dois convivem: a
+   *  contabilidade concilia pelo original, ela reconhece pelo nome. */
+  descricao_original: string;
+  /** "Cartão •••• 6896", "PIX Enviado", "Recebimento via PIX"… */
+  meio_pagamento: string;
   valor: number;
   categoria: string | null;
-  centro_custo: string | null;
+  /** Grupo resolvido pelo plano de contas, não o centro cru do CS. */
+  grupo: string | null;
   status_revisao: string;
 }
 
@@ -47,14 +54,14 @@ export default function FinanceiroConciliacaoPage() {
   const load = useCallback(async () => {
     setLoading(true);
     let query = supabase
-      .from('transacoes')
-      .select('id,data,descricao,valor,categoria,centro_custo,status_revisao')
+      .from('vw_conciliacao')
+      .select('id,data,nome,descricao_original,meio_pagamento,valor,categoria,grupo,status_revisao')
       .gte('data', dataInicio)
       .lte('data', dataFim)
       .order('data', { ascending: false });
 
     if (fCategoria !== TODOS) query = query.eq('categoria', fCategoria);
-    if (fCentro    !== TODOS) query = query.eq('centro_custo', fCentro);
+    if (fCentro    !== TODOS) query = query.eq('grupo', fCentro);
     if (fStatus    !== TODOS) query = query.eq('status_revisao', fStatus);
 
     const { data, error } = await query.limit(1000);
@@ -74,6 +81,50 @@ export default function FinanceiroConciliacaoPage() {
   };
 
   const temFiltroAtivo = fCategoria !== TODOS || fCentro !== TODOS || fStatus !== TODOS;
+
+  /**
+   * Exporta o que está na tela para a contabilidade.
+   *
+   * Ponto e vírgula e não vírgula: o Excel em português usa `;` como separador,
+   * e com `,` a planilha abre tudo espremido numa coluna só.
+   *
+   * Valor com vírgula decimal e sem separador de milhar — é o formato que o
+   * Excel brasileiro entende como número. Com ponto ele lê como texto e a
+   * contabilidade não consegue somar.
+   *
+   * BOM (U+FEFF) na frente: sem ele o Excel abre o arquivo em Latin-1 e todo
+   * acento vira caractere quebrado.
+   */
+  function exportarCsv() {
+    if (transacoes.length === 0) {
+      toast({ title: 'Nada para exportar', description: 'Nenhuma transação no período e nos filtros escolhidos.' });
+      return;
+    }
+
+    const escapa = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
+    const linhas = [
+      ['Data', 'Nome', 'Descrição original', 'Meio de pagamento', 'Categoria', 'Grupo', 'Valor'].join(';'),
+      ...transacoes.map(t => [
+        escapa(t.data.split('-').reverse().join('/')),
+        escapa(t.nome),
+        escapa(t.descricao_original),
+        escapa(t.meio_pagamento),
+        escapa(t.categoria ?? ''),
+        escapa(t.grupo ?? ''),
+        escapa(t.valor.toFixed(2).replace('.', ',')),
+      ].join(';')),
+    ].join('\r\n');
+
+    const blob = new Blob(['﻿' + linhas], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conciliacao_${dataInicio}_a_${dataFim}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast({ title: `${transacoes.length} lançamentos exportados`, description: a.download });
+  }
 
   const totais = useMemo(() => {
     const entradas = transacoes.filter(t => t.valor > 0).reduce((s, t) => s + t.valor, 0);
@@ -143,6 +194,12 @@ export default function FinanceiroConciliacaoPage() {
               <X className="h-3.5 w-3.5 mr-1.5" /> Limpar filtros
             </Button>
           )}
+          {/* Exporta o que está na tela, com os filtros aplicados — é o que faz
+              o botão ser útil: filtra o mês, confere, manda para a contabilidade. */}
+          <Button variant="outline" size="sm" onClick={exportarCsv} disabled={loading}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Exportar CSV{!loading && transacoes.length > 0 ? ` (${transacoes.length})` : ''}
+          </Button>
         </div>
       </div>
 
@@ -154,25 +211,37 @@ export default function FinanceiroConciliacaoPage() {
               <thead>
                 <tr className="bg-muted/40 border-b border-border">
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-28">Data</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Descrição</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Nome / descrição original</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-40">Meio de pagamento</th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-44">Categoria</th>
-                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-36">Centro de custo</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-36">Grupo</th>
                   <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-32">Valor</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {loading && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">Carregando…</td></tr>
                 )}
                 {!loading && transacoes.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Nenhuma transação no período</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">Nenhuma transação no período</td></tr>
                 )}
                 {transacoes.map(t => (
                   <tr key={t.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground tabular-nums text-xs">{t.data.split('-').reverse().join('/')}</td>
-                    <td className="px-4 py-3 font-medium max-w-xs truncate">{t.descricao}</td>
+                    {/* Os dois nomes juntos: o apelido em cima porque é o que
+                        ela reconhece, o descritor embaixo porque é por ele que
+                        a contabilidade concilia com o extrato do banco. */}
+                    <td className="px-4 py-3 max-w-xs">
+                      <div className="font-medium truncate">{t.nome}</div>
+                      {t.descricao_original !== t.nome && (
+                        <div className="text-[11px] text-muted-foreground/70 truncate" title={t.descricao_original}>
+                          {t.descricao_original}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs truncate">{t.meio_pagamento}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs truncate">{t.categoria || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs truncate">{t.centro_custo || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs truncate">{t.grupo || '—'}</td>
                     <td className={cn('px-4 py-3 text-right tabular-nums font-medium', t.valor < 0 ? 'text-red-400' : 'text-green-400')}>
                       {formatCurrency(Math.abs(t.valor))}
                     </td>
