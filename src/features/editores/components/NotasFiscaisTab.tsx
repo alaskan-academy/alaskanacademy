@@ -30,11 +30,30 @@ interface NotaEsperada {
   subtipo: 'pagamento' | 'comissao';
   competencia: string;
   rotulo: string;
+  /** Dia 20 — a NF vem ANTES do pagamento. Sem ela, não se paga. */
+  prazo: string;
+  /** Quando o dinheiro sai, se a nota tiver chegado. */
+  pagamento_em: string;
   quando_paga: string;
+  situacao: 'enviada' | 'atrasada' | 'a_vencer';
+  /** Dias até o prazo. Negativo = já passou. */
+  dias: number;
   documento_id: string | null;
   nome_arquivo: string | null;
   drive_url: string | null;
   enviada_em: string | null;
+}
+
+function dataCurta(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${d}/${m}/${a.slice(2)}`;
+}
+
+/** Identifica uma nota na tela. Subtipo sozinho não basta desde que a lista
+ *  passou a mostrar competências diferentes: há dois "pagamento" quando o do
+ *  mês anterior está atrasado. */
+function chaveDaNota(n: { subtipo: string; competencia: string }): string {
+  return `${n.subtipo}-${n.competencia}`;
 }
 
 interface Editor { id: string; nome: string }
@@ -130,7 +149,9 @@ export function NotasFiscaisTab() {
       return;
     }
 
-    setEnviando(nota.subtipo);
+    // Competência na chave: com duas notas de "pagamento" na tela, só o
+    // subtipo marcaria as duas como enviando ao mesmo tempo.
+    setEnviando(chaveDaNota(nota));
     try {
       const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'pdf';
       const nome = nomeDoArquivo(nota.competencia, editorAtual.nome, nota.subtipo, extensao);
@@ -215,7 +236,8 @@ export function NotasFiscaisTab() {
     );
   }
 
-  const faltam = notas.filter(n => !n.documento_id).length;
+  const faltam    = notas.filter(n => !n.documento_id).length;
+  const atrasadas = notas.filter(n => n.situacao === 'atrasada').length;
 
   return (
     <div className="space-y-4">
@@ -249,8 +271,9 @@ export function NotasFiscaisTab() {
             Notas fiscais do mês
           </h2>
           <p className="text-xs text-muted-foreground/70 mt-0.5">
-            São duas e de competências diferentes: o pagamento é do mês trabalhado, a comissão é
-            do mês anterior. Emita cada uma com a sua data.
+            A nota vem <span className="text-foreground">antes</span> do pagamento, até o dia 20 —
+            sem NF o pagamento não sai. O salário é do mês trabalhado; a comissão é do mês
+            anterior. Emita cada uma com a sua data.
           </p>
         </div>
 
@@ -260,14 +283,29 @@ export function NotasFiscaisTab() {
           <>
             {faltam > 0 && (
               <p className="mb-4 rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                {faltam === 2 ? 'As duas notas ainda não chegaram' : 'Falta uma das duas notas'}
+                {atrasadas > 0 && (
+                  <span className="text-red-400 font-medium">
+                    {atrasadas === 1 ? '1 nota vencida' : `${atrasadas} notas vencidas`}
+                    {' — o pagamento fica retido até chegar. '}
+                  </span>
+                )}
+                {faltam - atrasadas > 0 && (
+                  <>
+                    {faltam - atrasadas === 1 ? '1 nota' : `${faltam - atrasadas} notas`}
+                    {' ainda no prazo.'}
+                  </>
+                )}
               </p>
             )}
 
             <ul className="space-y-0">
               {notas.map(n => (
                 <li
-                  key={n.subtipo}
+                  // Competência JUNTO com o subtipo: agora podem existir dois
+                  // "pagamento" na lista (o de julho atrasado e o de agosto), e
+                  // com a chave só no subtipo o React reaproveitaria a linha
+                  // errada — o arquivo do input iria para a competência errada.
+                  key={chaveDaNota(n)}
                   className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-border/50 py-3 last:border-0"
                 >
                   <span className="min-w-0 flex-1">
@@ -275,8 +313,18 @@ export function NotasFiscaisTab() {
                     <span className="ml-2 text-xs text-muted-foreground">
                       competência {rotuloCompetencia(n.competencia)}
                     </span>
+                    {/* O prazo primeiro, o pagamento depois — nesta ordem porque
+                        é essa a política: a nota vem antes do dinheiro. */}
                     <span className="block text-[11px] text-muted-foreground/70">
-                      pago {n.quando_paga}
+                      {n.situacao === 'enviada'
+                        ? `pagamento em ${dataCurta(n.pagamento_em)}`
+                        : n.situacao === 'atrasada'
+                          ? <span className="text-red-400">
+                              venceu em {dataCurta(n.prazo)} — {Math.abs(n.dias)} {Math.abs(n.dias) === 1 ? 'dia' : 'dias'} atrás · segura o pagamento de {dataCurta(n.pagamento_em)}
+                            </span>
+                          : <span className="text-amber-400/90">
+                              enviar até {dataCurta(n.prazo)} — {n.dias} {n.dias === 1 ? 'dia' : 'dias'} · pagamento em {dataCurta(n.pagamento_em)}
+                            </span>}
                     </span>
                   </span>
 
@@ -323,7 +371,7 @@ export function NotasFiscaisTab() {
                     ) : (
                       <>
                         <input
-                          ref={el => { inputsRef.current[n.subtipo] = el; }}
+                          ref={el => { inputsRef.current[chaveDaNota(n)] = el; }}
                           type="file"
                           accept="application/pdf,image/png,image/jpeg,image/webp"
                           className="hidden"
@@ -331,7 +379,7 @@ export function NotasFiscaisTab() {
                         />
                         <button
                           type="button"
-                          onClick={() => inputsRef.current[n.subtipo]?.click()}
+                          onClick={() => inputsRef.current[chaveDaNota(n)]?.click()}
                           // Desabilita durante QUALQUER envio, não só o desta
                           // linha: as duas gravam na mesma tabela, e um segundo
                           // envio no meio do primeiro faria a lista recarregar
@@ -343,7 +391,7 @@ export function NotasFiscaisTab() {
                           )}
                         >
                           <Upload className="h-3 w-3 shrink-0" />
-                          {enviando === n.subtipo ? 'enviando…' : 'enviar nota'}
+                          {enviando === chaveDaNota(n) ? 'enviando…' : 'enviar nota'}
                         </button>
                       </>
                     )}
