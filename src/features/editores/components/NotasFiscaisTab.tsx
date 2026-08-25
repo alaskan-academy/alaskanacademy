@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -65,6 +66,7 @@ export function NotasFiscaisTab() {
   const [notas, setNotas] = useState<NotaEsperada[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   // Um input por linha, e não um input com um `alvoRef` dizendo quem pediu.
   // Com a referência compartilhada, um segundo clique antes de o primeiro
@@ -175,10 +177,25 @@ export function NotasFiscaisTab() {
   }
 
   async function remover(nota: NotaEsperada) {
+    // Pergunta antes: some do dashboard e da pasta do Drive de uma vez, e quem
+    // clica aqui costuma ser o próprio editor querendo trocar o arquivo — não
+    // apagá-lo e ficar sem nenhum.
+    const ok = await confirm({
+      title: `Remover a nota de ${nota.rotulo.toLowerCase()}?`,
+      description: 'Sai do dashboard e também da pasta do Drive. Para corrigir uma nota errada, anexe a certa por cima — não precisa remover antes.',
+      confirmText: 'Remover',
+    });
+    if (!ok) return;
+
     const { data } = await supabase
       .from('documentos_fiscais').select('storage_path').eq('id', nota.documento_id!).maybeSingle();
     if (data?.storage_path) await supabase.storage.from('documentos').remove([data.storage_path]);
-    await supabase.from('documentos_fiscais').delete().eq('id', nota.documento_id!);
+    const { error } = await supabase.from('documentos_fiscais').delete().eq('id', nota.documento_id!);
+    if (error) {
+      toast({ title: 'Não foi possível remover', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Nota removida' });
     await carregar();
   }
 

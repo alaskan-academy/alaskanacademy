@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,6 +44,7 @@ export function CampoCategoria({
 }) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [centros, setCentros] = useState<string[]>([]);
+  const confirm = useConfirm();
 
   const carregar = useCallback(async () => {
     const [{ data: cats }, { data: cs }] = await Promise.all([
@@ -90,6 +92,16 @@ export function CampoCategoria({
       });
       return;
     }
+    // Só chega aqui se estiver vazio — a checagem acima barra o resto. Ainda
+    // assim pergunta: apagar não tem volta, e o botão fica ao lado do de
+    // renomear.
+    const ok = await confirm({
+      title: `Apagar o grupo "${nome}"?`,
+      description: 'Está vazio, então nenhum lançamento muda. Mas não dá para desfazer — para usá-lo de novo, terá de criá-lo outra vez.',
+      confirmText: 'Apagar',
+    });
+    if (!ok) return;
+
     await supabase.from('centros_custo').delete().eq('nome', nome);
     await carregar();
     if (centro === nome) onCentroChange?.('');
@@ -129,6 +141,13 @@ export function CampoCategoria({
       });
       return;
     }
+    const ok = await confirm({
+      title: `Apagar a categoria "${nome}"?`,
+      description: 'Nenhum lançamento usa esta categoria, então nada muda no DRE. Mas não dá para desfazer.',
+      confirmText: 'Apagar',
+    });
+    if (!ok) return;
+
     await supabase.from('categorias_centro').delete().eq('categoria', nome);
     await carregar();
     if (valor === nome) onChange('');

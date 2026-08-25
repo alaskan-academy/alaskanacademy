@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2, FolderOpen } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
@@ -59,6 +60,7 @@ export default function FinanceiroNotasFiscaisPage() {
   const [itens, setItens] = useState<Item[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   // Um input por linha, e não um input com um `alvoRef` dizendo quem pediu.
   // Com a referência compartilhada, um segundo clique antes de o primeiro
@@ -205,10 +207,24 @@ export default function FinanceiroNotasFiscaisPage() {
   }
 
   async function remover(item: Item) {
+    // Pergunta antes: um clique aqui apaga em três lugares de uma vez, e a
+    // cópia do Drive é a que a contabilidade usa. Não há desfazer.
+    const ok = await confirm({
+      title: `Remover a nota de ${item.fornecedor}?`,
+      description: 'O arquivo sai do dashboard e também da pasta do Drive que a contabilidade usa. Não dá para desfazer.',
+      confirmText: 'Remover',
+    });
+    if (!ok) return;
+
     const { data } = await supabase
       .from('documentos_fiscais').select('storage_path').eq('id', item.documento_id!).single();
     if (data?.storage_path) await supabase.storage.from('documentos').remove([data.storage_path]);
-    await supabase.from('documentos_fiscais').delete().eq('id', item.documento_id!);
+    const { error } = await supabase.from('documentos_fiscais').delete().eq('id', item.documento_id!);
+    if (error) {
+      toast({ title: 'Não foi possível remover', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Nota removida', description: item.fornecedor });
     await carregar();
   }
 
