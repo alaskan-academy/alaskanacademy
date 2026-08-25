@@ -47,6 +47,19 @@ interface Recorrencia {
   encerrada_em: string | null;
   /** Cobrou de novo depois de encerrada. */
   reativada: boolean;
+  /** `chave` veio de apelido cadastrado, não da normalização do descritor. */
+  apelidado: boolean;
+  /** false = agrupamento provisório; o extrato não separou e falta decidir. */
+  definido: boolean;
+  /** Por que está pendente, escrito na hora em que se soube. */
+  nota: string | null;
+}
+
+/** O nome a mostrar. Com apelido cadastrado, a chave JÁ é o nome — "Hostinger"
+ *  no lugar das cinco grafias que o extrato usa para ele. Sem apelido, ainda é
+ *  preciso limpar o ruído do descritor. */
+function nomeExibido(r: Recorrencia): string {
+  return r.apelidado ? r.chave : nomeLimpo(r.descricao);
 }
 
 /** Descritor de extrato é ruído legível: "EBN *CAPCUT CURITIBA BR" ou
@@ -149,8 +162,31 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
     ));
   }
 
+  /** Renomeia o agrupamento e o dá por resolvido. */
+  async function renomear(r: Recorrencia, nomeNovo: string) {
+    const nome = nomeNovo.trim();
+    if (!nome || nome === r.chave) return;
+
+    const { error } = await supabase
+      .from('fornecedores')
+      .update({ nome, definido: true, nota: null })
+      .eq('nome', r.chave);
+
+    if (error) { setErro(error.message); return; }
+
+    // `recorrencias_encerradas` guarda o nome como chave. Sem arrastar junto, um
+    // fornecedor encerrado voltaria a alarmar assim que fosse renomeado.
+    await supabase.from('recorrencias_encerradas')
+      .update({ chave: nome }).eq('chave', r.chave);
+
+    setRecorrencias(lista => lista.map(x =>
+      x.chave === r.chave ? { ...x, chave: nome, definido: true, nota: null } : x,
+    ));
+  }
+
   const ativas = recorrencias.filter(r => !r.encerrada);
   const encerradas = recorrencias.filter(r => r.encerrada);
+  const aDefinir = recorrencias.filter(r => !r.definido);
 
   if (carregando) {
     return <Moldura><p className="text-sm text-muted-foreground text-center py-8">Carregando…</p></Moldura>;
@@ -266,6 +302,22 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
               em duas linhas e empurravam o status para fora da largura útil,
               que aqui é de uns 560px. Com o nome em cima e os números embaixo,
               cabe sem cortar e sem rolagem lateral. */}
+          {/* Diz o que ainda não foi resolvido, em vez de deixar um agrupamento
+              provisório passando por definitivo. "Hostinger" somava domínio e
+              n8n num número que não responde nada — e o extrato não separa os
+              dois sozinho. */}
+          {aDefinir.length > 0 && (
+            <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
+              <strong className="font-medium text-amber-200">
+                {aDefinir.length === 1
+                  ? '1 fornecedor ainda sem nome definido'
+                  : `${aDefinir.length} fornecedores ainda sem nome definido`}
+              </strong>
+              {' — '}o extrato não separa o que são, então agrupei provisoriamente.
+              Clique no nome para corrigir.
+            </p>
+          )}
+
           <ul className="space-y-0">
             {ativas.map(r => (
               <Linha
@@ -273,6 +325,7 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
                 r={r}
                 atrasado={mesCorrente && !r.ja_saiu && r.dia_tipico < diaHoje}
                 onAlternar={() => alternarEncerrada(r)}
+                onRenomear={nome => renomear(r, nome)}
               />
             ))}
           </ul>
@@ -287,7 +340,13 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
               </p>
               <ul className="space-y-0">
                 {encerradas.map(r => (
-                  <Linha key={r.chave} r={r} atrasado={false} onAlternar={() => alternarEncerrada(r)} />
+                  <Linha
+                    key={r.chave}
+                    r={r}
+                    atrasado={false}
+                    onAlternar={() => alternarEncerrada(r)}
+                    onRenomear={nome => renomear(r, nome)}
+                  />
                 ))}
               </ul>
             </div>
@@ -299,13 +358,21 @@ export function PrevisaoCustos({ ano, mes }: { ano: number; mes: number }) {
 }
 
 function Linha({
-  r, atrasado, onAlternar,
+  r, atrasado, onAlternar, onRenomear,
 }: {
   r: Recorrencia;
   atrasado: boolean;
   onAlternar: () => void;
+  onRenomear: (nome: string) => void;
 }) {
   const fixo = r.desvio < r.valor_tipico * 0.05;
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState(r.chave);
+
+  function confirmar() {
+    setEditando(false);
+    onRenomear(rascunho);
+  }
 
   return (
     <li
@@ -314,12 +381,36 @@ function Linha({
         r.encerrada && !r.reativada && 'opacity-50',
       )}
     >
-      <span
-        className={cn('min-w-0 flex-1 truncate', r.encerrada ? 'text-muted-foreground' : 'text-foreground')}
-        title={r.descricao}
-      >
-        {nomeLimpo(r.descricao)}
-      </span>
+      {editando ? (
+        <input
+          autoFocus
+          value={rascunho}
+          onChange={e => setRascunho(e.target.value)}
+          onBlur={confirmar}
+          onKeyDown={e => {
+            if (e.key === 'Enter') confirmar();
+            if (e.key === 'Escape') { setRascunho(r.chave); setEditando(false); }
+          }}
+          className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-foreground"
+          aria-label={`Nome de ${r.chave}`}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => { setRascunho(r.chave); setEditando(true); }}
+          className={cn(
+            'min-w-0 flex-1 truncate text-left hover:underline decoration-dotted underline-offset-2',
+            r.encerrada ? 'text-muted-foreground' : 'text-foreground',
+            // Provisório se anuncia. Sem isto, "Hostinger (DM)" passaria por
+            // nome de verdade e ninguém saberia que falta decidir o que é.
+            !r.definido && 'text-amber-300',
+          )}
+          title={r.nota ?? r.descricao}
+        >
+          {nomeExibido(r)}
+          {!r.definido && <span className="ml-1 text-amber-400/80">•</span>}
+        </button>
+      )}
 
       <span className={cn('tabular-nums whitespace-nowrap', r.encerrada ? 'text-muted-foreground' : 'text-foreground')}>
         {formatCurrency(r.valor_tipico)}
@@ -383,7 +474,7 @@ function Linha({
           'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded',
         )}
         title={r.encerrada ? 'Voltamos a pagar' : 'Paramos de pagar'}
-        aria-label={r.encerrada ? `Voltamos a pagar ${nomeLimpo(r.descricao)}` : `Paramos de pagar ${nomeLimpo(r.descricao)}`}
+        aria-label={r.encerrada ? `Voltamos a pagar ${nomeExibido(r)}` : `Paramos de pagar ${nomeExibido(r)}`}
       >
         {r.encerrada ? <RotateCcw className="h-3 w-3 mx-auto" /> : <Ban className="h-3 w-3 mx-auto" />}
       </button>
