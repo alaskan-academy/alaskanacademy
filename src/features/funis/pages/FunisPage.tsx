@@ -9,8 +9,9 @@ import { DominiosTab } from '../components/DominiosTab';
 import { TestesTab } from '../components/TestesTab';
 import { semVeredito } from '../testes';
 import { CheckoutsTab } from '../components/CheckoutsTab';
+import { MapaTab } from '../components/MapaTab';
 
-type Tab = 'funis' | 'testes' | 'dominios' | 'checkouts';
+type Tab = 'funis' | 'mapa' | 'testes' | 'dominios' | 'checkouts';
 
 interface State {
   funis: Funil[];
@@ -24,6 +25,7 @@ interface State {
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'funis',      label: 'Funis' },
+  { key: 'mapa',       label: 'Mapa' },
   { key: 'testes',     label: 'Testes' },
   { key: 'dominios',   label: 'Domínios' },
   { key: 'checkouts',  label: 'Checkouts' },
@@ -137,6 +139,7 @@ export default function FunisPage() {
               onReload={load}
             />
           )}
+          {activeTab === 'mapa' && <MapaTab />}
           {activeTab === 'checkouts' && (
             <CheckoutsTab
               funis={state.funis}

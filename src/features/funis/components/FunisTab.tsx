@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import {
   ChevronDown, ChevronRight, ExternalLink, Plus, Pencil,
-  Globe, ShoppingBag, FlaskConical, Search, Video, AlertTriangle,
+  Globe, ShoppingBag, FlaskConical, Video, AlertTriangle,
 } from 'lucide-react';
 import { FunilModal } from './FunilModal';
 import { TesteModal } from './TesteModal';
@@ -58,13 +57,9 @@ function StatusBadge({ status }: { status: StatusDisplay }) {
 /**
  * O que o REV tem, além do cadastro: VSL, domínios, checkouts e vendas.
  *
- * Vem de `vw_mapa_revs`. Isto existia como uma ABA separada chamada Mapa, e era
- * o defeito central da área: duas listas dos mesmos 23 REVs, cada uma escondendo
- * metade da informação. A pessoa abria a área e a primeira decisão era "em qual
- * das duas listas da mesma coisa eu olho?".
- *
- * Agora é uma lista só — agrupada e editável como a de Funis era, com a busca e
- * os números que só o Mapa tinha.
+ * Vem de `vw_mapa_revs`, a mesma view que a aba Mapa usa. Aqui entram so os
+ * dois campos que a linha mostra -- VSL e vendas -- para o REV que vende 539
+ * parar de ser visualmente identico ao que vende zero.
  */
 interface DadosDoRev {
   id: string;
@@ -77,11 +72,6 @@ interface DadosDoRev {
   metodo: string | null;
   url_page: string | null;
   busca: string;
-}
-
-/** Mesma normalização da coluna `busca` da view: sem acento, minúsculas. */
-function semAcento(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
 /**
@@ -179,7 +169,6 @@ function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; on
 
 export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [busca, setBusca] = useState('');
   const [dados, setDados] = useState<Record<string, DadosDoRev>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
@@ -236,24 +225,18 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   // Busca sobre a lista já agrupada. São 23 REVs, então filtra em memória e a
   // estrutura de projetos continua na tela — quem procura "h07" ainda vê a
   // qual projeto o resultado pertence, que é metade da resposta.
-  const visiveis = useMemo(() => {
-    const q = semAcento(busca.trim());
-    if (!q) return funis;
-    return funis.filter(f => (dados[f.id]?.busca ?? semAcento(f.nome)).includes(q));
-  }, [funis, busca, dados]);
-
   type Group = { projeto: Projeto | null; funis: Funil[] };
   const groups: Group[] = [];
   const seen = new Set<string | null>();
 
   // First pass: projetos with funis
-  for (const funil of visiveis) {
+  for (const funil of funis) {
     const pid = funil.projeto_id ?? null;
     if (!seen.has(pid)) {
       seen.add(pid);
       groups.push({
         projeto: pid ? (projetoMap[pid] ?? null) : null,
-        funis: visiveis.filter(f => (f.projeto_id ?? null) === pid),
+        funis: funis.filter(f => (f.projeto_id ?? null) === pid),
       });
     }
   }
@@ -297,22 +280,12 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
 
   return (
     <div className="space-y-6">
-      {/* Busca + a única pendência que vale espaço fixo.
-          As cinco pílulas que ficavam aqui contavam TESTES numa tela de REVs, e
-          uma delas mostrava zero — gastava espaço para dizer que não há nada.
-          Uma pendência acionável vale mais que cinco contagens. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[16rem]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar por VSL, domínio, checkout, página ou REV…"
-            className="pl-9 h-9"
-          />
-        </div>
-
-        {semVslCount > 0 && !busca && (
+      {/* A busca por VSL/domínio/checkout mora na aba Mapa, não aqui.
+          Cheguei a fundir as duas telas e ela não gostou — o agrupamento por
+          projeto e a busca ampla são modos de olhar diferentes, e juntá-los
+          tirou dela a escolha de qual usar. */}
+      <div className="flex flex-wrap items-center gap-2 justify-end">
+        {semVslCount > 0 && (
           <span className="inline-flex items-center gap-1.5 px-2.5 h-9 rounded-md text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/25">
             <AlertTriangle className="h-3.5 w-3.5" />
             {semVslCount} {semVslCount === 1 ? 'REV sem VSL' : 'REVs sem VSL'}
@@ -325,11 +298,6 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
         </Button>
       </div>
 
-      {busca && groups.length === 0 && (
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          Nada com &ldquo;{busca}&rdquo;. A busca cobre REV, projeto, VSL, domínio, checkout e página.
-        </p>
-      )}
 
       {groups.map(group => {
         const projetoId = group.projeto?.id ?? '__none__';
