@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import { MarkdownRenderer, extractTOC, type TocItem } from '@/features/processos/components/MarkdownRenderer';
-import { ChevronRight, Edit2, Loader2, ImageIcon, ArrowLeft, Clock } from 'lucide-react';
+import { ChevronRight, Edit2, Loader2, ImageIcon, ArrowLeft, Clock, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -43,10 +43,43 @@ function extractVideoUrl(raw: string): string {
   return m ? m[1] : raw.trim();
 }
 
+/** A relação embutida chega como objeto ou como array; aqui vira sempre um só. */
+type CategoriaEmbutida = { nome: string | null; icone: string | null };
+function umaCategoria(v: unknown): CategoriaEmbutida | null {
+  if (Array.isArray(v)) return (v[0] as CategoriaEmbutida) ?? null;
+  return (v as CategoriaEmbutida) ?? null;
+}
+
 function readingTime(content: string): string {
   const words = content.trim().split(/\s+/).length;
   const minutes = Math.max(1, Math.round(words / 200));
   return `${minutes} min de leitura`;
+}
+
+const MESES_ATE_ENVELHECER = 6;
+
+function mesesDesde(iso: string): number {
+  return (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+}
+
+/**
+ * Processo velho é processo perigoso: alguém segue um passo a passo que mudou.
+ * Seis meses é o corte — tempo suficiente para uma ferramenta trocar de tela.
+ */
+function envelhecido(iso: string): boolean {
+  return mesesDesde(iso) >= MESES_ATE_ENVELHECER;
+}
+
+/** "atualizado hoje", "há 3 meses" — a distância importa mais que a data exata. */
+function desdeQuando(iso: string): string {
+  const dias = (Date.now() - new Date(iso).getTime()) / 86_400_000;
+  if (dias < 1)   return 'atualizado hoje';
+  if (dias < 2)   return 'atualizado ontem';
+  if (dias < 30)  return `atualizado há ${Math.round(dias)} dias`;
+  const meses = Math.round(mesesDesde(iso));
+  if (meses < 12) return `atualizado há ${meses} ${meses === 1 ? 'mês' : 'meses'}`;
+  const anos = Math.floor(meses / 12);
+  return `atualizado há ${anos} ${anos === 1 ? 'ano' : 'anos'}`;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -125,8 +158,12 @@ export default function ProcessosArtigoPage() {
       criado_em: data.criado_em,
       atualizado_em: data.atualizado_em,
       categoria_id: data.categoria_id,
-      categoria_nome: (data.processos_categorias as any)?.nome ?? '',
-      categoria_icone: (data.processos_categorias as any)?.icone ?? '📋',
+      // O PostgREST devolve a relação como OBJETO ou como ARRAY conforme
+      // resolve o vínculo, e `as any` escondia isso: no dia em que viesse array,
+      // `?.nome` daria `undefined` e a categoria sumiria do cabeçalho sem erro
+      // nenhum na tela.
+      categoria_nome: umaCategoria(data.processos_categorias)?.nome ?? '',
+      categoria_icone: umaCategoria(data.processos_categorias)?.icone ?? '📋',
       categorias_adicionais: extraIds,
       categorias_extras: extras,
     };
@@ -193,7 +230,7 @@ export default function ProcessosArtigoPage() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Carregando...">
+      <DashboardLayout title="Carregando..." hideFilters>
         <div className="flex justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -204,7 +241,7 @@ export default function ProcessosArtigoPage() {
   if (!artigo) return null;
 
   return (
-    <DashboardLayout title={artigo.titulo}>
+    <DashboardLayout title={artigo.titulo} hideFilters>
       <div className="max-w-5xl mx-auto">
 
         {/* Breadcrumb */}
@@ -261,6 +298,24 @@ export default function ProcessosArtigoPage() {
                     </span>
                   </>
                 )}
+                {/* A data sobe para o topo, junto do tempo de leitura.
+                    Ficava no rodapé em cinza 50%, depois de sete minutos de
+                    texto — e num documento de PROCESSO é ela que diz se dá para
+                    confiar. Quem abre para seguir um passo a passo precisa
+                    saber antes de começar, não depois de terminar. */}
+                <span className="text-muted-foreground/30">·</span>
+                <span
+                  className={cn(
+                    'flex items-center gap-1 text-xs',
+                    envelhecido(artigo.atualizado_em) ? 'text-amber-500/90' : 'text-muted-foreground',
+                  )}
+                  title={`Última atualização: ${new Date(artigo.atualizado_em).toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: 'long', year: 'numeric',
+                  })}`}
+                >
+                  <History className="h-3 w-3" />
+                  {desdeQuando(artigo.atualizado_em)}
+                </span>
               </div>
 
               <div className="flex items-start justify-between gap-4">
@@ -328,14 +383,10 @@ export default function ProcessosArtigoPage() {
               </div>
             )}
 
-            {/* Footer */}
-            <div className="text-xs text-muted-foreground/50 mt-8 pt-4 border-t border-border/40 flex items-center justify-between">
-              <span>
-                Atualizado em{' '}
-                {new Date(artigo.atualizado_em).toLocaleDateString('pt-BR', {
-                  day: '2-digit', month: 'long', year: 'numeric',
-                })}
-              </span>
+            {/* Footer — a data saiu daqui e subiu para o cabeçalho. Repetir nos
+                dois lugares seria dizer duas vezes o que só precisa ser dito
+                antes de a pessoa começar a seguir o processo. */}
+            <div className="text-xs text-muted-foreground/50 mt-8 pt-4 border-t border-border/40 flex items-center justify-end">
               <Link
                 to={`/processos/c/${artigo.categoria_id}`}
                 className="flex items-center gap-1 text-muted-foreground/60 hover:text-muted-foreground transition-colors"

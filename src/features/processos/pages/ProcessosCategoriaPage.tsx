@@ -71,14 +71,23 @@ export default function ProcessosCategoriaPage() {
   // ── Data ────────────────────────────────────────────────────────────────────
 
   const load = async () => {
-    if (!categoriaId) return;
+    // O id vem da URL. Sem conferir o formato, ele entra numa expressão de
+    // filtro montada por concatenação logo abaixo, e um `,` ou `)` digitado
+    // ali quebra a consulta — ou muda o que ela filtra.
+    if (!categoriaId || !/^[0-9a-f-]{36}$/i.test(categoriaId)) {
+      navigate('/processos');
+      return;
+    }
     setLoading(true);
     const [{ data: cat }, { data: arts }, { data: allCats }] = await Promise.all([
       supabase
         .from('processos_categorias')
         .select('id, nome, icone, descricao')
         .eq('id', categoriaId)
-        .single(),
+        // Categoria excluída continuava abrindo por URL, com os artigos dentro
+        // — a grade da home filtra `ativo`, esta página não filtrava.
+        .eq('ativo', true)
+        .maybeSingle(),
       supabase
         .from('processos_artigos')
         .select('id, titulo, video_url, criado_em')
@@ -197,7 +206,7 @@ export default function ProcessosCategoriaPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout title={categoria?.nome ?? 'Processos'}>
+    <DashboardLayout title={categoria?.nome ?? 'Processos'} hideFilters>
       <div className="max-w-5xl mx-auto">
 
         {/* Breadcrumb */}
@@ -286,8 +295,18 @@ export default function ProcessosCategoriaPage() {
                 {artigos.map(a => (
                   <div
                     key={a.id}
-                    className="group flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-accent transition-colors"
+                    // Mesma razão do card de categoria: tem botões dentro, então
+                    // não pode ser `button` — mas precisa alcançar o teclado.
+                    role="button"
+                    tabIndex={0}
+                    className="group flex items-center gap-3 px-5 py-4 cursor-pointer hover:bg-accent transition-colors focus-visible:outline-none focus-visible:bg-accent focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary"
                     onClick={() => navigate(`/processos/${a.id}`)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/processos/${a.id}`);
+                      }
+                    }}
                   >
                     {/* Left accent stripe (visible on hover) */}
                     <div className="w-0.5 h-8 rounded-full bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-center shrink-0" />

@@ -185,27 +185,101 @@ export default function ProcessosPage() {
     setFormOpen(true);
   };
 
+  /**
+   * Excluir a categoria, e fazer com os processos o que o diálogo promete.
+   *
+   * O texto dizia "Todos os processos vinculados a ela também serão removidos"
+   * — e não removia nenhum. Os artigos ficavam `ativo = true` apontando para
+   * uma categoria morta: sumiam da navegação, mas continuavam achaveis pela
+   * busca, levando a uma categoria que não existe mais. Ninguém tinha notado
+   * porque nenhuma categoria havia sido excluída ainda; era armadilha armada.
+   *
+   * E não basta apagar tudo. Um processo que TAMBÉM aparece em outra categoria
+   * continua alcançável por lá — matá-lo seria destruir conteúdo vivo por causa
+   * de uma categoria que se resolveu arrumar. Esse é promovido: a primeira das
+   * adicionais vira a principal.
+   */
   const handleDelete = async (cat: Categoria, e: React.MouseEvent) => {
     e.stopPropagation();
-    // Objeto, não string: `useConfirm` recebe `ConfirmOpts`, e passar texto
-    // solto fazia o aviso cair em `opts` inteiro, deixando `opts.title` vazio.
-    // O diálogo então mostrava o padrão genérico — "Esta ação não pode ser
-    // desfeita" — sem dizer QUAL categoria some nem que os processos dentro
-    // dela vão junto. O tsc apontava isso; ninguém tinha olhado.
+
+    // Contar ANTES de perguntar: quem confirma precisa saber o tamanho do que
+    // está apagando, e "3 processos" é uma informação diferente de "nenhum".
+    const { data: doCat } = await supabase
+      .from('processos_artigos')
+      .select('id, categorias_adicionais')
+      .eq('categoria_id', cat.id)
+      .eq('ativo', true);
+
+    type Linha = { id: string; categorias_adicionais: string[] | null };
+    const artigosDaCat = (doCat ?? []) as Linha[];
+    const mudam = artigosDaCat.filter(a => (a.categorias_adicionais ?? []).some(id => id !== cat.id));
+    const morrem = artigosDaCat.filter(a => !(a.categorias_adicionais ?? []).some(id => id !== cat.id));
+
+    const partes = [
+      morrem.length > 0
+        ? `${morrem.length} processo${morrem.length > 1 ? 's' : ''} ${morrem.length > 1 ? 'serão excluídos' : 'será excluído'} junto`
+        : null,
+      mudam.length > 0
+        ? `${mudam.length} que também ${mudam.length > 1 ? 'aparecem' : 'aparece'} em outra categoria ${mudam.length > 1 ? 'continuam' : 'continua'} lá`
+        : null,
+    ].filter(Boolean);
+
     const ok = await confirm({
       title: `Excluir a categoria "${cat.nome}"?`,
-      description: 'Todos os processos vinculados a ela também serão removidos.',
+      description: partes.length > 0
+        ? `${partes.join('; e ')}.`
+        : 'A categoria está vazia — nada mais é afetado.',
+      confirmText: 'Excluir',
+      destructive: true,
     });
     if (!ok) return;
+
+    const agora = new Date().toISOString();
+
+    // Os que sobrevivem primeiro: se a categoria caísse antes e algo falhasse
+    // no meio, eles ficariam exatamente órfãos como antes.
+    for (const a of mudam) {
+      const nova = (a.categorias_adicionais ?? []).find(id => id !== cat.id)!;
+      const { error } = await supabase
+        .from('processos_artigos')
+        .update({
+          categoria_id: nova,
+          categorias_adicionais: (a.categorias_adicionais ?? []).filter(id => id !== nova && id !== cat.id),
+          atualizado_em: agora,
+        })
+        .eq('id', a.id);
+      if (error) {
+        toast({ title: 'Erro ao mover os processos', description: error.message, variant: 'destructive' });
+        return;
+      }
+    }
+
+    if (morrem.length > 0) {
+      const { error } = await supabase
+        .from('processos_artigos')
+        .update({ ativo: false, atualizado_em: agora })
+        .in('id', morrem.map(a => a.id));
+      if (error) {
+        toast({ title: 'Erro ao excluir os processos', description: error.message, variant: 'destructive' });
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from('processos_categorias')
-      .update({ ativo: false, atualizado_em: new Date().toISOString() })
+      .update({ ativo: false, atualizado_em: agora })
       .eq('id', cat.id);
     if (error) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Categoria excluída' });
+
+    toast({
+      title: 'Categoria excluída',
+      description: mudam.length > 0
+        ? `${mudam.length} processo${mudam.length > 1 ? 's foram movidos' : ' foi movido'} para outra categoria.`
+        : undefined,
+    });
     load();
   };
 
@@ -238,53 +312,41 @@ export default function ProcessosPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout title="Processos">
+    <DashboardLayout title="Processos" hideFilters>
       <div className="max-w-5xl mx-auto">
 
-        {/* ── Hero banner ── */}
-        <div className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent mb-10 px-8 py-12">
-          {/* Decorative circles */}
-          <div className="pointer-events-none absolute -top-10 -right-10 h-52 w-52 rounded-full bg-primary/5" />
-          <div className="pointer-events-none absolute -bottom-8 -left-6 h-36 w-36 rounded-full bg-primary/5" />
-
-          {/* Admin button */}
-          {isAdmin && (
-            <div className="absolute top-4 right-4 z-10">
-              <Button size="sm" variant="outline" onClick={openNew} className="gap-1.5">
-                <Plus className="h-3.5 w-3.5" />
-                Nova Categoria
-              </Button>
-            </div>
-          )}
-
-          <div className="relative text-center max-w-2xl mx-auto">
-            <h1 className="text-3xl font-bold text-foreground tracking-tight mb-2">
-              Central de Processos
-            </h1>
-            <p className="text-muted-foreground text-[15px] leading-relaxed mb-8">
-              Guias, fluxos e documentos internos da equipe Alaskan
-            </p>
-
-            {/* Search bar */}
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Buscar processos, políticas, guias..."
-                className="h-12 pl-11 text-[15px] rounded-xl bg-background/70 border-border/60 focus-visible:border-primary/60 shadow-sm placeholder:text-muted-foreground/60"
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-              />
-              {busca && (
-                <button
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                  onClick={() => setBusca('')}
-                  aria-label="Limpar busca"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+        {/* ── Barra de busca ──
+            Era um hero de 12rem com título, subtítulo e círculos decorativos,
+            e as categorias começavam abaixo da dobra. O título já está no
+            cabeçalho da página; repeti-lo aqui custava metade da primeira tela
+            para não dizer nada de novo. Ficou a busca, que é o que se usa. */}
+        <div className="flex items-center gap-3 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Buscar no título e no texto dos processos…"
+              className="h-11 pl-10 text-[15px] rounded-xl bg-card border-border/60 focus-visible:border-primary/60 placeholder:text-muted-foreground/60"
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+            />
+            {busca && (
+              <button
+                type="button"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                onClick={() => setBusca('')}
+                aria-label="Limpar busca"
+              >
+                ✕
+              </button>
+            )}
           </div>
+
+          {isAdmin && (
+            <Button size="sm" variant="outline" onClick={openNew} className="h-11 gap-1.5 shrink-0">
+              <Plus className="h-3.5 w-3.5" />
+              Nova Categoria
+            </Button>
+          )}
         </div>
 
         {/* ── Search results ── */}
@@ -366,8 +428,20 @@ export default function ProcessosPage() {
                 {categorias.map(cat => (
                   <div
                     key={cat.id}
+                    // `div` e não `button` porque há botões de editar/excluir
+                    // dentro, e botão dentro de botão é HTML inválido. Mas sem
+                    // estes três atributos o card não existia para o teclado:
+                    // não recebia Tab, não respondia a Enter.
+                    role="button"
+                    tabIndex={0}
                     onClick={() => navigate(`/processos/c/${cat.id}`)}
-                    className="relative group bg-card border border-border rounded-xl p-5 cursor-pointer hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/processos/c/${cat.id}`);
+                      }
+                    }}
+                    className="relative group bg-card border border-border rounded-xl p-5 cursor-pointer hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   >
                     {/* Admin controls */}
                     {isAdmin && (
