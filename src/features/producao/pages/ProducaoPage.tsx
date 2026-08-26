@@ -57,7 +57,7 @@ export default function ProducaoPage() {
   }, [nivel, tabs, activeTab]);
 
   return (
-    <DashboardLayout title="Produção" hideFilters>
+    <DashboardLayout title="Produção" hideFilters hideTitle>
       {/* In-page tab nav */}
       <div className="flex items-center gap-1 mb-6 flex-wrap">
         {tabs.map(tab => (

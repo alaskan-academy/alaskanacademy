@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, CornerDownLeft, Loader2 } from 'lucide-react';
 import { supabase, linhas, linha } from '@/lib/supabase';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Perfil } from './types';
-import { FASES_MAP, getAdjacentFases } from './constants';
+import { useFases, fasesQueAprova, rotuloDaFase } from '../useFases';
 import { CriativoDrawer } from './CriativoDrawer';
 
 interface SetorInfo { id: string; nome: string }
@@ -15,17 +16,18 @@ interface Props {
   userId: string;
 }
 
-// Fases que um head de cada setor pode aprovar
-const FASES_APROVACAO: Record<string, string[]> = {
-  'Editor':             ['revisao_edicao'],
-  'Copy':               ['revisao_copy'],
-  'Gestor de Tráfego':  ['revisao_edicao', 'revisao_copy'],
-};
-
-// Fases de aprovação para sócios (veem tudo)
-const TODAS_FASES_REVISAO = ['revisao_copy', 'revisao_edicao'];
+/*
+ * `FASES_APROVACAO` e `TODAS_FASES_REVISAO` moravam aqui, chaveados pelo NOME
+ * do setor — o quarto mapa da mesma coisa nesta área. E ele contradizia os
+ * outros: dizia que "Gestor de Tráfego" aprova revisão de EDIÇÃO e de COPY,
+ * fases que pertencem a Editor e a Copy.
+ *
+ * Agora a pergunta é feita à tabela: um head aprova as revisões do próprio
+ * setor; sócio aprova todas. Uma regra, escrita uma vez.
+ */
 
 export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
+  const { fases, carregou } = useFases();
   const [criativos, setCriativos] = useState<Criativo[]>([]);
   const [loading, setLoading]     = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -41,9 +43,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     supabase.from('perfis').select('id,nome,is_admin').then(({ data }) => setPerfis(linhas<Perfil>(data)));
   }, []);
 
-  const fasesVisiveis: string[] = nivel === 'socio'
-    ? TODAS_FASES_REVISAO
-    : (FASES_APROVACAO[setor?.nome ?? ''] ?? TODAS_FASES_REVISAO);
+  const fasesVisiveis = fasesQueAprova(fases, setor?.id ?? null, nivel === 'socio');
 
   const loadCriativos = useCallback(async () => {
     setLoading(true);
@@ -55,84 +55,77 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     setCriativos(data ?? []);
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nivel, setor?.nome]);
+  }, [nivel, setor?.id, fasesVisiveis.join(',')]);
 
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
 
+  /**
+   * Aprovar é UMA operação, e não quatro escritas soltas.
+   *
+   * Antes eram duas chamadas seguidas — muda a fase, grava o histórico — sem
+   * transação e sem checar erro. Se a primeira falhasse, a tela dizia que
+   * aprovou; se a segunda falhasse, o criativo andava sem deixar rastro. Agora
+   * ou as duas acontecem ou nenhuma, e o erro chega a quem clicou.
+   *
+   * A próxima fase também vem do banco: ela é decidida pela ordem em
+   * `producao_fases`, e não por um array no frontend que podia discordar dela.
+   */
   const handleAprovar = async (c: Criativo) => {
-    let { next } = getAdjacentFases(c.tipo, c.fase);
-    // 'alteracao' é atingida apenas via devolução; aprovação pula direto para a fase seguinte
-    if (next === 'alteracao') {
-      next = getAdjacentFases(c.tipo, 'alteracao').next;
-    }
-    if (!next) return;
     setSaving(true);
-    await supabase.from('producoes').update({ fase: next, atualizado_em: new Date().toISOString() }).eq('id', c.id);
-    await supabase.from('criativo_historico').insert({
-      criativo_id:    c.id,
-      usuario_id:     userId,
-      tipo_alteracao: 'fase',
-      campo_alterado: 'fase',
-      valor_anterior: c.fase,
-      valor_novo:     next,
+    const { data, error } = await supabase.rpc('fn_aprovar_criativo', {
+      p_criativo_id: c.id,
+      p_usuario_id:  userId,
     });
     setSaving(false);
+    if (error) {
+      toast({ title: 'Não consegui aprovar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: `"${c.nome}" foi para ${rotuloDaFase(fases, data as string)}` });
     loadCriativos();
   };
 
+  /**
+   * Devolver eram CINCO escritas soltas: fase, histórico, comentário, aviso a
+   * quem foi mencionado, aviso ao responsável. Nenhuma checava erro, e não
+   * havia transação — o pior caso silencioso era o criativo voltar para
+   * alteração e o editor nunca ficar sabendo.
+   *
+   * Quem é mencionado continua sendo decidido AQUI, e não no banco: depende da
+   * lista de perfis que a tela já carregou, e mandar os nomes para o SQL só
+   * para ele reencontrá-los seria trabalho a mais para o mesmo resultado.
+   */
   const handleDevolver = async (c: Criativo) => {
-    if (!notaDevolucao.trim()) return;
-    setSaving(true);
-    await supabase.from('producoes').update({ fase: 'alteracao', atualizado_em: new Date().toISOString() }).eq('id', c.id);
-    await supabase.from('criativo_historico').insert({
-      criativo_id:    c.id,
-      usuario_id:     userId,
-      tipo_alteracao: 'fase',
-      campo_alterado: 'fase',
-      valor_anterior: c.fase,
-      valor_novo:     'alteracao',
-    });
     const texto = notaDevolucao.trim();
-    await supabase.from('criativo_comentarios').insert({
-      criativo_id: c.id,
-      autor_id: userId,
-      texto,
-      tipo: 'devolucao',
-    });
-    // Notificar menções
+    if (!texto) return;
+
     const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
-    const mentioned = perfis.filter(p => {
-      const first = p.nome.split(' ')[0].toLowerCase();
-      return (mentions.includes(first) || mentions.includes(p.nome.toLowerCase())) && p.id !== userId;
+    const mencionados = perfis
+      .filter(p => {
+        const first = p.nome.split(' ')[0].toLowerCase();
+        return mentions.includes(first) || mentions.includes(p.nome.toLowerCase());
+      })
+      .map(p => p.id);
+
+    setSaving(true);
+    const { error } = await supabase.rpc('fn_devolver_criativo', {
+      p_criativo_id: c.id,
+      p_usuario_id:  userId,
+      p_nota:        texto,
+      p_mencionados: mencionados,
     });
-    if (mentioned.length) {
-      await supabase.from('notificacoes').insert(
-        mentioned.map(p => ({
-          usuario_id:      p.id,
-          tipo:            'mencao_comentario',
-          mensagem:        `Você foi mencionado em uma nota de devolução em "${c.nome}".`,
-          referencia_id:   c.id,
-          referencia_tipo: 'criativo',
-        }))
-      );
-    }
-    // Notificar editor responsável
-    if (c.responsavel_id && c.responsavel_id !== userId) {
-      await supabase.from('notificacoes').insert({
-        usuario_id:      c.responsavel_id,
-        tipo:            'criativo_alteracao',
-        mensagem:        `"${c.nome}" foi devolvido para alteração.`,
-        referencia_id:   c.id,
-        referencia_tipo: 'criativo',
-      });
-    }
     setSaving(false);
+    if (error) {
+      toast({ title: 'Não consegui devolver', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: `"${c.nome}" voltou para alteração` });
     setDevolvendoId(null);
     setNotaDevolucao('');
     loadCriativos();
   };
 
-  if (loading) {
+  if (loading || !carregou) {
     return (
       <div className="flex items-center justify-center h-40 text-muted-foreground text-sm gap-2">
         <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
@@ -172,7 +165,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
         return (
           <div key={fase}>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              {FASES_MAP[fase] ?? fase} — {items.length}
+              {rotuloDaFase(fases, fase)} — {items.length}
             </h3>
             {funilOrder.map(funilNome => (
               <div key={funilNome} className="mb-4">
