@@ -174,12 +174,25 @@ function CorpoDoBloco({ bloco, onMudar }: { bloco: Bloco; onMudar: (b: Bloco) =>
 
 export function BlocosEditor({
   blocos, onChange,
-}: { blocos: Bloco[]; onChange: (b: Bloco[]) => void }) {
+}: {
+  blocos: Bloco[];
+  /**
+   * Recebe o `setState` do pai, e não uma função qualquer.
+   *
+   * Com `onChange([...blocos, novo])` os dois cliques de "Imagem" e "Vídeo"
+   * dados no mesmo tique liam a MESMA lista do render anterior, e o segundo
+   * apagava o primeiro — só o vídeo entrava. A forma funcional lê sempre o
+   * valor mais recente.
+   */
+  onChange: React.Dispatch<React.SetStateAction<Bloco[]>>;
+}) {
   const trocar = (i: number, j: number) => {
-    if (j < 0 || j >= blocos.length) return;
-    const novo = [...blocos];
-    [novo[i], novo[j]] = [novo[j], novo[i]];
-    onChange(novo);
+    onChange(prev => {
+      if (j < 0 || j >= prev.length) return prev;
+      const novo = [...prev];
+      [novo[i], novo[j]] = [novo[j], novo[i]];
+      return novo;
+    });
   };
 
   return (
@@ -192,11 +205,11 @@ export function BlocosEditor({
             bloco={b} indice={i} total={blocos.length}
             onSubir={() => trocar(i, i - 1)}
             onDescer={() => trocar(i, i + 1)}
-            onRemover={() => onChange(blocos.filter((_, k) => k !== i))}
+            onRemover={() => onChange(prev => prev.filter((_, k) => k !== i))}
           />
           <CorpoDoBloco
             bloco={b}
-            onMudar={nb => onChange(blocos.map((x, k) => (k === i ? nb : x)))}
+            onMudar={nb => onChange(prev => prev.map((x, k) => (k === i ? nb : x)))}
           />
         </div>
       ))}
@@ -218,7 +231,7 @@ export function BlocosEditor({
             type="button" size="sm" variant="outline"
             className="h-8 gap-1.5 text-xs"
             title={t.ajuda}
-            onClick={() => onChange([...blocos, blocoVazio(t.tipo)])}
+            onClick={() => onChange(prev => [...prev, blocoVazio(t.tipo)])}
           >
             <t.icone className="h-3.5 w-3.5" />
             {t.nome}
