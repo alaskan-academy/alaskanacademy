@@ -206,7 +206,7 @@ export default function ProcessosCategoriaPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout title={categoria?.nome ?? 'Processos'} hideFilters>
+    <DashboardLayout title={categoria?.nome ?? 'Processos'} hideFilters hideTitle>
       <div className="max-w-5xl mx-auto">
 
         {/* Breadcrumb */}

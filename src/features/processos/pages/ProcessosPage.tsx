@@ -312,41 +312,62 @@ export default function ProcessosPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <DashboardLayout title="Processos" hideFilters>
+    <DashboardLayout title="Processos" hideFilters hideTitle>
       <div className="max-w-5xl mx-auto">
 
-        {/* ── Barra de busca ──
-            Era um hero de 12rem com título, subtítulo e círculos decorativos,
-            e as categorias começavam abaixo da dobra. O título já está no
-            cabeçalho da página; repeti-lo aqui custava metade da primeira tela
-            para não dizer nada de novo. Ficou a busca, que é o que se usa. */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Buscar no título e no texto dos processos…"
-              className="h-11 pl-10 text-[15px] rounded-xl bg-card border-border/60 focus-visible:border-primary/60 placeholder:text-muted-foreground/60"
-              value={busca}
-              onChange={e => setBusca(e.target.value)}
-            />
-            {busca && (
-              <button
-                type="button"
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                onClick={() => setBusca('')}
-                aria-label="Limpar busca"
-              >
-                ✕
-              </button>
-            )}
-          </div>
+        {/* ── Banner ──
+            Eu tinha tirado por achar que repetia o título do cabeçalho e
+            empurrava as categorias para baixo da dobra. A primeira parte era
+            verdade e foi resolvida do jeito certo: o cabeçalho é que deixou de
+            mostrar o título, e agora é AQUI que a tela se apresenta.
+            O `py` menor recupera a dobra sem tirar o banner: com ele em 12
+            apareciam 2 categorias de 6. */}
+        <div className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent mb-8 px-8 py-8">
+          {/* Decorative circles */}
+          <div className="pointer-events-none absolute -top-10 -right-10 h-52 w-52 rounded-full bg-primary/5" />
+          <div className="pointer-events-none absolute -bottom-8 -left-6 h-36 w-36 rounded-full bg-primary/5" />
 
+          {/* Admin button */}
           {isAdmin && (
-            <Button size="sm" variant="outline" onClick={openNew} className="h-11 gap-1.5 shrink-0">
-              <Plus className="h-3.5 w-3.5" />
-              Nova Categoria
-            </Button>
+            <div className="absolute top-4 right-4 z-10">
+              <Button size="sm" variant="outline" onClick={openNew} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Nova Categoria
+              </Button>
+            </div>
           )}
+
+          {/* Folga no topo só quando há o botão flutuante: com o banner mais
+              baixo, o "Nova Categoria" absoluto passou a cobrir o título. */}
+          <div className={cn('relative text-center max-w-2xl mx-auto', isAdmin && 'pt-7')}>
+            <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1.5">
+              Central de Processos
+            </h1>
+            <p className="text-muted-foreground text-[15px] leading-relaxed mb-6">
+              Guias, fluxos e documentos internos da equipe Alaskan
+            </p>
+
+            {/* Search bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Buscar no título e no texto dos processos…"
+                className="h-12 pl-11 text-[15px] rounded-xl bg-background/70 border-border/60 focus-visible:border-primary/60 shadow-sm placeholder:text-muted-foreground/60"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+              />
+              {busca && (
+                <button
+                  type="button"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                  onClick={() => setBusca('')}
+                  aria-label="Limpar busca"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* ── Search results ── */}
