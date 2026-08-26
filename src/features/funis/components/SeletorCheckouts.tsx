@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { formatNumber } from '@/lib/formatters';
+import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { Plus, X, ShoppingCart } from 'lucide-react';
 
 /**
@@ -36,6 +36,8 @@ interface Checkout {
   funil_id: string | null;
   eh_funil: boolean | null;
   vendas: number | null;
+  preco: number | null;
+  preco_praticado: number | null;
   primeira_venda: string | null;
   ultima_venda: string | null;
 }
@@ -60,7 +62,7 @@ export function SeletorCheckouts({ funilId }: Props) {
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
       .from('vw_checkouts_a_confirmar')
-      .select('id,url,titulo,funil_id,eh_funil,vendas,primeira_venda,ultima_venda');
+      .select('id,url,titulo,funil_id,eh_funil,vendas,primeira_venda,ultima_venda,preco,preco_praticado');
     if (error) {
       toast({ title: 'Erro ao carregar checkouts', description: error.message, variant: 'destructive' });
     }
@@ -130,6 +132,22 @@ export function SeletorCheckouts({ funilId }: Props) {
       title: 'Checkout vinculado',
       description: 'O nome dele aparece assim que a primeira venda entrar.',
     });
+    carregar();
+  }
+
+  /** Preço planejado, só enquanto não há venda para dizer o praticado. */
+  async function salvarPreco(c: Checkout, texto: string) {
+    const limpo = texto.trim().replace(/[^\d,.-]/g, '').replace(',', '.');
+    const valor = limpo === '' ? null : Number(limpo);
+    if (valor !== null && !Number.isFinite(valor)) return;
+    if (valor === (c.preco ?? null)) return;
+
+    const { error } = await supabase
+      .from('funil_checkouts').update({ preco: valor }).eq('id', c.id);
+    if (error) {
+      toast({ title: 'Erro ao salvar o preço', description: error.message, variant: 'destructive' });
+      return;
+    }
     carregar();
   }
 
@@ -270,12 +288,33 @@ export function SeletorCheckouts({ funilId }: Props) {
                   {c.url.replace(/^https?:\/\//, '')}
                 </div>
               </div>
+              {/* Preço. Enquanto o checkout não vendeu é campo; depois vira o
+                  praticado, que sai das próprias vendas.
+
+                  Isto substituiu o bloco "Preços e Links de Checkout", que era
+                  o mesmo checkout digitado de novo. O link ali era redundante e
+                  o preço não estava sendo mantido: o REV com 428 vendas tinha o
+                  campo vazio enquanto as vendas diziam R$ 47. */}
               {c.vendas ? (
-                <span className="text-xs tabular-nums shrink-0">
-                  <span className="font-medium">{formatNumber(c.vendas)}</span>
-                  <span className="text-muted-foreground"> vendas</span>
+                <span className="text-xs tabular-nums shrink-0 text-right">
+                  {c.preco_praticado != null && (
+                    <div className="font-medium">{formatCurrency(Number(c.preco_praticado))}</div>
+                  )}
+                  <div className="text-muted-foreground">{formatNumber(c.vendas)} vendas</div>
                 </span>
-              ) : null}
+              ) : (
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[10px] text-muted-foreground">R$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={c.preco != null ? String(c.preco).replace('.', ',') : ''}
+                    onBlur={e => salvarPreco(c, e.target.value)}
+                    placeholder="0,00"
+                    className="w-16 h-6 px-1.5 rounded border border-input bg-background text-xs text-right tabular-nums"
+                  />
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => definir(c.id, null)}

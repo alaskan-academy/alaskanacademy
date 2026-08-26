@@ -72,6 +72,8 @@ interface DadosDoRev {
   metodo: string | null;
   url_page: string | null;
   busca: string;
+  preco: number | null;
+  checkout_url: string | null;
 }
 
 /**
@@ -461,9 +463,12 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
 
                     {isOpen && (
                       <div className="px-4 pb-4 border-t border-border/60 pt-3 space-y-3">
-                        {funil.link_checkout && (
+                        {/* O link vem do checkout de maior volume, e nao mais de
+                             -- campo que ninguem escreve desde que o
+                            bloco digitado saiu do cadastro. */}
+                        {d?.checkout_url && (
                           <a
-                            href={funil.link_checkout}
+                            href={d.checkout_url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"

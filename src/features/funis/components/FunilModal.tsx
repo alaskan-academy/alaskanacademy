@@ -27,93 +27,6 @@ function formatPreco(raw: string): string {
 type SubTipo = 'upsell' | 'orderbump' | 'checkout';
 type SubItem = { id?: string; nome: string; tipo: SubTipo; preco: string; link: string };
 
-/* ─── SubList fora do modal para manter referência estável (evita remount em inputs) ─── */
-interface SubListProps {
-  tipo: SubTipo;
-  subofertas: SubItem[];
-  onAdd: (tipo: SubTipo) => void;
-  onRemove: (idx: number) => void;
-  onUpdate: (idx: number, field: keyof SubItem, value: string) => void;
-}
-
-function SubList({ tipo, subofertas, onAdd, onRemove, onUpdate }: SubListProps) {
-  const isCheckout = tipo === 'checkout';
-  const isUp = tipo === 'upsell';
-  const items = subofertas.map((s, idx) => ({ s, idx })).filter(({ s }) => s.tipo === tipo);
-
-  const accentCls = isCheckout
-    ? 'border-emerald-500/30 bg-emerald-500/5'
-    : isUp
-      ? 'border-violet-500/30 bg-violet-500/5'
-      : 'border-blue-500/30 bg-blue-500/5';
-
-  const label = isCheckout ? 'Preços e Links de Checkout' : isUp ? 'Upsells' : 'Order Bumps';
-  const nomePlaceholder = isCheckout
-    ? 'Descrição (ex: À vista, 12x R$97...)'
-    : isUp ? 'Nome do upsell...' : 'Nome do order bump...';
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <Label className="text-xs">{label}</Label>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="h-6 gap-1 text-xs text-muted-foreground hover:text-foreground px-2"
-          onClick={() => onAdd(tipo)}
-        >
-          <Plus className="h-3 w-3" />
-          Adicionar
-        </Button>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground/60 italic px-0.5">Nenhum cadastrado</p>
-      ) : (
-        <div className="space-y-2">
-          {items.map(({ s, idx }) => (
-            <div key={idx} className={cn('rounded-lg border p-2.5 space-y-2', accentCls)}>
-              <div className="flex items-center gap-2">
-                <Input
-                  className="flex-1 h-7 text-sm"
-                  placeholder={nomePlaceholder}
-                  value={s.nome}
-                  onChange={e => onUpdate(idx, 'nome', e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => onRemove(idx)}
-                  className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground shrink-0">R$</span>
-                  <Input
-                    className="h-7 text-sm"
-                    placeholder="0,00"
-                    value={s.preco}
-                    onChange={e => onUpdate(idx, 'preco', e.target.value)}
-                    onBlur={() => onUpdate(idx, 'preco', s.preco ? formatPreco(s.preco) : s.preco)}
-                  />
-                </div>
-                <Input
-                  className="h-7 text-sm"
-                  placeholder="Link checkout..."
-                  value={s.link}
-                  onChange={e => onUpdate(idx, 'link', e.target.value)}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -173,16 +86,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
           }))
       : [];
 
-    // Migração legada: se funil tem preco/link_checkout mas ainda sem checkout suboferta
-    const hasCheckout = existing.some(s => s.tipo === 'checkout');
-    if (!hasCheckout && funil && (funil.preco != null || funil.link_checkout)) {
-      existing.unshift({
-        nome:  '',
-        tipo:  'checkout',
-        preco: funil.preco != null ? formatPreco(String(funil.preco)) : '',
-        link:  funil.link_checkout ?? '',
-      });
-    }
     setSubofertas(existing);
 
     // Carregar opções de método de venda da mesma tabela do Funil de Vendas
@@ -215,15 +118,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setSaving(true);
 
     // Sincroniza primeiro checkout com colunas legadas (compatibilidade com outras páginas)
-    const firstCheckout = subofertas.find(s => s.tipo === 'checkout');
     const payload: Record<string, unknown> = {
       nome:          nome.trim(),
       projeto_id:    ofertaId || null,
       metodo:        metodo || null,
       vsl_id:        vslId || null,
       status,
-      preco:         firstCheckout?.preco ? parseFloat(firstCheckout.preco.replace(',', '.')) : null,
-      link_checkout: firstCheckout?.link?.trim() || null,
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
     };
@@ -296,15 +196,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
   async function handleDuplicate() {
     if (!funil) return;
     setSaving(true);
-    const firstCheckout = subofertas.find(s => s.tipo === 'checkout');
     const res = await supabase.from('funis').insert({
       nome:          `${nome.trim()} (cópia)`,
       projeto_id:    ofertaId || null,
       metodo:        metodo || null,
       vsl_id:        vslId || null,
       status:        'planejado',
-      preco:         firstCheckout?.preco ? parseFloat(firstCheckout.preco.replace(',', '.')) : null,
-      link_checkout: firstCheckout?.link?.trim() || null,
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
       criado_por:    user?.id,
@@ -491,10 +388,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
               com o cadastro aberto. */}
           <SeletorCheckouts funilId={funil?.id ?? null} />
 
-          {/* Preços e links digitados. Continuam porque o primeiro preenchido
-              vira o preço e o link que aparecem no cartão do REV — mas não
-              atribuem venda nenhuma, e por isso ficam DEPOIS do seletor. */}
-          <SubList tipo="checkout" subofertas={subofertas} onAdd={addSub} onRemove={removeSub} onUpdate={updateSub} />
+          {/* O bloco "Preços e Links de Checkout" saiu daqui.
+              Era o mesmo checkout digitado de novo: o link era redundante com o
+              seletor acima, e o preço não estava sendo mantido — o REV com 428
+              vendas tinha o campo vazio enquanto as vendas diziam R$ 47.
+              Agora o preço mora na linha do checkout: digitável enquanto não
+              vendeu, praticado depois. */}
 
           {/* Order bumps e upsells deixaram de ser campos de digitar.
               Eram gravados em `funil_subofertas` e lidos só de volta aqui —
