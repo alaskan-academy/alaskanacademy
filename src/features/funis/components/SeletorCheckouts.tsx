@@ -1,0 +1,207 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Label } from '@/components/ui/label';
+import { supabase } from '@/lib/supabase';
+import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { formatNumber } from '@/lib/formatters';
+import { Plus, X, ShoppingCart } from 'lucide-react';
+
+/**
+ * Quais checkouts pertencem a este REV.
+ *
+ * A atribuição já existia, mas só pelo outro lado: na aba Checkouts você abre a
+ * fila dos 97 e escolhe o REV de cada um. Faltava a pergunta ao contrário —
+ * "quais checkouts são deste REV?" — que é a que se faz com o cadastro aberto.
+ *
+ * É seleção e não digitação porque os 97 vêm do webhook da Payt, com o nome e o
+ * volume que cada um moveu. Digitar a URL à mão criaria um checkout que não
+ * existe do lado de lá, e portanto não ligaria venda nenhuma.
+ *
+ * Grava na hora, e não ao salvar o REV: o vínculo mora em `funil_checkouts`, e
+ * não num campo do funil. Deixar para o "Salvar" faria a tela mentir sobre onde
+ * o dado está.
+ */
+
+interface Checkout {
+  id: string;
+  url: string;
+  titulo: string | null;
+  funil_id: string | null;
+  eh_funil: boolean | null;
+  vendas: number | null;
+  primeira_venda: string | null;
+  ultima_venda: string | null;
+}
+
+function dataCurta(iso: string | null): string {
+  if (!iso) return '';
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
+
+interface Props {
+  funilId: string | null;
+}
+
+export function SeletorCheckouts({ funilId }: Props) {
+  const [todos, setTodos]       = useState<Checkout[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [aberto, setAberto]     = useState(false);
+  const [salvando, setSalvando] = useState<string | null>(null);
+
+  const carregar = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('vw_checkouts_a_confirmar')
+      .select('id,url,titulo,funil_id,eh_funil,vendas,primeira_venda,ultima_venda');
+    if (error) {
+      toast({ title: 'Erro ao carregar checkouts', description: error.message, variant: 'destructive' });
+    }
+    setTodos((data ?? []) as Checkout[]);
+    setCarregando(false);
+  }, []);
+
+  useEffect(() => { carregar(); }, [carregar]);
+
+  const meus = useMemo(
+    () => todos.filter(c => c.funil_id === funilId)
+      .sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
+    [todos, funilId],
+  );
+
+  // Só oferece o que ainda não tem dono e não foi marcado como não-funil. Um
+  // checkout já atribuído a outro REV não aparece aqui de propósito: mudá-lo
+  // daqui roubaria as vendas do outro sem ninguém ver.
+  const disponiveis = useMemo(
+    () => todos.filter(c => !c.funil_id && c.eh_funil !== false)
+      .sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
+    [todos],
+  );
+
+  async function definir(checkoutId: string, novoFunil: string | null) {
+    setSalvando(checkoutId);
+    const { error } = await supabase
+      .from('funil_checkouts')
+      .update({
+        funil_id: novoFunil,
+        eh_funil: novoFunil ? true : null,
+        confirmado_em: novoFunil ? new Date().toISOString() : null,
+      })
+      .eq('id', checkoutId);
+
+    if (error) {
+      setSalvando(null);
+      toast({ title: 'Erro ao vincular', description: error.message, variant: 'destructive' });
+      return;
+    }
+
+    // Reconcilia as vendas na hora. Sem isto o vínculo existiria mas as vendas
+    // continuariam sem REV até alguém lembrar de apertar o botão na outra aba.
+    const { data: n } = await supabase.rpc('fn_backfill_funil_das_vendas');
+    setSalvando(null);
+    if (n) toast({ title: `${formatNumber(n as number)} vendas atualizadas` });
+    carregar();
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-xs">Checkouts deste REV</Label>
+        {funilId && (
+          <Popover open={aberto} onOpenChange={setAberto}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="h-6 px-2 rounded inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Plus className="h-3 w-3" />
+                Adicionar
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[26rem] p-0" align="end">
+              <Command
+                // Substring simples: o filtro padrão do cmdk reordena por
+                // similaridade, e aqui a ordem por volume é a informação —
+                // o checkout de 1.951 vendas precisa continuar no topo.
+                filter={(v, q) => (v.toLowerCase().includes(q.toLowerCase()) ? 1 : 0)}
+              >
+                <CommandInput placeholder="Buscar checkout pelo nome ou link…" className="h-9" />
+                <CommandList className="max-h-72">
+                  <CommandEmpty>
+                    {carregando ? 'Carregando…' : 'Nenhum checkout livre com esse nome.'}
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {disponiveis.map(c => (
+                      <CommandItem
+                        key={c.id}
+                        value={`${c.titulo ?? ''} ${c.url}`}
+                        onSelect={() => { definir(c.id, funilId); setAberto(false); }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs">
+                            {c.titulo ?? <span className="text-muted-foreground">sem título</span>}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground tabular-nums truncate">
+                            {c.vendas ? `${formatNumber(c.vendas)} vendas · ` : ''}
+                            {c.primeira_venda ? `${dataCurta(c.primeira_venda)}–${dataCurta(c.ultima_venda)} · ` : ''}
+                            {c.url.replace(/^https?:\/\//, '')}
+                          </div>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+
+      {!funilId ? (
+        <p className="text-xs text-muted-foreground/60 italic">
+          Salve o REV para poder vincular checkouts.
+        </p>
+      ) : meus.length === 0 ? (
+        <p className="text-xs text-muted-foreground/60 italic">
+          Nenhum checkout vinculado — as vendas deste REV não estão sendo contadas.
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {meus.map(c => (
+            <div
+              key={c.id}
+              className={cn(
+                'flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-2',
+                salvando === c.id && 'opacity-50',
+              )}
+            >
+              <ShoppingCart className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs truncate">{c.titulo ?? 'sem título'}</div>
+                <div className="text-[10px] text-muted-foreground font-mono truncate">
+                  {c.url.replace(/^https?:\/\//, '')}
+                </div>
+              </div>
+              {c.vendas ? (
+                <span className="text-xs tabular-nums shrink-0">
+                  <span className="font-medium">{formatNumber(c.vendas)}</span>
+                  <span className="text-muted-foreground"> vendas</span>
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => definir(c.id, null)}
+                disabled={salvando === c.id}
+                title="Desvincular deste REV"
+                className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

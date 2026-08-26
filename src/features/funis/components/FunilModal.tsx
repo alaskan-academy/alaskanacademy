@@ -16,6 +16,7 @@ import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
 import { GerenciarOpcoesPopover } from '@/features/producao/components/GerenciarOpcoesPopover';
 import { SeletorVsl } from './SeletorVsl';
 import { ItensVendidos } from './ItensVendidos';
+import { SeletorCheckouts } from './SeletorCheckouts';
 
 function formatPreco(raw: string): string {
   const num = parseFloat(raw.replace(',', '.'));
@@ -484,10 +485,15 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             />
           </div>
 
-          {/* Preços e Checkouts — continua sendo digitado porque o primeiro
-              preenchido vira o preço e o link que aparecem no cartão do funil.
-              A ATRIBUIÇÃO das vendas, essa não sai daqui: vem dos checkouts que
-              o webhook trouxe, na aba Checkouts. */}
+          {/* Os checkouts DE VERDADE, vindos do webhook da Payt. É o que liga
+              venda a este REV. Antes só dava para atribuir pelo outro lado, na
+              aba Checkouts — faltava a pergunta ao contrário, que é a que se faz
+              com o cadastro aberto. */}
+          <SeletorCheckouts funilId={funil?.id ?? null} />
+
+          {/* Preços e links digitados. Continuam porque o primeiro preenchido
+              vira o preço e o link que aparecem no cartão do REV — mas não
+              atribuem venda nenhuma, e por isso ficam DEPOIS do seletor. */}
           <SubList tipo="checkout" subofertas={subofertas} onAdd={addSub} onRemove={removeSub} onUpdate={updateSub} />
 
           {/* Order bumps e upsells deixaram de ser campos de digitar.
