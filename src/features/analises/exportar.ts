@@ -185,9 +185,21 @@ export function montarNota(r: RodadaParaExportar): string {
  * salvar. O caminho é derivado da data e do REV, nunca de um id: assim a nota
  * tem nome legível no vault e continua a mesma entre salvamentos.
  */
-async function paraObsidian(r: RodadaParaExportar, chave: string): Promise<void> {
+/**
+ * O caminho da nota no vault, derivado da data e do REV.
+ *
+ * Uma função só, porque escrever e apagar precisam concordar sobre onde a nota
+ * mora: duas derivações do mesmo caminho é a armadilha nº 1 deste projeto em
+ * miniatura — divergiriam no dia em que uma delas mudasse, e o apagar erraria o
+ * alvo em silêncio, deixando a nota da rodada excluída viva no vault.
+ */
+function caminhoDaNota(r: { dataRodada: string; projeto: string | null; rev: string }): string {
   const nome = slug(`${r.projeto ?? ''} ${r.rev}`) || 'rev';
-  const caminho = `${PASTA}/${r.dataRodada}/${nome}.md`;
+  return `${PASTA}/${r.dataRodada}/${nome}.md`;
+}
+
+async function paraObsidian(r: RodadaParaExportar, chave: string): Promise<void> {
+  const caminho = caminhoDaNota(r);
 
   const res = await fetch(`${OBSIDIAN}/vault/${encodeURIComponent(caminho)}`, {
     method: 'PUT',
@@ -256,6 +268,52 @@ export function exportarVarias(
         : (sheets.value.data as { erro?: string })?.erro ? 'erro'
         : 'ok',
     });
+  })().catch(() => { /* acessório: segue o jogo */ });
+}
+
+/**
+ * Só a planilha, sem nada a escrever no vault.
+ *
+ * Serve à exclusão: a edge function reescreve as abas a partir do banco, então
+ * é a própria ausência da linha que a remove de lá. `exportarVarias([])` faria
+ * o mesmo por acidente — e código que funciona por acidente é código que o
+ * próximo a mexer quebra sem perceber.
+ */
+export function sincronizarPlanilha(): void {
+  void supabase.functions.invoke('analises-sheets-sync', { body: {} })
+    .catch(() => { /* acessório: segue o jogo */ });
+}
+
+/**
+ * Tira do espelho o que foi excluído do banco.
+ *
+ * É a metade que faltava da exportação. O Sheets se conserta sozinho — a edge
+ * function reescreve as abas inteiras a partir do banco, então o que sumiu de
+ * lá some da planilha na sincronização seguinte. O Obsidian não: `PUT` cria e
+ * sobrescreve, e nada nunca apagava. Uma rodada excluída continuaria no vault
+ * para sempre, e o vault passaria a discordar do dashboard sem nada na tela
+ * denunciando — que é exatamente o defeito do espelho sem gatilho já pago caro
+ * neste projeto.
+ *
+ * 404 é sucesso: a nota pode nunca ter sido escrita, porque o Obsidian estava
+ * fechado quando a rodada foi salva. Tratar isso como erro faria a exclusão
+ * parecer falha justamente no caso mais comum.
+ */
+export function apagarNoObsidian(
+  notas: Array<{ dataRodada: string; projeto: string | null; rev: string }>,
+): void {
+  void (async () => {
+    const chave = await chaveDoObsidian();
+    if (!chave) return;
+    await Promise.allSettled(notas.map(async n => {
+      const res = await fetch(`${OBSIDIAN}/vault/${encodeURIComponent(caminhoDaNota(n))}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${chave}` },
+      });
+      if (!res.ok && res.status !== 204 && res.status !== 404) {
+        throw new Error(`Obsidian respondeu ${res.status}`);
+      }
+    }));
   })().catch(() => { /* acessório: segue o jogo */ });
 }
 

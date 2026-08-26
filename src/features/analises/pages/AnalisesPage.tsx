@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-react';
@@ -55,6 +56,7 @@ const num2 = (n: number) => n.toFixed(2);
 
 export default function AnalisesPage() {
   const { user } = useAuth();
+  const confirmar = useConfirm();
 
   const [revs, setRevs]         = useState<RevDaRodada[]>([]);
   const [indice, setIndice]     = useState(0);
@@ -121,6 +123,10 @@ export default function AnalisesPage() {
       .from('analises')
       .select('id,data,analise_itens(funil_id,leitura)')
       .is('fechada_em', null)
+      // Arquivada não se retoma: sem isto, arquivar uma rodada em andamento a
+      // traria de volta no recarregar seguinte, e o arquivo não teria efeito
+      // nenhum sobre a única tela que cria rodada.
+      .is('arquivada_em', null)
       .gte('data', limite)
       .order('data', { ascending: false })
       .limit(1)
@@ -261,6 +267,41 @@ export default function AnalisesPage() {
       .update({ feita, feita_por: feita ? user?.id ?? null : null }).eq('id', id);
     if (error) {
       toast({ title: 'Erro ao marcar', description: error.message, variant: 'destructive' });
+    }
+    if (atual) espelhar(await carregarAcoes(atual.id));
+  }
+
+  /**
+   * Corrigir a ação sem sair da Rodada.
+   *
+   * A expectativa é o campo que mais precisa disto: ela é opcional no momento
+   * de escrever — de propósito, porque obrigar faria escrever qualquer coisa —,
+   * e a hora de preenchê-la costuma ser a seguinte, quando a pessoa para para
+   * pensar por que decidiu aquilo. Sem edição aqui, o único caminho era ir até
+   * o Histórico.
+   */
+  async function salvarAcao(id: string, texto: string, expectativa: string | null) {
+    const { error } = await supabase.from('analise_acoes')
+      .update({ texto, expectativa }).eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    if (atual) espelhar(await carregarAcoes(atual.id));
+  }
+
+  async function apagarAcao(id: string) {
+    const ok = await confirmar({
+      title: 'Apagar esta ação?',
+      description: 'A decisão some do histórico e não volta.',
+      confirmText: 'Apagar',
+      destructive: true,
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('analise_acoes').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao apagar', description: error.message, variant: 'destructive' });
+      return;
     }
     if (atual) espelhar(await carregarAcoes(atual.id));
   }
@@ -666,7 +707,10 @@ export default function AnalisesPage() {
 
           {/* O que já foi mexido, ao lado dos números que isso deveria ter
               mexido. É a pergunta que a rodada existe para responder. */}
-          <AcoesFeitas acoes={acoes} fimDaJanela={janela.fim} onMarcar={marcarAcao} />
+          <AcoesFeitas
+            acoes={acoes} fimDaJanela={janela.fim}
+            onMarcar={marcarAcao} onSalvar={salvarAcao} onApagar={apagarAcao}
+          />
 
           {/* O que se digita — e só isto.
 
@@ -695,6 +739,7 @@ export default function AnalisesPage() {
           <ListaAcoes
             acoes={acoes} dataRodada={dataRodada}
             onAdicionar={adicionarAcao} onMarcar={marcarAcao}
+            onSalvar={salvarAcao} onApagar={apagarAcao}
           />
         </div>
       </div>

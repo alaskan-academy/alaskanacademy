@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { AcaoEditavel } from './AcaoEditavel';
 import { cn } from '@/lib/utils';
-import { Plus, Clock, Target, ChevronDown } from 'lucide-react';
+import { Plus, Clock, ChevronDown } from 'lucide-react';
 import { formatarData } from '../periodo';
 
 /**
@@ -35,19 +35,15 @@ interface Props {
   acoes: Acao[];
   onAdicionar: (texto: string, expectativa: string) => Promise<void>;
   onMarcar: (id: string, feita: boolean) => Promise<void>;
+  onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
+  onApagar: (id: string) => Promise<void>;
   /** Data da rodada em foco, para saber o que é herdado e o que é desta. */
   dataRodada: string | null;
 }
 
-/** "23/08 às 14:02" — a hora importa quando duas ações do mesmo dia se cruzam. */
-function quandoFoiFeita(iso: string): string {
-  const d = new Date(iso);
-  const data = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  return `${data} às ${hora}`;
-}
-
-export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) {
+export function ListaAcoes({
+  acoes, onAdicionar, onMarcar, onSalvar, onApagar, dataRodada,
+}: Props) {
   const [texto, setTexto] = useState('');
   const [expectativa, setExpectativa] = useState('');
   const [abrindoExpectativa, setAbrindo] = useState(false);
@@ -85,28 +81,16 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
           // Herdada de outra rodada: é a dívida que o módulo existe para cobrar.
           const deOutraRodada = a.data_origem != null && a.data_origem !== dataRodada;
           return (
-            <div key={a.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-secondary/30">
-              <Checkbox
-                checked={false}
-                onCheckedChange={c => onMarcar(a.id, c === true)}
-                className="mt-1 shrink-0"
-                aria-label={`Marcar como feita: ${a.texto}`}
+            <div key={a.id} className="px-3 py-2 hover:bg-secondary/30">
+              <AcaoEditavel
+                acao={a} onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+                direita={deOutraRodada ? (
+                  <span className="shrink-0 inline-flex items-center gap-1 text-xs text-amber-400/90 mt-1">
+                    <Clock className="h-3 w-3" />
+                    desde {formatarData(a.data_origem!)}
+                  </span>
+                ) : undefined}
               />
-              <div className="flex-1 min-w-0">
-                <p className="text-base">{a.texto}</p>
-                {a.expectativa && (
-                  <p className="text-[13px] text-muted-foreground mt-0.5 flex items-start gap-1">
-                    <Target className="h-3 w-3 mt-0.5 shrink-0" />
-                    {a.expectativa}
-                  </p>
-                )}
-              </div>
-              {deOutraRodada && (
-                <span className="shrink-0 inline-flex items-center gap-1 text-xs text-amber-400/90 mt-1">
-                  <Clock className="h-3 w-3" />
-                  desde {formatarData(a.data_origem!)}
-                </span>
-              )}
             </div>
           );
         })}
@@ -164,8 +148,13 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
  * período já tem dados suficientes para julgar, em vez de decidir no escuro.
  */
 export function AcoesFeitas({
-  acoes, fimDaJanela, onMarcar,
-}: { acoes: Acao[]; fimDaJanela: string; onMarcar: (id: string, feita: boolean) => Promise<void> }) {
+  acoes, fimDaJanela, onMarcar, onSalvar, onApagar,
+}: {
+  acoes: Acao[]; fimDaJanela: string;
+  onMarcar: (id: string, feita: boolean) => Promise<void>;
+  onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
+  onApagar: (id: string) => Promise<void>;
+}) {
   const feitas = acoes.filter(a => a.feita && a.feita_em)
     .sort((a, b) => (b.feita_em ?? '').localeCompare(a.feita_em ?? ''));
 
@@ -187,36 +176,22 @@ export function AcoesFeitas({
         {feitas.map(a => {
           const dias = diasDeDados(a.feita_em!, fimDaJanela);
           return (
-            <div key={a.id} className="flex items-start gap-2.5 px-3 py-2">
-              <Checkbox
-                checked
-                onCheckedChange={c => onMarcar(a.id, c === true)}
-                className="mt-1 shrink-0"
-                aria-label={`Desmarcar: ${a.texto}`}
+            <div key={a.id} className="px-3 py-2">
+              <AcaoEditavel
+                acao={a} onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+                direita={
+                  /* A análise de 24/08 dizia "não saberemos muito bem o
+                     impacto, poucos dias". A tela diz isso sozinha agora. */
+                  <span className={cn(
+                    'shrink-0 text-xs mt-1 tabular-nums',
+                    dias < 7 ? 'text-amber-400/90' : 'text-muted-foreground',
+                  )}>
+                    {dias <= 0 ? 'sem dados ainda'
+                      : dias === 1 ? '1 dia de dados'
+                      : `${dias} dias de dados`}
+                  </span>
+                }
               />
-              <div className="flex-1 min-w-0">
-                <p className="text-base">{a.texto}</p>
-                {a.expectativa && (
-                  <p className="text-[13px] text-muted-foreground mt-0.5 flex items-start gap-1">
-                    <Target className="h-3 w-3 mt-0.5 shrink-0" />
-                    {a.expectativa}
-                  </p>
-                )}
-                <p className="text-xs text-muted-foreground/80 mt-0.5">
-                  feita em {quandoFoiFeita(a.feita_em!)}
-                  {a.feita_por_nome && ` por ${a.feita_por_nome}`}
-                </p>
-              </div>
-              {/* A análise de 24/08 dizia "não saberemos muito bem o impacto,
-                  poucos dias". A tela diz isso sozinha agora. */}
-              <span className={cn(
-                'shrink-0 text-xs mt-1 tabular-nums',
-                dias < 7 ? 'text-amber-400/90' : 'text-muted-foreground',
-              )}>
-                {dias <= 0 ? 'sem dados ainda'
-                  : dias === 1 ? '1 dia de dados'
-                  : `${dias} dias de dados`}
-              </span>
             </div>
           );
         })}

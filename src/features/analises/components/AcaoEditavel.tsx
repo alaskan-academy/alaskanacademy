@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { ReactNode, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -34,6 +34,16 @@ interface Props {
   onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
   onMarcar: (id: string, feita: boolean) => Promise<void>;
   onApagar: (id: string) => Promise<void>;
+  /**
+   * O selo da direita, que muda com o lugar: "desde 12/08" nas pendentes da
+   * Rodada, "14 dias de dados" nas feitas, nada no Histórico.
+   *
+   * É uma fresta e não três componentes de propósito. A linha existia desenhada
+   * à mão em três lugares, e a versão da Rodada tinha ficado sem edição — foi
+   * assim que uma ação escrita às pressas ficou sem jeito de ganhar a
+   * expectativa depois, a não ser indo até o Histórico.
+   */
+  direita?: ReactNode;
 }
 
 function quando(iso: string): string {
@@ -42,7 +52,7 @@ function quando(iso: string): string {
        + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar }: Props) {
+export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar, direita }: Props) {
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(acao.texto);
   const [expectativa, setExpectativa] = useState(acao.expectativa ?? '');
@@ -103,11 +113,29 @@ export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar }: Props) {
         <p className={cn('text-base', acao.feita && 'line-through text-muted-foreground')}>
           {acao.texto}
         </p>
-        {acao.expectativa && (
+        {acao.expectativa ? (
           <p className="text-[13px] text-muted-foreground mt-0.5 flex items-start gap-1">
             <Target className="h-3 w-3 mt-0.5 shrink-0" />
             {acao.expectativa}
           </p>
+        ) : (
+          // Sem expectativa a linha fica muda, e um campo que não aparece não é
+          // preenchido: não havia nada dizendo que ele existia depois que a ação
+          // já estava escrita. Só no hover, porque é convite e não cobrança —
+          // a expectativa é opcional de propósito.
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            // `hidden` e não `opacity-0`: invisível por transparência continua
+            // ocupando a linha, e o vão aparecia entre a ação e o carimbo de
+            // quem a fez. `group-focus-within` mantém o convite alcançável por
+            // teclado, que `hidden` sozinho tiraria da ordem de tabulação.
+            className="text-[13px] text-muted-foreground/70 hover:text-foreground mt-0.5
+                       hidden group-hover:flex group-focus-within:flex items-center gap-1"
+          >
+            <Target className="h-3 w-3 shrink-0" />
+            o que você espera disso?
+          </button>
         )}
         {acao.feita && acao.feita_em && (
           // Carimbo, não opinião: quem quiser mudar desmarca e marca de novo.
@@ -117,11 +145,12 @@ export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar }: Props) {
           </p>
         )}
       </div>
+      {direita}
       <Button
         size="sm" variant="ghost"
         className="h-6 w-6 p-0 shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100"
         onClick={() => setEditando(true)}
-        aria-label="Editar ação"
+        aria-label={`Editar: ${acao.texto}`}
       >
         <Pencil className="h-3 w-3" />
       </Button>

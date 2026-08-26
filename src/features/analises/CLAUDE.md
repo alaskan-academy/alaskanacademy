@@ -70,6 +70,8 @@ Uma rodada, de uma data, cobrindo vários REVs.
 - `data`, `autor_id`, `observacoes`
 - `fechada_em` — o marco que separa "estou analisando" de "analisei". Enquanto
   for null, abrir a tela **retoma** esta rodada em vez de criar outra
+- `arquivada_em` — fora da lista, ainda no banco. Arquivada não é retomada,
+  senão arquivar uma rodada em andamento a traria de volta no recarregar
 
 ### `analise_itens`
 Um por REV dentro da rodada. `unique (analise_id, funil_id)`.
@@ -122,6 +124,33 @@ que qualquer número a mais que se ganhe:
 8. **A leitura** e as **próximas ações**
 
 No último REV o botão vira "fechar rodada".
+
+### Arquivar e excluir são coisas diferentes
+
+No Histórico, e a diferença decide o que acontece com os espelhos:
+
+| | O que quer dizer | Banco | Sheets e Obsidian |
+|---|---|---|---|
+| **Arquivar** | aconteceu, não interessa mais na lista | fica | ficam |
+| **Excluir** | não deveria ter existido (rodada de teste) | sai | saem |
+
+Arquivar mexe na **vista**; excluir mexe na **existência**. Manter a rodada
+arquivada na planilha é a mesma regra das abas de REV que somem do cadastro:
+perder histórico é pior que uma linha parada.
+
+**Excluir a rodada apaga as ações dela, e isso é decisão, não efeito colateral.**
+A FK é `on delete set null`, então sem apagá-las elas sobreviveriam com
+`analise_id` nulo — e como o Histórico agrupa por rodada, a ação órfã
+continuaria aparecendo na Rodada e nunca mais aqui. Linha visível numa tela e
+invisível na outra é pior que linha apagada: ninguém procura o que não sabe que
+existe. Por isso a confirmação conta quantas são, e quantas estão em aberto,
+**antes**.
+
+**O Obsidian precisa de DELETE explícito.** O Sheets se conserta sozinho porque
+a edge function reescreve as abas inteiras a partir do banco; o vault só recebia
+`PUT`, então nota de rodada excluída ficaria lá para sempre e o vault passaria a
+discordar do dashboard sem nada denunciando. 404 conta como sucesso: a nota pode
+nunca ter existido, se o Obsidian estava fechado quando a rodada foi salva.
 
 ---
 
