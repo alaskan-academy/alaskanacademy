@@ -4,25 +4,27 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 /**
  * Espelha as rodadas de análise numa planilha do Google.
  *
- * Reescreve as duas abas inteiras a cada chamada, e é isso que a torna segura
- * de disparar no botão de salvar: rodar vinte vezes seguidas dá o mesmo
- * resultado que rodar uma. Acrescentar linhas produziria vinte cópias da mesma
- * análise, que é o defeito clássico de exportação automática.
+ * UMA ABA POR REV, a pedido dela — é o formato da planilha que ela já usava,
+ * uma por funil. Cada aba tem uma linha por rodada, então descer a aba é ver a
+ * história daquele REV no tempo, que é exatamente a leitura que a rodada não
+ * dá (a rodada mostra dois períodos; a aba mostra todos).
+ *
+ * Reescreve as abas inteiras a cada chamada, e é isso que a torna segura de
+ * disparar no botão de salvar: rodar vinte vezes seguidas dá o mesmo resultado
+ * que rodar uma. Acrescentar linhas produziria vinte cópias da mesma análise.
+ *
+ * Aba de REV que deixou de existir NÃO é apagada: sumir com histórico é pior
+ * que uma aba parada, e ninguém recupera o que a função apagou sozinha.
  *
  * Os números saem do RETRATO gravado em `analise_itens.metricas`, não de
  * recálculo: a planilha é o histórico da decisão, e recalcular faria uma linha
  * de agosto mudar sozinha quando uma venda fosse recategorizada em setembro.
  *
- * O id da planilha vive em `configuracoes_texto.analises_spreadsheet_id`, e não
- * no código: assim ela troca de planilha sem deploy. Vazio, a função não faz
- * nada e diz que pulou — a análise não pode depender de exportação.
- *
- * Reaproveita a conta de serviço do Google que `radar-sheets-sync` já usa
- * (secret GOOGLE_SERVICE_ACCOUNT). Uma conta, três planilhas.
+ * A ação `conta` devolve só o e-mail da conta de serviço — o endereço com quem
+ * a planilha precisa ser compartilhada. Nunca a chave privada.
  */
 
-const ABA_ANALISES = "Análises";
-const ABA_ACOES    = "Ações";
+const ABA_ACOES = "Ações";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -30,14 +32,14 @@ const CORS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const HEADERS_ANALISES = [
-  "Data", "Projeto", "REV", "Método", "Período", "Rodada fechada em",
+const HEADERS_REV = [
+  "Data da rodada", "Período", "Fechada em",
   "Investimento", "Faturamento", "Resultado", "Vendas", "ROAS",
   "Imposto", "Taxa", "Taxa %", "Lucro líquido", "Margem %",
   "Upsells", "Adesão upsell %", "Faturamento upsell", "ROAS c/ upsell", "Lucro c/ upsell",
   "Oferta principal", "Bumps", "Adesão bump %", "Receita bumps",
   "Cliques", "CPC", "Checkouts", "CPI", "Conv. checkout %", "CPA", "Conv. funil %",
-  "CPV", "EPC", "EPC−CPV", "AOV",
+  "CPV", "EPC", "EPC-CPV", "AOV",
   "Play Rate %", "1 minuto %", "Fim da lead %", "Pitch %", "Final VSL %",
   "Leitura",
 ];
@@ -99,13 +101,22 @@ const br = (iso: string | null) => iso
 const dia = (d: string | null) => d ? d.split("-").reverse().join("/") : "";
 
 /**
- * Número para a célula.
- *
- * Sai como número puro, sem "R$" e sem formatar: assim a planilha soma, ordena
- * e faz gráfico. Formatar aqui transformaria cada valor em texto — o erro que
- * faz a coluna de faturamento não somar.
+ * Número para a célula: sai puro, sem "R$" e sem formatar, para a planilha
+ * somar, ordenar e fazer gráfico. Formatar aqui viraria texto.
  */
 const n = (v: unknown): string | number => (typeof v === "number" ? v : "");
+
+/**
+ * Nome de aba que o Google aceita.
+ *
+ * `: \ / ? * [ ]` são proibidos e o limite é 100 caracteres. Um REV chamado
+ * "REV3 - VSL / Teste" derrubaria a criação da aba inteira com um erro que não
+ * diz qual foi o problema.
+ */
+function nomeDaAba(projeto: string | null, rev: string): string {
+  const bruto = projeto ? `${projeto} · ${rev}` : rev;
+  return bruto.replace(/[:\\/?*[\]]/g, "-").slice(0, 95).trim() || "REV";
+}
 
 async function ensureSheet(
   base: string, auth: Record<string, string>, title: string, existentes: any[],
@@ -117,7 +128,11 @@ async function ensureSheet(
     body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
   });
   const data = await res.json();
-  return data.replies?.[0]?.addSheet?.properties?.sheetId ?? 0;
+  const id = data.replies?.[0]?.addSheet?.properties?.sheetId;
+  if (id == null) throw new Error(`Não consegui criar a aba "${title}": ${JSON.stringify(data.error ?? data)}`);
+  // Entra na lista para a próxima chamada do mesmo lote não tentar criar de novo.
+  existentes.push({ properties: { title, sheetId: id } });
+  return id as number;
 }
 
 async function writeSheet(
@@ -171,6 +186,17 @@ Deno.serve(async (req: Request) => {
   });
 
   try {
+    const saJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT");
+    if (!saJson) throw new Error("Secret GOOGLE_SERVICE_ACCOUNT não configurado.");
+    const sa = JSON.parse(saJson) as Record<string, string>;
+
+    let acao = "";
+    try { acao = String(((await req.json()) as any)?.acao ?? ""); } catch { /* corpo vazio */ }
+
+    // O e-mail da conta de serviço não é segredo: é o endereço com quem a
+    // planilha precisa ser compartilhada. A chave privada nunca sai daqui.
+    if (acao === "conta") return ok({ conta: sa.client_email });
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -182,14 +208,8 @@ Deno.serve(async (req: Request) => {
 
     const planilhaId = (cfg?.valor ?? "").trim();
     if (!planilhaId) {
-      // Sem planilha configurada não é erro: é o estado inicial. A tela mostra
-      // isso uma vez, e a análise segue.
       return ok({ pulado: true, motivo: "analises_spreadsheet_id não configurado" });
     }
-
-    const saJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT");
-    if (!saJson) throw new Error("Secret GOOGLE_SERVICE_ACCOUNT não configurado.");
-    const sa = JSON.parse(saJson) as Record<string, string>;
 
     const [{ data: rodadas }, { data: acoes }, { data: revs }, { data: perfis }] = await Promise.all([
       supabase.from("analises")
@@ -206,15 +226,14 @@ Deno.serve(async (req: Request) => {
     const nomePerfil = Object.fromEntries((perfis ?? []).map((p: any) => [p.id, p.nome]));
     const dataDaRodada = Object.fromEntries((rodadas ?? []).map((r: any) => [r.id, r.data]));
 
-    // ── Aba de análises ──────────────────────────────────────────────────────
-    const linhas: (string | number)[][] = [];
+    // ── Uma aba por REV, com uma linha por rodada ────────────────────────────
+    const porRev = new Map<string, (string | number)[][]>();
     for (const rodada of rodadas ?? []) {
       for (const item of (rodada as any).analise_itens ?? []) {
-        const rev = nomeRev[item.funil_id] ?? {};
         const m = item.metricas?.atual ?? {};
         const ret = item.retencao ?? {};
-        linhas.push([
-          dia(rodada.data), rev.projeto ?? "", rev.rev ?? "", "",
+        const linha: (string | number)[] = [
+          dia(rodada.data),
           item.metricas?.inicio && item.metricas?.fim
             ? `${dia(item.metricas.inicio)} a ${dia(item.metricas.fim)}` : "",
           br(rodada.fechada_em),
@@ -231,11 +250,16 @@ Deno.serve(async (req: Request) => {
           n(ret.play_rate_pct), n(ret.um_minuto_pct), n(ret.fim_da_lead_pct),
           n(ret.pitch_pct), n(ret.final_pct),
           item.leitura ?? "",
-        ]);
+        ];
+        const rev = nomeRev[item.funil_id];
+        // REV apagado do cadastro ainda tem histórico: cai numa aba própria em
+        // vez de sumir da planilha.
+        const aba = rev ? nomeDaAba(rev.projeto, rev.rev) : "REV removido";
+        if (!porRev.has(aba)) porRev.set(aba, []);
+        porRev.get(aba)!.push(linha);
       }
     }
 
-    // ── Aba de ações ─────────────────────────────────────────────────────────
     const linhasAcoes: (string | number)[][] = (acoes ?? []).map((a: any) => {
       const rev = nomeRev[a.funil_id] ?? {};
       return [
@@ -256,13 +280,16 @@ Deno.serve(async (req: Request) => {
     if (meta.error) throw new Error(`Sheets: ${meta.error.message}`);
     const existentes = meta.sheets ?? [];
 
-    const idAnalises = await ensureSheet(base, auth, ABA_ANALISES, existentes);
-    const idAcoes    = await ensureSheet(base, auth, ABA_ACOES, existentes);
+    // Ordem alfabética para as abas nascerem previsíveis na barra de baixo.
+    for (const aba of [...porRev.keys()].sort()) {
+      const id = await ensureSheet(base, auth, aba, existentes);
+      await writeSheet(base, auth, aba, id, HEADERS_REV, porRev.get(aba)!);
+    }
 
-    await writeSheet(base, auth, ABA_ANALISES, idAnalises, HEADERS_ANALISES, linhas);
+    const idAcoes = await ensureSheet(base, auth, ABA_ACOES, existentes);
     await writeSheet(base, auth, ABA_ACOES, idAcoes, HEADERS_ACOES, linhasAcoes);
 
-    return ok({ analises: linhas.length, acoes: linhasAcoes.length });
+    return ok({ abas: porRev.size, acoes: linhasAcoes.length });
   } catch (e) {
     return ok({ erro: e instanceof Error ? e.message : String(e) });
   }

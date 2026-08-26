@@ -279,9 +279,17 @@ export default function AnalisesPage() {
       setLeitura(mapa[destinoId] ?? '');
     };
 
-    // Não grava item vazio: uma rodada cheia de REVs sem leitura vira ruído no
-    // histórico, e o contador de "analisados" mentiria.
-    if (!leitura.trim()) { ir(lidos); return analiseId; }
+    // Grava mesmo sem leitura escrita.
+    //
+    // A versão anterior exigia texto e não gravava nada sem ele — então um REV
+    // que ela olhou, entendeu e não teve o que comentar sumia do histórico e da
+    // planilha, junto com todos os números dele. O retrato do período é o
+    // registro; a leitura é opinião sobre o registro, e opinião opcional não
+    // pode ser condição para o registro existir.
+    //
+    // Sem métricas ainda carregadas não há o que gravar, e um item vazio de
+    // verdade seria pior que nenhum.
+    if (!metricas && !leitura.trim()) { ir(lidos); return analiseId; }
 
     setSalvando(true);
     const id = await garantirRodada();
@@ -290,12 +298,12 @@ export default function AnalisesPage() {
     const { error } = await supabase.from('analise_itens').upsert({
       analise_id: id,
       funil_id: atual.id,
-      // O RETRATO das métricas vai junto. Se uma venda for recategorizada
+      // O RETRATO das métricas e da retenção. Se uma venda for recategorizada
       // depois, a leitura continua fazendo sentido ao lado dos números que a
       // motivaram — ver o comentário da tabela no banco.
       metricas: metricas as unknown as Record<string, unknown>,
       retencao: retencao as unknown as Record<string, unknown>,
-      leitura: leitura.trim(),
+      leitura: leitura.trim() || null,
     }, { onConflict: 'analise_id,funil_id' });
 
     setSalvando(false);
@@ -455,7 +463,7 @@ export default function AnalisesPage() {
               {revs.map(r => (
                 <SelectItem key={r.id} value={r.id}>
                   <span className="inline-flex items-center gap-1.5">
-                    {lidos[r.id] && <Check className="h-3 w-3 text-emerald-400" />}
+                    {r.id in lidos && <Check className="h-3 w-3 text-emerald-400" />}
                     {r.projeto ? `${r.projeto} · ` : ''}{r.rev}
                     {r.metodo && <span className="text-[10px] text-muted-foreground">{r.metodo}</span>}
                   </span>
@@ -491,7 +499,7 @@ export default function AnalisesPage() {
 
         <p className="text-xs text-muted-foreground">
           REV {indice + 1} de {revs.length}
-          {analisados > 0 && ` · ${analisados} com leitura escrita`}
+          {analisados > 0 && ` · ${analisados} ${analisados === 1 ? 'salvo' : 'salvos'}`}
           {dataRodada && ` · rodada de ${formatarData(dataRodada)}`}
           {' · '}
           {/* A janela dita em voz alta: sem isto ninguém sabe se "14 dias"
@@ -514,9 +522,9 @@ export default function AnalisesPage() {
                 {atual.metodo}
               </span>
             )}
-            {lidos[atual?.id ?? ''] && (
+            {(atual?.id ?? '') in lidos && (
               <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                <Check className="h-3 w-3" /> leitura salva
+                <Check className="h-3 w-3" /> salvo
               </span>
             )}
           </div>
@@ -664,7 +672,7 @@ export default function AnalisesPage() {
               <Button
                 size="sm" variant="outline" className="h-8"
                 onClick={() => salvarItem(null)}
-                disabled={salvando || fechando || !leitura.trim()}
+                disabled={salvando || fechando}
               >
                 {salvando ? 'Salvando…' : 'Salvar'}
               </Button>

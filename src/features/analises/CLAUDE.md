@@ -160,8 +160,12 @@ pediu. Só é seguro porque as duas pontas SOBRESCREVEM: salvar vinte vezes
 deixa o mesmo resultado de salvar uma. Se qualquer das duas passasse a
 acrescentar, viraria vinte cópias da mesma análise.
 
-- **Google Sheets** — edge function `analises-sheets-sync`. Duas abas,
-  "Análises" e "Ações", reescritas por inteiro a cada chamada. Usa a mesma
+- **Google Sheets** — edge function `analises-sheets-sync`. UMA planilha para
+  todas as análises, e dentro dela UMA ABA POR REV, com uma linha por rodada:
+  descer a aba é ver a história daquele REV no tempo, leitura que a rodada não
+  dá porque ela só mostra dois períodos. Mais uma aba "Ações" com todas.
+  Reescritas por inteiro a cada chamada. Aba de REV que sumiu do cadastro NÃO é
+  apagada — perder histórico é pior que uma aba parada. Usa a mesma
   conta de serviço do `radar-sheets-sync` (secret `GOOGLE_SERVICE_ACCOUNT`), e
   o id da planilha vive em `configuracoes_texto.analises_spreadsheet_id` — não
   no código, para trocar de planilha sem deploy. Vazio, ela pula e diz que
@@ -185,6 +189,10 @@ depender delas.
 
 ## Regras importantes
 
+- **Salvar grava o retrato mesmo sem leitura escrita.** A leitura é opinião
+  sobre o registro; opinião opcional não pode ser condição para o registro
+  existir. Antes disso, um REV que ela olhou e não teve o que comentar sumia do
+  histórico e da planilha com todos os números dele.
 - **Nunca pedir número que o banco tem.** Se um campo pode ser calculado e mesmo
   assim é digitado, o módulo falhou — voltou a ser a planilha.
 - **A data da alteração é sagrada.** É por ela que o antes/depois é medido. Um
