@@ -72,6 +72,19 @@ export default function AnalisesPage() {
   const [dataRodada, setDataRodada] = useState<string | null>(null);
   const [leitura, setLeitura]       = useState('');
   const [lidos, setLidos]           = useState<Record<string, string>>({});
+  /**
+   * O que foi digitado e ainda NÃO foi gravado, por REV.
+   *
+   * Existe porque as duas coisas que ela quer se contradizem sem ele: gravar só
+   * no "Salvar", e não perder o texto ao trocar de REV. Antes, trocar gravava —
+   * e por isso um REV que ela só passou o olho já entrava no histórico. Agora
+   * trocar guarda aqui, e só o "Salvar" leva para o banco.
+   *
+   * É memória da sessão de propósito: "salva só quando eu mandar" quer dizer
+   * que recarregar a página perde o que não foi salvo. O aviso ao sair da
+   * página é o que evita que isso aconteça sem ela ver.
+   */
+  const [rascunhos, setRascunhos]   = useState<Record<string, string>>({});
   const [acoes, setAcoes]           = useState<Acao[]>([]);
   const [salvando, setSalvando]     = useState(false);
   const [fechando, setFechando]     = useState(false);
@@ -153,6 +166,30 @@ export default function AnalisesPage() {
       setCarregando(false);
     })();
   }, [carregarRevs, retomarRodada]);
+
+  /**
+   * Avisa antes de fechar a aba com texto não salvo.
+   *
+   * É a contrapartida de tirar a gravação automática. Enquanto trocar de REV
+   * gravava, sair sem salvar não perdia nada; agora perde, e perder em silêncio
+   * seria trocar um incômodo — o histórico enchendo de REVs olhados de passagem
+   * — por um estrago. Só vale para a aba: a troca de REV guarda no rascunho e
+   * não passa por aqui.
+   */
+  useEffect(() => {
+    const naoSalvo = () =>
+      Object.entries(rascunhos).some(([id, txt]) => txt !== (lidos[id] ?? ''));
+    const avisar = (e: BeforeUnloadEvent) => {
+      const idAgora = atual?.id ?? '';
+      const emFoco = leitura !== (lidos[idAgora] ?? '');
+      if (!emFoco && !naoSalvo()) return;
+      e.preventDefault();
+      // O texto é decidido pelo navegador; o que importa é devolver algo.
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [rascunhos, lidos, leitura, atual]);
 
   /**
    * As ações do REV em foco — abertas de qualquer rodada, mais as fechadas
@@ -307,11 +344,32 @@ export default function AnalisesPage() {
   }
 
   /**
+   * Troca de REV sem gravar nada.
+   *
+   * O texto em foco vai para o rascunho e o do destino volta de lá — ou do que
+   * já está salvo, se nunca foi editado nesta sessão.
+   *
+   * Antes disto, trocar de REV gravava. A intenção era não perder o que tinha
+   * sido escrito, mas o efeito era outro: passar o olho em seis REVs criava
+   * seis itens no histórico, com leitura vazia, de REVs sobre os quais ela não
+   * disse nada. O rascunho resolve os dois — nada se perde, e nada entra no
+   * banco sem ela mandar.
+   */
+  function trocarRev(destinoId: string) {
+    if (!atual || destinoId === atual.id) return;
+    const i = revs.findIndex(r => r.id === destinoId);
+    if (i < 0) return;
+    const guardados = { ...rascunhos, [atual.id]: leitura };
+    setRascunhos(guardados);
+    setIndice(i);
+    setLeitura(guardados[destinoId] ?? lidos[destinoId] ?? '');
+  }
+
+  /**
    * Grava a leitura do REV em foco e vai para `destinoId` (ou fica, se null).
    *
-   * Trocar de REV sempre grava, de propósito: os botões existem para comparar
-   * um REV com outro, e perder o que acabou de ser escrito por causa disso
-   * seria a pior forma de descobrir que a tela não salvava.
+   * Só é chamada pelo "Salvar", pelo "Salvar e avançar" e pelo fechamento da
+   * rodada. Navegar não grava.
    */
   async function salvarItem(destinoId: string | null): Promise<string | null> {
     if (!atual) return null;
@@ -321,7 +379,7 @@ export default function AnalisesPage() {
       const i = revs.findIndex(r => r.id === destinoId);
       if (i < 0) return;
       setIndice(i);
-      setLeitura(mapa[destinoId] ?? '');
+      setLeitura(rascunhos[destinoId] ?? mapa[destinoId] ?? '');
     };
 
     // Grava mesmo sem leitura escrita.
@@ -358,6 +416,12 @@ export default function AnalisesPage() {
     }
     const mapa = { ...lidos, [atual.id]: leitura };
     setLidos(mapa);
+    // O rascunho deste REV morre aqui: o que foi gravado agora é o salvo, e
+    // deixá-lo para trás faria o texto velho reaparecer ao voltar neste REV.
+    setRascunhos(r => {
+      const { [atual.id]: _gravado, ...resto } = r;
+      return resto;
+    });
     espelhar(acoes, rodada.data);
     ir(mapa);
     return rodada.id;
@@ -394,8 +458,15 @@ export default function AnalisesPage() {
     }, setEspelho);
   }
 
-  const irPara = (passo: -1 | 1) => {
-    const destino = revs[Math.min(Math.max(0, indice + passo), revs.length - 1)];
+  /** A seta é navegação, e navegação não grava. */
+  const voltar = () => {
+    const destino = revs[Math.max(0, indice - 1)];
+    if (destino) trocarRev(destino.id);
+  };
+
+  /** O "Salvar e avançar": este grava, porque diz que grava. */
+  const salvarEAvancar = () => {
+    const destino = revs[Math.min(indice + 1, revs.length - 1)];
     return salvarItem(destino?.id ?? null);
   };
 
@@ -512,8 +583,9 @@ export default function AnalisesPage() {
             </div>
           )}
 
-          {/* Escolher o REV direto, sem percorrer um a um. */}
-          <Select value={atual?.id ?? ''} onValueChange={id => { salvarItem(id); }}>
+          {/* Escolher o REV direto, sem percorrer um a um -- e sem gravar:
+              olhar nao e analisar. */}
+          <Select value={atual?.id ?? ''} onValueChange={trocarRev}>
             <SelectTrigger className="h-9 w-72 text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               {revs.map(r => (
@@ -533,7 +605,8 @@ export default function AnalisesPage() {
           <div className="flex items-center gap-1">
             <Button
               size="sm" variant="outline" className="h-9 w-9 p-0"
-              onClick={() => irPara(-1)} disabled={salvando || fechando || indice === 0}
+              onClick={() => voltar()} disabled={salvando || fechando || indice === 0}
+              aria-label="REV anterior, sem salvar"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -545,7 +618,7 @@ export default function AnalisesPage() {
                 {fechando ? 'Fechando…' : 'Salvar e fechar rodada'}
               </Button>
             ) : (
-              <Button size="sm" className="h-9 gap-1.5" onClick={() => irPara(1)} disabled={salvando || fechando}>
+              <Button size="sm" className="h-9 gap-1.5" onClick={salvarEAvancar} disabled={salvando || fechando}>
                 {salvando ? 'Salvando…' : 'Salvar e avançar'}
                 <ChevronRight className="h-4 w-4" />
               </Button>
@@ -761,9 +834,20 @@ export default function AnalisesPage() {
               className="h-28 resize-none text-base"
               placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
               value={leitura} onChange={e => setLeitura(e.target.value)}
-              // É esta linha que grava: sair do campo basta.
-              onBlur={() => salvarItem(null)}
             />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm" className="h-9" onClick={() => salvarItem(null)}
+                disabled={salvando || fechando || !porSalvar}
+              >
+                {salvando ? 'Salvando…' : 'Salvar'}
+              </Button>
+              {porSalvar && (
+                <span className="text-[13px] text-amber-400/90">
+                  ainda não salvo — trocar de REV guarda o texto, mas não grava
+                </span>
+              )}
+            </div>
             <AvisoPlanilha />
           </div>
 
