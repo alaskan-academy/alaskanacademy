@@ -7,12 +7,11 @@ import { AlertaBanner } from '../components/AlertaBanner';
 import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
 import { TestesTab } from '../components/TestesTab';
-import { EsteiraTab } from '../components/EsteiraTab';
-import { ConcluídosTab } from '../components/ConcluídosTab';
+import { semVeredito } from '../testes';
 import { GeradorUtmTab } from '../components/GeradorUtmTab';
 import { CheckoutsTab } from '../components/CheckoutsTab';
 
-type Tab = 'funis' | 'esteira' | 'testes' | 'concluidos' | 'dominios' | 'checkouts' | 'utm';
+type Tab = 'funis' | 'testes' | 'dominios' | 'checkouts' | 'utm';
 
 interface State {
   funis: Funil[];
@@ -26,9 +25,7 @@ interface State {
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'funis',      label: 'Funis' },
-  { key: 'esteira',    label: 'Esteira' },
   { key: 'testes',     label: 'Testes' },
-  { key: 'concluidos', label: 'Concluídos' },
   { key: 'dominios',   label: 'Domínios' },
   { key: 'checkouts',  label: 'Checkouts' },
   { key: 'utm',        label: 'UTM' },
@@ -72,6 +69,7 @@ export default function FunisPage() {
   const prontoCount     = state.testes.filter(t => t.pipeline_status === 'pronto_para_teste').length;
   const testesCount     = state.testes.filter(t => t.pipeline_status === 'rodando').length;
   const concluidosCount = state.testes.filter(t => t.pipeline_status === 'concluido').length;
+  const semVereditoCount = state.testes.filter(semVeredito).length;
 
   if (state.loading) {
     return (
@@ -158,11 +156,9 @@ export default function FunisPage() {
         {/* Tab nav */}
         <div className="flex gap-1 border-b border-border">
           {TABS.map(tab => {
-            const badge =
-              tab.key === 'testes'     && testesCount    > 0 ? testesCount    :
-              tab.key === 'esteira'    && esteiraCount   > 0 ? esteiraCount   :
-              tab.key === 'concluidos' && concluidosCount > 0 ? concluidosCount :
-              null;
+            // O selo mostra o que precisa de decisão, não o que existe. Um
+            // número que só cresce vira paisagem; "3 sem veredito" é ação.
+            const badge = tab.key === 'testes' && semVereditoCount > 0 ? semVereditoCount : null;
             return (
               <button
                 key={tab.key}
@@ -197,15 +193,6 @@ export default function FunisPage() {
               onReload={load}
             />
           )}
-          {activeTab === 'esteira' && (
-            <EsteiraTab
-              testes={state.testes}
-              funis={state.funis}
-              projetos={state.projetos}
-              perfis={state.perfis}
-              onReload={load}
-            />
-          )}
           {activeTab === 'checkouts' && (
             <CheckoutsTab
               funis={state.funis}
@@ -222,15 +209,6 @@ export default function FunisPage() {
           )}
           {activeTab === 'testes' && (
             <TestesTab
-              testes={state.testes}
-              funis={state.funis}
-              projetos={state.projetos}
-              perfis={state.perfis}
-              onReload={load}
-            />
-          )}
-          {activeTab === 'concluidos' && (
-            <ConcluídosTab
               testes={state.testes}
               funis={state.funis}
               projetos={state.projetos}
