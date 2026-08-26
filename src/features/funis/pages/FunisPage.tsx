@@ -24,15 +24,15 @@ interface State {
 }
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'funis',      label: 'Funis' },
   { key: 'mapa',       label: 'Mapa' },
+  { key: 'funis',      label: 'Funis' },
   { key: 'testes',     label: 'Testes' },
   { key: 'dominios',   label: 'Domínios' },
   { key: 'checkouts',  label: 'Checkouts' },
 ];
 
 export default function FunisPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('funis');
+  const [activeTab, setActiveTab] = useState<Tab>('mapa');
   const [state, setState] = useState<State>({
     funis: [], projetos: [], funilSubofertas: [],
     dominios: [], testes: [], perfis: [], loading: true,
