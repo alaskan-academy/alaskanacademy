@@ -230,7 +230,7 @@ export default function ProcessosArtigoPage() {
 
   if (loading) {
     return (
-      <DashboardLayout title="Carregando..." hideFilters>
+      <DashboardLayout title="Carregando..." hideFilters hideTitle>
         <div className="flex justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -241,7 +241,7 @@ export default function ProcessosArtigoPage() {
   if (!artigo) return null;
 
   return (
-    <DashboardLayout title={artigo.titulo} hideFilters>
+    <DashboardLayout title={artigo.titulo} hideFilters hideTitle>
       <div className="max-w-5xl mx-auto">
 
         {/* Breadcrumb */}
