@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import { Lock, PenLine, ArrowRight } from 'lucide-react';
+import { Lock, PenLine, ArrowRight, Check } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { MetricasDoRev } from '../metricas';
 import { formatarData } from '../periodo';
@@ -27,7 +27,7 @@ interface ItemHistorico {
   id: string;
   funil_id: string;
   leitura: string | null;
-  proximas_acoes: string | null;
+  analise_id: string;
   metricas: MetricasDoRev | null;
   criado_em: string;
 }
@@ -40,31 +40,43 @@ interface Rodada {
   analise_itens: ItemHistorico[];
 }
 
+/** O que ficou decidido, e se já foi feito. Marcar acontece na Rodada. */
+export interface AcaoHistorico {
+  id: string;
+  analise_id: string | null;
+  funil_id: string;
+  texto: string;
+  feita: boolean;
+}
+
 const TODOS = '_todos_';
 
 export default function HistoricoPage() {
   const [rodadas, setRodadas] = useState<Rodada[]>([]);
   const [revs, setRevs]       = useState<Record<string, string>>({});
+  const [acoes, setAcoes]     = useState<AcaoHistorico[]>([]);
   const [filtro, setFiltro]   = useState<string>(TODOS);
   const [carregando, setCarregando] = useState(true);
 
   const carregar = useCallback(async () => {
-    const [{ data: rodadasData, error }, { data: revsData }] = await Promise.all([
+    const [{ data: rodadasData, error }, { data: revsData }, { data: acoesData }] = await Promise.all([
       supabase
         .from('analises')
-        .select('id,data,fechada_em,observacoes,analise_itens(id,funil_id,leitura,proximas_acoes,metricas,criado_em)')
+        .select('id,data,fechada_em,observacoes,analise_itens(id,analise_id,funil_id,leitura,metricas,criado_em)')
         .order('data', { ascending: false })
         .limit(50),
       // O nome do REV não fica no item: guardar o nome junto seria um segundo
       // campo dizendo o que `funis.nome` já diz, e os dois divergiriam no dia
       // em que alguém renomeasse o REV.
       supabase.from('vw_mapa_revs').select('id,rev,projeto'),
+      supabase.from('analise_acoes').select('id,analise_id,funil_id,texto,feita').order('criada_em'),
     ]);
 
     if (error) {
       toast({ title: 'Erro ao carregar o histórico', description: error.message, variant: 'destructive' });
     }
     setRodadas((rodadasData ?? []) as unknown as Rodada[]);
+    setAcoes((acoesData ?? []) as AcaoHistorico[]);
     setRevs(Object.fromEntries(
       ((revsData ?? []) as Array<{ id: string; rev: string; projeto: string | null }>)
         .map(r => [r.id, r.projeto ? `${r.projeto} · ${r.rev}` : r.rev]),
@@ -75,21 +87,43 @@ export default function HistoricoPage() {
   useEffect(() => { carregar(); }, [carregar]);
 
   const revsComAnalise = useMemo(() => {
-    const ids = new Set(rodadas.flatMap(r => r.analise_itens.map(i => i.funil_id)));
+    const ids = new Set([
+      ...rodadas.flatMap(r => r.analise_itens.map(i => i.funil_id)),
+      ...acoes.map(a => a.funil_id),
+    ]);
     return [...ids].map(id => ({ id, nome: revs[id] ?? 'REV removido' }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [rodadas, revs]);
+  }, [rodadas, acoes, revs]);
 
+  /**
+   * Um cartão por REV tocado na rodada — e "tocado" inclui REV que só ganhou
+   * ação, sem leitura escrita.
+   *
+   * A primeira versão listava só `analise_itens`, e uma rodada onde ela decidiu
+   * três coisas sem escrever análise nenhuma desaparecia inteira do histórico.
+   * Perder a decisão é pior que perder a leitura: é a decisão que precisa ser
+   * cobrada depois.
+   */
   const visiveis = useMemo(() => rodadas
-    .map(r => ({
-      ...r,
-      analise_itens: filtro === TODOS
-        ? r.analise_itens
-        : r.analise_itens.filter(i => i.funil_id === filtro),
-    }))
-    // Rodada que ficou sem item depois do filtro não vira cartão vazio.
-    .filter(r => r.analise_itens.length > 0),
-  [rodadas, filtro]);
+    .map(rodada => {
+      const daRodada = acoes.filter(a => a.analise_id === rodada.id);
+      const ids = [...new Set([
+        ...rodada.analise_itens.map(i => i.funil_id),
+        ...daRodada.map(a => a.funil_id),
+      ])].filter(id => filtro === TODOS || id === filtro);
+
+      return {
+        ...rodada,
+        cartoes: ids.map(funilId => ({
+          funilId,
+          item: rodada.analise_itens.find(i => i.funil_id === funilId) ?? null,
+          acoes: daRodada.filter(a => a.funil_id === funilId),
+        })),
+      };
+    })
+    // Rodada que ficou sem nada depois do filtro não vira cartão vazio.
+    .filter(r => r.cartoes.length > 0),
+  [rodadas, acoes, filtro]);
 
   return (
     <DashboardLayout title="Análises" hideFilters>
@@ -138,14 +172,16 @@ export default function HistoricoPage() {
                   {rodada.fechada_em ? 'fechada' : 'em andamento'}
                 </span>
                 <span className="text-[11px] text-muted-foreground">
-                  {rodada.analise_itens.length === 1
-                    ? '1 REV' : `${rodada.analise_itens.length} REVs`}
+                  {rodada.cartoes.length === 1 ? '1 REV' : `${rodada.cartoes.length} REVs`}
                 </span>
               </div>
 
               <div className="space-y-2">
-                {rodada.analise_itens.map(item => (
-                  <ItemDaRodada key={item.id} item={item} nome={revs[item.funil_id] ?? 'REV removido'} />
+                {rodada.cartoes.map(c => (
+                  <ItemDaRodada
+                    key={c.funilId} item={c.item} acoes={c.acoes}
+                    nome={revs[c.funilId] ?? 'REV removido'}
+                  />
                 ))}
               </div>
             </section>
@@ -157,9 +193,11 @@ export default function HistoricoPage() {
 }
 
 /** Um REV dentro de uma rodada: o que ela leu, e os números que estavam na tela. */
-function ItemDaRodada({ item, nome }: { item: ItemHistorico; nome: string }) {
-  const m = item.metricas?.atual;
-  const janela = item.metricas?.inicio && item.metricas?.fim
+function ItemDaRodada(
+  { item, nome, acoes }: { item: ItemHistorico | null; nome: string; acoes: AcaoHistorico[] },
+) {
+  const m = item?.metricas?.atual;
+  const janela = item?.metricas?.inicio && item.metricas?.fim
     ? `${formatarData(item.metricas.inicio)} a ${formatarData(item.metricas.fim)}`
     : null;
 
@@ -186,15 +224,24 @@ function ItemDaRodada({ item, nome }: { item: ItemHistorico; nome: string }) {
         </div>
       )}
 
-      {item.leitura && (
+      {item?.leitura && (
         <p className="text-sm whitespace-pre-wrap">{item.leitura}</p>
       )}
 
-      {item.proximas_acoes && (
-        <p className="text-sm whitespace-pre-wrap flex gap-1.5">
-          <ArrowRight className="h-3.5 w-3.5 mt-1 shrink-0 text-primary" />
-          <span className="text-muted-foreground">{item.proximas_acoes}</span>
-        </p>
+      {acoes.length > 0 && (
+        <ul className="space-y-0.5">
+          {acoes.map(ac => (
+            <li key={ac.id} className={cn(
+              'text-sm flex gap-1.5 items-start',
+              ac.feita && 'text-muted-foreground line-through',
+            )}>
+              {ac.feita
+                ? <Check className="h-3.5 w-3.5 mt-1 shrink-0 text-emerald-400" />
+                : <ArrowRight className="h-3.5 w-3.5 mt-1 shrink-0 text-primary" />}
+              <span className={ac.feita ? undefined : 'text-muted-foreground'}>{ac.texto}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </article>
   );

@@ -8,15 +8,17 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
-import { ChevronLeft, ChevronRight, FlaskConical, AlertTriangle, Check, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
-import { CartaoMetrica } from '../components/CartaoMetrica';
-import { SecaoMetricas } from '../components/SecaoMetricas';
+import { ListaMetricas, LinhaMetrica } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
+import { ListaAcoes, Acao } from '../components/ListaAcoes';
 import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
 import { RetencaoVsl, buscarRetencao } from '../retencao';
-import { Janela, PERIODOS, PERSONALIZADO, janelaDeDias, janelaAnterior, diasDaJanela, formatarData } from '../periodo';
+import {
+  Janela, PERIODOS, PERSONALIZADO, janelaDeDias, janelaAnterior, diasDaJanela, formatarData,
+} from '../periodo';
 
 /**
  * A rodada de análise — a tela onde moram as 3 horas quinzenais.
@@ -25,10 +27,10 @@ import { Janela, PERIODOS, PERSONALIZADO, janelaDeDias, janelaAnterior, diasDaJa
  * planilha do funil, transcrever investimento, faturamento, vendas, conversões,
  * cada order bump. Quase tudo já está no banco.
  *
- * A ORDEM aqui é a da planilha dela, e isso é deliberado. A primeira versão
- * agrupou os números por afinidade técnica e a resposta foi "estou me sentindo
- * perdida": quem analisa há anos lê na mesma sequência todo mês, e mudar a
- * sequência custa mais do que qualquer número a mais que se ganhe.
+ * A ORDEM é a dela: Resultado e Ofertas primeiro — o veredito e o que foi
+ * vendido —, e daí para baixo o funil na sequência em que ele acontece, clique
+ * → página → checkout → venda. Uma métrica por linha, em coluna única, porque
+ * a versão em cartões era "meio confusa, pouca leitura scan".
  *
  * A regra que decide se este módulo deu certo: se sobrar campo numérico para
  * preencher, ele falhou — voltou a ser a planilha.
@@ -41,11 +43,6 @@ interface RevDaRodada {
   vendas: number;
   metodo: string | null;
   vsl_id: string | null;
-}
-
-interface ItemSalvo {
-  leitura: string;
-  proximas_acoes: string;
 }
 
 const pct  = (n: number) => `${n.toFixed(1)}%`;
@@ -68,8 +65,8 @@ export default function AnalisesPage() {
   const [analiseId, setAnaliseId]   = useState<string | null>(null);
   const [dataRodada, setDataRodada] = useState<string | null>(null);
   const [leitura, setLeitura]       = useState('');
-  const [acoes, setAcoes]           = useState('');
-  const [salvos, setSalvos]         = useState<Record<string, ItemSalvo>>({});
+  const [lidos, setLidos]           = useState<Record<string, string>>({});
+  const [acoes, setAcoes]           = useState<Acao[]>([]);
   const [salvando, setSalvando]     = useState(false);
   const [fechando, setFechando]     = useState(false);
 
@@ -117,26 +114,21 @@ export default function AnalisesPage() {
     const limite = janelaDeDias(8).inicio;
     const { data } = await supabase
       .from('analises')
-      .select('id,data,analise_itens(funil_id,leitura,proximas_acoes)')
+      .select('id,data,analise_itens(funil_id,leitura)')
       .is('fechada_em', null)
       .gte('data', limite)
       .order('data', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (!data) return {} as Record<string, ItemSalvo>;
+    if (!data) return {} as Record<string, string>;
 
     setAnaliseId(data.id as string);
     setDataRodada(data.data as string);
 
-    const itens = (data.analise_itens ?? []) as Array<{
-      funil_id: string; leitura: string | null; proximas_acoes: string | null;
-    }>;
-    const mapa: Record<string, ItemSalvo> = Object.fromEntries(itens.map(i => [
-      i.funil_id,
-      { leitura: i.leitura ?? '', proximas_acoes: i.proximas_acoes ?? '' },
-    ]));
-    setSalvos(mapa);
+    const itens = (data.analise_itens ?? []) as Array<{ funil_id: string; leitura: string | null }>;
+    const mapa = Object.fromEntries(itens.map(i => [i.funil_id, i.leitura ?? '']));
+    setLidos(mapa);
     return mapa;
   }, []);
 
@@ -144,16 +136,39 @@ export default function AnalisesPage() {
     (async () => {
       const [lista, mapa] = await Promise.all([carregarRevs(), retomarRodada()]);
       // O texto do primeiro REV entra aqui, e não num efeito: um efeito que
-      // observasse `salvos` reescreveria o campo a cada gravação, por baixo de
+      // observasse `lidos` reescreveria o campo a cada gravação, por baixo de
       // quem ainda estivesse digitando.
-      const primeiro = lista[0];
-      if (primeiro) {
-        setLeitura(mapa[primeiro.id]?.leitura ?? '');
-        setAcoes(mapa[primeiro.id]?.proximas_acoes ?? '');
-      }
+      if (lista[0]) setLeitura(mapa[lista[0].id] ?? '');
       setCarregando(false);
     })();
   }, [carregarRevs, retomarRodada]);
+
+  /**
+   * As ações do REV em foco — abertas de qualquer rodada, mais as fechadas
+   * desta. Ação aberta há três quinzenas continua aparecendo: é a dívida que o
+   * módulo existe para cobrar.
+   */
+  const carregarAcoes = useCallback(async (funilId: string) => {
+    const { data } = await supabase
+      .from('analise_acoes')
+      .select('id,texto,feita,criada_em,analise_id,analises(data)')
+      .eq('funil_id', funilId)
+      .order('criada_em');
+
+    // `analises` chega como objeto ou array conforme o PostgREST resolve a
+    // relação; normalizar aqui evita a data sumir sem erro nenhum.
+    const linhas = (data ?? []) as unknown as Array<{
+      id: string; texto: string; feita: boolean; criada_em: string;
+      analises: { data: string } | { data: string }[] | null;
+    }>;
+    setAcoes(linhas.map(l => {
+      const rodada = Array.isArray(l.analises) ? l.analises[0] : l.analises;
+      return {
+        id: l.id, texto: l.texto, feita: l.feita, criada_em: l.criada_em,
+        data_origem: rodada?.data ?? null,
+      };
+    }));
+  }, []);
 
   // Métricas do REV em foco. A retenção vem junto, mas por fora do SQL: muda
   // todo dia, e espelhá-la numa tabela nossa seria guardar retrato velho.
@@ -162,6 +177,7 @@ export default function AnalisesPage() {
     let cancelado = false;
     setBuscando(true);
     setRetencao(null); setRetencaoAntes(null);
+    carregarAcoes(atual.id);
 
     (async () => {
       const { data, error } = await supabase.rpc('fn_metricas_do_rev', {
@@ -187,7 +203,7 @@ export default function AnalisesPage() {
     })();
 
     return () => { cancelado = true; };
-  }, [atual, janela]);
+  }, [atual, janela, carregarAcoes]);
 
   function trocarPreset(v: string) {
     setPreset(v);
@@ -208,8 +224,33 @@ export default function AnalisesPage() {
     return data.id as string;
   }
 
+  async function adicionarAcao(texto: string) {
+    if (!atual) return;
+    const id = await garantirRodada();
+    const { error } = await supabase.from('analise_acoes').insert({
+      analise_id: id, funil_id: atual.id, texto, criada_por: user?.id ?? null,
+    });
+    if (error) {
+      toast({ title: 'Erro ao salvar a ação', description: error.message, variant: 'destructive' });
+      return;
+    }
+    await carregarAcoes(atual.id);
+  }
+
+  async function marcarAcao(id: string, feita: boolean) {
+    // Otimista: marcar caixinha tem que responder na hora, e o pior caso é a
+    // recarga logo abaixo desmarcar de volta.
+    setAcoes(prev => prev.map(a => (a.id === id ? { ...a, feita } : a)));
+    const { error } = await supabase.from('analise_acoes')
+      .update({ feita, feita_por: feita ? user?.id ?? null : null }).eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao marcar', description: error.message, variant: 'destructive' });
+    }
+    if (atual) await carregarAcoes(atual.id);
+  }
+
   /**
-   * Grava o REV em foco e vai para `destinoId` (ou fica, se null).
+   * Grava a leitura do REV em foco e vai para `destinoId` (ou fica, se null).
    *
    * Trocar de REV sempre grava, de propósito: os botões existem para comparar
    * um REV com outro, e perder o que acabou de ser escrito por causa disso
@@ -218,18 +259,17 @@ export default function AnalisesPage() {
   async function salvarItem(destinoId: string | null): Promise<string | null> {
     if (!atual) return null;
 
-    const ir = (mapa: Record<string, ItemSalvo>) => {
+    const ir = (mapa: Record<string, string>) => {
       if (!destinoId || destinoId === atual.id) return;
       const i = revs.findIndex(r => r.id === destinoId);
       if (i < 0) return;
       setIndice(i);
-      setLeitura(mapa[destinoId]?.leitura ?? '');
-      setAcoes(mapa[destinoId]?.proximas_acoes ?? '');
+      setLeitura(mapa[destinoId] ?? '');
     };
 
     // Não grava item vazio: uma rodada cheia de REVs sem leitura vira ruído no
     // histórico, e o contador de "analisados" mentiria.
-    if (!leitura.trim() && !acoes.trim()) { ir(salvos); return analiseId; }
+    if (!leitura.trim()) { ir(lidos); return analiseId; }
 
     setSalvando(true);
     const id = await garantirRodada();
@@ -243,8 +283,7 @@ export default function AnalisesPage() {
       // motivaram — ver o comentário da tabela no banco.
       metricas: metricas as unknown as Record<string, unknown>,
       retencao: retencao as unknown as Record<string, unknown>,
-      leitura: leitura.trim() || null,
-      proximas_acoes: acoes.trim() || null,
+      leitura: leitura.trim(),
     }, { onConflict: 'analise_id,funil_id' });
 
     setSalvando(false);
@@ -252,8 +291,8 @@ export default function AnalisesPage() {
       toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
       return null;
     }
-    const mapa = { ...salvos, [atual.id]: { leitura, proximas_acoes: acoes } };
-    setSalvos(mapa);
+    const mapa = { ...lidos, [atual.id]: leitura };
+    setLidos(mapa);
     ir(mapa);
     return id;
   }
@@ -268,7 +307,7 @@ export default function AnalisesPage() {
     // O id vem do próprio salvar, e não do estado: se a rodada acabou de
     // nascer nesta gravação, `analiseId` ainda é o valor velho desta closure e
     // a tela diria "nada para fechar" logo depois de gravar.
-    const id = await salvarItem(null);
+    const id = (await salvarItem(null)) ?? analiseId;
     if (!id) {
       toast({ title: 'Nada para fechar', description: 'Nenhuma leitura foi escrita nesta rodada.' });
       return;
@@ -289,11 +328,11 @@ export default function AnalisesPage() {
         ? '1 REV com leitura escrita. Está no Histórico.'
         : `${count ?? 0} REVs com leitura escrita. Estão no Histórico.`,
     });
-    setAnaliseId(null); setDataRodada(null); setSalvos({});
-    setLeitura(''); setAcoes(''); setIndice(0);
+    setAnaliseId(null); setDataRodada(null); setLidos({});
+    setLeitura(''); setIndice(0);
   }
 
-  const analisados = useMemo(() => Object.keys(salvos).length, [salvos]);
+  const analisados = useMemo(() => Object.keys(lidos).length, [lidos]);
   const dias = diasDaJanela(janela);
 
   if (carregando) {
@@ -370,7 +409,7 @@ export default function AnalisesPage() {
               {revs.map(r => (
                 <SelectItem key={r.id} value={r.id}>
                   <span className="inline-flex items-center gap-1.5">
-                    {salvos[r.id] && <Check className="h-3 w-3 text-emerald-400" />}
+                    {lidos[r.id] && <Check className="h-3 w-3 text-emerald-400" />}
                     {r.projeto ? `${r.projeto} · ` : ''}{r.rev}
                     {r.metodo && <span className="text-[10px] text-muted-foreground">{r.metodo}</span>}
                   </span>
@@ -429,7 +468,7 @@ export default function AnalisesPage() {
                 {atual.metodo}
               </span>
             )}
-            {salvos[atual?.id ?? ''] && (
+            {lidos[atual?.id ?? ''] && (
               <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 <Check className="h-3 w-3" /> leitura salva
               </span>
@@ -442,77 +481,81 @@ export default function AnalisesPage() {
             </div>
           ) : a && ant ? (
             <>
-              {/* 1 — o cabeçalho da planilha, na mesma ordem */}
-              <SecaoMetricas
+              {/* 1 — o veredito */}
+              <ListaMetricas
                 titulo="Resultado"
-                nota={avisoDeBase ?? 'faturamento já sem juros de parcelamento e sem reembolso'}
+                nota={avisoDeBase ?? 'faturamento de front + order bumps, sem juros e sem reembolso'}
               >
-                <CartaoMetrica rotulo="Investimento" valor={a.investimento} anterior={ant.investimento} formato={formatCurrency} subirEhRuim
-                  nota={a.nivel_investimento === 'campanha' ? 'campanha inteira'
-                    : a.nivel_investimento === 'misto' ? 'campanha dividida com outro REV: só os anúncios deste'
+                <LinhaMetrica rotulo="Investimento" valor={a.investimento} anterior={ant.investimento} formato={formatCurrency} subirEhRuim
+                  extra={a.nivel_investimento === 'campanha' ? 'campanha inteira'
+                    : a.nivel_investimento === 'misto' ? 'campanha dividida: só os anúncios deste'
                     : 'só anúncios com venda atribuída'} />
-                <CartaoMetrica rotulo="Faturamento" valor={a.faturamento} anterior={ant.faturamento} formato={formatCurrency} destaque />
-                <CartaoMetrica rotulo="Resultado" valor={a.resultado} anterior={ant.resultado} formato={formatCurrency} />
-                <CartaoMetrica rotulo="Vendas" valor={a.vendas} anterior={ant.vendas} formato={formatNumber} />
-                <CartaoMetrica rotulo="ROAS" valor={a.roas} anterior={ant.roas} formato={num2} destaque />
-                <CartaoMetrica rotulo="Imposto" valor={a.imposto_simples + a.imposto_meta} anterior={ant.imposto_simples + ant.imposto_meta} formato={formatCurrency} subirEhRuim
-                  nota="Simples + imposto sobre o Meta" />
-                <CartaoMetrica rotulo="Taxa da plataforma" valor={a.taxa_plataforma} anterior={ant.taxa_plataforma} formato={formatCurrency} subirEhRuim
-                  nota="a taxa real cobrada, não 7% fixo" />
-                <CartaoMetrica rotulo="Lucro líquido" valor={a.lucro_liquido} anterior={ant.lucro_liquido} formato={formatCurrency} destaque
-                  nota={a.margem_pct != null ? `margem de ${pct(a.margem_pct)}` : undefined} />
-              </SecaoMetricas>
+                <LinhaMetrica rotulo="Faturamento" valor={a.faturamento} anterior={ant.faturamento} formato={formatCurrency} destaque />
+                <LinhaMetrica rotulo="Resultado" valor={a.resultado} anterior={ant.resultado} formato={formatCurrency}
+                  extra="faturamento − investimento" />
+                <LinhaMetrica rotulo="ROAS" valor={a.roas} anterior={ant.roas} formato={num2} destaque />
+                <LinhaMetrica rotulo="Imposto" valor={a.imposto_simples + a.imposto_meta} anterior={ant.imposto_simples + ant.imposto_meta} formato={formatCurrency} subirEhRuim
+                  extra="Simples + imposto sobre o Meta" />
+                <LinhaMetrica rotulo="Taxa da plataforma" valor={a.taxa_plataforma} anterior={ant.taxa_plataforma} formato={formatCurrency} subirEhRuim
+                  extra="a taxa real cobrada, não 7% fixo" />
+                <LinhaMetrica rotulo="Lucro líquido" valor={a.lucro_liquido} anterior={ant.lucro_liquido} formato={formatCurrency} destaque
+                  extra={a.margem_pct != null ? `margem de ${pct(a.margem_pct)}` : undefined} />
+              </ListaMetricas>
 
-              {/* 2 — as ofertas */}
-              <SecaoMetricas titulo="Ofertas" nota={a.pct_ofertas_extras != null
-                ? `${pct2(a.pct_ofertas_extras)} do faturamento veio de bump e upsell` : undefined}>
-                <div className="col-span-full">
-                  <TabelaItens
-                    atual={a.itens ?? []} anterior={ant.itens ?? []}
-                    principal={{ qtd: a.oferta_principal_qtd, valor: a.oferta_principal_valor, antesQtd: ant.oferta_principal_qtd }}
-                    upsell={{
-                      qtd: a.upsell_qtd, valor: a.upsell_faturamento, antesQtd: ant.upsell_qtd,
-                      adesao: a.vendas > 0 ? (a.upsell_qtd / a.vendas) * 100 : null,
-                    }}
-                  />
+              {/* 2 — o que foi vendido. A única parte em colunas, porque aqui
+                  cada coluna é outra medida da MESMA oferta. */}
+              <section className="space-y-1.5">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Ofertas
+                  </h3>
+                  <div className="h-px flex-1 min-w-4 bg-border" />
+                  {a.pct_ofertas_extras != null && (
+                    <span className="text-[10px] text-muted-foreground/80">
+                      {pct2(a.pct_ofertas_extras)} do faturamento veio dos bumps
+                    </span>
+                  )}
                 </div>
-              </SecaoMetricas>
+                <TabelaItens
+                  atual={a.itens ?? []} anterior={ant.itens ?? []}
+                  principal={{
+                    qtd: a.oferta_principal_qtd, valor: a.oferta_principal_valor,
+                    antesQtd: ant.oferta_principal_qtd,
+                  }}
+                />
+              </section>
 
-              {/* 3 — o tráfego, com o custo de cada etapa ao lado, como na planilha */}
-              <SecaoMetricas titulo="Tráfego" nota={avisoDeBase ?? (a.cobertura_geral_pct != null
-                ? `${a.cobertura_geral_pct}% do gasto da conta está amarrado a algum REV` : undefined)}>
-                <CartaoMetrica rotulo="Cliques" valor={a.cliques} anterior={ant.cliques} formato={formatNumber}
-                  nota={a.cpc != null ? `${formatCurrency(a.cpc)} por clique` : undefined} />
-                <CartaoMetrica rotulo="Visualização da Página" valor={a.visitas} anterior={ant.visitas} formato={formatNumber}
-                  nota={a.cpv != null ? `${formatCurrency(a.cpv)} por visita` : undefined} />
-                <CartaoMetrica rotulo="Initiate Checkout" valor={a.checkouts_iniciados} anterior={ant.checkouts_iniciados} formato={formatNumber}
-                  nota={a.cpi != null ? `${formatCurrency(a.cpi)} por checkout` : undefined} />
-                <CartaoMetrica rotulo="Impressões" valor={a.impressoes} anterior={ant.impressoes} formato={formatNumber}
-                  nota={a.cpm != null ? `${formatCurrency(a.cpm)} de CPM` : undefined} />
-              </SecaoMetricas>
+              {/* 3 — o funil, na ordem em que ele acontece */}
+              <ListaMetricas titulo="Funil" nota="do clique até a venda">
+                <LinhaMetrica rotulo="Cliques no link" valor={a.cliques} anterior={ant.cliques} formato={formatNumber}
+                  extra={a.cpc != null ? `${formatCurrency(a.cpc)} cada` : undefined} />
+                <LinhaMetrica rotulo="Checkouts iniciados" valor={a.checkouts_iniciados} anterior={ant.checkouts_iniciados} formato={formatNumber}
+                  extra={<>
+                    {a.cpi != null && `${formatCurrency(a.cpi)} cada`}
+                    {a.taxa_checkout_pct != null && ` · ${pct2(a.taxa_checkout_pct)} dos cliques`}
+                  </>} />
+                <LinhaMetrica rotulo="Vendas" valor={a.vendas} anterior={ant.vendas} formato={formatNumber} destaque
+                  extra={<>
+                    {a.cpa != null && `${formatCurrency(a.cpa)} cada`}
+                    {a.conv_checkout_pct != null && ` · ${pct2(a.conv_checkout_pct)} dos checkouts`}
+                  </>} />
+                <LinhaMetrica rotulo="Conversão do funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2}
+                  extra="venda por visita à página" />
+              </ListaMetricas>
 
-              {/* 4 — as conversões */}
-              <SecaoMetricas titulo="Conversões">
-                <CartaoMetrica rotulo="Conversão do Funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2} destaque />
-                <CartaoMetrica rotulo="Conversão do Checkout" valor={a.conv_checkout_pct} anterior={ant.conv_checkout_pct} formato={pct2} />
-                <CartaoMetrica rotulo="Connect Rate da Page" valor={a.connect_rate_pct} anterior={ant.connect_rate_pct} formato={pct2} />
-                <CartaoMetrica rotulo="Initiate Checkout %" valor={a.taxa_checkout_pct} anterior={ant.taxa_checkout_pct} formato={pct2} />
-              </SecaoMetricas>
-
-              {/* 5 — o quanto cada visitante custa e traz */}
-              <SecaoMetricas titulo="Por visitante" nota="EPC − CPV negativo é escala comprando prejuízo">
-                <CartaoMetrica rotulo="CPV (custo por visitante)" valor={a.cpv} anterior={ant.cpv} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="CPA (custo por venda)" valor={a.cpa} anterior={ant.cpa} formato={formatCurrency} subirEhRuim
-                  nota={a.aov != null && a.cpa != null && a.cpa > a.aov ? 'acima do AOV' : undefined} />
-                <CartaoMetrica rotulo="EPC (quanto cada um traz)" valor={a.epc} anterior={ant.epc} formato={formatCurrency} />
-                <CartaoMetrica rotulo="AOV" valor={a.aov} anterior={ant.aov} formato={formatCurrency} />
-                <CartaoMetrica rotulo="EPC − CPV" valor={a.epc_menos_cpv} anterior={ant.epc_menos_cpv} formato={formatCurrency} destaque />
-              </SecaoMetricas>
-
-              {/* 6 — o fim da planilha, que muda com o método */}
+              {/* 4 — como a página segura: é o meio do funil, entre o clique e
+                  o checkout, e por isso vem aqui e não no fim. */}
               {atual?.metodo === 'VSL' || atual?.vsl_id
                 ? <BlocoVsl r={retencao} anterior={retencaoAntes} />
                 : <BlocoTsl />}
+
+              {/* 5 — quanto cada visitante custa e traz */}
+              <ListaMetricas titulo="Por visitante" nota="EPC − CPV negativo é escala comprando prejuízo">
+                <LinhaMetrica rotulo="CPV — custo por visitante" valor={a.cpv} anterior={ant.cpv} formato={formatCurrency} subirEhRuim />
+                <LinhaMetrica rotulo="EPC — quanto cada um traz" valor={a.epc} anterior={ant.epc} formato={formatCurrency} />
+                <LinhaMetrica rotulo="EPC − CPV" valor={a.epc_menos_cpv} anterior={ant.epc_menos_cpv} formato={formatCurrency} destaque />
+                <LinhaMetrica rotulo="AOV — ticket médio" valor={a.aov} anterior={ant.aov} formato={formatCurrency} />
+              </ListaMetricas>
 
               {atribuicaoDuvidosa && (
                 <p className="text-xs text-amber-400/90 flex items-start gap-1.5">
@@ -539,35 +582,22 @@ export default function AnalisesPage() {
           )}
 
           {/* O que se digita — e só isto. */}
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="text-xs font-medium">O que você lê nisso</label>
-              <Textarea
-                className="mt-1 h-28 resize-none text-sm"
-                placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
-                value={leitura} onChange={e => setLeitura(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium">Próximas ações</label>
-              <Textarea
-                className="mt-1 h-28 resize-none text-sm"
-                placeholder="O que fazer a respeito, em texto livre…"
-                value={acoes} onChange={e => setAcoes(e.target.value)}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              O que você lê nisso
+            </h3>
+            <Textarea
+              className="h-24 resize-none text-sm"
+              placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
+              value={leitura} onChange={e => setLeitura(e.target.value)}
+              onBlur={() => salvarItem(null)}
+            />
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button size="sm" variant="outline" className="h-8" onClick={() => salvarItem(null)} disabled={salvando || fechando}>
-              Salvar
-            </Button>
-            <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
-              <FlaskConical className="h-3 w-3" />
-              As métricas ficam gravadas junto com o texto, como retrato do dia — e a leitura
-              aparece no Histórico.
-            </span>
-          </div>
+          <ListaAcoes
+            acoes={acoes} dataRodada={dataRodada}
+            onAdicionar={adicionarAcao} onMarcar={marcarAcao}
+          />
         </div>
       </div>
     </DashboardLayout>

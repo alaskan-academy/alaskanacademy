@@ -41,10 +41,8 @@ export interface BlocoMetricas {
   bump_qtd: number;
   bump_faturamento: number;
   bump_adesao_pct: number | null;
-  upsell_qtd: number;
-  upsell_faturamento: number;
   itens: ItemVendido[];
-  /** Fatia do faturamento que veio de bump e upsell — o 21,59% da planilha. */
+  /** Fatia do faturamento que veio dos order bumps — o 21,59% da planilha. */
   pct_ofertas_extras: number | null;
 
   // ── Tráfego ────────────────────────────────────────────────────────────────
