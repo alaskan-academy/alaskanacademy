@@ -126,6 +126,23 @@ export interface TesteFunil {
 
 export type StatusDisplay = 'planejado' | 'ativo' | 'em_teste' | 'pausado' | 'pausado_analise' | 'arquivado';
 
+/**
+ * A VSL só é obrigatória em REV de VSL.
+ *
+ * Num funil de TSL a venda é feita por texto: a VSL, se existir, é acessório —
+ * cobrar por ela ali é ruído. Antes o aviso contava qualquer REV sem VSL, e dos
+ * 3 que apontava, 2 eram TSL e 1 estava sem método definido: **nenhum era
+ * problema de verdade**, e um aviso que aponta só falso positivo é pior que
+ * nenhum aviso, porque ensina a ignorar.
+ *
+ * Sem `metodo` definido, NÃO cobra. Deixar de avisar num caso indefinido custa
+ * menos que avisar errado — o REV recém-criado costuma estar nesse estado, e
+ * seria cobrado antes de a pessoa terminar de preenchê-lo.
+ */
+export function vslEhObrigatoria(funil: Pick<Funil, 'metodo'>): boolean {
+  return (funil.metodo ?? '').trim().toUpperCase() === 'VSL';
+}
+
 export function getStatusDisplay(funil: Funil, testes: TesteFunil[]): StatusDisplay {
   // Pausado sempre tem prioridade — mesmo que um teste ainda esteja marcado como rodando
   if (funil.status === 'pausado_analise' || funil.status === 'pausado') return funil.status;

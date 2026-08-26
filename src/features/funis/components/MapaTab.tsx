@@ -148,7 +148,11 @@ export function MapaTab() {
     );
   }
 
-  const semVsl = ativas.filter(l => !l.vsl_id).length;
+  // So REV de VSL. Em TSL a VSL e opcional -- cobrar ali e ruido, e dos 3 que
+  // este aviso apontava, nenhum era problema de verdade.
+  const semVsl = ativas.filter(
+    l => !l.vsl_id && (l.metodo ?? '').trim().toUpperCase() === 'VSL',
+  ).length;
 
   return (
     <div className="space-y-4">
@@ -159,8 +163,13 @@ export function MapaTab() {
           onChange={e => setBusca(e.target.value)}
           placeholder="Onde está rodando a h07? Busque por VSL, domínio, checkout, página, REV…"
           className="pl-9 h-10"
-          autoFocus
         />
+        {/* Sem `autoFocus`. Ele parecia uma boa ideia — a tela existe para
+            buscar —, mas o Mapa é a primeira aba da área: quem chega quer
+            LER a lista dos REVs no ar, não digitar. E o foco automático
+            rolava a página até o campo, tirando da vista o que a pessoa veio
+            ver. Atalho de teclado seria o jeito certo de acelerar quem
+            realmente vem buscar; roubar o foco de todo mundo não é. */}
       </div>
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">

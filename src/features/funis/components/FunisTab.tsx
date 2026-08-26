@@ -14,7 +14,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { TesteModal } from './TesteModal';
 import {
   Funil, Projeto, FunilSuboferta, Dominio, TesteFunil,
-  getStatusDisplay, StatusDisplay,
+  getStatusDisplay, StatusDisplay, vslEhObrigatoria,
 } from '../types';
 
 interface Props {
@@ -90,6 +90,7 @@ function oQueFalta(
   d: DadosDoRev | undefined,
   temDominio: boolean,
   status: StatusDisplay,
+  exigeVsl: boolean,
 ): string | null {
   if (!d) return null;
 
@@ -104,7 +105,8 @@ function oQueFalta(
   if (status !== 'ativo' && status !== 'em_teste') return null;
 
   const faltas: string[] = [];
-  if (!d.vsl) faltas.push('VSL');
+  // VSL so entra na conta em REV de VSL; em TSL ela e acessorio.
+  if (!d.vsl && exigeVsl) faltas.push('VSL');
   if (!temDominio) faltas.push('domínio');
   if (!d.checkouts?.length) faltas.push('checkout');
   if (faltas.length === 0) return null;
@@ -323,7 +325,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   // vendendo. Contar os planejados juntos daria um numero grande e inerte.
   const semVslCount = funis.filter(f => {
     const s = getStatusDisplay(f, testes);
-    return !f.vsl_id && (s === 'ativo' || s === 'em_teste');
+    return !f.vsl_id && vslEhObrigatoria(f) && (s === 'ativo' || s === 'em_teste');
   }).length;
 
   return (
@@ -396,7 +398,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                 const hasTestePronto = testesPromtos.length > 0;
                 const mySubofertas = funilSubofertas.filter(fs => fs.funil_id === funil.id);
                 const d = dados[funil.id];
-                const falta = oQueFalta(d, funilDominios.length > 0, statusDisplay);
+                const falta = oQueFalta(d, funilDominios.length > 0, statusDisplay, vslEhObrigatoria(funil));
                 const isHighlighted = statusDisplay === 'em_teste';
                 const isPausadoAnalise = statusDisplay === 'pausado_analise';
 
