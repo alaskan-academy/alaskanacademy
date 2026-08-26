@@ -77,6 +77,7 @@ function metodoContradizNome(rev: string, metodo: string | null): boolean {
 export function MapaTab() {
   const [linhas, setLinhas]   = useState<LinhaMapa[]>([]);
   const [busca, setBusca]     = useState('');
+  const [mostrarTodos, setMostrarTodos] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const carregar = useCallback(async () => {
@@ -90,14 +91,32 @@ export function MapaTab() {
 
   useEffect(() => { carregar(); }, [carregar]);
 
+  // Só REV no ar. O mapa é para responder sobre o que está rodando agora; os
+  // arquivados e planejados só faziam volume.
+  const ativas = useMemo(() => linhas.filter(l => l.status === 'ativo'), [linhas]);
+
+  /**
+   * Resultados da busca que ficaram DE FORA por não estarem ativos.
+   *
+   * Sem isto o filtro cria uma resposta errada: procurar "h07" numa VSL que
+   * roda num REV pausado devolveria "nada encontrado", e "nada encontrado" e
+   * "está num REV pausado" são coisas muito diferentes para quem perguntou.
+   */
+  const ocultos = useMemo(() => {
+    const q = semAcento(busca.trim());
+    if (!q) return [];
+    return linhas.filter(l => l.status !== 'ativo' && (l.busca ?? '').includes(q));
+  }, [linhas, busca]);
+
   const visiveis = useMemo(() => {
     const q = semAcento(busca.trim());
-    const filtradas = q ? linhas.filter(l => (l.busca ?? '').includes(q)) : linhas;
+    const base = mostrarTodos ? linhas : ativas;
+    const filtradas = q ? base.filter(l => (l.busca ?? '').includes(q)) : base;
     return filtradas.slice().sort((a, b) =>
       (b.vendas - a.vendas) ||
       (a.projeto ?? 'zzz').localeCompare(b.projeto ?? 'zzz') ||
       a.rev.localeCompare(b.rev));
-  }, [linhas, busca]);
+  }, [linhas, ativas, busca, mostrarTodos]);
 
   /**
    * Quais campos casaram com a busca.
@@ -129,7 +148,7 @@ export function MapaTab() {
     );
   }
 
-  const semVsl = linhas.filter(l => !l.vsl_id).length;
+  const semVsl = ativas.filter(l => !l.vsl_id).length;
 
   return (
     <div className="space-y-4">
@@ -144,18 +163,54 @@ export function MapaTab() {
         />
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span>{visiveis.length} de {linhas.length} REVs</span>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+        <span>
+          {visiveis.length} {mostrarTodos ? `de ${linhas.length} REVs` : `REV${visiveis.length !== 1 ? 's' : ''} no ar`}
+        </span>
         {semVsl > 0 && !busca && (
-          <span className="text-amber-400/80">
-            · {semVsl} ainda sem VSL escolhida
-          </span>
+          <span className="text-amber-400/80">· {semVsl} ainda sem VSL escolhida</span>
+        )}
+        {/* Com busca ativa, o aviso logo abaixo já diz quantos ficaram de fora e
+            por quê — este aqui repetiria o mesmo com um número menos útil. */}
+        {!mostrarTodos && !busca && linhas.length > ativas.length && (
+          <button
+            type="button"
+            onClick={() => setMostrarTodos(true)}
+            className="ml-auto hover:text-foreground transition-colors underline decoration-dotted"
+          >
+            ver também os {linhas.length - ativas.length} fora do ar
+          </button>
+        )}
+        {mostrarTodos && (
+          <button
+            type="button"
+            onClick={() => setMostrarTodos(false)}
+            className="ml-auto hover:text-foreground transition-colors underline decoration-dotted"
+          >
+            mostrar só os que estão no ar
+          </button>
         )}
       </div>
 
+      {/* A busca não pode responder "não achei" quando na verdade achou num REV
+          fora do ar. "Nada encontrado" e "está num REV pausado" são respostas
+          muito diferentes para quem perguntou onde a VSL está rodando. */}
+      {!mostrarTodos && ocultos.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setMostrarTodos(true)}
+          className="w-full text-left text-xs px-3 py-2 rounded-lg border border-amber-500/25 bg-amber-500/5 text-amber-400/90 hover:bg-amber-500/10 transition-colors"
+        >
+          Mais {ocultos.length} {ocultos.length === 1 ? 'resultado' : 'resultados'} em REVs fora do ar
+          {' '}({[...new Set(ocultos.map(o => STATUS_CFG[o.status]?.label ?? o.status))].join(', ').toLowerCase()}) — mostrar
+        </button>
+      )}
+
       {visiveis.length === 0 ? (
         <div className="py-16 text-center text-sm text-muted-foreground">
-          Nada com &ldquo;{busca}&rdquo;. A busca cobre REV, projeto, VSL, domínio, checkout e página.
+          {busca
+            ? <>Nada com &ldquo;{busca}&rdquo; entre os REVs no ar.</>
+            : 'Nenhum REV ativo no momento.'}
         </div>
       ) : (
         <div className="space-y-2">

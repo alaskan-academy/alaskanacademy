@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import {
   ChevronDown, ChevronRight, ExternalLink, Plus, Pencil,
-  Globe, ShoppingBag, FlaskConical, Video, AlertTriangle,
+  Globe, ShoppingBag, FlaskConical, Video, AlertTriangle, Archive,
 } from 'lucide-react';
 import { FunilModal } from './FunilModal';
 import { TesteModal } from './TesteModal';
@@ -169,6 +169,7 @@ function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; on
 
 export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [verArquivados, setVerArquivados] = useState(false);
   const [dados, setDados] = useState<Record<string, DadosDoRev>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
@@ -222,21 +223,29 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
 
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
 
-  // Busca sobre a lista já agrupada. São 23 REVs, então filtra em memória e a
-  // estrutura de projetos continua na tela — quem procura "h07" ainda vê a
-  // qual projeto o resultado pertence, que é metade da resposta.
+  /**
+   * Arquivados saem dos grupos e vão para uma área própria no fim.
+   *
+   * Eles não desaparecem — um REV arquivado ainda carrega as vendas que fez, e
+   * apagá-lo da tela apagaria o histórico junto. Mas misturado aos ativos ele
+   * competia por atenção com o que está no ar, e num projeto com 5 REVs onde 3
+   * estão arquivados a lista mentia sobre o tamanho da operação.
+   */
+  const arquivados = funis.filter(f => getStatusDisplay(f, testes) === 'arquivado');
+  const emUso = funis.filter(f => getStatusDisplay(f, testes) !== 'arquivado');
+
   type Group = { projeto: Projeto | null; funis: Funil[] };
   const groups: Group[] = [];
   const seen = new Set<string | null>();
 
   // First pass: projetos with funis
-  for (const funil of funis) {
+  for (const funil of emUso) {
     const pid = funil.projeto_id ?? null;
     if (!seen.has(pid)) {
       seen.add(pid);
       groups.push({
         projeto: pid ? (projetoMap[pid] ?? null) : null,
-        funis: funis.filter(f => (f.projeto_id ?? null) === pid),
+        funis: emUso.filter(f => (f.projeto_id ?? null) === pid),
       });
     }
   }
@@ -583,6 +592,58 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
           </div>
         );
       })}
+
+      {/* Arquivados, fora dos projetos e fechados por padrão.
+          Continuam acessíveis porque um REV arquivado ainda carrega as vendas
+          que fez — sumir com ele da tela sumiria com o histórico junto. */}
+      {arquivados.length > 0 && (
+        <div className="pt-2 border-t border-border/60">
+          <button
+            type="button"
+            onClick={() => setVerArquivados(v => !v)}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {verArquivados
+              ? <ChevronDown className="h-3.5 w-3.5" />
+              : <ChevronRight className="h-3.5 w-3.5" />}
+            <Archive className="h-3.5 w-3.5" />
+            {arquivados.length} REV{arquivados.length !== 1 ? 's' : ''} arquivado{arquivados.length !== 1 ? 's' : ''}
+          </button>
+
+          {verArquivados && (
+            <div className="mt-2 space-y-1 pl-1">
+              {arquivados.map(funil => {
+                const proj = funil.projeto_id ? projetoMap[funil.projeto_id] : null;
+                const d = dados[funil.id];
+                return (
+                  <div
+                    key={funil.id}
+                    className="flex items-center gap-3 px-4 py-2 rounded-lg border border-border/50 bg-card/40 text-sm"
+                  >
+                    <span className="text-[11px] text-muted-foreground shrink-0">
+                      {proj?.nome ?? 'sem projeto'}
+                    </span>
+                    <span className="flex-1 min-w-0 truncate text-muted-foreground">{funil.nome}</span>
+                    {d && d.vendas > 0 && (
+                      <span className="text-xs tabular-nums text-muted-foreground shrink-0">
+                        {formatNumber(d.vendas)} vendas
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={e => openEdit(funil, e)}
+                      className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                      title="Editar"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <FunilModal
         key={modalKey}
