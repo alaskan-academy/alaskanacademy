@@ -15,6 +15,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
 import { GerenciarOpcoesPopover } from '@/features/producao/components/GerenciarOpcoesPopover';
+import { SeletorVsl } from './SeletorVsl';
 
 function formatPreco(raw: string): string {
   const num = parseFloat(raw.replace(',', '.'));
@@ -138,6 +139,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
 
   // Método de venda
   const [metodo, setMetodo]       = useState('');
+  const [vslId, setVslId]         = useState('');
   const [opMetodos, setOpMetodos] = useState<string[]>([]);
 
   useEffect(() => {
@@ -146,6 +148,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setNome(funil?.nome ?? '');
     setOfertaId(funil?.oferta_id ?? '');
     setMetodo(funil?.metodo ?? '');
+    setVslId(funil?.vsl_id ?? '');
     setStatus((funil?.status ?? 'ativo') as typeof status);
     setUrlPage(funil?.url_page ?? '');
     setNotas(funil?.notas ?? '');
@@ -218,6 +221,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       nome:          nome.trim(),
       oferta_id:     ofertaId || null,
       metodo:        metodo || null,
+      vsl_id:        vslId || null,
       status,
       preco:         firstCheckout?.preco ? parseFloat(firstCheckout.preco.replace(',', '.')) : null,
       link_checkout: firstCheckout?.link?.trim() || null,
@@ -299,6 +303,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       nome:          `${nome.trim()} (cópia)`,
       oferta_id:     ofertaId || null,
       metodo:        metodo || null,
+      vsl_id:        vslId || null,
       status:        'planejado',
       preco:         firstCheckout?.preco ? parseFloat(firstCheckout.preco.replace(',', '.')) : null,
       link_checkout: firstCheckout?.link?.trim() || null,
@@ -397,6 +402,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* VSL — vem do espelho do VTurb, nunca digitada */}
+          <div>
+            <Label>VSL rodando</Label>
+            <SeletorVsl value={vslId} onChange={setVslId} />
           </div>
 
           {/* Método de venda — mesmo visual do Funil de Vendas + gerenciar */}
