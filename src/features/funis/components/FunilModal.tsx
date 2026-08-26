@@ -7,7 +7,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -134,7 +133,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
   const [urlPage, setUrlPage]     = useState('');
   const [dominioId, setDominioId] = useState('');
   const [notas, setNotas]         = useState('');
-  const [ativo, setAtivo]         = useState(true);
   const [subofertas, setSubofertas] = useState<SubItem[]>([]);
 
   // Método de venda
@@ -152,7 +150,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setStatus((funil?.status ?? 'ativo') as typeof status);
     setUrlPage(funil?.url_page ?? '');
     setNotas(funil?.notas ?? '');
-    setAtivo(funil?.ativo ?? true);
     setConfirmDelete(false);
 
     const dominioAtual = dominios.find(d => {
@@ -227,7 +224,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       link_checkout: firstCheckout?.link?.trim() || null,
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
-      ativo:         status === 'arquivado' ? false : ativo,
     };
 
     let funilId = funil?.id;
@@ -309,7 +305,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       link_checkout: firstCheckout?.link?.trim() || null,
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
-      ativo:         true,
       criado_por:    user?.id,
     }).select('id').single();
     if (res.error || !res.data) {
@@ -508,15 +503,15 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             />
           </div>
 
-          {/* Toggle visibilidade */}
-          {status !== 'arquivado' && (
-            <div className="flex items-center gap-2">
-              <Switch id="funil-ativo" checked={ativo} onCheckedChange={setAtivo} />
-              <label htmlFor="funil-ativo" className="text-sm cursor-pointer select-none">
-                Aparece no seletor de funis (barra lateral)
-              </label>
-            </div>
-          )}
+          {/* O interruptor "Aparece no seletor de funis (barra lateral)" saiu daqui.
+              Prometia duas coisas que não existem mais: a sidebar deixou de listar
+              funis, e `funis.ativo` passou a ser derivado de `status` pelo banco —
+              então ele podia ser desligado, salvo, e não fazia nada.
+
+              Quem lê `ativo` hoje é o seletor de funil de Produção e Criativos, e
+              lá o certo é mesmo seguir o status: era essa a razão de 4 REVs ativos
+              não aparecerem para marcar criativo. Visibilidade virou consequência
+              do ciclo de vida, que é onde ela pertence. */}
         </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center">
