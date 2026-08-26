@@ -272,7 +272,7 @@ export function NotasFiscaisTab() {
           </h2>
           <p className="text-xs text-muted-foreground/70 mt-0.5">
             A nota vem <span className="text-foreground">antes</span> do pagamento, até o dia 20 —
-            sem NF o pagamento não sai. O salário é do mês trabalhado; a comissão é do mês
+            sem NF o pagamento não sai. O serviço mensal é do mês trabalhado; a comissão é do mês
             anterior. Emita cada uma com a sua data.
           </p>
         </div>
