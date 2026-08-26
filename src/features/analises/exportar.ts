@@ -217,3 +217,23 @@ export function exportarRodada(r: RodadaParaExportar): void {
     ]);
   })().catch(() => { /* acessório: segue o jogo */ });
 }
+
+/**
+ * Espelha várias rodadas de uma vez — é o que o Histórico usa.
+ *
+ * Editar uma ação lá muda o texto de uma nota específica, mas a planilha é
+ * reescrita inteira de qualquer jeito. Então: uma chamada só ao Sheets, e um
+ * `PUT` por nota afetada.
+ *
+ * Sem isto, corrigir uma ação no Histórico deixaria o Obsidian e a planilha
+ * com a versão velha — e o registro que só se corrige em um dos três lugares é
+ * pior que o registro que não se corrige, porque agora eles se contradizem.
+ */
+export function exportarVarias(rodadas: RodadaParaExportar[]): void {
+  void (async () => {
+    await Promise.allSettled([
+      ...rodadas.map(paraObsidian),
+      supabase.functions.invoke('analises-sheets-sync', { body: {} }),
+    ]);
+  })().catch(() => { /* acessório: segue o jogo */ });
+}

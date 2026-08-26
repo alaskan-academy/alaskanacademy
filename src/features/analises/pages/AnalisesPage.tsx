@@ -221,8 +221,8 @@ export default function AnalisesPage() {
   }
 
   /** Cria a rodada na primeira gravação, e não ao abrir a tela. */
-  async function garantirRodada(): Promise<string | null> {
-    if (analiseId) return analiseId;
+  async function garantirRodada(): Promise<{ id: string; data: string } | null> {
+    if (analiseId && dataRodada) return { id: analiseId, data: dataRodada };
     const { data, error } = await supabase
       .from('analises').insert({ autor_id: user?.id ?? null }).select('id,data').single();
     if (error || !data) {
@@ -231,14 +231,16 @@ export default function AnalisesPage() {
     }
     setAnaliseId(data.id as string);
     setDataRodada(data.data as string);
-    return data.id as string;
+    // Devolve a DATA junto, e não só o id: quem chama precisa dela na mesma
+    // volta para espelhar, e o estado só chega no render seguinte.
+    return { id: data.id as string, data: data.data as string };
   }
 
   async function adicionarAcao(texto: string, expectativa: string) {
     if (!atual) return;
-    const id = await garantirRodada();
+    const rodada = await garantirRodada();
     const { error } = await supabase.from('analise_acoes').insert({
-      analise_id: id, funil_id: atual.id, texto,
+      analise_id: rodada?.id ?? null, funil_id: atual.id, texto,
       expectativa: expectativa || null,
       criada_por: user?.id ?? null,
     });
@@ -246,7 +248,7 @@ export default function AnalisesPage() {
       toast({ title: 'Erro ao salvar a ação', description: error.message, variant: 'destructive' });
       return;
     }
-    espelhar(await carregarAcoes(atual.id));
+    espelhar(await carregarAcoes(atual.id), rodada?.data);
   }
 
   async function marcarAcao(id: string, feita: boolean) {
@@ -292,11 +294,11 @@ export default function AnalisesPage() {
     if (!metricas && !leitura.trim()) { ir(lidos); return analiseId; }
 
     setSalvando(true);
-    const id = await garantirRodada();
-    if (!id) { setSalvando(false); return null; }
+    const rodada = await garantirRodada();
+    if (!rodada) { setSalvando(false); return null; }
 
     const { error } = await supabase.from('analise_itens').upsert({
-      analise_id: id,
+      analise_id: rodada.id,
       funil_id: atual.id,
       // O RETRATO das métricas e da retenção. Se uma venda for recategorizada
       // depois, a leitura continua fazendo sentido ao lado dos números que a
@@ -313,9 +315,9 @@ export default function AnalisesPage() {
     }
     const mapa = { ...lidos, [atual.id]: leitura };
     setLidos(mapa);
-    espelhar();
+    espelhar(acoes, rodada.data);
     ir(mapa);
-    return id;
+    return rodada.id;
   }
 
   /**
@@ -327,10 +329,15 @@ export default function AnalisesPage() {
    * fechado, e um toast de erro a cada salvar seria pior que a falta do
    * espelho.
    */
-  function espelhar(acoesAgora: Acao[] = acoes) {
-    if (!atual || !dataRodada) return;
+  function espelhar(acoesAgora: Acao[] = acoes, dataForcada?: string) {
+    // A data vem por parâmetro quando a rodada acabou de nascer: nesse clique
+    // `dataRodada` ainda é null nesta closure, e o espelho do PRIMEIRO
+    // salvamento se perdia em silêncio — o banco gravava e o Obsidian ficava
+    // com a nota da rodada anterior.
+    const quando = dataForcada ?? dataRodada;
+    if (!atual || !quando) return;
     exportarRodada({
-      dataRodada,
+      dataRodada: quando,
       projeto: atual.projeto,
       rev: atual.rev,
       metodo: atual.metodo,

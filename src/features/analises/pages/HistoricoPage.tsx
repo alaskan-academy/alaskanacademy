@@ -11,7 +11,9 @@ import { Lock, PenLine } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { AcaoEditavel } from '../components/AcaoEditavel';
 import { MetricasDoRev } from '../metricas';
+import { RetencaoVsl } from '../retencao';
 import { formatarData } from '../periodo';
+import { exportarVarias, RodadaParaExportar } from '../exportar';
 
 /**
  * Onde a leitura escrita na rodada vai parar.
@@ -32,6 +34,7 @@ interface ItemHistorico {
   leitura: string | null;
   analise_id: string;
   metricas: MetricasDoRev | null;
+  retencao: RetencaoVsl | null;
   criado_em: string;
 }
 
@@ -62,21 +65,24 @@ export default function HistoricoPage() {
   const confirmar = useConfirm();
   const [rodadas, setRodadas] = useState<Rodada[]>([]);
   const [revs, setRevs]       = useState<Record<string, string>>({});
+  // Dados crus do REV, para o espelho: o mapa acima guarda só o nome formatado.
+  const [revsInfo, setRevsInfo] = useState<Record<string, { rev: string; projeto: string | null; metodo: string | null }>>({});
   const [acoes, setAcoes]     = useState<AcaoHistorico[]>([]);
   const [filtro, setFiltro]   = useState<string>(TODOS);
   const [carregando, setCarregando] = useState(true);
 
   const carregar = useCallback(async () => {
-    const [{ data: rodadasData, error }, { data: revsData }, { data: acoesData }] = await Promise.all([
+    const [{ data: rodadasData, error }, { data: revsData }, { data: metodosData }, { data: acoesData }] = await Promise.all([
       supabase
         .from('analises')
-        .select('id,data,fechada_em,observacoes,analise_itens(id,analise_id,funil_id,leitura,metricas,criado_em)')
+        .select('id,data,fechada_em,observacoes,analise_itens(id,analise_id,funil_id,leitura,metricas,retencao,criado_em)')
         .order('data', { ascending: false })
         .limit(50),
       // O nome do REV não fica no item: guardar o nome junto seria um segundo
       // campo dizendo o que `funis.nome` já diz, e os dois divergiriam no dia
       // em que alguém renomeasse o REV.
       supabase.from('vw_mapa_revs').select('id,rev,projeto'),
+      supabase.from('funis').select('id,metodo'),
       supabase.from('analise_acoes')
         .select('id,analise_id,funil_id,texto,expectativa,feita,feita_em,perfis:feita_por(nome)')
         .order('criada_em'),
@@ -85,23 +91,79 @@ export default function HistoricoPage() {
     if (error) {
       toast({ title: 'Erro ao carregar o histórico', description: error.message, variant: 'destructive' });
     }
-    setRodadas((rodadasData ?? []) as unknown as Rodada[]);
+    const listaRodadas = (rodadasData ?? []) as unknown as Rodada[];
+    setRodadas(listaRodadas);
+
     // `perfis` chega como objeto ou array conforme o PostgREST resolve a
     // relação; normalizar aqui evita o nome sumir sem erro nenhum.
-    setAcoes(((acoesData ?? []) as unknown as Array<AcaoHistorico & {
+    const listaAcoes = ((acoesData ?? []) as unknown as Array<AcaoHistorico & {
       perfis: { nome: string | null } | { nome: string | null }[] | null;
     }>).map(a => ({
       ...a,
       feita_por_nome: (Array.isArray(a.perfis) ? a.perfis[0] : a.perfis)?.nome ?? null,
-    })));
+    }));
+    setAcoes(listaAcoes);
+
+    const metodoPor = Object.fromEntries(
+      ((metodosData ?? []) as Array<{ id: string; metodo: string | null }>)
+        .map(f => [f.id, f.metodo]),
+    );
+    const brutos = (revsData ?? []) as Array<{ id: string; rev: string; projeto: string | null }>;
     setRevs(Object.fromEntries(
-      ((revsData ?? []) as Array<{ id: string; rev: string; projeto: string | null }>)
-        .map(r => [r.id, r.projeto ? `${r.projeto} · ${r.rev}` : r.rev]),
+      brutos.map(r => [r.id, r.projeto ? `${r.projeto} · ${r.rev}` : r.rev]),
     ));
+    setRevsInfo(Object.fromEntries(
+      brutos.map(r => [r.id, { rev: r.rev, projeto: r.projeto, metodo: metodoPor[r.id] ?? null }]),
+    ));
+
     setCarregando(false);
+    // Devolve o que carregou porque quem marca uma ação precisa espelhar a
+    // versão recém-lida, e o estado só chega no render seguinte.
+    return { rodadas: listaRodadas, acoes: listaAcoes };
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  /**
+   * Reespelha no Obsidian e na planilha o que mudou aqui.
+   *
+   * Sem isto, corrigir uma ação no Histórico deixava as duas pontas com a
+   * versão velha — e registro que só se corrige num dos três lugares é pior
+   * que registro que não se corrige, porque passam a se contradizer.
+   *
+   * Remonta a partir do que a tela já tem em mãos: o retrato gravado no item é
+   * a fonte, e não um recálculo, para a nota continuar contando a história do
+   * dia em que a decisão foi tomada.
+   */
+  const espelharAfetadas = useCallback((
+    listaAcoes: AcaoHistorico[], rodadasAtuais = rodadas,
+  ) => {
+    const pacotes: RodadaParaExportar[] = [];
+    for (const rodada of rodadasAtuais) {
+      const daRodada = listaAcoes.filter(a => a.analise_id === rodada.id);
+      const ids = [...new Set([
+        ...rodada.analise_itens.map(i => i.funil_id),
+        ...daRodada.map(a => a.funil_id),
+      ])];
+      for (const funilId of ids) {
+        const item = rodada.analise_itens.find(i => i.funil_id === funilId) ?? null;
+        const rev = revsInfo[funilId];
+        if (!rev) continue;
+        pacotes.push({
+          dataRodada: rodada.data,
+          projeto: rev.projeto, rev: rev.rev, metodo: rev.metodo,
+          metricas: item?.metricas ?? null,
+          retencao: item?.retencao ?? null,
+          leitura: item?.leitura ?? '',
+          acoes: daRodada.filter(a => a.funil_id === funilId).map(a => ({
+            texto: a.texto, expectativa: a.expectativa, feita: a.feita,
+            feita_em: a.feita_em, feita_por_nome: a.feita_por_nome,
+          })),
+        });
+      }
+    }
+    if (pacotes.length > 0) exportarVarias(pacotes);
+  }, [rodadas, revsInfo]);
 
   /**
    * Editar aqui e não só na Rodada, porque é aqui que se relê.
@@ -117,7 +179,9 @@ export default function HistoricoPage() {
       toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
       return;
     }
-    setAcoes(prev => prev.map(a => (a.id === id ? { ...a, texto, expectativa } : a)));
+    const lista = acoes.map(a => (a.id === id ? { ...a, texto, expectativa } : a));
+    setAcoes(lista);
+    espelharAfetadas(lista);
   }
 
   async function marcarAcao(id: string, feita: boolean) {
@@ -128,7 +192,8 @@ export default function HistoricoPage() {
       return;
     }
     // Recarrega em vez de adivinhar: o carimbo é feito pelo gatilho no banco.
-    await carregar();
+    const { rodadas: rs, acoes: as } = await carregar();
+    espelharAfetadas(as, rs);
   }
 
   async function apagarAcao(id: string) {
@@ -143,7 +208,9 @@ export default function HistoricoPage() {
       toast({ title: 'Erro ao apagar', description: error.message, variant: 'destructive' });
       return;
     }
-    setAcoes(prev => prev.filter(a => a.id !== id));
+    const lista = acoes.filter(a => a.id !== id);
+    setAcoes(lista);
+    espelharAfetadas(lista);
   }
 
 
