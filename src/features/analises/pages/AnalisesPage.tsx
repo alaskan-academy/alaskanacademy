@@ -18,7 +18,8 @@ import { BlocoUpsell } from '../components/BlocoUpsell';
 import { AvisoPlanilha } from '../components/AvisoPlanilha';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
 import { RetencaoVsl, buscarRetencao } from '../retencao';
-import { exportarRodada } from '../exportar';
+import { exportarRodada, ResultadoEspelho } from '../exportar';
+import { EstadoEspelho } from '../components/EstadoEspelho';
 import {
   Janela, PERIODOS, PERSONALIZADO, janelaDeDias, janelaAnterior, diasDaJanela, formatarData,
 } from '../periodo';
@@ -72,6 +73,7 @@ export default function AnalisesPage() {
   const [acoes, setAcoes]           = useState<Acao[]>([]);
   const [salvando, setSalvando]     = useState(false);
   const [fechando, setFechando]     = useState(false);
+  const [espelho, setEspelho]       = useState<ResultadoEspelho | null>(null);
 
   const atual = revs[indice];
   const ultimo = indice === revs.length - 1;
@@ -348,7 +350,7 @@ export default function AnalisesPage() {
         texto: a.texto, expectativa: a.expectativa, feita: a.feita,
         feita_em: a.feita_em, feita_por_nome: a.feita_por_nome,
       })),
-    });
+    }, setEspelho);
   }
 
   const irPara = (passo: -1 | 1) => {
@@ -678,16 +680,7 @@ export default function AnalisesPage() {
                 O que você lê nisso
               </h3>
               <div className="h-px flex-1 bg-border" />
-              <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                {salvando ? 'salvando…'
-                  : porSalvar ? 'não salvo'
-                  : (
-                    <>
-                      <Check className="h-3 w-3 text-emerald-400" />
-                      salvo no Obsidian e na planilha
-                    </>
-                  )}
-              </span>
+              <EstadoEspelho resultado={espelho} salvando={salvando} porSalvar={porSalvar} />
             </div>
             <Textarea
               className="h-24 resize-none text-sm"

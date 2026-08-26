@@ -185,20 +185,29 @@ export function montarNota(r: RodadaParaExportar): string {
  * salvar. O caminho é derivado da data e do REV, nunca de um id: assim a nota
  * tem nome legível no vault e continua a mesma entre salvamentos.
  */
-async function paraObsidian(r: RodadaParaExportar): Promise<void> {
-  const { data: cfg } = await supabase
-    .from('configuracoes_texto').select('valor')
-    .eq('chave', 'obsidian_api_key').maybeSingle();
-  if (!cfg?.valor) return;
-
+async function paraObsidian(r: RodadaParaExportar, chave: string): Promise<void> {
   const nome = slug(`${r.projeto ?? ''} ${r.rev}`) || 'rev';
   const caminho = `${PASTA}/${r.dataRodada}/${nome}.md`;
 
-  await fetch(`${OBSIDIAN}/vault/${encodeURIComponent(caminho)}`, {
+  const res = await fetch(`${OBSIDIAN}/vault/${encodeURIComponent(caminho)}`, {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${cfg.valor}`, 'Content-Type': 'text/markdown' },
+    headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'text/markdown' },
     body: montarNota(r),
   });
+  if (!res.ok && res.status !== 204) throw new Error(`Obsidian respondeu ${res.status}`);
+}
+
+async function chaveDoObsidian(): Promise<string | null> {
+  const { data } = await supabase
+    .from('configuracoes_texto').select('valor')
+    .eq('chave', 'obsidian_api_key').maybeSingle();
+  return (data?.valor ?? '').trim() || null;
+}
+
+/** Como cada ponta terminou. A tela usa para dizer o que ficou de fora. */
+export interface ResultadoEspelho {
+  obsidian: 'ok' | 'fora' | 'sem-chave';
+  sheets: 'ok' | 'pulado' | 'erro';
 }
 
 /**
@@ -207,33 +216,116 @@ async function paraObsidian(r: RodadaParaExportar): Promise<void> {
  * Nunca lança: o `void` do chamador não teria onde tratar, e uma exportação que
  * derruba o salvamento seria pior que exportação nenhuma.
  */
-export function exportarRodada(r: RodadaParaExportar): void {
+export function exportarRodada(
+  r: RodadaParaExportar, aoTerminar?: (res: ResultadoEspelho) => void,
+): void {
+  exportarVarias([r], aoTerminar);
+}
+
+/**
+ * Espelha uma ou várias rodadas, e conta como cada ponta terminou.
+ *
+ * As duas em paralelo e com `allSettled`: o Obsidian fora do ar não pode
+ * impedir a planilha de atualizar, nem o contrário.
+ *
+ * O RESULTADO importa. Antes disto as duas falhavam em silêncio absoluto, e
+ * com o Obsidian fechado dava para percorrer uma rodada inteira sem nenhuma
+ * nota ser escrita e sem nada na tela dizendo isso. Silêncio serve para não
+ * atrapalhar; não serve para esconder.
+ *
+ * Nada se perde de verdade: a nota é derivada do banco, então basta reenviar
+ * quando o Obsidian voltar — é o que `reenviarTudoParaObsidian` faz.
+ */
+export function exportarVarias(
+  rodadas: RodadaParaExportar[], aoTerminar?: (res: ResultadoEspelho) => void,
+): void {
   void (async () => {
-    // Em paralelo e com `allSettled`: o Obsidian fora do ar não pode impedir a
-    // planilha de atualizar, nem o contrário.
-    await Promise.allSettled([
-      paraObsidian(r),
+    const chave = await chaveDoObsidian();
+
+    const [obs, sheets] = await Promise.allSettled([
+      chave
+        ? Promise.all(rodadas.map(r => paraObsidian(r, chave)))
+        : Promise.reject(new Error('sem chave')),
       supabase.functions.invoke('analises-sheets-sync', { body: {} }),
     ]);
+
+    aoTerminar?.({
+      obsidian: obs.status === 'fulfilled' ? 'ok' : chave ? 'fora' : 'sem-chave',
+      sheets: sheets.status !== 'fulfilled' ? 'erro'
+        : (sheets.value.data as { pulado?: boolean; erro?: string })?.pulado ? 'pulado'
+        : (sheets.value.data as { erro?: string })?.erro ? 'erro'
+        : 'ok',
+    });
   })().catch(() => { /* acessório: segue o jogo */ });
 }
 
 /**
- * Espelha várias rodadas de uma vez — é o que o Histórico usa.
+ * Reescreve TODAS as notas do Obsidian a partir do banco.
  *
- * Editar uma ação lá muda o texto de uma nota específica, mas a planilha é
- * reescrita inteira de qualquer jeito. Então: uma chamada só ao Sheets, e um
- * `PUT` por nota afetada.
- *
- * Sem isto, corrigir uma ação no Histórico deixaria o Obsidian e a planilha
- * com a versão velha — e o registro que só se corrige em um dos três lugares é
- * pior que o registro que não se corrige, porque agora eles se contradizem.
+ * É o que transforma "o Obsidian estava fechado" de perda em atraso. A nota
+ * nunca foi a fonte — é um retrato do que está em `analise_itens`, então dá
+ * para refazê-la inteira a qualquer momento sem consultar nada além do banco.
  */
-export function exportarVarias(rodadas: RodadaParaExportar[]): void {
-  void (async () => {
-    await Promise.allSettled([
-      ...rodadas.map(paraObsidian),
-      supabase.functions.invoke('analises-sheets-sync', { body: {} }),
-    ]);
-  })().catch(() => { /* acessório: segue o jogo */ });
+export async function reenviarTudoParaObsidian(): Promise<{ notas: number }> {
+  const chave = await chaveDoObsidian();
+  if (!chave) throw new Error('Chave do Obsidian não configurada.');
+
+  const [{ data: rodadas }, { data: acoes }, { data: revs }, { data: metodos }] = await Promise.all([
+    supabase.from('analises')
+      .select('id,data,analise_itens(funil_id,leitura,metricas,retencao)')
+      .order('data', { ascending: false }),
+    supabase.from('analise_acoes')
+      .select('funil_id,analise_id,texto,expectativa,feita,feita_em,perfis:feita_por(nome)')
+      .order('criada_em'),
+    supabase.from('vw_mapa_revs').select('id,rev,projeto'),
+    supabase.from('funis').select('id,metodo'),
+  ]);
+
+  const metodoPor = Object.fromEntries(
+    ((metodos ?? []) as Array<{ id: string; metodo: string | null }>).map(f => [f.id, f.metodo]));
+  const revPor = Object.fromEntries(
+    ((revs ?? []) as Array<{ id: string; rev: string; projeto: string | null }>).map(r => [r.id, r]));
+
+  type LinhaAcao = {
+    funil_id: string; analise_id: string | null; texto: string;
+    expectativa: string | null; feita: boolean; feita_em: string | null;
+    perfis: { nome: string | null } | { nome: string | null }[] | null;
+  };
+  const todasAcoes = (acoes ?? []) as unknown as LinhaAcao[];
+
+  let notas = 0;
+  for (const rodada of (rodadas ?? []) as unknown as Array<{
+    id: string; data: string;
+    analise_itens: Array<{
+      funil_id: string; leitura: string | null;
+      metricas: MetricasDoRev | null; retencao: RetencaoVsl | null;
+    }>;
+  }>) {
+    const daRodada = todasAcoes.filter(a => a.analise_id === rodada.id);
+    const ids = [...new Set([
+      ...rodada.analise_itens.map(i => i.funil_id),
+      ...daRodada.map(a => a.funil_id),
+    ])];
+
+    for (const funilId of ids) {
+      const rev = revPor[funilId];
+      if (!rev) continue;
+      const item = rodada.analise_itens.find(i => i.funil_id === funilId) ?? null;
+      await paraObsidian({
+        dataRodada: rodada.data,
+        projeto: rev.projeto, rev: rev.rev, metodo: metodoPor[funilId] ?? null,
+        metricas: item?.metricas ?? null,
+        retencao: item?.retencao ?? null,
+        leitura: item?.leitura ?? '',
+        acoes: daRodada.filter(a => a.funil_id === funilId).map(a => ({
+          texto: a.texto, expectativa: a.expectativa, feita: a.feita,
+          feita_em: a.feita_em,
+          feita_por_nome: (Array.isArray(a.perfis) ? a.perfis[0] : a.perfis)?.nome ?? null,
+        })),
+      }, chave);
+      notas++;
+    }
+  }
+
+  return { notas };
 }
