@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { CopyOffer } from '@/features/copywriters/types';
+import { STATUS_PADRAO, opcoesComAtual } from './statusDaOferta';
 
 interface Props {
   open: boolean;
@@ -20,7 +21,7 @@ export function OfferModal({ open, onClose, onSaved, offer }: Props) {
   const [saving, setSaving] = useState(false);
   const [name, setName]               = useState(offer?.name ?? '');
   const [niche, setNiche]             = useState(offer?.niche ?? '');
-  const [status, setStatus]           = useState(offer?.status ?? 'acompanhando');
+  const [status, setStatus]           = useState(offer?.status ?? STATUS_PADRAO);
   const [adLibraryUrl, setAdLibraryUrl] = useState(offer?.ad_library_url ?? '');
   const [pageUrl, setPageUrl]         = useState(offer?.page_url ?? '');
   const [notes, setNotes]             = useState(offer?.notes ?? '');
@@ -93,10 +94,9 @@ export function OfferModal({ open, onClose, onSaved, offer }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="acompanhando">Acompanhando</SelectItem>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="pausado">Pausado</SelectItem>
-                  <SelectItem value="arquivado">Arquivado</SelectItem>
+                  {opcoesComAtual(offer?.status ?? null).map(st => (
+                    <SelectItem key={st.valor} value={st.valor}>{st.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

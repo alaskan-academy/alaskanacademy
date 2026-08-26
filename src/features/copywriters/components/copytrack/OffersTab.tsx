@@ -12,16 +12,8 @@ import {
 } from 'lucide-react';
 import { OfferModal } from './OfferModal';
 import { OfferTracking } from './OfferTracking';
+import { STATUS_OFERTA, STATUS_PADRAO, statusDaOferta } from './statusDaOferta';
 
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  acompanhando: { label: 'Acompanhando', cls: 'bg-violet-500 text-white dark:bg-violet-500 dark:text-white' },
-  monitorando:  { label: 'Monitorando',  cls: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400' },
-  ativo:        { label: 'Ativo',        cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-  pausado:      { label: 'Pausado',      cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-  arquivado:    { label: 'Arquivado',    cls: 'bg-muted text-muted-foreground' },
-};
-
-const HIGHLIGHT_STATUSES = new Set(['acompanhando']);
 
 function fmtDate(d: string | null) {
   if (!d) return '—';
@@ -66,7 +58,7 @@ export function OffersTab() {
   const niches = ['todos', ...Array.from(new Set(offers.map(o => o.niche).filter(Boolean) as string[])).sort()];
 
   const filtered = offers.filter(o => {
-    if (filterStatus !== 'todos' && (o.status ?? 'ativo') !== filterStatus) return false;
+    if (filterStatus !== 'todos' && (o.status ?? STATUS_PADRAO) !== filterStatus) return false;
     if (filterNiche !== 'todos' && o.niche !== filterNiche) return false;
     if (!search) return true;
     const q = search.toLowerCase();
@@ -75,8 +67,8 @@ export function OffersTab() {
 
   // highlighted statuses first
   const sorted = [...filtered].sort((a, b) => {
-    const aIs = HIGHLIGHT_STATUSES.has(a.status ?? '');
-    const bIs = HIGHLIGHT_STATUSES.has(b.status ?? '');
+    const aIs = Boolean(statusDaOferta(a.status).destaque);
+    const bIs = Boolean(statusDaOferta(b.status).destaque);
     if (aIs && !bIs) return -1;
     if (!aIs && bIs) return 1;
     return 0;
@@ -103,7 +95,7 @@ export function OffersTab() {
     setModalOpen(true);
   }
 
-  const acompanhandoCount = offers.filter(o => HIGHLIGHT_STATUSES.has(o.status ?? '')).length;
+  const acompanhandoCount = offers.filter(o => statusDaOferta(o.status).destaque).length;
 
   if (loading) {
     return <div className="py-16 text-center text-sm text-muted-foreground">Carregando ofertas...</div>;
@@ -129,11 +121,9 @@ export function OffersTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os status</SelectItem>
-            <SelectItem value="acompanhando">Acompanhando</SelectItem>
-            <SelectItem value="monitorando">Monitorando</SelectItem>
-            <SelectItem value="ativo">Ativo</SelectItem>
-            <SelectItem value="pausado">Pausado</SelectItem>
-            <SelectItem value="arquivado">Arquivado</SelectItem>
+            {STATUS_OFERTA.map(st => (
+              <SelectItem key={st.valor} value={st.valor}>{st.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -178,9 +168,9 @@ export function OffersTab() {
             const prevTracking = offer.tracking.at(-2);
             const trendUp = lastTracking && prevTracking && (lastTracking.active_ads_count ?? 0) > (prevTracking.active_ads_count ?? 0);
             const trendDown = lastTracking && prevTracking && (lastTracking.active_ads_count ?? 0) < (prevTracking.active_ads_count ?? 0);
-            const s = offer.status ?? 'ativo';
-            const badge = STATUS_BADGE[s] ?? { label: s, cls: 'bg-muted text-muted-foreground' };
-            const isHighlighted = HIGHLIGHT_STATUSES.has(s);
+            const s = offer.status ?? STATUS_PADRAO;
+            const badge = statusDaOferta(s);
+            const isHighlighted = Boolean(badge.destaque);
 
             return (
               <div
