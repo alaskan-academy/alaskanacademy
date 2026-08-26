@@ -144,7 +144,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     if (!open) return;
 
     setNome(funil?.nome ?? '');
-    setOfertaId(funil?.oferta_id ?? '');
+    setOfertaId(funil?.projeto_id ?? '');
     setMetodo(funil?.metodo ?? '');
     setVslId(funil?.vsl_id ?? '');
     setStatus((funil?.status ?? 'ativo') as typeof status);
@@ -216,7 +216,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     const firstCheckout = subofertas.find(s => s.tipo === 'checkout');
     const payload: Record<string, unknown> = {
       nome:          nome.trim(),
-      oferta_id:     ofertaId || null,
+      projeto_id:    ofertaId || null,
       metodo:        metodo || null,
       vsl_id:        vslId || null,
       status,
@@ -297,7 +297,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     const firstCheckout = subofertas.find(s => s.tipo === 'checkout');
     const res = await supabase.from('funis').insert({
       nome:          `${nome.trim()} (cópia)`,
-      oferta_id:     ofertaId || null,
+      projeto_id:    ofertaId || null,
       metodo:        metodo || null,
       vsl_id:        vslId || null,
       status:        'planejado',

@@ -155,7 +155,7 @@ export function DominioModal({ open, onClose, onSaved, dominio, funis, projetos 
                     <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum funil ativo</p>
                   ) : (
                     funisAtivos.map(f => {
-                      const proj    = f.oferta_id ? projetoMap[f.oferta_id] : null;
+                      const proj    = f.projeto_id ? projetoMap[f.projeto_id] : null;
                       const checked = funilIds.includes(f.id);
                       return (
                         <button

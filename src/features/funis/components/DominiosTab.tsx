@@ -102,7 +102,7 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
           options={[
             { id: '__none__', label: 'Independentes' },
             ...funis.map(f => {
-              const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+              const proj = f.projeto_id ? projetoMap[f.projeto_id] : null;
               return { id: f.id, label: f.nome, sublabel: proj ? proj.nome : undefined };
             }),
           ]}
@@ -162,7 +162,7 @@ export function DominiosTab({ dominios, funis, projetos, onReload }: Props) {
                       {activeFunis.length > 0 ? (
                         <span className="text-xs text-foreground">
                           {activeFunis.map((f, i) => {
-                            const proj = f.oferta_id ? projetoMap[f.oferta_id] : null;
+                            const proj = f.projeto_id ? projetoMap[f.projeto_id] : null;
                             return (
                               <span key={f.id}>
                                 {i > 0 && <span className="text-muted-foreground">, </span>}

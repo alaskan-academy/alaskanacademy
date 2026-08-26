@@ -466,3 +466,51 @@ Só 13 dos 97 títulos trazem "Rev" — o resto ela atribui olhando nome, volume
 período, que a view já entrega prontos. E a pista de "Rev" no título entra como
 sugestão, nunca como atribuição automática: hoje mesmo o casamento por nome me
 traiu ao tentar ligar VSL a REV.
+
+---
+
+## O que ficou pendente, e de quem depende
+
+### Decisões que são dela
+
+**`metodo` pode ter virado redundante.** Hoje: 17 TSL, 3 VSL, 1 WhatsApp, 2
+nulos. Dois REVs chamados "REV5 - VSL" têm `metodo = 'TSL'` — o nome diz uma
+coisa e o campo diz outra, e ninguém sabe qual vale. Agora que `vsl_id` existe,
+"tem VSL?" é respondível sem esse campo. Perguntar antes de mexer.
+
+**Dois links de UTM com cadastro errado.** `Recuperação 20% Off - Velaroma` está
+com `campaign = saponaria` — copiado do link da Saponária sem trocar o campo. Um
+está sendo creditado pelas vendas do outro. E há duplicatas literais
+(`Site Handify - Embalagens` criado duas vezes). A tela marca os dois com `÷2`.
+
+### Trabalho manual que só ela pode fazer
+
+| | |
+|---|---|
+| Checkouts a atribuir | **96** — os 30 primeiros cobrem 95% das vendas |
+| REVs sem VSL escolhida | **23 de 23** |
+
+Nos dois casos eu decidi NÃO adivinhar: casar por nome errou 25% no teste.
+
+### Dívida assumida de propósito
+
+`ativo`, `produto` e `oferta_id` continuam existindo como colunas derivadas.
+Removê-las quebraria Produção e Criativos até o próximo deploy. Saem quando
+`dataCache.ts`, `KanbanView.tsx` e `CriativoFormModal.tsx` passarem a ler
+`status` e `projeto_id`.
+
+`bun run lint` falha com 217 erros — todos `any` pré-existente em SalesPage,
+FunnelPage, OverviewPage, UTMPage e Editores. Nenhum é desta revisão; um foi
+removido (o ternário-como-comando em `FunisTab`).
+
+### O que foi descoberta, e não integração
+
+**Os testes A/B do VTurb ainda não alimentam `testes_funis`.** Eu provei que
+`/comparison_groups/list` traz os dois players, as datas e as métricas de cada
+lado — inclusive o teste h06 × h07 que hoje é anotado à mão. Mas construir a
+ponte é trabalho que não foi feito. É o que resolveria os 10 de 13 testes
+concluídos sem vencedor.
+
+**A retenção de VSL também.** A API entrega os cinco campos (medido: Play Rate
+64,35%, 1 min 69,1%, Pitch 28,67%, Final 5,8%), e nenhuma tela os consome ainda.
+Pertence ao módulo de Análises.

@@ -65,10 +65,12 @@ export default function FunisPage() {
     const s = getStatusDisplay(f, state.testes);
     return s === 'ativo' || s === 'em_teste';
   }).length;
-  const esteiraCount    = state.testes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo' || !t.pipeline_status).length;
+  // Os rotulos seguem as COLUNAS do quadro de testes. Enquanto existiam tres
+  // telas, esta pilula dizia "na esteira" -- nome de uma tela que nao existe
+  // mais, e que ninguem encontraria ao procurar.
+  const naFilaCount     = state.testes.filter(t => t.pipeline_status === 'planejado' || t.pipeline_status === 'produzindo' || !t.pipeline_status).length;
   const prontoCount     = state.testes.filter(t => t.pipeline_status === 'pronto_para_teste').length;
   const testesCount     = state.testes.filter(t => t.pipeline_status === 'rodando').length;
-  const concluidosCount = state.testes.filter(t => t.pipeline_status === 'concluido').length;
   const semVereditoCount = state.testes.filter(semVeredito).length;
 
   if (state.loading) {
@@ -125,15 +127,15 @@ export default function FunisPage() {
             {prontoCount} pronto para teste
           </span>
 
-          {/* Na esteira — purple: em produção */}
+          {/* A produzir — purple: planejado + produzindo, as duas primeiras colunas */}
           <span className={cn(
             'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-            esteiraCount > 0
+            naFilaCount > 0
               ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
               : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
           )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', esteiraCount > 0 ? 'bg-purple-400' : 'bg-muted-foreground/30')} />
-            {esteiraCount} na esteira
+            <span className={cn('h-1.5 w-1.5 rounded-full', naFilaCount > 0 ? 'bg-purple-400' : 'bg-muted-foreground/30')} />
+            {naFilaCount} a produzir
           </span>
 
           {/* Domínios — sky: informacional */}

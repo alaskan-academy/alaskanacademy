@@ -110,7 +110,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   function toggle(id: string) {
     setExpanded(prev => {
       const s = new Set(prev);
-      s.has(id) ? s.delete(id) : s.add(id);
+      if (s.has(id)) s.delete(id); else s.add(id);
       return s;
     });
   }
@@ -145,12 +145,12 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
 
   // First pass: projetos with funis
   for (const funil of funis) {
-    const pid = funil.oferta_id ?? null;
+    const pid = funil.projeto_id ?? null;
     if (!seen.has(pid)) {
       seen.add(pid);
       groups.push({
         projeto: pid ? (projetoMap[pid] ?? null) : null,
-        funis: funis.filter(f => (f.oferta_id ?? null) === pid),
+        funis: funis.filter(f => (f.projeto_id ?? null) === pid),
       });
     }
   }
