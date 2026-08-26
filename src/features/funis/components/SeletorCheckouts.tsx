@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -15,9 +16,13 @@ import { Plus, X, ShoppingCart } from 'lucide-react';
  * fila dos 97 e escolhe o REV de cada um. Faltava a pergunta ao contrário —
  * "quais checkouts são deste REV?" — que é a que se faz com o cadastro aberto.
  *
- * É seleção e não digitação porque os 97 vêm do webhook da Payt, com o nome e o
- * volume que cada um moveu. Digitar a URL à mão criaria um checkout que não
- * existe do lado de lá, e portanto não ligaria venda nenhuma.
+ * É seleção, e não digitação, porque os checkouts vêm do webhook da Payt com o
+ * nome e o volume que cada um moveu — escolher da lista não erra a URL.
+ *
+ * Mas a lista só tem quem JÁ VENDEU, porque ela nasce das vendas. Ao lançar um
+ * REV novo isso deixaria as primeiras vendas sem REV, então também dá para colar
+ * a URL: a linha entra sem título e o gatilho a adota na primeira venda,
+ * preenchendo o nome e preservando o REV já escolhido.
  *
  * Grava na hora, e não ao salvar o REV: o vínculo mora em `funil_checkouts`, e
  * não num campo do funil. Deixar para o "Salvar" faria a tela mentir sobre onde
@@ -50,6 +55,7 @@ export function SeletorCheckouts({ funilId }: Props) {
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto]     = useState(false);
   const [salvando, setSalvando] = useState<string | null>(null);
+  const [urlNova, setUrlNova]   = useState('');
 
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
@@ -78,6 +84,54 @@ export function SeletorCheckouts({ funilId }: Props) {
       .sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
     [todos],
   );
+
+  /**
+   * Cria o checkout antes de ele ter vendido, a partir da URL.
+   *
+   * Entra SEM título de propósito: o título vem do webhook, e é justamente o
+   * campo nulo que faz o gatilho adotar esta linha na primeira venda em vez de
+   * criar outra ao lado.
+   */
+  async function preCadastrar() {
+    const bruta = urlNova.trim();
+    if (!bruta || !funilId) return;
+
+    // Normaliza igual ao gatilho: sem query string. Colar a URL com `?cart=` ou
+    // com os UTMs colados é o erro mais provável aqui, e ele criaria um checkout
+    // que nunca casaria com venda nenhuma.
+    const url = bruta.split('?')[0].replace(/\/+$/, '');
+    if (!/^https?:\/\/.+\..+/.test(url)) {
+      toast({ title: 'URL inválida', description: 'Cole o endereço completo do checkout.', variant: 'destructive' });
+      return;
+    }
+
+    if (todos.some(c => c.url === url)) {
+      toast({ title: 'Esse checkout já está na lista', description: 'Procure por ele na busca acima.' });
+      return;
+    }
+
+    setSalvando('_novo_');
+    const { error } = await supabase.from('funil_checkouts').insert({
+      url,
+      titulo: null,
+      funil_id: funilId,
+      eh_funil: true,
+      confirmado_em: new Date().toISOString(),
+    });
+    setSalvando(null);
+
+    if (error) {
+      toast({ title: 'Erro ao cadastrar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setUrlNova('');
+    setAberto(false);
+    toast({
+      title: 'Checkout vinculado',
+      description: 'O nome dele aparece assim que a primeira venda entrar.',
+    });
+    carregar();
+  }
 
   async function definir(checkoutId: string, novoFunil: string | null) {
     setSalvando(checkoutId);
@@ -153,6 +207,37 @@ export function SeletorCheckouts({ funilId }: Props) {
                   </CommandGroup>
                 </CommandList>
               </Command>
+
+              {/* Cadastrar antes da primeira venda.
+                  A lista acima só tem checkout que já vendeu, porque ela nasce
+                  das vendas. Ao lançar um REV novo isso deixava as primeiras
+                  vendas sem REV até alguém voltar aqui.
+
+                  Colando a URL, a linha entra sem título e o gatilho a ADOTA
+                  quando a primeira venda chega — preenchendo o título e
+                  preservando o REV escolhido. */}
+              <div className="border-t border-border p-2 space-y-1.5">
+                <p className="text-[10px] text-muted-foreground">
+                  Ainda não vendeu? Cole a URL do checkout:
+                </p>
+                <div className="flex gap-1.5">
+                  <Input
+                    value={urlNova}
+                    onChange={e => setUrlNova(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); preCadastrar(); } }}
+                    placeholder="https://payt.site/…"
+                    className="h-7 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={preCadastrar}
+                    disabled={!urlNova.trim() || salvando === '_novo_'}
+                    className="shrink-0 h-7 px-2 rounded text-xs border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-40 transition-colors"
+                  >
+                    Vincular
+                  </button>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         )}
@@ -178,7 +263,9 @@ export function SeletorCheckouts({ funilId }: Props) {
             >
               <ShoppingCart className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="text-xs truncate">{c.titulo ?? 'sem título'}</div>
+                <div className="text-xs truncate">
+                  {c.titulo ?? <span className="text-muted-foreground italic">aguardando a primeira venda</span>}
+                </div>
                 <div className="text-[10px] text-muted-foreground font-mono truncate">
                   {c.url.replace(/^https?:\/\//, '')}
                 </div>
