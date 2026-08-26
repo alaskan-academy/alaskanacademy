@@ -3,10 +3,13 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import { Lock, PenLine, ArrowRight, Check } from 'lucide-react';
+import { Lock, PenLine } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
+import { AcaoEditavel } from '../components/AcaoEditavel';
 import { MetricasDoRev } from '../metricas';
 import { formatarData } from '../periodo';
 
@@ -46,12 +49,17 @@ export interface AcaoHistorico {
   analise_id: string | null;
   funil_id: string;
   texto: string;
+  expectativa: string | null;
   feita: boolean;
+  feita_em: string | null;
+  feita_por_nome: string | null;
 }
 
 const TODOS = '_todos_';
 
 export default function HistoricoPage() {
+  const { user } = useAuth();
+  const confirmar = useConfirm();
   const [rodadas, setRodadas] = useState<Rodada[]>([]);
   const [revs, setRevs]       = useState<Record<string, string>>({});
   const [acoes, setAcoes]     = useState<AcaoHistorico[]>([]);
@@ -69,14 +77,23 @@ export default function HistoricoPage() {
       // campo dizendo o que `funis.nome` já diz, e os dois divergiriam no dia
       // em que alguém renomeasse o REV.
       supabase.from('vw_mapa_revs').select('id,rev,projeto'),
-      supabase.from('analise_acoes').select('id,analise_id,funil_id,texto,feita').order('criada_em'),
+      supabase.from('analise_acoes')
+        .select('id,analise_id,funil_id,texto,expectativa,feita,feita_em,perfis:feita_por(nome)')
+        .order('criada_em'),
     ]);
 
     if (error) {
       toast({ title: 'Erro ao carregar o histórico', description: error.message, variant: 'destructive' });
     }
     setRodadas((rodadasData ?? []) as unknown as Rodada[]);
-    setAcoes((acoesData ?? []) as AcaoHistorico[]);
+    // `perfis` chega como objeto ou array conforme o PostgREST resolve a
+    // relação; normalizar aqui evita o nome sumir sem erro nenhum.
+    setAcoes(((acoesData ?? []) as unknown as Array<AcaoHistorico & {
+      perfis: { nome: string | null } | { nome: string | null }[] | null;
+    }>).map(a => ({
+      ...a,
+      feita_por_nome: (Array.isArray(a.perfis) ? a.perfis[0] : a.perfis)?.nome ?? null,
+    })));
     setRevs(Object.fromEntries(
       ((revsData ?? []) as Array<{ id: string; rev: string; projeto: string | null }>)
         .map(r => [r.id, r.projeto ? `${r.projeto} · ${r.rev}` : r.rev]),
@@ -85,6 +102,50 @@ export default function HistoricoPage() {
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  /**
+   * Editar aqui e não só na Rodada, porque é aqui que se relê.
+   *
+   * O que NÃO se edita é o carimbo de quando e por quem: é registro do que
+   * aconteceu, não opinião sobre isso. Desmarcar e marcar de novo refaz o
+   * carimbo, pelo gatilho no banco.
+   */
+  async function salvarAcao(id: string, texto: string, expectativa: string | null) {
+    const { error } = await supabase.from('analise_acoes')
+      .update({ texto, expectativa }).eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setAcoes(prev => prev.map(a => (a.id === id ? { ...a, texto, expectativa } : a)));
+  }
+
+  async function marcarAcao(id: string, feita: boolean) {
+    const { error } = await supabase.from('analise_acoes')
+      .update({ feita, feita_por: feita ? user?.id ?? null : null }).eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao marcar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    // Recarrega em vez de adivinhar: o carimbo é feito pelo gatilho no banco.
+    await carregar();
+  }
+
+  async function apagarAcao(id: string) {
+    const ok = await confirmar({
+      title: 'Apagar esta ação?',
+      description: 'A decisão some do histórico e não volta.',
+      confirmText: 'Apagar',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('analise_acoes').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao apagar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setAcoes(prev => prev.filter(a => a.id !== id));
+  }
+
 
   const revsComAnalise = useMemo(() => {
     const ids = new Set([
@@ -181,6 +242,7 @@ export default function HistoricoPage() {
                   <ItemDaRodada
                     key={c.funilId} item={c.item} acoes={c.acoes}
                     nome={revs[c.funilId] ?? 'REV removido'}
+                    onSalvar={salvarAcao} onMarcar={marcarAcao} onApagar={apagarAcao}
                   />
                 ))}
               </div>
@@ -194,7 +256,12 @@ export default function HistoricoPage() {
 
 /** Um REV dentro de uma rodada: o que ela leu, e os números que estavam na tela. */
 function ItemDaRodada(
-  { item, nome, acoes }: { item: ItemHistorico | null; nome: string; acoes: AcaoHistorico[] },
+  { item, nome, acoes, onSalvar, onMarcar, onApagar }: {
+    item: ItemHistorico | null; nome: string; acoes: AcaoHistorico[];
+    onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
+    onMarcar: (id: string, feita: boolean) => Promise<void>;
+    onApagar: (id: string) => Promise<void>;
+  },
 ) {
   const m = item?.metricas?.atual;
   const janela = item?.metricas?.inicio && item.metricas?.fim
@@ -229,19 +296,14 @@ function ItemDaRodada(
       )}
 
       {acoes.length > 0 && (
-        <ul className="space-y-0.5">
+        <div className="space-y-1.5 pt-1 border-t border-border/40">
           {acoes.map(ac => (
-            <li key={ac.id} className={cn(
-              'text-sm flex gap-1.5 items-start',
-              ac.feita && 'text-muted-foreground line-through',
-            )}>
-              {ac.feita
-                ? <Check className="h-3.5 w-3.5 mt-1 shrink-0 text-emerald-400" />
-                : <ArrowRight className="h-3.5 w-3.5 mt-1 shrink-0 text-primary" />}
-              <span className={ac.feita ? undefined : 'text-muted-foreground'}>{ac.texto}</span>
-            </li>
+            <AcaoEditavel
+              key={ac.id} acao={ac}
+              onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+            />
           ))}
-        </ul>
+        </div>
       )}
     </article>
   );

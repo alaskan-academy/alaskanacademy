@@ -12,7 +12,7 @@ import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-re
 import { AnalisesNav } from '../components/AnalisesNav';
 import { ListaMetricas, LinhaMetrica } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
-import { ListaAcoes, Acao } from '../components/ListaAcoes';
+import { ListaAcoes, AcoesFeitas, Acao } from '../components/ListaAcoes';
 import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
 import { RetencaoVsl, buscarRetencao } from '../retencao';
@@ -151,23 +151,26 @@ export default function AnalisesPage() {
   const carregarAcoes = useCallback(async (funilId: string) => {
     const { data } = await supabase
       .from('analise_acoes')
-      .select('id,texto,feita,criada_em,analise_id,analises(data)')
+      .select('id,texto,expectativa,feita,feita_em,criada_em,analise_id,analises(data),perfis:feita_por(nome)')
       .eq('funil_id', funilId)
       .order('criada_em');
 
-    // `analises` chega como objeto ou array conforme o PostgREST resolve a
-    // relação; normalizar aqui evita a data sumir sem erro nenhum.
+    // `analises` e `perfis` chegam como objeto ou array conforme o PostgREST
+    // resolve a relação; normalizar aqui evita o dado sumir sem erro nenhum.
+    const um = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+
     const linhas = (data ?? []) as unknown as Array<{
-      id: string; texto: string; feita: boolean; criada_em: string;
+      id: string; texto: string; expectativa: string | null;
+      feita: boolean; feita_em: string | null; criada_em: string;
       analises: { data: string } | { data: string }[] | null;
+      perfis: { nome: string | null } | { nome: string | null }[] | null;
     }>;
-    setAcoes(linhas.map(l => {
-      const rodada = Array.isArray(l.analises) ? l.analises[0] : l.analises;
-      return {
-        id: l.id, texto: l.texto, feita: l.feita, criada_em: l.criada_em,
-        data_origem: rodada?.data ?? null,
-      };
-    }));
+    setAcoes(linhas.map(l => ({
+      id: l.id, texto: l.texto, expectativa: l.expectativa,
+      feita: l.feita, feita_em: l.feita_em, criada_em: l.criada_em,
+      feita_por_nome: um(l.perfis)?.nome ?? null,
+      data_origem: um(l.analises)?.data ?? null,
+    })));
   }, []);
 
   // Métricas do REV em foco. A retenção vem junto, mas por fora do SQL: muda
@@ -224,11 +227,13 @@ export default function AnalisesPage() {
     return data.id as string;
   }
 
-  async function adicionarAcao(texto: string) {
+  async function adicionarAcao(texto: string, expectativa: string) {
     if (!atual) return;
     const id = await garantirRodada();
     const { error } = await supabase.from('analise_acoes').insert({
-      analise_id: id, funil_id: atual.id, texto, criada_por: user?.id ?? null,
+      analise_id: id, funil_id: atual.id, texto,
+      expectativa: expectativa || null,
+      criada_por: user?.id ?? null,
     });
     if (error) {
       toast({ title: 'Erro ao salvar a ação', description: error.message, variant: 'destructive' });
@@ -364,6 +369,13 @@ export default function AnalisesPage() {
   const ant = metricas?.anterior;
   const distancia = a ? distanciaDoMeta(a) : null;
   const atribuicaoDuvidosa = distancia != null && distancia > LIMITE_DISTANCIA;
+  // O conjunto é a granularidade certa e não a campanha: a mesma campanha roda
+  // REVs diferentes, e no REV6 medir pela campanha inflava o gasto quase 7×.
+  const detalheInvestimento = !a ? undefined
+    : a.nivel_investimento === 'conjunto'
+      ? `${a.conjuntos} ${a.conjuntos === 1 ? 'conjunto' : 'conjuntos'} de anúncios`
+      : 'sem conjunto identificado — só anúncios com venda';
+
   const semBaseParaPago = a && ant ? baseAnteriorFragil(a, ant) : false;
   const avisoDeBase = semBaseParaPago
     ? 'os anúncios mal rodaram no período anterior — o "antes" aqui não é linha de base'
@@ -487,19 +499,17 @@ export default function AnalisesPage() {
                 nota={avisoDeBase ?? 'faturamento de front + order bumps, sem juros e sem reembolso'}
               >
                 <LinhaMetrica rotulo="Investimento" valor={a.investimento} anterior={ant.investimento} formato={formatCurrency} subirEhRuim
-                  extra={a.nivel_investimento === 'campanha' ? 'campanha inteira'
-                    : a.nivel_investimento === 'misto' ? 'campanha dividida: só os anúncios deste'
-                    : 'só anúncios com venda atribuída'} />
+                  detalhe={detalheInvestimento} />
                 <LinhaMetrica rotulo="Faturamento" valor={a.faturamento} anterior={ant.faturamento} formato={formatCurrency} destaque />
                 <LinhaMetrica rotulo="Resultado" valor={a.resultado} anterior={ant.resultado} formato={formatCurrency}
-                  extra="faturamento − investimento" />
+                  detalhe="faturamento − investimento" />
                 <LinhaMetrica rotulo="ROAS" valor={a.roas} anterior={ant.roas} formato={num2} destaque />
                 <LinhaMetrica rotulo="Imposto" valor={a.imposto_simples + a.imposto_meta} anterior={ant.imposto_simples + ant.imposto_meta} formato={formatCurrency} subirEhRuim
-                  extra="Simples + imposto sobre o Meta" />
+                  detalhe="Simples + imposto sobre o Meta" />
                 <LinhaMetrica rotulo="Taxa da plataforma" valor={a.taxa_plataforma} anterior={ant.taxa_plataforma} formato={formatCurrency} subirEhRuim
-                  extra="a taxa real cobrada, não 7% fixo" />
+                  detalhe="a taxa real cobrada, não 7% fixo" />
                 <LinhaMetrica rotulo="Lucro líquido" valor={a.lucro_liquido} anterior={ant.lucro_liquido} formato={formatCurrency} destaque
-                  extra={a.margem_pct != null ? `margem de ${pct(a.margem_pct)}` : undefined} />
+                  detalhe={a.margem_pct != null ? `margem de ${pct(a.margem_pct)}` : undefined} />
               </ListaMetricas>
 
               {/* 2 — o que foi vendido. A única parte em colunas, porque aqui
@@ -528,19 +538,19 @@ export default function AnalisesPage() {
               {/* 3 — o funil, na ordem em que ele acontece */}
               <ListaMetricas titulo="Funil" nota="do clique até a venda">
                 <LinhaMetrica rotulo="Cliques no link" valor={a.cliques} anterior={ant.cliques} formato={formatNumber}
-                  extra={a.cpc != null ? `${formatCurrency(a.cpc)} cada` : undefined} />
+                  detalhe={a.cpc != null ? `${formatCurrency(a.cpc)} cada` : undefined} />
                 <LinhaMetrica rotulo="Checkouts iniciados" valor={a.checkouts_iniciados} anterior={ant.checkouts_iniciados} formato={formatNumber}
-                  extra={<>
+                  detalhe={<>
                     {a.cpi != null && `${formatCurrency(a.cpi)} cada`}
                     {a.taxa_checkout_pct != null && ` · ${pct2(a.taxa_checkout_pct)} dos cliques`}
                   </>} />
                 <LinhaMetrica rotulo="Vendas" valor={a.vendas} anterior={ant.vendas} formato={formatNumber} destaque
-                  extra={<>
+                  detalhe={<>
                     {a.cpa != null && `${formatCurrency(a.cpa)} cada`}
                     {a.conv_checkout_pct != null && ` · ${pct2(a.conv_checkout_pct)} dos checkouts`}
                   </>} />
                 <LinhaMetrica rotulo="Conversão do funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2}
-                  extra="venda por visita à página" />
+                  detalhe="venda por visita à página" />
               </ListaMetricas>
 
               {/* 4 — como a página segura: é o meio do funil, entre o clique e
@@ -551,10 +561,10 @@ export default function AnalisesPage() {
 
               {/* 5 — quanto cada visitante custa e traz */}
               <ListaMetricas titulo="Por visitante" nota="EPC − CPV negativo é escala comprando prejuízo">
-                <LinhaMetrica rotulo="CPV — custo por visitante" valor={a.cpv} anterior={ant.cpv} formato={formatCurrency} subirEhRuim />
-                <LinhaMetrica rotulo="EPC — quanto cada um traz" valor={a.epc} anterior={ant.epc} formato={formatCurrency} />
-                <LinhaMetrica rotulo="EPC − CPV" valor={a.epc_menos_cpv} anterior={ant.epc_menos_cpv} formato={formatCurrency} destaque />
-                <LinhaMetrica rotulo="AOV — ticket médio" valor={a.aov} anterior={ant.aov} formato={formatCurrency} />
+                <LinhaMetrica rotulo="CPV" detalhe="custo por visitante" valor={a.cpv} anterior={ant.cpv} formato={formatCurrency} subirEhRuim />
+                <LinhaMetrica rotulo="EPC" detalhe="quanto cada visitante traz" valor={a.epc} anterior={ant.epc} formato={formatCurrency} />
+                <LinhaMetrica rotulo="EPC − CPV" detalhe="o que sobra de cada visitante" valor={a.epc_menos_cpv} anterior={ant.epc_menos_cpv} formato={formatCurrency} destaque />
+                <LinhaMetrica rotulo="AOV" detalhe="ticket médio da venda" valor={a.aov} anterior={ant.aov} formato={formatCurrency} />
               </ListaMetricas>
 
               {atribuicaoDuvidosa && (
@@ -580,6 +590,10 @@ export default function AnalisesPage() {
           ) : (
             <p className="text-xs text-muted-foreground/60 italic">Sem métricas para o período.</p>
           )}
+
+          {/* O que já foi mexido, ao lado dos números que isso deveria ter
+              mexido. É a pergunta que a rodada existe para responder. */}
+          <AcoesFeitas acoes={acoes} fimDaJanela={janela.fim} onMarcar={marcarAcao} />
 
           {/* O que se digita — e só isto. */}
           <div className="space-y-1.5">

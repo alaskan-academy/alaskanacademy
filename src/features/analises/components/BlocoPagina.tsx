@@ -35,18 +35,18 @@ export function BlocoVsl({ r, anterior }: { r: RetencaoVsl | null; anterior: Ret
       nota={<>ao vivo do VTurb{r.nome ? ` · ${r.nome}` : ''}</>}
     >
       <LinhaMetrica rotulo="Play Rate" valor={r.play_rate_pct} anterior={anterior?.play_rate_pct ?? null} formato={pct}
-        extra="quem deu play" />
+        detalhe="quem deu play" />
       <LinhaMetrica rotulo="1 minuto" valor={r.um_minuto_pct} anterior={anterior?.um_minuto_pct ?? null} formato={pct}
-        extra="dos que deram play" />
+        detalhe="dos que deram play" />
       <LinhaMetrica rotulo="Fim da Lead" valor={r.fim_da_lead_pct} anterior={anterior?.fim_da_lead_pct ?? null} formato={pct}
-        extra={r.lead_fim_seg == null
+        detalhe={r.lead_fim_seg == null
           // O único número desta tela que o banco não sabe: é marca de roteiro.
           ? <span className="text-amber-400/80">defina o fim da lead na VSL</span>
           : `aos ${emMinutos(r.lead_fim_seg)}`} />
       <LinhaMetrica rotulo="Pitch" valor={r.pitch_pct} anterior={anterior?.pitch_pct ?? null} formato={pct} destaque
-        extra={r.pitch_seg != null ? `aos ${emMinutos(r.pitch_seg)}` : undefined} />
+        detalhe={r.pitch_seg != null ? `aos ${emMinutos(r.pitch_seg)}` : undefined} />
       <LinhaMetrica rotulo="Final da VSL" valor={r.final_pct} anterior={anterior?.final_pct ?? null} formato={pct}
-        extra={r.duracao_seg != null ? `aos ${emMinutos(r.duracao_seg)}` : undefined} />
+        detalhe={r.duracao_seg != null ? `aos ${emMinutos(r.duracao_seg)}` : undefined} />
     </ListaMetricas>
   );
 }

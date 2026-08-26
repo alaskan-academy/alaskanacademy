@@ -46,8 +46,15 @@ export interface BlocoMetricas {
   pct_ofertas_extras: number | null;
 
   // ── Tráfego ────────────────────────────────────────────────────────────────
-  /** `campanha`, `misto` ou `anuncio`: em que nível o investimento foi somado. */
-  nivel_investimento: 'campanha' | 'misto' | 'anuncio';
+  /**
+   * Em que nível o investimento foi somado. É sempre o CONJUNTO quando existe
+   * um: a mesma campanha roda REVs diferentes, inclusive os de teste, e medir
+   * pela campanha inflou o gasto do REV6 em quase 7× (R$ 12.936 contra os
+   * R$ 1.898 reais). Cai para `anuncio` só quando o REV não tem conjunto
+   * identificado.
+   */
+  nivel_investimento: 'conjunto' | 'anuncio';
+  conjuntos: number;
   impressoes: number;
   cliques: number;
   visitas: number;

@@ -4,18 +4,23 @@ import { ArrowDown, ArrowUp } from 'lucide-react';
 import { variacao } from '../metricas';
 
 /**
- * Uma métrica por linha, em coluna única.
+ * Uma métrica por linha, com três colunas de número e nada mais.
  *
- * A versão em cartões colocava oito números em duas colunas, e a leitura ficou
- * "meio confusa, pouca leitura scan". O problema não era a quantidade: era o
- * olho ter que voltar para a esquerda a cada dois números e reencontrar a
- * altura certa.
+ * Duas correções vieram de olhar a tela em uso:
  *
- * Aqui os valores caem todos na mesma coluna, com largura fixa e
- * `tabular-nums`, então dá para descer a lista comparando grandezas sem ler
- * rótulo nenhum. Duas colunas ficaram reservadas para onde elas significam
- * alguma coisa — a tabela de Ofertas, onde cada coluna é uma medida diferente
- * da mesma oferta.
+ * 1. O que a métrica É saía na frente, dentro do rótulo ("CPV — custo por
+ *    visitante", "EPC — quanto cada um traz"). Isso empurrava o nome para duas
+ *    linhas e roubava o lugar de quem manda no scan, que é o número. Agora o
+ *    nome fica sozinho e curto, e a explicação desce para uma linha miúda
+ *    abaixo, onde só é lida por quem precisa.
+ *
+ * 2. O custo unitário e a taxa da etapa moravam numa quinta coluna colada na
+ *    borda direita, longe do valor -- "fica difícil de ver o custo e a % atual".
+ *    Foram para a mesma linha miúda de baixo, ao lado da explicação, a poucos
+ *    pixels do nome.
+ *
+ * O que sobrou nas colunas alinhadas é só o que se compara descendo o olho:
+ * valor, variação, período anterior.
  */
 
 export function ListaMetricas({
@@ -31,7 +36,7 @@ export function ListaMetricas({
         {nota && <span className="text-[10px] text-muted-foreground/80">{nota}</span>}
       </div>
       <div className="rounded-lg border border-border overflow-x-auto">
-        <div className="min-w-[34rem]">
+        <div className="min-w-[26rem]">
           {/* Um cabeçalho por bloco, em vez de "antes:" repetido em cada linha:
               o rótulo da coluna precisa existir uma vez, não vinte. */}
           <div className="flex items-baseline gap-3 px-3 py-1 border-b border-border bg-secondary/40
@@ -39,8 +44,7 @@ export function ListaMetricas({
             <span className="flex-1 min-w-0" />
             <span className="w-32 shrink-0 text-right">agora</span>
             <span className="w-16 shrink-0" />
-            <span className="w-28 shrink-0 text-right">período anterior</span>
-            <span className="w-44 shrink-0" />
+            <span className="w-28 shrink-0 text-right">anterior</span>
           </div>
           {children}
         </div>
@@ -56,14 +60,14 @@ interface Props {
   formato?: (n: number) => string;
   /** Para métricas onde subir é ruim, como custo. */
   subirEhRuim?: boolean;
-  /** O que vem à direita: custo por unidade, taxa da etapa, ressalva. */
-  extra?: ReactNode;
+  /** Linha miúda sob o rótulo: o que é, quanto custa, que fatia representa. */
+  detalhe?: ReactNode;
   destaque?: boolean;
 }
 
 export function LinhaMetrica({
   rotulo, valor, anterior, formato = n => String(n),
-  subirEhRuim = false, extra, destaque = false,
+  subirEhRuim = false, detalhe, destaque = false,
 }: Props) {
   const v = variacao(valor, anterior);
 
@@ -78,10 +82,15 @@ export function LinhaMetrica({
       'flex items-baseline gap-3 px-3 py-2 border-b border-border/40 last:border-0',
       destaque && 'bg-secondary/30',
     )}>
-      {/* Sem `truncate`: cortar o rótulo esconde a identidade da linha, que é
-          justamente o que não pode faltar. Se apertar, ele quebra em duas. */}
-      <span className={cn('flex-1 min-w-0 text-xs', destaque && 'font-semibold')}>
-        {rotulo}
+      <span className="flex-1 min-w-0">
+        <span className={cn('block text-sm leading-tight', destaque && 'font-semibold')}>
+          {rotulo}
+        </span>
+        {detalhe && (
+          <span className="block text-[10px] leading-tight text-muted-foreground mt-0.5">
+            {detalhe}
+          </span>
+        )}
       </span>
 
       <span className={cn(
@@ -114,10 +123,6 @@ export function LinhaMetrica({
           // melhor que mostrar "0%", que pareceria estabilidade.
           ? 'sem anterior'
           : formato(anterior)}
-      </span>
-
-      <span className="w-44 shrink-0 text-right text-[11px] text-muted-foreground">
-        {extra}
       </span>
     </div>
   );
