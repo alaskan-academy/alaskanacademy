@@ -68,6 +68,23 @@ export type CategoriaTest = string;
 export type ImpactoTest = 'alto' | 'medio' | 'baixo';
 export type DificuldadeTest = 'facil' | 'media' | 'dificil';
 
+/** Um lado de um teste A/B, como o VTurb devolve. */
+export interface LadoVturb {
+  player_id: string;
+  vsl: string;
+  views: number;
+  plays: number;
+  conversoes: number;
+  faturamento_brl: number;
+  /** Guardada junto do numerador e do denominador, para dar para conferir. */
+  taxa_conversao: number | null;
+}
+
+export interface MetricasVturb {
+  sincronizado_em: string;
+  lados: LadoVturb[];
+}
+
 export interface TesteFunil {
   id: string;
   funil_id: string | null;
@@ -95,6 +112,12 @@ export interface TesteFunil {
   comentario_ad: string | null;
   nome_ad: string | null;
   data_prevista: string | null;
+  // Vindo do VTurb
+  /** Id do comparison group. Presente só nos testes sincronizados de lá. */
+  vturb_comparison_id: string | null;
+  /** Retrato dos números dos dois lados no momento da sincronização. */
+  metricas_vturb: MetricasVturb | null;
+
   // Sync Radar
   radar_teste_id: string | null;
   criado_por: string | null;

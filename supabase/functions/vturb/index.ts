@@ -22,6 +22,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *                 `src/features/funis/revisao.md`: o dado bruto é histograma,
  *                 não curva.
  *   testes      → os testes A/B que já existem dentro do VTurb.
+ *   teste_stats → as métricas dos dois lados de um teste A/B.
  *   quota       → quanto da cota foi usada. Serve para diagnóstico.
  */
 
@@ -159,6 +160,14 @@ Deno.serve(async (req) => {
         timezone: 'America/Sao_Paulo',
       }));
 
+    // Métricas dos dois lados de um teste A/B.
+    case 'teste_stats':
+      return ok(await vturb('/comparison_groups/stats', 'POST', {
+        comparison_group_id: p.grupo_id,
+        items: p.items,
+        timezone: 'America/Sao_Paulo',
+      }));
+
     case 'quota':
       return ok(await vturb('/quota/usage', 'GET', {}));
 
@@ -195,6 +204,125 @@ Deno.serve(async (req) => {
       if (error) return ok({ erro: `Falha ao gravar: ${error.message}` });
 
       return ok({ dados: { players_no_vturb: players.length, vsls_gravadas: vsls.length } });
+    }
+
+    // Traz os testes A/B do VTurb para `testes_funis`, com os números dos dois
+    // lados.
+    //
+    // O que isto resolve: 10 dos 13 testes concluídos estão sem vencedor. Não é
+    // desleixo — preencher exigia abrir o VTurb, achar o teste, copiar os
+    // números e voltar. Com eles prontos, julgar vira decisão de dois segundos.
+    //
+    // O VENCEDOR NÃO É PREENCHIDO AQUI, de propósito. O VTurb sabe os números,
+    // não o veredito: os 4 testes de lá estão com `finished_at` nulo. Declarar
+    // um vencedor por taxa de conversão ignoraria significância e inventaria
+    // uma certeza que ninguém tem. A tela mostra os dois lados e ela decide.
+    case 'sincronizar_testes': {
+      const gl = await vturb('/comparison_groups/list', 'POST', {
+        start_date: p.inicio ?? '2026-01-01 00:00:00',
+        end_date: p.fim ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
+        timezone: 'America/Sao_Paulo',
+      });
+      if (gl.erro) return ok(gl);
+
+      const pl = await vturb('/players/list', 'GET', {});
+      if (pl.erro) return ok(pl);
+      const porId = new Map(
+        ((pl.dados ?? []) as Array<{ id: string; name: string; duration: number; pitch_time: number }>)
+          .map((x) => [x.id, x]),
+      );
+
+      const grupos = (gl.dados ?? []) as Array<{
+        id: string; name: string; player_ids: string[];
+        started_at: string | null; finished_at: string | null;
+      }>;
+
+      let gravados = 0;
+      const problemas: string[] = [];
+
+      for (const g of grupos) {
+        const items = g.player_ids.map((id) => ({
+          player_id: id,
+          video_duration: porId.get(id)?.duration ?? null,
+          pitch_time: porId.get(id)?.pitch_time ?? null,
+        }));
+
+        const st = await vturb('/comparison_groups/stats', 'POST', {
+          comparison_group_id: g.id,
+          items,
+          timezone: 'America/Sao_Paulo',
+        });
+        if (st.erro) { problemas.push(`${g.name}: ${st.erro}`); continue; }
+
+        type Lado = {
+          player_id: string;
+          views: { total_uniq_device: number };
+          plays: { total_uniq_device: number };
+          conversions: { total_uniq_device: number; total_amount_brl: number };
+        };
+
+        const lados = ((st.dados?.stats ?? []) as Lado[]).map((x) => {
+          const views = x.views?.total_uniq_device ?? 0;
+          const conv  = x.conversions?.total_uniq_device ?? 0;
+          return {
+            player_id: x.player_id,
+            vsl: porId.get(x.player_id)?.name ?? x.player_id,
+            views,
+            plays: x.plays?.total_uniq_device ?? 0,
+            conversoes: conv,
+            faturamento_brl: x.conversions?.total_amount_brl ?? 0,
+            // Guardo a taxa calculada junto do numerador e do denominador de
+            // propósito: quem ler depois consegue conferir a conta em vez de
+            // ter que confiar nela.
+            taxa_conversao: views > 0 ? +(conv / views * 100).toFixed(2) : null,
+          };
+        });
+
+        // Só descreve o que aconteceu; não diz quem ganhou.
+        const resumo = (i: number) => lados[i]
+          ? `${lados[i].vsl}: ${lados[i].conversoes} conversões em ${lados[i].views} views `
+            + `(${lados[i].taxa_conversao ?? '—'}%), R$ ${Math.round(lados[i].faturamento_brl)}`
+          : null;
+
+        const linha = {
+          vturb_comparison_id: g.id,
+          titulo: g.name,
+          tipo: 'ab_interno',
+          categoria: 'pagina',
+          metrica: 'Conversão (conversões ÷ views)',
+          variante_a: lados[0]?.vsl ?? null,
+          variante_b: lados[1]?.vsl ?? null,
+          resultado_a: resumo(0),
+          resultado_b: resumo(1),
+          data_inicio: g.started_at ? g.started_at.slice(0, 10) : null,
+          data_fim: g.finished_at ? g.finished_at.slice(0, 10) : null,
+          pipeline_status: g.finished_at ? 'concluido' : 'rodando',
+          metricas_vturb: { sincronizado_em: new Date().toISOString(), lados },
+        };
+
+        // `onConflict` na chave do VTurb: re-sincronizar ATUALIZA os números.
+        // Um teste rodando muda de número todo dia, e um retrato velho seria
+        // pior que nenhum — alguém decidiria por um dado de duas semanas atrás.
+        const { error } = await supabaseAdmin
+          .from('testes_funis')
+          .upsert(linha, { onConflict: 'vturb_comparison_id' });
+
+        if (error) problemas.push(`${g.name}: ${error.message}`);
+        else gravados++;
+      }
+
+      // Tenta ligar ao REV pela VSL. Devolve 0 enquanto nenhum REV tiver VSL
+      // escolhida, e a mensagem precisa dizer isso — senão parece falha.
+      const { data: ligados } = await supabaseAdmin.rpc('fn_backfill_funil_dos_testes');
+
+      return ok({
+        dados: {
+          testes_no_vturb: grupos.length,
+          gravados,
+          ligados_a_um_rev: ligados ?? 0,
+          problemas,
+        },
+      });
     }
 
     default:

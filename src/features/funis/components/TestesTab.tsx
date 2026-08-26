@@ -6,7 +6,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
   Plus, Pencil, ChevronLeft, ChevronRight, ExternalLink,
-  Lightbulb, Hammer, Rocket, FlaskConical, CheckCircle2, XCircle, MinusCircle, AlertTriangle,
+  Lightbulb, Hammer, Rocket, FlaskConical, CheckCircle2, XCircle, MinusCircle, AlertTriangle, RefreshCw,
 } from 'lucide-react';
 import { TesteModal } from './TesteModal';
 import { MultiFilter } from './MultiFilter';
@@ -76,6 +76,93 @@ const VENCEDOR_LABEL: Record<string, string> = { a: 'Variante A', b: 'Variante B
  */
 const TETO_CONCLUIDOS = 15;
 
+/**
+ * Os dois lados de um teste do VTurb, e o veredito em um clique.
+ *
+ * É aqui que o ciclo fecha. Dez dos treze testes concluídos estão sem vencedor
+ * porque julgar exigia abrir o VTurb, achar o teste, copiar os números e voltar.
+ * Com os números na frente, decidir é um clique.
+ *
+ * O `Δ` mostra a diferença, mas NÃO chama de vencedor: "3,28% × 1,71%" com duas
+ * semanas de dados é sugestivo, não conclusivo, e um rótulo automático de
+ * vencedor viraria decisão sem ninguém ter decidido. Quem decide é ela.
+ */
+function ComparacaoVturb({ teste, onVeredito }: {
+  teste: TesteFunil;
+  onVeredito: (v: 'a' | 'b' | 'inconclusivo') => void;
+}) {
+  const lados = teste.metricas_vturb?.lados ?? [];
+  if (lados.length < 2) return null;
+
+  const [a, b] = lados;
+  const melhor = (a.taxa_conversao ?? 0) >= (b.taxa_conversao ?? 0) ? 0 : 1;
+  const delta = Math.abs((a.taxa_conversao ?? 0) - (b.taxa_conversao ?? 0));
+
+  // Amostras muito desiguais não são teste A/B honesto: um dos lados pode estar
+  // recebendo tráfego de outra origem. Vale avisar antes de alguém comparar.
+  const desbalanceado = a.views > 0 && b.views > 0
+    && Math.max(a.views, b.views) / Math.min(a.views, b.views) >= 3;
+
+  return (
+    <div className="mt-1 rounded border border-border/60 bg-muted/20 p-1.5 space-y-1">
+      {lados.slice(0, 2).map((l, i) => (
+        <div key={l.player_id} className="flex items-baseline gap-1.5 text-[10px]">
+          <span className={cn(
+            'font-semibold w-3 shrink-0',
+            i === melhor ? 'text-emerald-400' : 'text-muted-foreground',
+          )}>
+            {i === 0 ? 'A' : 'B'}
+          </span>
+          <span className="truncate flex-1 text-muted-foreground" title={l.vsl}>{l.vsl}</span>
+          <span className={cn('tabular-nums font-medium', i === melhor && 'text-emerald-400')}>
+            {l.taxa_conversao ?? '—'}%
+          </span>
+          <span className="tabular-nums text-muted-foreground/70">
+            {l.conversoes}/{l.views}
+          </span>
+        </div>
+      ))}
+
+      {desbalanceado && (
+        <p className="text-[10px] text-amber-400/90">
+          Amostras muito desiguais — comparar com cuidado.
+        </p>
+      )}
+
+      {teste.vencedor ? (
+        <p className="text-[10px] text-emerald-400">
+          {teste.vencedor === 'inconclusivo'
+            ? 'Marcado como inconclusivo'
+            : `Vencedora: variante ${teste.vencedor.toUpperCase()}`}
+        </p>
+      ) : (
+        <div className="flex items-center gap-1 pt-0.5">
+          <span className="text-[10px] text-muted-foreground/70 mr-auto">
+            Δ {delta.toFixed(2)}pp · quem venceu?
+          </span>
+          {(['a', 'b'] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onVeredito(v)}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+            >
+              {v.toUpperCase()}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onVeredito('inconclusivo')}
+            className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:bg-muted/60 transition-colors"
+          >
+            nenhuma
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IceBadge({ score }: { score: number | null }) {
   if (score === null) return null;
   const { label, cls } =
@@ -113,6 +200,7 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
   const [modalKey, setModalKey]       = useState(0);
   const [movendo, setMovendo]         = useState<string | null>(null);
   const [verTodosConcluidos, setVerTodosConcluidos] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
 
   const funisDisponiveis = filtroProjetos.length === 0
     ? funis
@@ -170,6 +258,50 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
     setMovendo(null);
     if (error) toast({ title: 'Erro ao mover', description: error.message, variant: 'destructive' });
     else onReload();
+  }
+
+  /** Registra o veredito direto do cartão, sem abrir o modal. */
+  async function definirVencedor(t: TesteFunil, v: 'a' | 'b' | 'inconclusivo') {
+    const patch: Record<string, unknown> = {
+      vencedor: v,
+      // "Inconclusivo" não é vitória: validar aqui faria um teste sem resultado
+      // parecer aprovado nas contagens.
+      validado: v !== 'inconclusivo',
+      pipeline_status: 'concluido',
+      data_fim: hojeLocal(),
+    };
+    const { error } = await supabase.from('testes_funis').update(patch).eq('id', t.id);
+    if (error) toast({ title: 'Erro ao registrar', description: error.message, variant: 'destructive' });
+    else { toast({ title: 'Veredito registrado' }); onReload(); }
+  }
+
+  /** Busca os testes A/B do VTurb e atualiza os números dos que já existem. */
+  async function sincronizarVturb() {
+    setSincronizando(true);
+    const { data, error } = await supabase.functions.invoke('vturb', {
+      body: { acao: 'sincronizar_testes' },
+    });
+    setSincronizando(false);
+
+    if (error) {
+      toast({ title: 'Erro ao falar com o VTurb', description: error.message, variant: 'destructive' });
+      return;
+    }
+    if (data?.erro) {
+      toast({ title: 'VTurb', description: data.erro, variant: 'destructive' });
+      return;
+    }
+
+    const d = data?.dados ?? {};
+    toast({
+      title: `${d.gravados ?? 0} de ${d.testes_no_vturb ?? 0} testes atualizados`,
+      // Zero vínculos é o estado normal enquanto nenhum REV tiver VSL — a
+      // mensagem precisa explicar, senão parece que a sincronização falhou.
+      description: d.ligados_a_um_rev
+        ? `${d.ligados_a_um_rev} ligados a um REV.`
+        : 'Nenhum ligado a um REV ainda: escolha a VSL dos REVs para que eles se encontrem.',
+    });
+    onReload();
   }
 
   async function ativarFunil(funilId: string, e: React.MouseEvent) {
@@ -250,6 +382,20 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
         )}
 
         <div className="flex-1" />
+        <Button
+
+          size="sm" variant="outline" className="h-9 gap-1.5"
+
+          onClick={sincronizarVturb} disabled={sincronizando}
+
+        >
+
+          <RefreshCw className={cn('h-3.5 w-3.5', sincronizando && 'animate-spin')} />
+
+          {sincronizando ? 'Buscando…' : 'Testes do VTurb'}
+
+        </Button>
+
         <Button size="sm" className="h-9 gap-1.5" onClick={() => abrirNovo('planejado')}>
           <Plus className="h-3.5 w-3.5" />
           Novo teste
@@ -347,8 +493,15 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
                           </p>
                         )}
 
+                        {/* Os números dos dois lados, para o veredito sair daqui
+                            mesmo. Aparece em rodando e em concluído: um teste
+                            rodando já mostra para onde está indo. */}
+                        {t.metricas_vturb && (col.key === 'rodando' || col.key === 'concluido') && (
+                          <ComparacaoVturb teste={t} onVeredito={v => definirVencedor(t, v)} />
+                        )}
+
                         {/* Concluído: o veredito é a informação. */}
-                        {col.key === 'concluido' && (
+                        {col.key === 'concluido' && !t.metricas_vturb && (
                           <div className="flex items-center gap-1.5 text-[11px]">
                             <ResultIcon className={cn(
                               'h-3.5 w-3.5 shrink-0',

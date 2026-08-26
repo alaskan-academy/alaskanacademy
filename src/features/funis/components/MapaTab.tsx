@@ -55,6 +55,25 @@ function duracao(seg: number | null): string {
   return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
 }
 
+/**
+ * O nome do REV diz um método e o campo diz outro.
+ *
+ * Dois REVs se chamam "REV5 - VSL" e têm `metodo = 'TSL'`. Ninguém sabe qual
+ * dos dois vale, e nada no dash apontava para isso — a contradição só aparecia
+ * para quem lesse as duas coisas lado a lado e reparasse.
+ *
+ * Não dá para corrigir automaticamente (não há como saber qual está certo), mas
+ * dá para parar de esconder.
+ */
+function metodoContradizNome(rev: string, metodo: string | null): boolean {
+  if (!metodo) return false;
+  const nome = rev.toUpperCase();
+  const m = metodo.toUpperCase();
+  if (nome.includes('VSL') && m === 'TSL') return true;
+  if (nome.includes('TSL') && m === 'VSL') return true;
+  return false;
+}
+
 export function MapaTab() {
   const [linhas, setLinhas]   = useState<LinhaMapa[]>([]);
   const [busca, setBusca]     = useState('');
@@ -161,6 +180,14 @@ export function MapaTab() {
                           achou em {c}
                         </span>
                       ))}
+                      {metodoContradizNome(l.rev, l.metodo) && (
+                        <span
+                          title={`O nome diz uma coisa e o método diz "${l.metodo}". Um dos dois está errado.`}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                        >
+                          nome × método: {l.metodo}
+                        </span>
+                      )}
                     </div>
                   </div>
 
