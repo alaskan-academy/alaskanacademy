@@ -128,81 +128,117 @@ export function LinhaMetrica({
   );
 }
 
-interface PropsFunil {
-  rotulo: string;
-  /** O que fica grande: no funil, o custo da etapa. */
-  custo: number | null;
-  custoAntes: number | null;
-  /** Embaixo do custo: a taxa da etapa e a contagem. */
-  taxaPct: number | null;
-  qtd: number;
-  taxaPctAntes: number | null;
-  qtdAntes: number;
-  formatoCusto: (n: number) => string;
-  destaque?: boolean;
+/**
+ * A célula de três andares: contexto pequeno em cima, número que decide grande
+ * no meio, contexto pequeno embaixo.
+ *
+ * É o mesmo desenho nas Ofertas, no Funil e no upsell — e o que muda entre eles
+ * é só QUAL número merece o meio. Nas Ofertas é a adesão (103 unidades não
+ * dizem nada sem saber sobre quantas vendas; 24,94% diz). No Funil é o custo
+ * (20.410 cliques não dizem nada; R$ 1,01 por clique diz). Manter o mesmo
+ * desenho com miolos diferentes é o que deixa a tela escanear igual em todo
+ * lugar sem mentir sobre o que importa em cada bloco.
+ */
+export function CelulaTripla({
+  topo, principal, base, secundaria = false, destaque = false,
+}: {
+  topo?: ReactNode; principal: ReactNode; base?: ReactNode;
+  secundaria?: boolean; destaque?: boolean;
+}) {
+  return (
+    <>
+      {topo != null && (
+        <span className={cn(
+          'block tabular-nums leading-tight',
+          secundaria ? 'text-[10px] text-muted-foreground/70' : 'text-[10px] text-muted-foreground',
+        )}>
+          {topo}
+        </span>
+      )}
+      <span className={cn(
+        'block tabular-nums leading-tight',
+        secundaria ? 'text-[11px] text-muted-foreground'
+          : destaque ? 'text-base font-semibold' : 'text-sm font-semibold',
+      )}>
+        {principal}
+      </span>
+      {base != null && (
+        <span className={cn(
+          'block tabular-nums leading-tight mt-0.5',
+          secundaria ? 'text-[10px] text-muted-foreground/70' : 'text-[10px] text-muted-foreground',
+        )}>
+          {base}
+        </span>
+      )}
+    </>
+  );
 }
 
-/**
- * A linha do funil, onde a métrica em evidência é o CUSTO da etapa.
- *
- * O resto da tela põe a contagem em destaque e o custo miúdo embaixo do rótulo.
- * Aqui é o contrário, a pedido dela, e faz sentido: 20.410 cliques não dizem
- * nada sozinhos — R$ 1,01 por clique diz. A contagem e a taxa de passagem
- * descem para a linha de baixo, dentro da MESMA coluna, para que "agora" e
- * "anterior" continuem comparáveis de cima a baixo.
- *
- * A seta segue o custo, e custo que sobe é vermelho.
- */
-export function LinhaFunil({
-  rotulo, custo, custoAntes, taxaPct, qtd, taxaPctAntes, qtdAntes,
-  formatoCusto, destaque = false,
-}: PropsFunil) {
-  const v = variacao(custo, custoAntes);
+interface PropsTripla {
+  rotulo: string;
+  detalhe?: ReactNode;
+  /** O número do meio, e o que a seta compara. */
+  valor: number | null;
+  anterior: number | null;
+  formato: (n: number) => string;
+  subirEhRuim?: boolean;
+  destaque?: boolean;
+  topo?: ReactNode;      topoAntes?: ReactNode;
+  base?: ReactNode;      baseAntes?: ReactNode;
+}
+
+/** Uma linha de métrica com a célula de três andares dos dois lados. */
+export function LinhaTripla({
+  rotulo, detalhe, valor, anterior, formato,
+  subirEhRuim = false, destaque = false,
+  topo, topoAntes, base, baseAntes,
+}: PropsTripla) {
+  const v = variacao(valor, anterior);
+  const bom = v.direcao === 'igual' ? null : (v.direcao === 'subiu') !== subirEhRuim;
   const Icone = v.direcao === 'subiu' ? ArrowUp : ArrowDown;
-  const sub = (pct: number | null, n: number) =>
-    `${pct != null ? `${pct.toFixed(2)}% · ` : ''}${n.toLocaleString('pt-BR')}`;
 
   return (
     <div className={cn(
       'flex items-start gap-3 px-3 py-2 border-b border-border/40 last:border-0',
       destaque && 'bg-secondary/30',
     )}>
-      <span className={cn('flex-1 min-w-0 text-sm leading-tight', destaque && 'font-semibold')}>
-        {rotulo}
+      <span className="flex-1 min-w-0">
+        <span className={cn('block text-sm leading-tight', destaque && 'font-semibold')}>
+          {rotulo}
+        </span>
+        {detalhe && (
+          <span className="block text-[10px] leading-tight text-muted-foreground mt-0.5">
+            {detalhe}
+          </span>
+        )}
       </span>
 
       <span className="w-32 shrink-0 text-right">
-        <span className={cn(
-          'block tabular-nums',
-          destaque ? 'text-base font-semibold' : 'text-sm font-medium',
-        )}>
-          {custo == null ? '—' : formatoCusto(custo)}
-        </span>
-        <span className="block text-[10px] text-muted-foreground tabular-nums mt-0.5">
-          {sub(taxaPct, qtd)}
-        </span>
+        <CelulaTripla
+          topo={topo} base={base} destaque={destaque}
+          principal={valor == null ? '—' : formato(valor)}
+        />
       </span>
 
-      <span className="w-16 shrink-0 text-right">
+      <span className="w-16 shrink-0 text-right pt-3">
         {v.pct != null && v.direcao !== 'igual' && (
           <span className={cn(
             'inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums',
-            // Custo que sobe é ruim, sempre.
-            v.direcao === 'subiu' ? 'text-red-400' : 'text-emerald-400',
+            bom ? 'text-emerald-400' : 'text-red-400',
           )}>
             <Icone className="h-3 w-3" />
-            {Math.abs(v.pct).toFixed(1)}%
+            {Math.abs(v.pct) >= 1000 && valor != null && anterior
+              ? `${(valor / anterior).toFixed(0)}×`
+              : `${Math.abs(v.pct).toFixed(1)}%`}
           </span>
         )}
       </span>
 
       <span className="w-28 shrink-0 text-right">
-        <span className="block text-[11px] text-muted-foreground tabular-nums">
-          {custoAntes == null ? 'sem anterior' : formatoCusto(custoAntes)}
-        </span>
-        <span className="block text-[10px] text-muted-foreground/70 tabular-nums mt-0.5">
-          {sub(taxaPctAntes, qtdAntes)}
-        </span>
+        <CelulaTripla
+          secundaria topo={topoAntes} base={baseAntes}
+          principal={anterior == null ? 'sem anterior' : formato(anterior)}
+        />
       </span>
     </div>
   );

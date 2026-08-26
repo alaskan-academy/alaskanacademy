@@ -1,6 +1,7 @@
 import { ItemVendido, variacao } from '../metricas';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import { CelulaTripla } from './ListaMetricas';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 
 /**
@@ -37,24 +38,17 @@ interface Props {
   principal: { qtd: number; valor: number; antesQtd: number; antesValor: number };
 }
 
+/** Quantidade em cima, adesão grande no meio, montante embaixo. */
 function Celula({ adesao, valor, qtd, secundaria = false }: {
   adesao: number | null; valor: number; qtd: number; secundaria?: boolean;
 }) {
   return (
-    <>
-      <span className={cn(
-        'block tabular-nums',
-        secundaria ? 'text-[11px] text-muted-foreground' : 'text-sm font-semibold',
-      )}>
-        {adesao != null ? `${adesao.toFixed(2)}%` : '—'}
-      </span>
-      <span className={cn(
-        'block tabular-nums mt-0.5',
-        secundaria ? 'text-[10px] text-muted-foreground/70' : 'text-[10px] text-muted-foreground',
-      )}>
-        {formatCurrency(valor)} · {formatNumber(qtd)}
-      </span>
-    </>
+    <CelulaTripla
+      secundaria={secundaria}
+      topo={formatNumber(qtd)}
+      principal={adesao != null ? `${adesao.toFixed(2)}%` : '—'}
+      base={formatCurrency(valor)}
+    />
   );
 }
 

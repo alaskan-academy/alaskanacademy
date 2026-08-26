@@ -1,8 +1,8 @@
 import { cn } from '@/lib/utils';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { BlocoMetricas } from '../metricas';
-import { ListaMetricas, LinhaMetrica } from './ListaMetricas';
+import { ListaMetricas, LinhaMetrica, LinhaTripla } from './ListaMetricas';
 
 /**
  * O upsell ao lado do resultado do front, e nunca dentro dele.
@@ -71,35 +71,30 @@ export function BlocoUpsell({ a, ant }: { a: BlocoMetricas; ant: BlocoMetricas }
         </div>
       )}
 
-      <ListaMetricas
-        titulo="Com upsell"
-        // A ressalva precisa vir junto do número, toda vez: assinatura anual
-        // contada numa quinzena é caixa, não economia recorrente.
-        nota="assinatura anual — é caixa que entrou, não receita recorrente do período"
-      >
-        <LinhaMetrica
-          rotulo="Adesão ao upsell" valor={a.upsell_adesao_pct} anterior={ant.upsell_adesao_pct}
+      <ListaMetricas titulo="Com upsell">
+        {/* Quantidade em cima, adesão grande, faturamento embaixo — a linha
+            absorve o "Faturamento do upsell" que existia separado. Três
+            números sobre a mesma coisa não precisam de duas linhas. */}
+        <LinhaTripla
+          rotulo="Adesão ao upsell" detalhe={`de ${a.vendas} vendas do front`}
+          valor={a.upsell_adesao_pct} anterior={ant.upsell_adesao_pct}
           formato={pct2} destaque
-          detalhe={`${a.upsell_qtd} de ${a.vendas} vendas do front`}
-        />
-        <LinhaMetrica
-          rotulo="Faturamento do upsell" valor={a.upsell_faturamento} anterior={ant.upsell_faturamento}
-          formato={formatCurrency}
+          topo={formatNumber(a.upsell_qtd)} topoAntes={formatNumber(ant.upsell_qtd)}
+          base={formatCurrency(a.upsell_faturamento)}
+          baseAntes={formatCurrency(ant.upsell_faturamento)}
         />
         <LinhaMetrica
           rotulo="ROAS com upsell" valor={a.roas_com_upsell} anterior={ant.roas_com_upsell}
           formato={num2}
           detalhe={a.roas != null ? `só front: ${num2(a.roas)}` : undefined}
         />
-        <LinhaMetrica
-          rotulo="Lucro com upsell" valor={a.lucro_com_upsell} anterior={ant.lucro_com_upsell}
+        <LinhaTripla
+          rotulo="Lucro com upsell"
+          detalhe={`só front: ${formatCurrency(a.lucro_liquido)}`}
+          valor={a.lucro_com_upsell} anterior={ant.lucro_com_upsell}
           formato={formatCurrency} destaque
-          detalhe={
-            <>
-              só front: {formatCurrency(a.lucro_liquido)}
-              {a.margem_com_upsell_pct != null && ` · margem de ${pct(a.margem_com_upsell_pct)}`}
-            </>
-          }
+          base={a.margem_com_upsell_pct != null ? `margem de ${pct(a.margem_com_upsell_pct)}` : undefined}
+          baseAntes={ant.margem_com_upsell_pct != null ? `margem de ${pct(ant.margem_com_upsell_pct)}` : undefined}
         />
       </ListaMetricas>
     </div>

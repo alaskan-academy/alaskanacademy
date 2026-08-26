@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
-import { ListaMetricas, LinhaMetrica, LinhaFunil } from '../components/ListaMetricas';
+import { ListaMetricas, LinhaMetrica, LinhaTripla } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
 import { ListaAcoes, AcoesFeitas, Acao } from '../components/ListaAcoes';
 import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
@@ -497,7 +497,7 @@ export default function AnalisesPage() {
               {/* 1 — o veredito */}
               <ListaMetricas
                 titulo="Resultado"
-                nota={avisoDeBase ?? 'faturamento de front + order bumps, sem juros e sem reembolso'}
+                nota={avisoDeBase}
               >
                 <LinhaMetrica rotulo="Investimento" valor={a.investimento} anterior={ant.investimento} formato={formatCurrency} subirEhRuim
                   detalhe={detalheInvestimento} />
@@ -526,8 +526,9 @@ export default function AnalisesPage() {
                   </h3>
                   <div className="h-px flex-1 min-w-4 bg-border" />
                   {a.pct_ofertas_extras != null && (
-                    <span className="text-[10px] text-muted-foreground/80">
-                      {pct2(a.pct_ofertas_extras)} do faturamento veio dos bumps
+                    <span className="text-[11px] font-medium text-foreground tabular-nums">
+                      {pct2(a.pct_ofertas_extras)}
+                      <span className="font-normal text-muted-foreground"> do faturamento veio dos bumps</span>
                     </span>
                   )}
                 </div>
@@ -545,24 +546,25 @@ export default function AnalisesPage() {
                   nada sozinhos, R$ 1,01 por clique diz. A contagem e a taxa de
                   passagem descem para a linha de baixo, na mesma coluna, para
                   agora e anterior seguirem comparáveis de cima a baixo. */}
-              <ListaMetricas titulo="Funil" nota="custo por etapa · taxa de passagem e quantidade abaixo">
-                <LinhaFunil
-                  rotulo="Cliques no link" formatoCusto={formatCurrency}
-                  custo={a.cpc} custoAntes={ant.cpc}
-                  taxaPct={null} qtd={a.cliques}
-                  taxaPctAntes={null} qtdAntes={ant.cliques}
+              <ListaMetricas titulo="Funil">
+                <LinhaTripla
+                  rotulo="Cliques no link" formato={formatCurrency} subirEhRuim
+                  valor={a.cpc} anterior={ant.cpc}
+                  topo={formatNumber(a.cliques)} topoAntes={formatNumber(ant.cliques)}
                 />
-                <LinhaFunil
-                  rotulo="Checkouts iniciados" formatoCusto={formatCurrency}
-                  custo={a.cpi} custoAntes={ant.cpi}
-                  taxaPct={a.taxa_checkout_pct} qtd={a.checkouts_iniciados}
-                  taxaPctAntes={ant.taxa_checkout_pct} qtdAntes={ant.checkouts_iniciados}
+                <LinhaTripla
+                  rotulo="Checkouts iniciados" formato={formatCurrency} subirEhRuim
+                  valor={a.cpi} anterior={ant.cpi}
+                  topo={formatNumber(a.checkouts_iniciados)} topoAntes={formatNumber(ant.checkouts_iniciados)}
+                  base={a.taxa_checkout_pct != null ? pct2(a.taxa_checkout_pct) : undefined}
+                  baseAntes={ant.taxa_checkout_pct != null ? pct2(ant.taxa_checkout_pct) : undefined}
                 />
-                <LinhaFunil
-                  rotulo="Vendas" formatoCusto={formatCurrency} destaque
-                  custo={a.cpa} custoAntes={ant.cpa}
-                  taxaPct={a.conv_checkout_pct} qtd={a.vendas}
-                  taxaPctAntes={ant.conv_checkout_pct} qtdAntes={ant.vendas}
+                <LinhaTripla
+                  rotulo="Vendas" formato={formatCurrency} subirEhRuim destaque
+                  valor={a.cpa} anterior={ant.cpa}
+                  topo={formatNumber(a.vendas)} topoAntes={formatNumber(ant.vendas)}
+                  base={a.conv_checkout_pct != null ? pct2(a.conv_checkout_pct) : undefined}
+                  baseAntes={ant.conv_checkout_pct != null ? pct2(ant.conv_checkout_pct) : undefined}
                 />
                 <LinhaMetrica rotulo="Conversão do funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2}
                   detalhe="venda por visita à página" />

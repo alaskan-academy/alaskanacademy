@@ -44,6 +44,7 @@ const CopywritersPage          = lazy(() => import("./features/copywriters/pages
 const FunisPage                = lazy(() => import("./features/funis/pages/FunisPage"));
 const AnalisesPage             = lazy(() => import("./features/analises/pages/AnalisesPage"));
 const AnalisesHistoricoPage    = lazy(() => import("./features/analises/pages/HistoricoPage"));
+const AnalisesCompararPage     = lazy(() => import("./features/analises/pages/CompararPage"));
 const CriativosPage            = lazy(() => import("./features/criativos/pages/CriativosPage"));
 const NotFound                 = lazy(() => import("./pages/NotFound"));
 
@@ -104,6 +105,7 @@ const App = () => (
                     <Route path="/criativos" element={<ProtectedRoute><CriativosPage /></ProtectedRoute>} />
                     <Route path="/funis-gestao" element={<ProtectedRoute pageKey="funis-gestao"><FunisPage /></ProtectedRoute>} />
                     <Route path="/analises" element={<ProtectedRoute pageKey="analises"><AnalisesPage /></ProtectedRoute>} />
+                    <Route path="/analises/comparar" element={<ProtectedRoute pageKey="analises"><AnalisesCompararPage /></ProtectedRoute>} />
                     <Route path="/analises/historico" element={<ProtectedRoute pageKey="analises"><AnalisesHistoricoPage /></ProtectedRoute>} />
                     <Route path="/copywriters" element={<ProtectedRoute pageKey="copywriters"><CopywritersPage /></ProtectedRoute>} />
                     <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />

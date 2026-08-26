@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { ClipboardList, History } from 'lucide-react';
+import { ClipboardList, History, Columns3 } from 'lucide-react';
 
 /**
  * Nav interna do módulo, no padrão do Financeiro.
@@ -11,6 +11,7 @@ import { ClipboardList, History } from 'lucide-react';
 
 const ITEMS = [
   { path: '/analises',           label: 'Rodada',    icon: ClipboardList, exato: true },
+  { path: '/analises/comparar',  label: 'Comparar',  icon: Columns3,      exato: false },
   { path: '/analises/historico', label: 'Histórico', icon: History,       exato: false },
 ];
 
