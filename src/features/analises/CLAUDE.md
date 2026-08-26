@@ -56,32 +56,42 @@ que são os únicos, para não parecer que o resto também precisa.
 
 ## Modelo de dados
 
-Duas entidades, e a relação entre elas é o produto inteiro.
+Três tabelas, e a relação entre elas é o produto inteiro.
 
-### `alteracoes`
-O que mudou, quando, e por quê. Herda a estrutura que o Google Chat já usa
-(FUNIL / ALTERAÇÃO / MOTIVO / RESPONSÁVEL) porque as pessoas já escrevem assim.
-
-- `funil_id` / `projeto_id` — onde mudou. Os dois existem: `funis` e
-  `ofertas_editores` (que a tela chama de projetos)
-- `variante` — "REV1", "REV5", "VSL h06 v01". É o nome que eles já usam
-- `data` — **a data importa mais que tudo**: é o eixo do antes/depois
-- `descricao`, `motivo`, `responsavel_id`
-- `status` — `rodando` · `vencedora` · `descartada` · `revertida`
-- `veredito` — o texto que hoje vira `==` no Obsidian
-- `decidida_em`
+> O plano original previa uma tabela `alteracoes` separada, com `variante`,
+> `status` e `veredito`. Ela **não existe**: virou `analise_acoes`, que faz o
+> mesmo trabalho com metade dos campos. Registrar a alteração e registrar o que
+> se decide fazer eram a mesma coisa escrita duas vezes — e dois lugares para o
+> mesmo fato divergem, como já aconteceu cinco vezes neste projeto.
 
 ### `analises`
-Uma rodada de análise, de uma data, cobrindo vários funis.
+Uma rodada, de uma data, cobrindo vários REVs.
 
 - `data`, `autor_id`, `observacoes`
-- `analise_itens` — um por funil/projeto: `metricas` (jsonb, o retrato
-  calculado), `leitura` (o que ela escreveu), `proximas_acoes` (texto)
+- `fechada_em` — o marco que separa "estou analisando" de "analisei". Enquanto
+  for null, abrir a tela **retoma** esta rodada em vez de criar outra
+
+### `analise_itens`
+Um por REV dentro da rodada. `unique (analise_id, funil_id)`.
+
+- `metricas` (jsonb) — o RETRATO calculado
+- `retencao` (jsonb) — o retrato da VSL, quando existe
+- `leitura` — o que ela escreveu
 
 **Por que gravar `metricas` como retrato e não recalcular sempre:** a análise é
 um documento histórico. Se o dado de origem mudar depois — uma venda
 recategorizada, um estorno — a leitura que ela escreveu deixaria de fazer
 sentido ao lado de números diferentes. O retrato preserva o contexto da decisão.
+
+### `analise_acoes`
+O que ficou decidido. **Pertence ao REV, não à rodada**: escrita numa quinzena,
+continua aparecendo até alguém marcar como feita. É isso que faz a análise
+virar ciclo em vez de diário.
+
+- `funil_id` (dono) · `analise_id` (rodada em que nasceu, para o "desde 12/08")
+- `texto` · `expectativa` (opcional — o que se espera, escrito ANTES)
+- `feita` · `feita_em` · `feita_por` — carimbo, não opinião: é o gatilho
+  `fn_analise_acao_carimbo` que preenche, e desmarcar o refaz
 
 ---
 
@@ -92,23 +102,43 @@ Uma entrada só na sidebar — **Análises** —, com nav interna igual ao Finan
 
 | Rota | Tela | O que faz |
 |---|---|---|
-| `/analises` | Linha do tempo | Alterações de todos os funis em ordem, com o resultado de cada uma ao lado |
-| `/analises/rodada` | Rodada de análise | O trabalho de 3h. Um funil por vez, métricas já calculadas, ela escreve a leitura |
-| `/analises/alteracoes` | Registro | Formulário curto para registrar o que mudou |
-| `/analises/acoes` | Próximos passos | O que saiu das análises e ainda não foi feito |
+| `/analises` | Rodada | O trabalho de 3h. Um REV por vez, métricas já calculadas, ela escreve a leitura |
+| `/analises/comparar` | Comparar | Todos os REVs de uma vez, ou dois lado a lado. Responde "qual funil eu corto" |
+| `/analises/historico` | Histórico | As rodadas passadas, com o retrato dos números junto do texto |
 
-### A tela que importa: `/analises/rodada`
+### A tela que importa: `/analises`
 
-Cada funil aparece como um cartão com:
-1. **As métricas do período**, já calculadas, comparadas com o período anterior
-   — seta e delta, não só o número
-2. **As alterações que entraram no período**, com quantos dias de dados cada uma
-   tem
-3. **Um campo de leitura** e **um de próximas ações**
-4. Os cinco campos de VSL para digitar, marcados como os únicos manuais
+Na ordem da planilha que ela já usa — mudar a sequência de leitura custa mais
+que qualquer número a mais que se ganhe:
 
-O botão "Próximo funil" avança. No fim, um botão fecha a rodada e dispara as
-exportações.
+1. **Resultado** — investimento, faturamento, ROAS, imposto, taxa, lucro
+2. **Com upsell** — ao lado e nunca dentro (ver abaixo)
+3. **Ofertas** — oferta principal e cada bump, com a adesão em evidência
+4. **Funil** — cliques → checkouts → vendas, com o custo em evidência
+5. **Retenção da VSL** (ou rolagem, no TSL) — fica no meio do funil porque é
+   onde ela acontece
+6. **Por visitante** — CPV, EPC, EPC−CPV, AOV
+7. **O que já foi feito** — as ações marcadas, com dias de dados desde a execução
+8. **A leitura** e as **próximas ações**
+
+No último REV o botão vira "fechar rodada".
+
+---
+
+## O upsell: ao lado, nunca dentro
+
+Somar o upsell esconde front doente; tirar mata funil lucrativo. Não é escolher
+o melhor dos dois — **a pergunta é outra em cada caso**:
+
+- *"A página precisa de ajuste?"* → só o front responde, é onde se mexe
+- *"Esse funil dá dinheiro?"* → só o total responde, é o que entra no caixa
+
+Toda métrica de otimização (ROAS, CPA, EPC, lucro) é de **front + order bumps**.
+O upsell entra num bloco próprio, com `front_se_paga` decidindo a frase que a
+tela diz sozinha. É a única leitura automática do módulo inteiro.
+
+**O upsell é assinatura anual** — caixa que entrou, não receita recorrente do
+período. A renovação reaparece em 12 meses como venda nova.
 
 ---
 
@@ -123,7 +153,10 @@ esconder o item da sidebar.
 
 ---
 
-## Exportações
+## Exportações — **não implementadas**
+
+Estavam no plano e continuam pendentes. Ficaram por último de propósito: são
+acessórias, e o módulo funciona sem elas.
 
 Disparadas ao fechar a rodada, nunca a cada digitação.
 
@@ -152,18 +185,33 @@ depender delas.
 - **Dias de dados junto do resultado.** A análise de 24/08 diz "não saberemos
   muito bem o impacto, poucos dias" — a tela deve dizer isso sozinha, não
   depender de alguém lembrar.
-- **Alteração sem veredito é dívida.** Depois de N dias rodando, ela precisa
-  aparecer cobrando decisão.
+- **Alteração sem veredito é dívida.** Ação aberta continua aparecendo em toda
+  rodada seguinte, com "desde 12/08" ao lado, até alguém marcar.
 - **Retrato, não link.** A análise guarda os números do dia; não recalcula ao
   abrir.
+- **Investimento é pelo CONJUNTO, nunca pela campanha.** A mesma campanha roda
+  REVs diferentes, inclusive os de teste. Medir o REV6 pela campanha inflava o
+  gasto de R$ 1.898 para R$ 12.936 — quase 7×.
+- **Duas fontes nunca se cruzam num mesmo número.** Nossas vendas com o
+  denominador do pixel do Meta já produziu "conversão de checkout: 202,9%".
+- **Número estranho é conferido contra segunda fonte antes de ser explicado.**
+  Foi assim que caíram o CPA de R$ 198, o ROAS por campanha e a seta verde num
+  prejuízo que triplicou.
+
+### O que está preso por teste
+
+`src/test/analises.test.ts` — as decisões que já falharam uma vez ficam
+travadas: variação com base negativa, janela que termina ontem, vencedor sem
+direção, alerta de atribuição quebrada. Se alguém reescrever uma delas de um
+jeito plausível e voltar a mostrar o número errado, o teste quebra.
 
 ---
 
 ## O que este módulo NÃO é
 
-- **Não é gestão de tarefas.** "Próximas ações" é uma lista de texto que sai da
-  análise. Produção já tem kanban, prazo e responsável — se virar isso aqui,
-  são dois lugares para a mesma coisa.
+- **Não é gestão de tarefas.** As ações têm caixinha e carimbo de execução, e
+  param aí: sem prazo, sem responsável, sem kanban. Produção já é o lugar disso
+  — se virar isso aqui, são dois lugares para a mesma coisa.
 - **Não substitui a página de Funis.** Lá é o funil hoje; aqui é o histórico de
   decisões sobre ele.
 - **Não é onde se mede criativo.** Isso é Criativos e Meta Ads.
