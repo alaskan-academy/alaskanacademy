@@ -30,7 +30,9 @@ type SubItem = { id?: string; nome: string; tipo: SubTipo; preco: string; link: 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  /** Recebe o id quando o REV foi CRIADO agora, para a lista poder oferecer o
+   *  primeiro teste. Undefined em edicao. */
+  onSaved: (novoRevId?: string) => void;
   funil?: Funil | null;
   projetos: Projeto[];
   funilSubofertas: FunilSuboferta[];
@@ -202,7 +204,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
 
     setSaving(false);
     toast({ title: funil ? 'Funil atualizado' : 'Funil criado' });
-    onSaved();
+    onSaved(funil ? undefined : funilId);
     onClose();
   }
 

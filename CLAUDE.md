@@ -100,6 +100,68 @@ Tab-based page at `/editores` with sub-components in `src/components/editores/`:
 - `ConfiguracaoTab` — evaluation criteria
 - `EmpresasOfertasTab` — companies and offers config
 
+## Quatro armadilhas que já custaram caro neste projeto
+
+Não são princípios gerais de engenharia: são os quatro erros que apareceram
+repetidamente aqui, cada um com o preço que cobraram. Vale checar contra esta
+lista antes de criar campo, tela ou tabela.
+
+### 1. Dois campos dizendo a mesma coisa — eles SEMPRE divergem
+
+Cinco casos encontrados: `funis.ativo` × `funis.status`, `testes_funis.kpi` ×
+`metrica`, `testes_funis.funil_id` × `funil_ids`, `funis.oferta_id` ×
+`projeto_id`, e dois blocos de checkout no mesmo formulário.
+
+O preço: `ativo=false` com `status='ativo'` escondeu **4 REVs de Produção** por
+meses — `.eq('ativo', true)` em `dataCache.ts`, `KanbanView.tsx` e
+`CriativoFormModal.tsx` os filtrava fora, e o sistema dizia "1 funil ativo"
+quando havia 5. E dos 7 testes com `kpi` e `metrica` preenchidos, **6 se
+contradiziam**, porque ninguém sabia qual campo era para quê.
+
+**Antes de criar um campo, procurar se algum existente já responde aquilo.**
+Quando os dois precisam coexistir por compatibilidade, derivar um do outro por
+gatilho — nunca deixar os dois editáveis.
+
+### 2. Criar sem medir
+
+134 links de UTM gerados e nenhuma tela dizendo qual vendeu. 38 testes com 3
+vencedores preenchidos. 36 order bumps cadastrados, 10 dos quais nunca venderam
+nada. O Google Chat registrando alterações que ninguém voltava para avaliar.
+
+O padrão é sempre o mesmo: a tela de cadastro existe, a de resultado não — e
+sem resultado ninguém volta, então o cadastro envelhece e vira ficção.
+
+**Nenhuma tela de cadastro sem a coluna de resultado ao lado.** Foi o que
+consertou os UTMs (vendas por link) e os order bumps (que viraram leitura de
+`venda_itens` em vez de campo digitado).
+
+### 3. Lista fixa no código que envelhece em silêncio
+
+O DRE do Financeiro escondia **R$ 10.065** porque as categorias estavam
+listadas à mão e uma nova não entrou. `fn_checklist_fiscal` e o mapa de custos
+tinham o mesmo defeito.
+
+**Derivar de tabela, nunca listar no código.** Se a lista precisa existir no
+código, ela precisa de um teste que falhe quando o banco ganhar um item novo.
+
+### 4. Retrato único que nunca se atualiza
+
+`funil_checkouts` nasceu de um `insert ... select` das vendas existentes e
+nada inseria checkout novo. Um checkout criado depois nunca apareceria, e as
+vendas dele ficariam sem REV para sempre — sem nada na tela denunciando, porque
+a fila continuaria mostrando os mesmos 97. Já havia 1 venda órfã quando foi
+descoberto, e só porque alguém perguntou.
+
+**Todo espelho precisa de gatilho, não de carga inicial.** A carga inicial
+preenche o passado; o gatilho é que mantém o presente.
+
+### E uma regra de leitura, que vale para as quatro
+
+Vários destes só apareceram porque alguém desconfiou de um número — "283 vendas
+e só 8 order bumps?" levou a descobrir que carrinho abandonado estava sendo
+contado como venda. **Quando um número parecer estranho, ele provavelmente
+está.** Conferir contra uma segunda fonte antes de explicá-lo.
+
 ## UX/UI guidelines
 
 - **Sidebar stays flat**: a feature with multiple sub-pages gets exactly ONE top-level sidebar entry (same as every other item, no chevron/expand-in-sidebar). Sub-page switching happens *inside* the feature's pages via an in-page nav rendered at the top of `DashboardLayout`'s content — see `FinanceiroNav.tsx` (pill-style `NavLink` row) used by all `src/features/financeiro/pages/*`. Do not nest sub-items inside the sidebar itself; that pattern is reserved for the dashboard/funnel switcher only.

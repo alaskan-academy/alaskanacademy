@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { TesteFunil, Funil, Projeto, PipelineStatus, CategoriaTest, ImpactoTest, DificuldadeTest } from '../types';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/formatters';
 import { GerenciarOpcoesPopover } from '@/features/producao/components/GerenciarOpcoesPopover';
 
 interface Props {
@@ -24,6 +25,9 @@ interface Props {
   projetos?: Projeto[];
   presetFunilId?: string;
   presetPipelineStatus?: PipelineStatus;
+  /** Tipo inicial. REV recem-criado abre como 'funil_novo': o primeiro teste
+   *  de um REV e validacao, nao comparacao. */
+  presetTipo?: 'funil_novo' | 'ab_interno' | 'ad';
 }
 
 const TIPOS = [
@@ -37,6 +41,17 @@ const VENCEDORES = [
   { value: 'b',            label: 'Variante B venceu' },
   { value: 'inconclusivo', label: 'Inconclusivo' },
 ];
+
+interface LinhaDeBase {
+  rev: string;
+  dias: number;
+  vendas: number;
+  faturamento: number;
+  ticket_medio: number;
+  vendas_por_dia: number;
+  de: string;
+  ate: string;
+}
 
 const PIPELINE_OPTIONS: { value: PipelineStatus; label: string }[] = [
   { value: 'planejado',        label: '💡 Planejado' },
@@ -141,7 +156,7 @@ async function syncToRadar(opts: {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = [], presetFunilId, presetPipelineStatus }: Props) {
+export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = [], presetFunilId, presetPipelineStatus, presetTipo }: Props) {
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -178,6 +193,16 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
 
   const [opCategorias, setOpCategorias] = useState<string[]>([]);
 
+  /**
+   * Números do REV que está no ar, para o REV novo ter contra o que lutar.
+   *
+   * O primeiro teste de um REV novo não é A contra B — não existe B. É
+   * validação, e o adversário é a meta: o desempenho do REV que ele quer
+   * substituir. Isso já era feito à mão, escrito dentro do campo "Variante A".
+   */
+  const [base, setBase] = useState<LinhaDeBase | null>(null);
+  const [baseCarregando, setBaseCarregando] = useState(false);
+
   function loadCategorias() {
     supabase.from('criativo_campos_opcoes')
       .select('valor')
@@ -188,6 +213,24 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
 
   useEffect(() => { loadCategorias(); }, []);
 
+  // Busca a linha de base pelo PROJETO do REV escolhido, e nao pelo REV: a meta
+  // e o desempenho do irmao que esta no ar, nao o do proprio REV -- que, sendo
+  // novo, ainda nao vendeu nada.
+  useEffect(() => {
+    if (tipo !== 'funil_novo' || funilIds.length === 0) { setBase(null); return; }
+    const f = funis.find(x => x.id === funilIds[0]);
+    if (!f?.projeto_id) { setBase(null); return; }
+    let cancelado = false;
+    setBaseCarregando(true);
+    supabase.rpc('fn_linha_de_base_do_projeto', { p_projeto_id: f.projeto_id })
+      .then(({ data }) => {
+        if (cancelado) return;
+        setBase((data as LinhaDeBase | null) ?? null);
+        setBaseCarregando(false);
+      });
+    return () => { cancelado = true; };
+  }, [tipo, funilIds, funis]);
+
   useEffect(() => {
     if (!open) return;
     const ids = teste?.funil_ids?.length
@@ -197,7 +240,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
       : [];
     setFunilIds(ids);
     setTitulo(teste?.titulo ?? '');
-    setTipo((teste?.tipo ?? 'ab_interno') as typeof tipo);
+    setTipo((teste?.tipo ?? presetTipo ?? 'ab_interno') as typeof tipo);
     setVarianteA(teste?.variante_a ?? '');
     setVarianteB(teste?.variante_b ?? '');
     setMetrica(teste?.metrica ?? '');
@@ -217,7 +260,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
     setNomeAd(teste?.nome_ad ?? '');
     setLinkAd(teste?.link_ad ?? '');
     setComentarioAd(teste?.comentario_ad ?? '');
-  }, [open, teste, presetFunilId, presetPipelineStatus]);
+  }, [open, teste, presetFunilId, presetPipelineStatus, presetTipo]);
 
   async function handleDuplicate() {
     if (!teste) return;
@@ -672,27 +715,84 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
                 </div>
               </div>
 
-              {/* Variantes */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Variante A {tipo === 'funil_novo' ? '(controle)' : ''}</Label>
+              {/* Validação de REV novo: não existe "variante B".
+                  O formulário pedia A e B para os três tipos, e só um deles tem
+                  as duas coisas: dos 13 `funil_novo`, apenas UM tinha B. E onde
+                  A estava preenchido, guardava outra coisa — "ROAS 1,11 /
+                  Conversão 6,67%", ou seja, a META a bater. O campo pedia
+                  variante e recebia linha de base, porque não havia campo de
+                  linha de base. */}
+              {tipo === 'funil_novo' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Precisa bater</Label>
+                    {baseCarregando && (
+                      <span className="text-[10px] text-muted-foreground">buscando…</span>
+                    )}
+                  </div>
+
+                  {base ? (
+                    <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-1.5">
+                      <p className="text-[11px] text-muted-foreground">
+                        {base.rev} · últimos {base.dias} dias ({base.de.slice(8)}/{base.de.slice(5,7)}
+                        {' – '}{base.ate.slice(8)}/{base.ate.slice(5,7)})
+                      </p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <div className="text-sm font-semibold tabular-nums">{base.vendas_por_dia}</div>
+                          <div className="text-[10px] text-muted-foreground">vendas/dia</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold tabular-nums">
+                            {formatCurrency(base.ticket_medio)}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">ticket médio</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold tabular-nums">{base.vendas}</div>
+                          <div className="text-[10px] text-muted-foreground">vendas no período</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // Sem REV ativo vendendo, não há meta — e mostrar zeros seria
+                    // pior que dizer que não há.
+                    <p className="text-xs text-muted-foreground/60 italic">
+                      {funilIds.length === 0
+                        ? 'Escolha o REV para buscar a linha de base.'
+                        : 'Nenhum REV ativo com vendas neste projeto ainda — este é o primeiro. Escreva a meta na hipótese abaixo.'}
+                    </p>
+                  )}
+
                   <Textarea
-                    className="mt-1 h-16 resize-none text-sm"
-                    placeholder="Descreva a variante A..."
+                    className="mt-1 h-14 resize-none text-sm"
+                    placeholder="Meta ou observação sobre a linha de base…"
                     value={varianteA}
                     onChange={e => setVarianteA(e.target.value)}
                   />
                 </div>
-                <div>
-                  <Label>Variante B {tipo === 'funil_novo' ? '(challenger)' : ''}</Label>
-                  <Textarea
-                    className="mt-1 h-16 resize-none text-sm"
-                    placeholder="Descreva a variante B..."
-                    value={varianteB}
-                    onChange={e => setVarianteB(e.target.value)}
-                  />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Variante A (controle)</Label>
+                    <Textarea
+                      className="mt-1 h-16 resize-none text-sm"
+                      placeholder="O que está no ar hoje..."
+                      value={varianteA}
+                      onChange={e => setVarianteA(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Variante B (desafiante)</Label>
+                    <Textarea
+                      className="mt-1 h-16 resize-none text-sm"
+                      placeholder="O que vai ser testado contra..."
+                      value={varianteB}
+                      onChange={e => setVarianteB(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* O campo "Métrica principal" saiu daqui.
                   Era o MESMO que "KPI principal", logo acima — dois rótulos para

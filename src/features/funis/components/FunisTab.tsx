@@ -9,6 +9,8 @@ import {
   Globe, ShoppingBag, FlaskConical, Video, AlertTriangle, Archive,
 } from 'lucide-react';
 import { FunilModal } from './FunilModal';
+import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { TesteModal } from './TesteModal';
 import {
   Funil, Projeto, FunilSuboferta, Dominio, TesteFunil,
@@ -180,6 +182,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   const [testeModalOpen, setTesteModalOpen] = useState(false);
   const [editTeste, setEditTeste] = useState<TesteFunil | null>(null);
   const [testeModalKey, setTesteModalKey] = useState(0);
+  const [presetTesteFunil, setPresetTesteFunil] = useState('');
 
   function toggle(id: string) {
     setExpanded(prev => {
@@ -199,8 +202,42 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   function openTeste(t: TesteFunil, e: React.MouseEvent) {
     e.stopPropagation();
     setEditTeste(t);
+    setPresetTesteFunil('');
     setTesteModalKey(k => k + 1);
     setTesteModalOpen(true);
+  }
+
+  /**
+   * Convida a criar o primeiro teste, logo depois de criar o REV.
+   *
+   * OFERECE, não força. Um modal que abre sozinho ensina o reflexo de fechar —
+   * e aí a pessoa fecha também na vez que importava. Ignorar isto não custa
+   * nada; o REV continua lá.
+   *
+   * E não cria o teste automaticamente, que era a outra opção considerada: dos
+   * 20 testes hoje em "Planejado", 19 não dizem o que está sendo testado. Criar
+   * mais registros vazios pioraria justamente a métrica que já está ruim, e o
+   * aviso de "sem veredito" passaria a disparar em coisa que ninguém quis criar.
+   */
+  function oferecerPrimeiroTeste(novoRevId?: string) {
+    if (!novoRevId) return;
+    toast({
+      title: 'REV criado',
+      description: 'Todo REV novo existe para ser validado. Criar o primeiro teste agora?',
+      action: (
+        <ToastAction
+          altText="Criar o primeiro teste"
+          onClick={() => {
+            setEditTeste(null);
+            setPresetTesteFunil(novoRevId);
+            setTesteModalKey(k => k + 1);
+            setTesteModalOpen(true);
+          }}
+        >
+          Criar teste
+        </ToastAction>
+      ),
+    });
   }
 
   function openEdit(funil: Funil, e: React.MouseEvent) {
@@ -271,7 +308,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
           key={modalKey}
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          onSaved={() => { setModalOpen(false); onReload(); }}
+          onSaved={novoRevId => { setModalOpen(false); onReload(); oferecerPrimeiroTeste(novoRevId); }}
           funil={null}
           projetos={projetos}
 
@@ -654,13 +691,14 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
         key={modalKey}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSaved={() => { setModalOpen(false); onReload(); }}
+        onSaved={novoRevId => { setModalOpen(false); onReload(); oferecerPrimeiroTeste(novoRevId); }}
         funil={editFunil}
         projetos={projetos}
         funilSubofertas={funilSubofertas}
         dominios={dominios}
       />
 
+      {/* REV novo comeca por validacao, nao por A/B: ainda nao existe B. */}
       <TesteModal
         key={`t-${testeModalKey}`}
         open={testeModalOpen}
@@ -669,6 +707,8 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
         teste={editTeste}
         funis={funis}
         projetos={projetos}
+        presetFunilId={presetTesteFunil}
+        presetTipo={presetTesteFunil ? 'funil_novo' : undefined}
       />
     </div>
   );
