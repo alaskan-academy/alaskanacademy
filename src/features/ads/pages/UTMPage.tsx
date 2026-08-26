@@ -71,8 +71,12 @@ const cleanUtmValue = (value: string | null | undefined, level: UTMLevel) => {
   const lower = base.toLowerCase();
 
   if (level === "utm_source") {
-    if (lower.includes("instagram") || /^ig[a-z0-9]+$/i.test(base)) return "instagram";
-    if (lower.includes("facebook") || /^fb[a-z0-9]+$/i.test(base)) return "meta ads";
+    // `*` e não `+`: a fonte chegava como "FBjLj6a8ee83..." — o prefixo colado
+    // num id de sessão da Payt —, e o `+` existia para engolir o id. Agora o
+    // banco limpa na porta e o valor gravado é "FB" puro, com duas letras, que
+    // o `+` deixaria passar direto para o rótulo cru.
+    if (lower.includes("instagram") || /^ig[a-z0-9]*$/i.test(base)) return "instagram";
+    if (lower.includes("facebook") || /^fb[a-z0-9]*$/i.test(base)) return "meta ads";
     if (lower.includes("google") || /^g[a-z0-9]{6,}$/i.test(base)) return "google";
     if (lower.includes("organ")) return "organico";
     return base;
