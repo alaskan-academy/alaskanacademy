@@ -355,6 +355,10 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
   const isAd = tipo === 'ad';
   const emAndamento = !dataFim;
   const isConcluido = pipelineStatus === 'concluido';
+  // Um teste que já começou não precisa mais dos campos de planejamento, e
+  // precisa dos de resultado. A data de início é o sinal mais confiável: o
+  // status pode ter sido arrastado à mão sem o teste ter começado de fato.
+  const jaComecou = Boolean(dataInicio) || pipelineStatus === 'rodando' || isConcluido;
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -615,37 +619,49 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
                       onChange={e => setKpi(e.target.value)}
                     />
                   </div>
-                  <div>
-                    <Label className="text-xs">Impacto esperado</Label>
-                    <Select value={impacto} onValueChange={v => setImpacto(v as ImpactoTest)}>
-                      <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="alto">🔴 Alto</SelectItem>
-                        <SelectItem value="medio">🟡 Médio</SelectItem>
-                        <SelectItem value="baixo">🟢 Baixo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Dificuldade</Label>
-                    <Select value={dificuldade} onValueChange={v => setDificuldade(v as DificuldadeTest)}>
-                      <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="facil">✅ Fácil</SelectItem>
-                        <SelectItem value="media">⚠️ Média</SelectItem>
-                        <SelectItem value="dificil">🔴 Difícil</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Impacto e dificuldade servem para PRIORIZAR o que ainda não
+                      começou — juntos formam o ICE que ordena a fila. Depois que
+                      o teste está rodando não decidem mais nada, e ocupar espaço
+                      ao lado do resultado real só atrapalha a leitura. */}
+                  {!jaComecou && (
+                    <>
+                      <div>
+                        <Label className="text-xs">Impacto esperado</Label>
+                        <Select value={impacto} onValueChange={v => setImpacto(v as ImpactoTest)}>
+                          <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="alto">🔴 Alto</SelectItem>
+                            <SelectItem value="medio">🟡 Médio</SelectItem>
+                            <SelectItem value="baixo">🟢 Baixo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Dificuldade</Label>
+                        <Select value={dificuldade} onValueChange={v => setDificuldade(v as DificuldadeTest)}>
+                          <SelectTrigger className="mt-1 h-8 text-sm"><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="facil">✅ Fácil</SelectItem>
+                            <SelectItem value="media">⚠️ Média</SelectItem>
+                            <SelectItem value="dificil">🔴 Difícil</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Datas */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label>Data prevista</Label>
-                  <Input type="date" className="mt-1 h-8 text-sm" value={dataPrevista} onChange={e => setDataPrevista(e.target.value)} />
-                </div>
+              {/* Datas. "Data prevista" é promessa de quando vai começar: some
+                  assim que começou, porque aí a data real já existe ao lado e
+                  manter as duas convida a ler a errada. */}
+              <div className={cn('grid gap-3', jaComecou ? 'grid-cols-2' : 'grid-cols-3')}>
+                {!jaComecou && (
+                  <div>
+                    <Label>Previsão de início</Label>
+                    <Input type="date" className="mt-1 h-8 text-sm" value={dataPrevista} onChange={e => setDataPrevista(e.target.value)} />
+                  </div>
+                )}
                 <div>
                   <Label>Início</Label>
                   <Input type="date" className="mt-1 h-8 text-sm" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
@@ -678,17 +694,18 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
                 </div>
               </div>
 
-              <div>
-                <Label>Métrica principal</Label>
-                <Input
-                  className="mt-1 h-8 text-sm"
-                  placeholder="Ex: Taxa de conversão, CPA, AOV..."
-                  value={metrica}
-                  onChange={e => setMetrica(e.target.value)}
-                />
-              </div>
+              {/* O campo "Métrica principal" saiu daqui.
+                  Era o MESMO que "KPI principal", logo acima — dois rótulos para
+                  a mesma pergunta, em blocos diferentes da tela. E o resultado
+                  foi o previsível: 26 testes preencheram um, 11 preencheram o
+                  outro, e dos 7 que preencheram os dois, 6 se contradiziam
+                  (kpi='AOV' com metrica='Conversão'), porque ninguém sabia qual
+                  era para quê. O banco agora mantém `metrica` igual a `kpi`. */}
 
-              {/* Resultados */}
+              {/* Resultados. Só aparecem depois que o teste começou: pedir o
+                  resultado de um teste que ainda nem rodou é campo vazio
+                  ocupando espaço, e ensina a ignorar campos vazios. */}
+              {jaComecou && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Resultado A</Label>
@@ -699,6 +716,7 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
                   <Input className="mt-1 h-8 text-sm" placeholder="Ex: 4,1% conv." value={resultadoB} onChange={e => setResultadoB(e.target.value)} />
                 </div>
               </div>
+              )}
 
               {(resultadoA || resultadoB) && (
                 <div>
