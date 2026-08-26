@@ -21,7 +21,7 @@ import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS } from './constants';
+import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 import { CriativoFormModal } from './CriativoFormModal';
 
@@ -123,14 +123,14 @@ function getSpanningForWeek(weekDays: Date[], spanning: Criativo[], previewMap: 
 // ── DraggableCalCard ──────────────────────────────────────────────────────────
 
 function DraggableCalCard({
-  criativo, todayYMD, selectMode, isSelected, onOpen, onToggle, onResizeRight,
+  criativo, todayYMD, selecionando, isSelected, onOpen, onToggle, onResizeRight,
 }: {
   criativo: Criativo;
   todayYMD: string;
-  selectMode: boolean;
+  selecionando: boolean;
   isSelected: boolean;
   onOpen: () => void;
-  onToggle: (activateSelect?: boolean) => void;
+  onToggle: () => void;
   onResizeRight: (targetYmd: string) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -138,8 +138,12 @@ function DraggableCalCard({
     data: { criativo },
   });
 
-  const isPast  = (criativo.data_prazo ?? '') < todayYMD;
-  const isLate  = isPast && !FASES_CONCLUIDAS.has(criativo.fase);
+  // `(data_prazo ?? '') < todayYMD` dizia que TODO card sem prazo estava
+  // atrasado: string vazia é menor que qualquer data. Como só 4,9% dos cards
+  // têm prazo, o vermelho de atraso cobria quase o calendário inteiro — e um
+  // aviso que aparece sempre é um aviso que ninguém lê.
+  const prazo   = prazoEfetivo(criativo.data_prazo, criativo.data_inicio);
+  const isLate  = !!prazo && prazo < todayYMD && !FASES_CONCLUIDAS.has(criativo.fase);
   const tipoCor = isLate
     ? 'bg-red-500/20 text-red-300 border-red-500/30'
     : (TIPO_COR[criativo.tipo] ?? 'bg-primary/10 text-primary border-primary/20');
@@ -183,7 +187,7 @@ function DraggableCalCard({
     >
       <button
         onClick={(e) => {
-          if (selectMode || e.shiftKey) onToggle(e.shiftKey);
+          if (selecionando || e.shiftKey) onToggle();
           else onOpen();
         }}
         className={cn(
@@ -259,12 +263,25 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const weekOverlayRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // Select mode / rubber band
-  const [selectMode, setSelectMode]   = useState(false);
   const [truncado, setTruncado]       = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  /**
+   * "Estou selecionando" é ter alguma coisa selecionada — e não um segundo
+   * estado ao lado.
+   *
+   * Havia um `selectMode` separado, e ele NUNCA era desligado ao desmarcar o
+   * último card. A sequência que travava o calendário: shift+clique liga o
+   * modo, shift+clique de novo desmarca e deixa `selectedIds` vazio, mas o modo
+   * fica ligado — e a barra de seleção some, porque ela exige `size > 0`. A
+   * partir daí, clicar num card o SELECIONAVA em vez de abrir, sem nada na tela
+   * dizendo por quê. Dois estados para um conceito, que é a armadilha nº 1 do
+   * CLAUDE.md em forma de estado de tela.
+   */
+  const selecionando = selectedIds.size > 0;
   const [bulkFase, setBulkFase]       = useState('');
   const [bulkResp, setBulkResp]       = useState('');
-  const rubberStartRef = useRef<{ x: number; y: number } | null>(null);
+  const rubberStartRef = useRef<{ x: number; y: number; scrollX: number; scrollY: number } | null>(null);
   const rubberElRef    = useRef<HTMLDivElement>(null);
 
   const sensors = useSensors(
@@ -380,7 +397,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (delta === 0) return;
 
     // Bulk move: drag a selected card → move all selected by the same delta
-    if (selectMode && selectedIds.has(criativoId)) {
+    if (selecionando && selectedIds.has(criativoId)) {
       const patches = criativos
         .filter(c => selectedIds.has(c.id) && (c.data_prazo || c.data_inicio))
         .map(c => {
@@ -421,7 +438,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         c.id === criativoId ? { ...c, data_prazo: criativo.data_prazo, data_inicio: criativo.data_inicio } : c,
       ));
     }
-  }, [criativos, selectMode, selectedIds, toast]);
+  }, [criativos, selecionando, selectedIds, toast]);
 
   // ── Resize: spanning bars ─────────────────────────────────────────────────
 
@@ -458,7 +475,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if ((e.target as Element).closest('[data-criativo-id]')) return;
     if ((e.target as Element).closest('button')) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    rubberStartRef.current = { x: e.clientX, y: e.clientY };
+    // Guarda também a rolagem do momento: o ponto inicial é em coordenadas de
+    // TELA, e se a página rolar durante o arrasto o conteúdo se move enquanto
+    // ele fica parado — o retângulo passa a selecionar a faixa errada.
+    rubberStartRef.current = { x: e.clientX, y: e.clientY, scrollY: window.scrollY, scrollX: window.scrollX };
     if (rubberElRef.current) {
       Object.assign(rubberElRef.current.style, {
         display: 'block', left: `${e.clientX}px`, top: `${e.clientY}px`, width: '0px', height: '0px',
@@ -466,9 +486,19 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
   }, []);
 
+  /** O ponto inicial corrigido pelo quanto a página rolou desde que ele foi
+   *  marcado — sem isso o retângulo descola do conteúdo ao rolar. */
+  const inicioAgora = () => {
+    const r0 = rubberStartRef.current!;
+    return {
+      sx: r0.x - (window.scrollX - r0.scrollX),
+      sy: r0.y - (window.scrollY - r0.scrollY),
+    };
+  };
+
   const handleCalPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!rubberStartRef.current) return;
-    const { x: sx, y: sy } = rubberStartRef.current;
+    const { sx, sy } = inicioAgora();
     if (rubberElRef.current) {
       Object.assign(rubberElRef.current.style, {
         left: `${Math.min(sx, e.clientX)}px`,
@@ -479,37 +509,70 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
   }, []);
 
+  const limparSelecao = useCallback(() => {
+    setSelectedIds(new Set());
+    setBulkFase('');
+    setBulkResp('');
+  }, []);
+
+  /** Marca ou desmarca um card. Sem ligar modo nenhum: o modo É o conjunto. */
+  const alternar = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }, []);
+
+  /**
+   * Fim do laço, com semântica que existe em qualquer gerenciador de arquivos:
+   * arrastar SUBSTITUI a seleção, `Shift` SOMA à que já existe.
+   *
+   * Antes o laço só somava — um segundo arrasto noutro canto acumulava com o
+   * primeiro, sem jeito de recomeçar a não ser clicando no vazio. E o clique
+   * no vazio só limpava se ele tivesse menos de 4px de tremida: com 5px virava
+   * um laço que não selecionava nada E não limpava nada, que é o "às vezes
+   * buga" mais difícil de descrever.
+   */
   const handleCalPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!rubberStartRef.current) return;
-    const { x: sx, y: sy } = rubberStartRef.current;
+    const { sx, sy } = inicioAgora();
     rubberStartRef.current = null;
     if (rubberElRef.current) rubberElRef.current.style.display = 'none';
 
     const minX = Math.min(sx, e.clientX), maxX = Math.max(sx, e.clientX);
     const minY = Math.min(sy, e.clientY), maxY = Math.max(sy, e.clientY);
 
-    // Small click on empty space → cancel selection
-    if (maxX - minX < 4 && maxY - minY < 4) {
-      if (selectedIds.size > 0 || selectMode) {
-        setSelectedIds(new Set());
-        setSelectMode(false);
-        setBulkFase('');
-        setBulkResp('');
-      }
+    // 4px era pouco para a mão de quem clica com pressa. 8px cobre a tremida
+    // sem transformar um arrasto de verdade em clique.
+    if (maxX - minX < 8 && maxY - minY < 8) {
+      if (selecionando) limparSelecao();
       return;
     }
 
-    // Rubber-band drag → add cards in rect to selection and enter selectMode
-    const next = new Set(selectedIds);
-    document.querySelectorAll('[data-criativo-id]').forEach(el => {
+    // Só os cards DESTE calendário: `document.querySelectorAll` pegaria também
+    // os de outra instância na mesma tela — o Meu Painel renderiza dois.
+    const raiz = e.currentTarget;
+    const next = e.shiftKey ? new Set(selectedIds) : new Set<string>();
+    raiz.querySelectorAll('[data-criativo-id]').forEach(el => {
       const r = el.getBoundingClientRect();
       if (r.left < maxX && r.right > minX && r.top < maxY && r.bottom > minY) {
         next.add((el as HTMLElement).dataset.criativoId!);
       }
     });
-    if (next.size > 0) setSelectMode(true);
     setSelectedIds(next);
-  }, [selectedIds, selectMode]);
+  }, [selectedIds, selecionando, limparSelecao]);
+
+  // `Esc` cancela. Era preciso acertar um clique no vazio para sair da seleção,
+  // e num calendário cheio quase não há vazio para acertar.
+  useEffect(() => {
+    if (!selecionando) return;
+    const aoTeclar = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); limparSelecao(); }
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [selecionando, limparSelecao]);
 
   // ── Bulk apply ────────────────────────────────────────────────────────────
 
@@ -551,8 +614,8 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
     const n = (data as string[] | null)?.length ?? 0;
     toast({ title: `${n} criativo${n !== 1 ? 's' : ''} duplicado${n !== 1 ? 's' : ''}` });
-    setSelectedIds(new Set());
-    setSelectMode(false);
+    limparSelecao();
+    // `selectMode` deixou de existir: limpar o conjunto JÁ sai do modo.
     loadCriativos();
   }, [selectedIds, userId, toast, loadCriativos]);
 
@@ -563,8 +626,8 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     const { error } = await supabase.from('producoes').delete().in('id', ids);
     if (error) { toast({ title: 'Erro ao excluir', variant: 'destructive' }); return; }
     toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} excluído${ids.length !== 1 ? 's' : ''}` });
-    setSelectedIds(new Set());
-    setSelectMode(false);
+    limparSelecao();
+    // `selectMode` deixou de existir: limpar o conjunto JÁ sai do modo.
     loadCriativos();
   }, [selectedIds, toast, loadCriativos]);
 
@@ -834,6 +897,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               className={cn(
                                 'relative flex items-center text-[10.5px] border h-[58px] self-center overflow-hidden',
                                 tipoCor,
+                                // O anel de selecionado também faltava aqui: o
+                                // card entrava no laço e não mostrava que tinha
+                                // entrado.
+                                selectedIds.has(e.criativo.id) && 'ring-1 ring-primary',
                                 e.isFirst ? 'rounded-l-[3px] ml-0.5' : 'rounded-l-none border-l-0 ml-0',
                                 e.isLast  ? 'rounded-r-[3px] mr-0.5' : 'rounded-r-none border-r-0 mr-0',
                               )}
@@ -847,9 +914,19 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                 />
                               )}
 
-                              {/* Content */}
+                              {/* Content.
+                                  O clique aqui SÓ abria — este é o card de
+                                  período, desenhado por um caminho diferente do
+                                  card de dia único, e a seleção nunca chegou
+                                  nele. O efeito para quem usa era arbitrário:
+                                  shift+clique selecionava um card e abria
+                                  outro, e a diferença entre os dois (ter ou não
+                                  intervalo de datas) é invisível na tela. */}
                               <button
-                                onClick={() => setSelectedId(e.criativo.id)}
+                                onClick={(ev) => {
+                                  if (selecionando || ev.shiftKey) alternar(e.criativo.id);
+                                  else setSelectedId(e.criativo.id);
+                                }}
                                 className="flex-1 flex flex-col justify-center px-1.5 overflow-hidden hover:opacity-75 h-full gap-px"
                                 title={[e.criativo.nome, FASES_MAP[e.criativo.fase] ?? e.criativo.fase, e.criativo.projeto?.nome, e.criativo.funil?.nome ?? e.criativo.funil_video, editorName].filter(Boolean).join(' · ')}
                               >
@@ -927,17 +1004,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                   key={c.id}
                                   criativo={c}
                                   todayYMD={todayYMD}
-                                  selectMode={selectMode}
+                                  selecionando={selecionando}
                                   isSelected={selectedIds.has(c.id)}
                                   onOpen={() => setSelectedId(c.id)}
-                                  onToggle={(activateSelect) => {
-                                    if (activateSelect) setSelectMode(true);
-                                    setSelectedIds(prev => {
-                                      const n = new Set(prev);
-                                      n.has(c.id) ? n.delete(c.id) : n.add(c.id);
-                                      return n;
-                                    });
-                                  }}
+                                  onToggle={() => alternar(c.id)}
                                   onResizeRight={async (targetYmd) => {
                                     const original = c.data_prazo ?? c.data_inicio ?? ymd;
                                     await saveResize(c, original, targetYmd);
@@ -972,7 +1042,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       )}
 
       {/* Bulk action bar */}
-      {selectMode && selectedIds.size > 0 && (
+      {selecionando && (
         <div className="sticky bottom-4 z-40 flex items-center gap-2 bg-card border border-border rounded-lg shadow-lg px-4 py-2 mx-auto w-fit">
           <span className="text-sm font-medium">
             {selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}

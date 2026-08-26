@@ -84,12 +84,37 @@ export const FASES_CONCLUIDAS = new Set([
   'aprovado', 'esteira_teste', 'postado', 'na_plataforma', 'arquivado',
 ]);
 
-export function getUrgency(data_prazo: string | null, fase?: string): 'ok' | 'warn' | 'late' | null {
-  if (!data_prazo) return null;
+/**
+ * O prazo que vale, quando `data_prazo` está vazio.
+ *
+ * Vazio não quer dizer "sem prazo" — quer dizer "no mesmo dia". A entrega da
+ * equipe é same-day, e por isso só 4,9% dos cards têm `data_prazo` preenchido:
+ * quem faz e entrega no mesmo dia não digita a data duas vezes.
+ *
+ * Lendo esse silêncio como ausência, o sistema de urgência ficava decorativo —
+ * as cores de atrasado e de atenção rodavam sobre 5% da base. Com `?? início`
+ * ele passa a valer para 90%, sem migrar um único registro. E 30 cards em
+ * andamento aparecem como atrasados, que é a informação que a tela não estava
+ * dando.
+ */
+export function prazoEfetivo(
+  data_prazo: string | null,
+  data_inicio?: string | null,
+): string | null {
+  return data_prazo ?? data_inicio ?? null;
+}
+
+export function getUrgency(
+  data_prazo: string | null,
+  fase?: string,
+  data_inicio?: string | null,
+): 'ok' | 'warn' | 'late' | null {
+  const efetivo = prazoEfetivo(data_prazo, data_inicio);
+  if (!efetivo) return null;
   if (fase && FASES_CONCLUIDAS.has(fase)) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const prazo = new Date(data_prazo + 'T00:00:00');
+  const prazo = new Date(efetivo + 'T00:00:00');
   const diffDays = Math.floor((prazo.getTime() - now.getTime()) / 86400000);
   if (diffDays < 0) return 'late';
   if (diffDays <= 2) return 'warn';

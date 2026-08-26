@@ -5,7 +5,7 @@ import { supabase, linhas, linha } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS } from './constants';
+import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 
 interface Props {
@@ -120,7 +120,12 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
         const editor  = c.responsavel?.nome ?? c.editor_nome_historico;
         const tipoCor = TIPO_COR[c.tipo] ?? 'bg-primary/10 text-primary border-primary/20';
         const isSpan  = c.data_inicio && c.data_prazo && c.data_inicio !== c.data_prazo;
-        const isPast  = (c.data_prazo ?? '') < today;
+        // Terceira cópia do mesmo `(data_prazo ?? '') < hoje` — e o mesmo erro:
+        // sem prazo, a comparação com string vazia dava atrasado sempre. Aqui
+        // doía mais, porque a consulta q3 traz de propósito os cards que só têm
+        // data_inicio: eram exatamente os que apareciam vermelhos sem motivo.
+        const prazo   = prazoEfetivo(c.data_prazo, c.data_inicio);
+        const isPast  = !!prazo && prazo < today;
         const isLate  = isPast && !FASES_CONCLUIDAS.has(c.fase);
         const cor     = isLate ? 'bg-red-500/20 text-red-300 border-red-500/30' : tipoCor;
 
