@@ -151,7 +151,15 @@ export default function ProcessosCategoriaPage() {
   const handleDelete = async (a: Artigo, e: React.MouseEvent) => {
     e.stopPropagation();
     // Objeto, não string — ver o mesmo conserto em `ProcessosPage`.
-    const ok = await confirm({ title: `Excluir o processo "${a.titulo}"?` });
+    const ok = await confirm({
+      title: `Excluir o processo "${a.titulo}"?`,
+      // A de categoria já explicava o que acontece; esta ficava só com o
+      // título e a frase genérica do diálogo. Quem exclui precisa saber que
+      // some da busca também, e não só da lista que está vendo.
+      description: 'Ele sai desta lista, da busca e de qualquer outra categoria em que apareça.',
+      confirmText: 'Excluir',
+      destructive: true,
+    });
     if (!ok) return;
     const { error } = await supabase
       .from('processos_artigos')

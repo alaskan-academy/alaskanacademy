@@ -59,6 +59,31 @@ function Trecho({ texto }: { texto: string }) {
   );
 }
 
+/**
+ * O primeiro símbolo visível, e não os dois primeiros caracteres.
+ *
+ * `'🧑‍💻'.length` é 5 e `'⚙️'.length` é 2: emoji é uma sequência de pontos de
+ * código, e cortar por comprimento parte a sequência no meio. O `Intl.Segmenter`
+ * conta o que a pessoa enxerga como um símbolo só.
+ */
+function primeiroSimbolo(v: string): string {
+  const texto = v.trim();
+  if (!texto) return '';
+  // O tipo vem daqui e não do `lib` do projeto: `Intl.Segmenter` é ES2022 e o
+  // tsconfig mira ES2020. Subir o alvo por causa de um seletor de emoji mexeria
+  // no projeto inteiro.
+  const comSegmenter = Intl as unknown as {
+    Segmenter?: new (loc: string, o: { granularity: string }) =>
+      { segment: (s: string) => Iterable<{ segment: string }> };
+  };
+  if (comSegmenter.Segmenter) {
+    const seg = new comSegmenter.Segmenter('pt', { granularity: 'grapheme' });
+    return [...seg.segment(texto)][0]?.segment ?? '';
+  }
+  // Sem o segmentador, `[...texto]` ao menos respeita os pares substitutos.
+  return [...texto][0] ?? '';
+}
+
 // ── Emoji options ─────────────────────────────────────────────────────────────
 
 const ICON_OPTIONS = [
@@ -538,13 +563,16 @@ export default function ProcessosPage() {
                     {ic}
                   </button>
                 ))}
+                {/* Sem `maxLength`: ele conta unidades UTF-16, e não símbolos.
+                    Com 2, um 🧑‍💻 (que tem 5) era cortado ao meio e virava
+                    um caractere quebrado. O corte agora é por SÍMBOLO, com o
+                    segmentador do próprio navegador. */}
                 <Input
                   className="w-14 text-center text-lg px-1"
                   value={fIcone}
-                  onChange={e => setFIcone(e.target.value)}
-                  maxLength={2}
+                  onChange={e => setFIcone(primeiroSimbolo(e.target.value))}
                   placeholder="✨"
-                  title="Ou digite qualquer emoji"
+                  title="Ou cole qualquer emoji"
                 />
               </div>
             </div>
