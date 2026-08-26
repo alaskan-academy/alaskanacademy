@@ -49,6 +49,8 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
   const [dominioId, setDominioId] = useState('');
   const [notas, setNotas]         = useState('');
   const [subofertas, setSubofertas] = useState<SubItem[]>([]);
+  // Checkouts escolhidos antes de o REV existir. Ver SeletorCheckouts.
+  const [checkoutsPendentes, setCheckoutsPendentes] = useState<string[]>([]);
 
   // Método de venda
   const [metodo, setMetodo]       = useState('');
@@ -66,6 +68,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setUrlPage(funil?.url_page ?? '');
     setNotas(funil?.notas ?? '');
     setConfirmDelete(false);
+    setCheckoutsPendentes([]);
 
     const dominioAtual = dominios.find(d => {
       const ids = d.funil_ids?.length ? d.funil_ids : d.funil_id ? [d.funil_id] : [];
@@ -143,6 +146,16 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       toast({ title: 'Erro ao salvar', description: error?.message, variant: 'destructive' });
       setSaving(false);
       return;
+    }
+
+    // Aplica os checkouts escolhidos enquanto o REV ainda não existia, e
+    // reconcilia as vendas na sequência -- senão o vínculo existiria com as
+    // vendas ainda soltas.
+    if (checkoutsPendentes.length > 0) {
+      await supabase.from('funil_checkouts')
+        .update({ funil_id: funilId, eh_funil: true, confirmado_em: new Date().toISOString() })
+        .in('id', checkoutsPendentes);
+      await supabase.rpc('fn_backfill_funil_das_vendas');
     }
 
     // Sync subofertas
@@ -386,7 +399,11 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
               venda a este REV. Antes só dava para atribuir pelo outro lado, na
               aba Checkouts — faltava a pergunta ao contrário, que é a que se faz
               com o cadastro aberto. */}
-          <SeletorCheckouts funilId={funil?.id ?? null} />
+          <SeletorCheckouts
+            funilId={funil?.id ?? null}
+            pendentes={checkoutsPendentes}
+            onPendentesChange={setCheckoutsPendentes}
+          />
 
           {/* O bloco "Preços e Links de Checkout" saiu daqui.
               Era o mesmo checkout digitado de novo: o link era redundante com o
@@ -400,7 +417,9 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
               nenhuma tela, nenhum cálculo usava. E envelheciam: dos 36 order
               bumps cadastrados, 10 nunca venderam nada. Agora vêm de
               `venda_itens` e das vendas com `is_upsell`. */}
-          <ItensVendidos funilId={funil?.id ?? null} />
+          {/* Um REV que ainda não existe não vendeu nada; os dois blocos só
+              teriam estado vazio para mostrar. */}
+          {funil && <ItensVendidos funilId={funil.id} />}
 
           {/* Notas */}
           <div>

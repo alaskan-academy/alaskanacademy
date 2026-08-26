@@ -51,9 +51,19 @@ function dataCurta(iso: string | null): string {
 
 interface Props {
   funilId: string | null;
+  /**
+   * Ids escolhidos ANTES do REV existir.
+   *
+   * Num REV novo não há `funil_id` para gravar, e mandar "salve primeiro e
+   * volte aqui" custaria fechar o modal, reabrir e procurar o REV de novo — no
+   * momento em que a pessoa tem o checkout na cabeça. Então a escolha fica em
+   * memória e o modal a aplica logo depois de criar o REV.
+   */
+  pendentes?: string[];
+  onPendentesChange?: (ids: string[]) => void;
 }
 
-export function SeletorCheckouts({ funilId }: Props) {
+export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }: Props) {
   const [todos, setTodos]       = useState<Checkout[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto]     = useState(false);
@@ -74,18 +84,19 @@ export function SeletorCheckouts({ funilId }: Props) {
   useEffect(() => { carregar(); }, [carregar]);
 
   const meus = useMemo(
-    () => todos.filter(c => c.funil_id === funilId)
+    () => todos
+      .filter(c => (funilId ? c.funil_id === funilId : pendentes.includes(c.id)))
       .sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
-    [todos, funilId],
+    [todos, funilId, pendentes],
   );
 
   // Só oferece o que ainda não tem dono e não foi marcado como não-funil. Um
   // checkout já atribuído a outro REV não aparece aqui de propósito: mudá-lo
   // daqui roubaria as vendas do outro sem ninguém ver.
   const disponiveis = useMemo(
-    () => todos.filter(c => !c.funil_id && c.eh_funil !== false)
+    () => todos.filter(c => !c.funil_id && c.eh_funil !== false && !pendentes.includes(c.id))
       .sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
-    [todos],
+    [todos, pendentes],
   );
 
   /**
@@ -97,7 +108,7 @@ export function SeletorCheckouts({ funilId }: Props) {
    */
   async function preCadastrar() {
     const bruta = urlNova.trim();
-    if (!bruta || !funilId) return;
+    if (!bruta) return;
 
     // Normaliza igual ao gatilho: sem query string. Colar a URL com `?cart=` ou
     // com os UTMs colados é o erro mais provável aqui, e ele criaria um checkout
@@ -114,18 +125,24 @@ export function SeletorCheckouts({ funilId }: Props) {
     }
 
     setSalvando('_novo_');
-    const { error } = await supabase.from('funil_checkouts').insert({
+    // A linha é criada mesmo sem REV: o checkout existe independentemente de
+    // quem o atende. Se o REV ainda não foi salvo, o vínculo entra na lista de
+    // pendentes e é gravado junto com ele.
+    const { data: criado, error } = await supabase.from('funil_checkouts').insert({
       url,
       titulo: null,
       funil_id: funilId,
-      eh_funil: true,
-      confirmado_em: new Date().toISOString(),
-    });
+      eh_funil: funilId ? true : null,
+      confirmado_em: funilId ? new Date().toISOString() : null,
+    }).select('id').single();
     setSalvando(null);
 
     if (error) {
       toast({ title: 'Erro ao cadastrar', description: error.message, variant: 'destructive' });
       return;
+    }
+    if (!funilId && onPendentesChange && criado?.id) {
+      onPendentesChange([...pendentes, criado.id as string]);
     }
     setUrlNova('');
     setAberto(false);
@@ -152,7 +169,24 @@ export function SeletorCheckouts({ funilId }: Props) {
     carregar();
   }
 
-  async function definir(checkoutId: string, novoFunil: string | null) {
+  /**
+   * `vincular` diz a INTENÇÃO, e não o valor a gravar.
+   *
+   * Antes eu passava o `funil_id` como parâmetro e deduzia a intenção dele —
+   * o que quebrava no REV novo, onde o id é null e "vincular" era lido como
+   * "desvincular". A escolha simplesmente não colava.
+   */
+  async function definir(checkoutId: string, vincular: boolean) {
+    // REV ainda não existe: guarda a escolha e deixa o modal aplicá-la depois
+    // de criar. Gravar agora exigiria um `funil_id` que ainda não há.
+    if (!funilId && onPendentesChange) {
+      onPendentesChange(
+        vincular ? [...pendentes, checkoutId] : pendentes.filter(id => id !== checkoutId),
+      );
+      return;
+    }
+
+    const novoFunil = vincular ? funilId : null;
     setSalvando(checkoutId);
     const { error } = await supabase
       .from('funil_checkouts')
@@ -181,7 +215,7 @@ export function SeletorCheckouts({ funilId }: Props) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <Label className="text-xs">Checkouts deste REV</Label>
-        {funilId && (
+        {(funilId || onPendentesChange) && (
           <Popover open={aberto} onOpenChange={setAberto}>
             <PopoverTrigger asChild>
               <button
@@ -209,7 +243,7 @@ export function SeletorCheckouts({ funilId }: Props) {
                       <CommandItem
                         key={c.id}
                         value={`${c.titulo ?? ''} ${c.url}`}
-                        onSelect={() => { definir(c.id, funilId); setAberto(false); }}
+                        onSelect={() => { definir(c.id, true); setAberto(false); }}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-xs">
@@ -263,13 +297,11 @@ export function SeletorCheckouts({ funilId }: Props) {
         )}
       </div>
 
-      {!funilId ? (
+      {meus.length === 0 ? (
         <p className="text-xs text-muted-foreground/60 italic">
-          Salve o REV para poder vincular checkouts.
-        </p>
-      ) : meus.length === 0 ? (
-        <p className="text-xs text-muted-foreground/60 italic">
-          Nenhum checkout vinculado — as vendas deste REV não estão sendo contadas.
+          {funilId
+            ? 'Nenhum checkout vinculado — as vendas deste REV não estão sendo contadas.'
+            : 'Nenhum checkout escolhido ainda. O vínculo é gravado ao salvar o REV.'}
         </p>
       ) : (
         <div className="space-y-1.5">
@@ -319,7 +351,7 @@ export function SeletorCheckouts({ funilId }: Props) {
               )}
               <button
                 type="button"
-                onClick={() => definir(c.id, null)}
+                onClick={() => definir(c.id, false)}
                 disabled={salvando === c.id}
                 title="Desvincular deste REV"
                 className="shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
