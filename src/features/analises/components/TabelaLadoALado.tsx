@@ -30,12 +30,32 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
   let grupoAnterior = '';
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="space-y-1.5">
+      {/* A legenda existe porque a pergunta apareceu: numa tabela de
+          comparação, uma % ao lado do número convida a ser lida como "em
+          relação à outra coluna". Ela é contra o passado do próprio REV, e
+          isso precisa estar escrito, não deduzido. */}
+      <p className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="inline-flex items-center gap-1">
+          <ArrowUp className="h-2.5 w-2.5 text-emerald-400" />
+          <ArrowDown className="h-2.5 w-2.5 text-red-400" />
+          variação de cada REV contra o próprio período anterior — não contra a outra coluna
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Crown className="h-3 w-3 text-emerald-400/80" />
+          melhor da linha entre os REVs comparados
+        </span>
+      </p>
+
+      <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10">
           <tr className="border-b border-border bg-secondary/60">
-            <th className="text-left font-medium px-3 py-2 w-52 min-w-[13rem] text-[10px] uppercase tracking-wide text-muted-foreground">
-              Métrica
+            <th className="text-left font-medium px-3 py-2 w-52 min-w-[13rem] text-[10px] uppercase tracking-wide text-muted-foreground align-bottom">
+              <span className="block">Métrica</span>
+              <span className="block normal-case tracking-normal font-normal text-muted-foreground/70 mt-0.5">
+                valor no período · vs. anterior
+              </span>
             </th>
             {colunas.map(c => (
               <th key={c.funil_id} className="px-3 py-2 text-right min-w-[9rem]">
@@ -104,8 +124,8 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
                               bom ? 'text-emerald-400' : 'text-red-400',
                             )}>
                               <Icone className="h-2.5 w-2.5 inline" />
-                              {Math.abs(varia.pct) >= 1000 && v != null && ant
-                                ? `${(v / ant).toFixed(0)}×`
+                              {Math.abs(varia.pct) >= 1000
+                                ? `${(Math.abs(varia.pct) / 100).toFixed(0)}×`
                                 : `${Math.abs(varia.pct).toFixed(0)}%`}
                             </span>
                           )}
@@ -119,6 +139,7 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

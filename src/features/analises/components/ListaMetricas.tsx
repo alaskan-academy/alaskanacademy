@@ -110,8 +110,10 @@ export function LinhaMetrica({
             {/* Acima de 10x, "+18863,2%" não é lido como número — é lido como
                 ruído, e treina a pessoa a ignorar a seta ao lado dos números
                 que importam. O múltiplo diz a mesma coisa e cabe no olho. */}
-            {Math.abs(v.pct) >= 1000 && valor != null && anterior
-              ? `${(valor / anterior).toFixed(0)}×`
+            {/* O múltiplo sai do próprio percentual: `valor / anterior` também
+                inverteria com base negativa. */}
+            {Math.abs(v.pct) >= 1000
+              ? `${(Math.abs(v.pct) / 100).toFixed(0)}×`
               : `${Math.abs(v.pct).toFixed(1)}%`}
           </span>
         )}
@@ -227,8 +229,10 @@ export function LinhaTripla({
             bom ? 'text-emerald-400' : 'text-red-400',
           )}>
             <Icone className="h-3 w-3" />
-            {Math.abs(v.pct) >= 1000 && valor != null && anterior
-              ? `${(valor / anterior).toFixed(0)}×`
+            {/* O múltiplo sai do próprio percentual: `valor / anterior` também
+                inverteria com base negativa. */}
+            {Math.abs(v.pct) >= 1000
+              ? `${(Math.abs(v.pct) / 100).toFixed(0)}×`
               : `${Math.abs(v.pct).toFixed(1)}%`}
           </span>
         )}

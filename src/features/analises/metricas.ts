@@ -127,7 +127,13 @@ export function variacao(atual: number | null, anterior: number | null): {
   if (atual == null || anterior == null || anterior === 0) {
     return { pct: null, direcao: 'igual' };
   }
-  const pct = ((atual - anterior) / anterior) * 100;
+  // Divide pelo MÓDULO do anterior, não pelo anterior.
+  //
+  // Com base negativa a divisão inverte o sinal, e o REV5 mostrava
+  // "Lucro líquido −R$ 8.878 ↑261%" em verde: o prejuízo triplicou e a tela
+  // dizia que melhorou. (−8878 − (−2459)) / (−2459) dá +2,61; dividindo por
+  // 2459 dá −2,61, que é a verdade.
+  const pct = ((atual - anterior) / Math.abs(anterior)) * 100;
   return {
     pct,
     // 1% de folga: variação abaixo disso é ruído de arredondamento, e pintar

@@ -68,8 +68,8 @@ function Delta({ valor, anterior, subirEhRuim = false }: {
       bom ? 'text-emerald-400' : 'text-red-400',
     )}>
       <Icone className="h-2.5 w-2.5" />
-      {Math.abs(v.pct) >= 1000 && valor != null && anterior
-        ? `${(valor / anterior).toFixed(0)}×`
+      {Math.abs(v.pct) >= 1000
+        ? `${(Math.abs(v.pct) / 100).toFixed(0)}×`
         : `${Math.abs(v.pct).toFixed(0)}%`}
     </span>
   );
