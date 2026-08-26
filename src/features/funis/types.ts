@@ -14,10 +14,18 @@ export interface SubOferta {
 export interface Funil {
   id: string;
   nome: string;
+  /** Derivado do nome do projeto pelo banco; não editar direto. */
   produto: string | null;
+  /** @deprecated Derivado de `status`. Ler `status` — este campo só existe até
+   *  o código que faz `.eq('ativo', true)` migrar. */
   ativo: boolean;
   status: 'planejado' | 'ativo' | 'pausado' | 'pausado_analise' | 'arquivado';
+  /** Projeto (`ofertas_editores`) dono deste REV. */
+  projeto_id: string | null;
+  /** @deprecated Nome antigo de `projeto_id`; o banco mantém os dois iguais. */
   oferta_id: string | null;
+  /** Player do VTurb que roda neste REV. */
+  vsl_id: string | null;
   preco: number | null;
   link_checkout: string | null;
   url_page: string | null;

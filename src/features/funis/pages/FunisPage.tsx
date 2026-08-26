@@ -10,8 +10,9 @@ import { TestesTab } from '../components/TestesTab';
 import { EsteiraTab } from '../components/EsteiraTab';
 import { ConcluídosTab } from '../components/ConcluídosTab';
 import { GeradorUtmTab } from '../components/GeradorUtmTab';
+import { CheckoutsTab } from '../components/CheckoutsTab';
 
-type Tab = 'funis' | 'esteira' | 'testes' | 'concluidos' | 'dominios' | 'utm';
+type Tab = 'funis' | 'esteira' | 'testes' | 'concluidos' | 'dominios' | 'checkouts' | 'utm';
 
 interface State {
   funis: Funil[];
@@ -29,6 +30,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'testes',     label: 'Testes' },
   { key: 'concluidos', label: 'Concluídos' },
   { key: 'dominios',   label: 'Domínios' },
+  { key: 'checkouts',  label: 'Checkouts' },
   { key: 'utm',        label: 'UTM' },
 ];
 
@@ -202,6 +204,12 @@ export default function FunisPage() {
               projetos={state.projetos}
               perfis={state.perfis}
               onReload={load}
+            />
+          )}
+          {activeTab === 'checkouts' && (
+            <CheckoutsTab
+              funis={state.funis}
+              projetos={state.projetos}
             />
           )}
           {activeTab === 'dominios' && (
