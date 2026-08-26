@@ -10,10 +10,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
-import { ListaMetricas, LinhaMetrica } from '../components/ListaMetricas';
+import { ListaMetricas, LinhaMetrica, LinhaFunil } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
 import { ListaAcoes, AcoesFeitas, Acao } from '../components/ListaAcoes';
 import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
+import { BlocoUpsell } from '../components/BlocoUpsell';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
 import { RetencaoVsl, buscarRetencao } from '../retencao';
 import {
@@ -507,10 +508,14 @@ export default function AnalisesPage() {
                 <LinhaMetrica rotulo="Imposto" valor={a.imposto_simples + a.imposto_meta} anterior={ant.imposto_simples + ant.imposto_meta} formato={formatCurrency} subirEhRuim
                   detalhe="Simples + imposto sobre o Meta" />
                 <LinhaMetrica rotulo="Taxa da plataforma" valor={a.taxa_plataforma} anterior={ant.taxa_plataforma} formato={formatCurrency} subirEhRuim
-                  detalhe="a taxa real cobrada, não 7% fixo" />
+                  detalhe={a.taxa_plataforma_pct != null ? `${pct2(a.taxa_plataforma_pct)} do faturamento` : undefined} />
                 <LinhaMetrica rotulo="Lucro líquido" valor={a.lucro_liquido} anterior={ant.lucro_liquido} formato={formatCurrency} destaque
                   detalhe={a.margem_pct != null ? `margem de ${pct(a.margem_pct)}` : undefined} />
               </ListaMetricas>
+
+              {/* 1b — o upsell ao lado do front, nunca dentro. Somar esconde
+                  front doente; tirar mata funil lucrativo. */}
+              <BlocoUpsell a={a} ant={ant} />
 
               {/* 2 — o que foi vendido. A única parte em colunas, porque aqui
                   cada coluna é outra medida da MESMA oferta. */}
@@ -530,25 +535,35 @@ export default function AnalisesPage() {
                   atual={a.itens ?? []} anterior={ant.itens ?? []}
                   principal={{
                     qtd: a.oferta_principal_qtd, valor: a.oferta_principal_valor,
-                    antesQtd: ant.oferta_principal_qtd,
+                    antesQtd: ant.oferta_principal_qtd, antesValor: ant.oferta_principal_valor,
                   }}
                 />
               </section>
 
               {/* 3 — o funil, na ordem em que ele acontece */}
-              <ListaMetricas titulo="Funil" nota="do clique até a venda">
-                <LinhaMetrica rotulo="Cliques no link" valor={a.cliques} anterior={ant.cliques} formato={formatNumber}
-                  detalhe={a.cpc != null ? `${formatCurrency(a.cpc)} cada` : undefined} />
-                <LinhaMetrica rotulo="Checkouts iniciados" valor={a.checkouts_iniciados} anterior={ant.checkouts_iniciados} formato={formatNumber}
-                  detalhe={<>
-                    {a.cpi != null && `${formatCurrency(a.cpi)} cada`}
-                    {a.taxa_checkout_pct != null && ` · ${pct2(a.taxa_checkout_pct)} dos cliques`}
-                  </>} />
-                <LinhaMetrica rotulo="Vendas" valor={a.vendas} anterior={ant.vendas} formato={formatNumber} destaque
-                  detalhe={<>
-                    {a.cpa != null && `${formatCurrency(a.cpa)} cada`}
-                    {a.conv_checkout_pct != null && ` · ${pct2(a.conv_checkout_pct)} dos checkouts`}
-                  </>} />
+              {/* No funil o custo é que fica grande: 20.410 cliques não dizem
+                  nada sozinhos, R$ 1,01 por clique diz. A contagem e a taxa de
+                  passagem descem para a linha de baixo, na mesma coluna, para
+                  agora e anterior seguirem comparáveis de cima a baixo. */}
+              <ListaMetricas titulo="Funil" nota="custo por etapa · taxa de passagem e quantidade abaixo">
+                <LinhaFunil
+                  rotulo="Cliques no link" formatoCusto={formatCurrency}
+                  custo={a.cpc} custoAntes={ant.cpc}
+                  taxaPct={null} qtd={a.cliques}
+                  taxaPctAntes={null} qtdAntes={ant.cliques}
+                />
+                <LinhaFunil
+                  rotulo="Checkouts iniciados" formatoCusto={formatCurrency}
+                  custo={a.cpi} custoAntes={ant.cpi}
+                  taxaPct={a.taxa_checkout_pct} qtd={a.checkouts_iniciados}
+                  taxaPctAntes={ant.taxa_checkout_pct} qtdAntes={ant.checkouts_iniciados}
+                />
+                <LinhaFunil
+                  rotulo="Vendas" formatoCusto={formatCurrency} destaque
+                  custo={a.cpa} custoAntes={ant.cpa}
+                  taxaPct={a.conv_checkout_pct} qtd={a.vendas}
+                  taxaPctAntes={ant.conv_checkout_pct} qtdAntes={ant.vendas}
+                />
                 <LinhaMetrica rotulo="Conversão do funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2}
                   detalhe="venda por visita à página" />
               </ListaMetricas>

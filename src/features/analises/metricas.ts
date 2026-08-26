@@ -31,6 +31,8 @@ export interface BlocoMetricas {
   imposto_simples: number;
   imposto_meta: number;
   taxa_plataforma: number;
+  /** A taxa real em percentual do faturamento — varia por meio de pagamento. */
+  taxa_plataforma_pct: number | null;
   lucro_liquido: number;
   margem_pct: number | null;
   reembolsos: number;
@@ -42,6 +44,26 @@ export interface BlocoMetricas {
   bump_faturamento: number;
   bump_adesao_pct: number | null;
   itens: ItemVendido[];
+
+  // ── Upsell: ao lado do resultado do front, nunca dentro dele ──────────────
+  // Somar o upsell esconde front doente; tirar mata funil lucrativo. As duas
+  // leituras ficam na tela com nomes diferentes. Ver `BlocoUpsell`.
+  upsell_qtd: number;
+  upsell_faturamento: number;
+  /** A métrica que faltava para comparar um funil de 10% de up com um de 2%. */
+  upsell_adesao_pct: number | null;
+  faturamento_com_upsell: number;
+  roas_com_upsell: number | null;
+  lucro_com_upsell: number;
+  margem_com_upsell_pct: number | null;
+  /**
+   * Se o faturamento do front já cobre o investimento.
+   *
+   * É a regra de decisão do módulo: front que se paga significa que o upsell é
+   * lucro em cima; front que não se paga significa que o funil está de pé sobre
+   * uma perna só, e a otimização é urgente mesmo com o total no azul.
+   */
+  front_se_paga: boolean | null;
   /** Fatia do faturamento que veio dos order bumps — o 21,59% da planilha. */
   pct_ofertas_extras: number | null;
 
