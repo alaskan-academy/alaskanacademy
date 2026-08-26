@@ -411,3 +411,58 @@ campos de retenção pararem de ser digitados.
 "Cópia de VSL 02 Saponaria final.mp4" aparece 3× com ids distintos. São as
 cópias que o VTurb cria para teste A/B. O seletor precisa mostrar duração e data
 ao lado do nome, senão ela escolhe entre três linhas idênticas.
+
+### Venda ↔ REV: o plano estava errado, e o motivo é interessante
+
+O plano dizia casar por `funis.link_checkout`. Não funciona — os dois lados
+falam formatos diferentes:
+
+```
+funis.link_checkout   →  checkout.payt.com.br/02cefc91261f5a16798b11ad…
+webhook link.url      →  payt.site/qZCw56M
+```
+
+E o motivo de fundo importa mais que o formato: **o mesmo link curto é
+reapontado quando o REV troca.**
+
+| `payt.site/qZCw56M` | Período | Vendas |
+|---|---|---|
+| Saponaria Brasil Rev1 | 21/05 → 21/06 | 180 |
+| Saponaria Brasil Revisão | 20/06 → 28/07 | 57 |
+| Saponaria Brasil Rev5 | 28/07 → 25/08 | 307 |
+
+A URL é a vaga; o **título** é o REV daquele momento. Um campo fixo no funil não
+representa isso — por isso o vínculo passa a morar em `funil_checkouts`.
+
+Isso cai bem para a atribuição histórica: como o título é gravado no instante da
+venda, uma venda de junho continua sendo do Rev1 mesmo que o link hoje sirva o
+Rev5. Não precisa de tabela de vigência.
+
+**Normalizar tirando a query string é obrigatório:** `?cart=` é único por venda.
+Com ela seriam 1.281 checkouts; sem ela, 97.
+
+**Cobertura — 51,7% no total, mas é efeito de tempo, não buraco:**
+
+| Mês | Vendas com link |
+|---|---|
+| jan–fev | 0% |
+| mar | 6,4% |
+| abr | 26,8% |
+| mai | 45,5% |
+| **jun** | **95,9%** |
+| **jul** | **99,9%** |
+| **ago** | **95,9%** |
+
+**A fila de confirmação é curta onde importa:**
+
+| Confirmando os primeiros | Cobre |
+|---|---|
+| 5 | 55,7% das vendas |
+| 10 | 74,0% |
+| 20 | 88,7% |
+| 30 | 95,2% |
+
+Só 13 dos 97 títulos trazem "Rev" — o resto ela atribui olhando nome, volume e
+período, que a view já entrega prontos. E a pista de "Rev" no título entra como
+sugestão, nunca como atribuição automática: hoje mesmo o casamento por nome me
+traiu ao tentar ligar VSL a REV.
