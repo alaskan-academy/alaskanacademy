@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ProducaoNivel } from './types';
 import { CalendarioView } from './CalendarioView';
 import { HojeView } from './HojeView';
+import { useFases, campoDonoDoSetor, fasesDoSetor } from '../useFases';
 
 interface SetorInfo {
   id: string;
@@ -16,27 +17,38 @@ interface Props {
   setor: SetorInfo | null;
 }
 
-function getFieldForSetor(setorNome: string | null | undefined): 'responsavel_id' | 'copy_id' | 'gestor_id' | 'especialista_id' {
-  if (setorNome === 'Copy') return 'copy_id';
-  if (setorNome === 'Gestor de Tráfego') return 'gestor_id';
-  if (setorNome === 'Especialista') return 'especialista_id';
-  return 'responsavel_id';
-}
-
-const FASES_MEUPAINEL: Record<string, string[]> = {
-  'Editor':             ['edicao', 'revisao_edicao', 'alteracao'],
-  'Copy':               ['producao_copy', 'revisao_copy'],
-  'Gestor de Tráfego':  ['aprovado', 'esteira_teste'],
-  'Especialista':       ['gravacao'],
-};
+/*
+ * `getFieldForSetor` e `FASES_MEUPAINEL` moravam aqui — dois dos quatro mapas
+ * de setor→trabalho que existiam nesta área, ambos chaveados pelo NOME do
+ * setor. Agora vêm da tabela `producao_fases`, ligados por id.
+ */
 
 export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
-  const fixedField   = setor?.nome ? getFieldForSetor(setor.nome) : undefined;
-  const fasesDoSetor = setor?.nome ? (FASES_MEUPAINEL[setor.nome] ?? null) : null;
+  const { fases, carregou } = useFases();
   const [hojeOpen, setHojeOpen] = useState(true);
+
+  const campoDono   = campoDonoDoSetor(fases, setorId);
+  const minhasFases = fasesDoSetor(fases, setorId);
+
+  // Sem setor, nada é "meu" — e mostrar tudo faria a tela mentir no título.
+  const semSetor = !setorId;
+
+  if (!carregou) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">Carregando…</p>;
+  }
 
   return (
     <div className="flex flex-col gap-6">
+      {/* O painel se chama "Meu", então precisa dizer quando não consegue
+          cumprir isso. Conta sem setor via tudo — e antes via em silêncio,
+          com o trabalho dos outros sob um título que dizia "meu". */}
+      {semSetor && (
+        <p className="text-xs text-amber-500/90 border border-amber-500/25 bg-amber-500/5 rounded-md px-3 py-2">
+          Seu perfil não tem setor, então este painel mostra o trabalho de
+          todo mundo — e não só o seu. Defina um setor em Acessos para filtrar.
+        </p>
+      )}
+
       {/* Seção Hoje */}
       <div>
         <button
@@ -53,9 +65,9 @@ export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
             nivel={nivel}
             setorId={setorId}
             userId={userId}
-            fixedField={fixedField}
-            fixedValue={userId}
-            fases={fasesDoSetor ?? undefined}
+            fixedField={semSetor ? undefined : (campoDono as never)}
+            fixedValue={semSetor ? undefined : userId}
+            fases={minhasFases.length ? minhasFases : undefined}
           />
         )}
       </div>
@@ -67,9 +79,9 @@ export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
           nivel={nivel}
           setorId={setorId}
           userId={userId}
-          fixedField={fixedField}
-          fixedValue={userId}
-          fasesVisiveis={fasesDoSetor ?? undefined}
+          fixedField={semSetor ? undefined : (campoDono as never)}
+          fixedValue={semSetor ? undefined : userId}
+          fasesVisiveis={minhasFases.length ? minhasFases : undefined}
         />
       </div>
     </div>

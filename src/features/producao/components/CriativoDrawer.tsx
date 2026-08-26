@@ -265,42 +265,32 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     onClose();
   };
 
+  /**
+   * Duplicar deixou de listar campo a campo.
+   *
+   * Esta lista tinha ~25 nomes escritos à mão, e havia OUTRA igual no
+   * Calendário. As duas já divergiam — só esta gravava no histórico — e nenhuma
+   * copiava `video_story_url`, que está preenchido em 80% dos cards: duplicar
+   * perdia o vídeo de story sem dizer nada.
+   *
+   * No banco as colunas são derivadas da própria tabela, então coluna nova
+   * passa a ser copiada sozinha. Conferido comparando cópia e original campo a
+   * campo: só diferem id, nome e os dois carimbos de data.
+   */
   const handleDuplicate = async () => {
     if (!criativo) return;
-    const { data, error } = await supabase.from('producoes').insert({
-      nome:              `${criativo.nome} (cópia)`,
-      tipo:              criativo.tipo,
-      fase:              criativo.fase,
-      funil_ids:         criativo.funil_ids ?? [],
-      projeto_id:        criativo.projeto_id,
-      funil_video:       criativo.funil_video,
-      responsavel_id:    criativo.responsavel_id,
-      copy_id:           criativo.copy_id,
-      gestor_id:         criativo.gestor_id,
-      formato:           criativo.formato,
-      plataforma:        criativo.plataforma,
-      tipo_teste:        criativo.tipo_teste,
-      nivel_consciencia: criativo.nivel_consciencia,
-      angulo_teste:      criativo.angulo_teste,
-      modulo:            criativo.modulo,
-      ordem:             criativo.ordem,
-      notas:             criativo.notas,
-      data_inicio:       criativo.data_inicio,
-      data_prazo:        criativo.data_prazo,
-      copy_url:          criativo.copy_url,
-      video_gravado_url:  criativo.video_gravado_url,
-      video_editado_url:  criativo.video_editado_url,
-      status_veiculacao: criativo.status_veiculacao,
-      avaliacao:         criativo.avaliacao,
-      especialista_id:   criativo.especialista_id ?? null,
-    }).select('id').single();
-    if (error || !data) { toast({ title: 'Erro ao duplicar', variant: 'destructive' }); return; }
-    await supabase.from('criativo_historico').insert({
-      criativo_id:    data.id,
-      usuario_id:     userId,
-      tipo_alteracao: 'criacao',
-      valor_novo:     `${criativo.nome} (cópia)`,
+    const { data, error } = await supabase.rpc('fn_duplicar_criativos', {
+      p_ids:     [criativo.id],
+      p_usuario: userId,
     });
+    const novoId = (data as string[] | null)?.[0];
+    if (error || !novoId) {
+      toast({ title: 'Erro ao duplicar', description: error?.message, variant: 'destructive' });
+      return;
+    }
+    // O histórico é gravado DENTRO da função, na mesma transação. Escrever aqui
+    // seria uma segunda linha para o mesmo fato — e uma que podia falhar
+    // sozinha, deixando a cópia sem registro de origem.
     toast({ title: 'Duplicado com sucesso' });
   };
 

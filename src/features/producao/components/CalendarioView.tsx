@@ -36,6 +36,10 @@ interface Props {
 }
 
 const DIAS_SEMANA = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+/** Teto para a tela não travar. Se bater nele, a tela avisa em vez de cortar
+ *  calado — ver o estado `truncado`. */
+const LIMITE_DE_CARDS = 2000;
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
@@ -256,6 +260,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
   // Select mode / rubber band
   const [selectMode, setSelectMode]   = useState(false);
+  const [truncado, setTruncado]       = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkFase, setBulkFase]       = useState('');
   const [bulkResp, setBulkResp]       = useState('');
@@ -305,7 +310,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       .or(`data_prazo.lte.${fmt(windowEnd)},and(data_prazo.is.null,data_inicio.lte.${fmt(windowEnd)})`)
       .not('fase', 'in', '(arquivado,bloqueado)')
       .order('data_inicio', { nullsFirst: false })
-      .limit(2000);
+      .limit(LIMITE_DE_CARDS);
 
     if (fixedField && fixedValue) {
       q = q.eq(fixedField, fixedValue);
@@ -329,8 +334,19 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       q = q.or(`responsavel_id.in.(${ids}),especialista_id.in.(${ids}),copy_id.in.(${ids}),gestor_id.in.(${ids})`);
     }
 
-    const { data } = await q;
-    setCriativos(linhas<Criativo>(data));
+    const { data, error } = await q;
+    if (error) {
+      // Falhava em silêncio: erro de rede ou de filtro deixava o calendário
+      // vazio, e vazio se lê como "não há nada nesse mês".
+      toast({ title: 'Não consegui carregar o calendário', description: error.message, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
+    const linhasLidas = linhas<Criativo>(data);
+    // O `limit` existe para a tela não travar, mas cortar sem avisar faz o
+    // calendário mentir: some card e nada na tela diz que sumiu.
+    setTruncado(linhasLidas.length >= LIMITE_DE_CARDS);
+    setCriativos(linhasLidas);
     setLoading(false);
   }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus]);
 
@@ -517,34 +533,28 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
   }, [selectedIds, bulkFase, bulkResp, toast, loadCriativos]);
 
+  /**
+   * A SEGUNDA implementação de "duplicar" morava aqui, com a mesma lista de ~25
+   * campos escrita de novo — e já divergindo da outra: esta não gravava
+   * histórico nenhum. Agora as duas chamam a mesma função, que deriva as
+   * colunas da própria tabela.
+   */
   const handleBulkDuplicate = useCallback(async () => {
     const ids = [...selectedIds];
     if (!ids.length) return;
-    const { data: originals } = await supabase
-      .from('producoes')
-      .select('id,nome,tipo,fase,funil_ids,projeto_id,funil_video,responsavel_id,copy_id,gestor_id,especialista_id,formato,plataforma,tipo_teste,nivel_consciencia,angulo_teste,modulo,ordem,notas,data_inicio,data_prazo,copy_url,video_gravado_url,video_editado_url,status_veiculacao,avaliacao')
-      .in('id', ids);
-    if (!originals?.length) return;
-    const copies = originals.map(c => ({
-      nome: `${c.nome} (cópia)`, tipo: c.tipo, fase: c.fase,
-      funil_ids: c.funil_ids ?? [], projeto_id: c.projeto_id,
-      funil_video: c.funil_video, responsavel_id: c.responsavel_id,
-      copy_id: c.copy_id, gestor_id: c.gestor_id, especialista_id: c.especialista_id,
-      formato: c.formato, plataforma: c.plataforma,
-      tipo_teste: c.tipo_teste, nivel_consciencia: c.nivel_consciencia,
-      angulo_teste: c.angulo_teste, modulo: c.modulo, ordem: c.ordem, notas: c.notas,
-      data_inicio: c.data_inicio, data_prazo: c.data_prazo,
-      copy_url: c.copy_url, video_gravado_url: c.video_gravado_url,
-      video_editado_url: c.video_editado_url, status_veiculacao: c.status_veiculacao,
-      avaliacao: c.avaliacao,
-    }));
-    const { error } = await supabase.from('producoes').insert(copies);
-    if (error) { toast({ title: 'Erro ao duplicar', variant: 'destructive' }); return; }
-    toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} duplicado${ids.length !== 1 ? 's' : ''}` });
+    const { data, error } = await supabase.rpc('fn_duplicar_criativos', {
+      p_ids: ids, p_usuario: userId,
+    });
+    if (error) {
+      toast({ title: 'Erro ao duplicar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    const n = (data as string[] | null)?.length ?? 0;
+    toast({ title: `${n} criativo${n !== 1 ? 's' : ''} duplicado${n !== 1 ? 's' : ''}` });
     setSelectedIds(new Set());
     setSelectMode(false);
     loadCriativos();
-  }, [selectedIds, toast, loadCriativos]);
+  }, [selectedIds, userId, toast, loadCriativos]);
 
   const handleBulkDelete = useCallback(async () => {
     const ids = [...selectedIds];
@@ -688,6 +698,13 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
           <div className="flex items-center gap-1.5 pl-2 border-l border-border/40">
             <div className="w-6 h-2 rounded-sm bg-blue-500/20 border border-blue-500/30" />Período
           </div>
+          {/* Cortar em silêncio faz o calendário mentir: sumiria card e nada na
+              tela diria que sumiu. Melhor dizer, e dizer o que fazer. */}
+          {truncado && (
+            <div className="flex items-center gap-1.5 pl-2 border-l border-border/40 text-amber-500/90">
+              mostrando os primeiros {LIMITE_DE_CARDS} — use os filtros para ver o resto
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1 border-l border-border/40 pl-2">
