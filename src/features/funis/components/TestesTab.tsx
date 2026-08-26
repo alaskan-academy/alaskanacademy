@@ -201,6 +201,7 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
   const [movendo, setMovendo]         = useState<string | null>(null);
   const [verTodosConcluidos, setVerTodosConcluidos] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  const [expandidas, setExpandidas] = useState<Set<PipelineStatus>>(new Set());
 
   const funisDisponiveis = filtroProjetos.length === 0
     ? funis
@@ -422,8 +423,37 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
             const cortou = col.key === 'concluido' && !verTodosConcluidos && total > TETO_CONCLUIDOS * 1.5;
             if (cortou) cartoes = cartoes.slice(0, TETO_CONCLUIDOS);
 
+            // Uma coluna sem cartão nenhum gastava os mesmos 288px de uma com
+            // 20, e por causa disso o quadro media 1.488px e a coluna
+            // "Concluído" ficava cortada mesmo numa janela de 1.440. Vazia, ela
+            // encolhe para uma faixa com o nome na vertical; clicar expande.
+            const encolhida = total === 0 && !expandidas.has(col.key);
+
+            if (encolhida) {
+              return (
+                <button
+                  key={col.key}
+                  type="button"
+                  onClick={() => setExpandidas(prev => new Set(prev).add(col.key))}
+                  title={`${col.label} — vazia. Clique para expandir.`}
+                  className={cn(
+                    'w-10 shrink-0 rounded-lg border flex flex-col items-center gap-2 py-3 transition-colors hover:bg-muted/30',
+                    col.borderCls, col.bgCls,
+                  )}
+                >
+                  <col.Icon className={cn('h-3.5 w-3.5 shrink-0', col.headerCls)} />
+                  <span
+                    className={cn('text-[10px] font-semibold whitespace-nowrap', col.headerCls)}
+                    style={{ writingMode: 'vertical-rl' }}
+                  >
+                    {col.label}
+                  </span>
+                </button>
+              );
+            }
+
             return (
-              <div key={col.key} className="w-72 shrink-0">
+              <div key={col.key} className="w-64 shrink-0">
                 <div className={cn('flex items-center gap-1.5 px-1 pb-2 text-xs font-semibold', col.headerCls)}>
                   <col.Icon className="h-3.5 w-3.5" />
                   {col.label}

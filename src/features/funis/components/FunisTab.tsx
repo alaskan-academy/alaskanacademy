@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/lib/formatters';
+import { formatCurrency, formatNumber } from '@/lib/formatters';
 import {
   ChevronDown, ChevronRight, ExternalLink, Plus, Pencil,
-  Globe, ShoppingBag, FlaskConical,
+  Globe, ShoppingBag, FlaskConical, Search, Video, AlertTriangle,
 } from 'lucide-react';
 import { FunilModal } from './FunilModal';
 import { TesteModal } from './TesteModal';
@@ -51,6 +53,84 @@ function StatusBadge({ status }: { status: StatusDisplay }) {
       <Badge className={cn('text-xs font-semibold border-0', cfg.cls)}>{cfg.label}</Badge>
     </span>
   );
+}
+
+/**
+ * O que o REV tem, além do cadastro: VSL, domínios, checkouts e vendas.
+ *
+ * Vem de `vw_mapa_revs`. Isto existia como uma ABA separada chamada Mapa, e era
+ * o defeito central da área: duas listas dos mesmos 23 REVs, cada uma escondendo
+ * metade da informação. A pessoa abria a área e a primeira decisão era "em qual
+ * das duas listas da mesma coisa eu olho?".
+ *
+ * Agora é uma lista só — agrupada e editável como a de Funis era, com a busca e
+ * os números que só o Mapa tinha.
+ */
+interface DadosDoRev {
+  id: string;
+  vsl: string | null;
+  vsl_duracao: number | null;
+  dominios: string[] | null;
+  checkouts: string[] | null;
+  vendas: number;
+  ultima_venda: string | null;
+  metodo: string | null;
+  url_page: string | null;
+  busca: string;
+}
+
+/** Mesma normalização da coluna `busca` da view: sem acento, minúsculas. */
+function semAcento(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/**
+ * O que falta preencher neste REV, numa frase.
+ *
+ * Antes cada campo vazio ocupava a sua própria linha dizendo "sem VSL", "sem
+ * domínio", "nenhum checkout", "sem página". Com 23 REVs isso somava ~90 "não
+ * tem" na tela, e de longe parecia sistema quebrado em vez de trabalho
+ * pendente. Uma frase só diz o mesmo e devolve o espaço para o que existe.
+ */
+function oQueFalta(
+  d: DadosDoRev | undefined,
+  temDominio: boolean,
+  status: StatusDisplay,
+): string | null {
+  if (!d) return null;
+
+  // Só avisa em REV que está NO AR.
+  //
+  // Num REV planejado, "faltam VSL, domínio e checkout" é a descrição de um REV
+  // planejado — não é notícia. Mostrar em todos fazia 23 linhas repetirem a
+  // mesma frase, 13 delas idênticas, e o aviso voltava a ser paisagem.
+  //
+  // Num REV ativo é outra coisa: significa que tem gente comprando e a gente
+  // não consegue medir. Isso é problema, e é o que merece a tinta.
+  if (status !== 'ativo' && status !== 'em_teste') return null;
+
+  const faltas: string[] = [];
+  if (!d.vsl) faltas.push('VSL');
+  if (!temDominio) faltas.push('domínio');
+  if (!d.checkouts?.length) faltas.push('checkout');
+  if (faltas.length === 0) return null;
+  if (faltas.length === 1) return `falta ${faltas[0]}`;
+  return `faltam ${faltas.slice(0, -1).join(', ')} e ${faltas[faltas.length - 1]}`;
+}
+
+/**
+ * O nome do REV diz um método e o campo `metodo` diz outro.
+ *
+ * Dois REVs se chamam "REV5 - VSL" e têm `metodo = 'TSL'`. Não dá para corrigir
+ * automaticamente — não há como saber qual dos dois está certo —, mas dá para
+ * parar de esconder: antes a contradição só aparecia para quem lesse as duas
+ * coisas lado a lado e reparasse.
+ */
+function metodoContradizNome(rev: string, metodo: string | null): boolean {
+  if (!metodo) return false;
+  const nome = rev.toUpperCase();
+  const m = metodo.toUpperCase();
+  return (nome.includes('VSL') && m === 'TSL') || (nome.includes('TSL') && m === 'VSL');
 }
 
 const TIPO_BADGE: Record<string, { label: string; cls: string }> = {
@@ -99,6 +179,8 @@ function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; on
 
 export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState('');
+  const [dados, setDados] = useState<Record<string, DadosDoRev>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
   const [modalKey, setModalKey] = useState(0);
@@ -137,20 +219,41 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
     setModalOpen(true);
   }
 
+  // Carrega VSL, domínios, checkouts e vendas de cada REV. Consulta separada de
+  // `funis` porque agrega vendas: se entrasse no mesmo select da página, o
+  // carregamento da tela inteira passaria a esperar por ela.
+  const carregarDados = useCallback(async () => {
+    const { data } = await supabase.from('vw_mapa_revs').select('*');
+    const porId: Record<string, DadosDoRev> = {};
+    for (const d of (data ?? []) as DadosDoRev[]) porId[d.id] = d;
+    setDados(porId);
+  }, []);
+
+  useEffect(() => { carregarDados(); }, [carregarDados, funis]);
+
   const projetoMap = Object.fromEntries(projetos.map(p => [p.id, p]));
+
+  // Busca sobre a lista já agrupada. São 23 REVs, então filtra em memória e a
+  // estrutura de projetos continua na tela — quem procura "h07" ainda vê a
+  // qual projeto o resultado pertence, que é metade da resposta.
+  const visiveis = useMemo(() => {
+    const q = semAcento(busca.trim());
+    if (!q) return funis;
+    return funis.filter(f => (dados[f.id]?.busca ?? semAcento(f.nome)).includes(q));
+  }, [funis, busca, dados]);
 
   type Group = { projeto: Projeto | null; funis: Funil[] };
   const groups: Group[] = [];
   const seen = new Set<string | null>();
 
   // First pass: projetos with funis
-  for (const funil of funis) {
+  for (const funil of visiveis) {
     const pid = funil.projeto_id ?? null;
     if (!seen.has(pid)) {
       seen.add(pid);
       groups.push({
         projeto: pid ? (projetoMap[pid] ?? null) : null,
-        funis: funis.filter(f => (f.projeto_id ?? null) === pid),
+        funis: visiveis.filter(f => (f.projeto_id ?? null) === pid),
       });
     }
   }
@@ -165,10 +268,10 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   if (funis.length === 0) {
     return (
       <div className="py-16 text-center space-y-3">
-        <p className="text-sm text-muted-foreground">Nenhum funil cadastrado ainda.</p>
+        <p className="text-sm text-muted-foreground">Nenhum REV cadastrado ainda.</p>
         <Button size="sm" onClick={() => openNew()}>
           <Plus className="h-3.5 w-3.5 mr-1.5" />
-          Novo funil
+          Novo REV
         </Button>
         <FunilModal
           key={modalKey}
@@ -185,14 +288,48 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
     );
   }
 
+  // Conta so REV no ar: e onde a VSL faltando impede de medir algo que ja esta
+  // vendendo. Contar os planejados juntos daria um numero grande e inerte.
+  const semVslCount = funis.filter(f => {
+    const s = getStatusDisplay(f, testes);
+    return !f.vsl_id && (s === 'ativo' || s === 'em_teste');
+  }).length;
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
+      {/* Busca + a única pendência que vale espaço fixo.
+          As cinco pílulas que ficavam aqui contavam TESTES numa tela de REVs, e
+          uma delas mostrava zero — gastava espaço para dizer que não há nada.
+          Uma pendência acionável vale mais que cinco contagens. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[16rem]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar por VSL, domínio, checkout, página ou REV…"
+            className="pl-9 h-9"
+          />
+        </div>
+
+        {semVslCount > 0 && !busca && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 h-9 rounded-md text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/25">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {semVslCount} {semVslCount === 1 ? 'REV sem VSL' : 'REVs sem VSL'}
+          </span>
+        )}
+
         <Button size="sm" className="h-9 gap-1.5" onClick={() => openNew()}>
           <Plus className="h-3.5 w-3.5" />
-          Novo funil
+          Novo REV
         </Button>
       </div>
+
+      {busca && groups.length === 0 && (
+        <p className="py-12 text-center text-sm text-muted-foreground">
+          Nada com &ldquo;{busca}&rdquo;. A busca cobre REV, projeto, VSL, domínio, checkout e página.
+        </p>
+      )}
 
       {groups.map(group => {
         const projetoId = group.projeto?.id ?? '__none__';
@@ -211,7 +348,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                   {group.projeto?.nome ?? 'Sem projeto'}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {group.funis.length} funil{group.funis.length !== 1 ? 's' : ''}
+                  {group.funis.length} REV{group.funis.length !== 1 ? 's' : ''}
                   {ativoCount > 0 && ` · ${ativoCount} ativo${ativoCount !== 1 ? 's' : ''}`}
                 </span>
               </div>
@@ -222,7 +359,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                 onClick={() => openNew(group.projeto?.id ?? '')}
               >
                 <Plus className="h-3 w-3" />
-                Funil
+                REV
               </Button>
             </div>
 
@@ -242,6 +379,8 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                 const testesAtivos = funilTestes.filter(t => t.pipeline_status !== 'concluido');
                 const hasTestePronto = testesPromtos.length > 0;
                 const mySubofertas = funilSubofertas.filter(fs => fs.funil_id === funil.id);
+                const d = dados[funil.id];
+                const falta = oQueFalta(d, funilDominios.length > 0, statusDisplay);
                 const isHighlighted = statusDisplay === 'em_teste';
                 const isPausadoAnalise = statusDisplay === 'pausado_analise';
 
@@ -280,13 +419,40 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
                         {funil.nome}
                       </span>
 
-                      {funil.metodo && (
-                        <span className="text-xs text-muted-foreground hidden sm:block shrink-0">{funil.metodo}</span>
+                      {/* A VSL, que é a pergunta mais frequente sobre um REV.
+                          Antes só aparecia abrindo o cadastro. */}
+                      {d?.vsl && (
+                        <span
+                          title={d.vsl}
+                          className="hidden lg:flex items-center gap-1 text-xs text-muted-foreground shrink-0 max-w-[12rem]"
+                        >
+                          <Video className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{d.vsl}</span>
+                        </span>
                       )}
 
-                      {funil.preco != null && (
-                        <span className="text-xs font-mono text-foreground hidden md:block shrink-0">
-                          {formatCurrency(funil.preco)}
+                      {/* Vendas. Sem isto, um REV com 538 vendas era visualmente
+                          idêntico a um com zero — que era o defeito da lista. */}
+                      {d && d.vendas > 0 && (
+                        <span className="text-xs tabular-nums shrink-0">
+                          <span className="font-semibold">{formatNumber(d.vendas)}</span>
+                          <span className="text-muted-foreground"> vendas</span>
+                        </span>
+                      )}
+
+                      {/* O que falta, numa frase, em vez de um campo vazio por linha. */}
+                      {falta && (
+                        <span className="hidden md:block text-[11px] text-amber-400/80 shrink-0">
+                          {falta}
+                        </span>
+                      )}
+
+                      {metodoContradizNome(funil.nome, funil.metodo) && (
+                        <span
+                          title={`O nome diz uma coisa e o método diz "${funil.metodo}". Um dos dois está errado.`}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0"
+                        >
+                          nome × {funil.metodo}
                         </span>
                       )}
 

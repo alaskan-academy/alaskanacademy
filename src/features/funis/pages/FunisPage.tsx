@@ -9,9 +9,8 @@ import { DominiosTab } from '../components/DominiosTab';
 import { TestesTab } from '../components/TestesTab';
 import { semVeredito } from '../testes';
 import { CheckoutsTab } from '../components/CheckoutsTab';
-import { MapaTab } from '../components/MapaTab';
 
-type Tab = 'funis' | 'mapa' | 'testes' | 'dominios' | 'checkouts';
+type Tab = 'funis' | 'testes' | 'dominios' | 'checkouts';
 
 interface State {
   funis: Funil[];
@@ -25,7 +24,6 @@ interface State {
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'funis',      label: 'Funis' },
-  { key: 'mapa',       label: 'Mapa' },
   { key: 'testes',     label: 'Testes' },
   { key: 'dominios',   label: 'Domínios' },
   { key: 'checkouts',  label: 'Checkouts' },
@@ -92,69 +90,13 @@ export default function FunisPage() {
           onGoToDominios={() => setActiveTab('dominios')}
         />
 
-        {/* Summary pills */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Ativos — emerald: sinal de saúde/ativo */}
-          <span className={cn(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-            ativosCount > 0
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
-          )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', ativosCount > 0 ? 'bg-emerald-400' : 'bg-muted-foreground/30')} />
-            {ativosCount} ativo{ativosCount !== 1 ? 's' : ''}
-          </span>
+        {/* As cinco pilulas que ficavam aqui contavam TESTES numa tela que
+            tambem mostra REVs, dominios e checkouts, e uma delas exibia zero:
+            espaco fixo para dizer que nao ha nada.
 
-          {/* Rodando — amber: atenção, em observação */}
-          <span className={cn(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-            testesCount > 0
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
-          )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', testesCount > 0 ? 'bg-amber-400' : 'bg-muted-foreground/30')} />
-            {testesCount} rodando
-          </span>
-
-          {/* Pronto para teste — teal: pronto, aguardando */}
-          <span className={cn(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-            prontoCount > 0
-              ? 'bg-teal-500/10 text-teal-400 border border-teal-500/20'
-              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
-          )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', prontoCount > 0 ? 'bg-teal-400' : 'bg-muted-foreground/30')} />
-            {prontoCount} pronto para teste
-          </span>
-
-          {/* A produzir — purple: planejado + produzindo, as duas primeiras colunas */}
-          <span className={cn(
-            'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-            naFilaCount > 0
-              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-              : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
-          )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', naFilaCount > 0 ? 'bg-purple-400' : 'bg-muted-foreground/30')} />
-            {naFilaCount} a produzir
-          </span>
-
-          {/* Domínios — sky: informacional */}
-          {(() => {
-            const d = state.dominios.filter(d => d.ativo).length;
-            return (
-              <span className={cn(
-                'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-                d > 0
-                  ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                  : 'bg-muted/40 text-muted-foreground/50 border border-border/40',
-              )}>
-                <span className={cn('h-1.5 w-1.5 rounded-full', d > 0 ? 'bg-sky-400' : 'bg-muted-foreground/30')} />
-                {d} domínio{d !== 1 ? 's' : ''} ativo{d !== 1 ? 's' : ''}
-              </span>
-            );
-          })()}
-        </div>
-
+            Cada aba agora mostra a SUA pendencia, do lado de quem pode agir:
+            Funis diz quantos REVs estao sem VSL, Testes diz quantos estao sem
+            veredito, e Checkouts ja mostrava o progresso em vendas. */}
         {/* Tab nav */}
         <div className="flex gap-1 border-b border-border">
           {TABS.map(tab => {
@@ -218,7 +160,6 @@ export default function FunisPage() {
               onReload={load}
             />
           )}
-          {activeTab === 'mapa' && <MapaTab />}
         </div>
       </div>
     </DashboardLayout>
