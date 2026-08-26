@@ -93,9 +93,13 @@ export function LinhaMetrica({
         )}
       </span>
 
+      {/* Mesmo tamanho E mesmo peso que a `CelulaTripla`: as duas são o número
+          que decide a linha, e estavam em 500 aqui contra 600 lá. A 16px a
+          diferença de peso se lê como diferença de TAMANHO — na tela do Funil,
+          "R$ 23,15" parecia maior que "34,15%" sem nenhum motivo. */}
       <span className={cn(
         'w-40 shrink-0 text-right tabular-nums',
-        destaque ? 'text-lg font-semibold' : 'text-base font-medium',
+        destaque ? 'text-lg font-semibold' : 'text-base font-semibold',
       )}>
         {valor == null ? '—' : formato(valor)}
       </span>

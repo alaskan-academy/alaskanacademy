@@ -643,25 +643,56 @@ export default function AnalisesPage() {
                   nada sozinhos, R$ 1,01 por clique diz. A contagem e a taxa de
                   passagem descem para a linha de baixo, na mesma coluna, para
                   agora e anterior seguirem comparáveis de cima a baixo. */}
-              <ListaMetricas titulo="Funil">
+              {/* O nome da métrica na linha miúda, e não no rótulo: o rótulo é
+                  a ETAPA do funil, e trocá-lo por "CPA" quebraria a leitura de
+                  cima a baixo — clique, checkout, venda.
+
+                  Sem essa linha o custo grande ficava anônimo: "onde é o CPA?"
+                  foi pergunta de verdade olhando para o R$ 51,06, que é
+                  exatamente o CPA. O bloco Por visitante já nomeava os dele; só
+                  o Funil tinha ficado mudo.
+
+                  O que o % quer dizer vai na nota do bloco e não em cada linha:
+                  repetido três vezes ele estourava o rótulo em três linhas e
+                  engordava a tabela inteira para explicar a mesma coisa. */}
+              <ListaMetricas
+                titulo="Funil"
+                // "a passagem da etapa anterior" se lia como se a % fosse DA
+                // etapa de cima, e não o que veio dela — a pergunta apareceu
+                // olhando para os 56,73% da linha de vendas.
+                nota="a % é quanto passou da etapa de cima"
+              >
                 <LinhaTripla
-                  rotulo="Cliques no link" formato={formatCurrency} subirEhRuim
+                  rotulo="Cliques no link" detalhe="CPC · custo por clique"
+                  formato={formatCurrency} subirEhRuim
                   valor={a.cpc} anterior={ant.cpc}
                   topo={formatNumber(a.cliques)} topoAntes={formatNumber(ant.cliques)}
                 />
                 <LinhaTripla
-                  rotulo="Checkouts iniciados" formato={formatCurrency} subirEhRuim
+                  rotulo="Checkouts iniciados" detalhe="CPI · custo por checkout iniciado"
+                  formato={formatCurrency} subirEhRuim
                   valor={a.cpi} anterior={ant.cpi}
                   topo={formatNumber(a.checkouts_iniciados)} topoAntes={formatNumber(ant.checkouts_iniciados)}
                   base={a.taxa_checkout_pct != null ? pct2(a.taxa_checkout_pct) : undefined}
                   baseAntes={ant.taxa_checkout_pct != null ? pct2(ant.taxa_checkout_pct) : undefined}
                 />
+                {/* A conversão do checkout em linha própria, e não como % miúda
+                    sob o CPA da linha de vendas.
+
+                    Ali embaixo ela se lia errado: "Vendas 56,73%" parece uma
+                    fatia das vendas, quando é a fatia dos CHECKOUTS que virou
+                    venda. Em linha própria o % é o assunto, do mesmo jeito que
+                    a conversão do funil já era. */}
+                <LinhaMetrica
+                  rotulo="Conversão do checkout"
+                  valor={a.conv_checkout_pct} anterior={ant.conv_checkout_pct} formato={pct2}
+                  detalhe="checkout iniciado que virou venda"
+                />
                 <LinhaTripla
-                  rotulo="Vendas" formato={formatCurrency} subirEhRuim destaque
+                  rotulo="Vendas" detalhe="CPA · custo por venda"
+                  formato={formatCurrency} subirEhRuim destaque
                   valor={a.cpa} anterior={ant.cpa}
                   topo={formatNumber(a.vendas)} topoAntes={formatNumber(ant.vendas)}
-                  base={a.conv_checkout_pct != null ? pct2(a.conv_checkout_pct) : undefined}
-                  baseAntes={ant.conv_checkout_pct != null ? pct2(ant.conv_checkout_pct) : undefined}
                 />
                 <LinhaMetrica rotulo="Conversão do funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2}
                   detalhe="venda por visita à página" />

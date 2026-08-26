@@ -75,10 +75,13 @@ export function BlocoUpsell({ a, ant }: { a: BlocoMetricas; ant: BlocoMetricas }
         {/* Quantidade em cima, adesão grande, faturamento embaixo — a linha
             absorve o "Faturamento do upsell" que existia separado. Três
             números sobre a mesma coisa não precisam de duas linhas. */}
+        {/* Sem `destaque`: com ele o bloco destacava 2 das 3 linhas, e destaque
+            que pega dois terços não destaca nada. O que decide aqui é o lucro
+            com upsell — a adesão é como se chega nele. */}
         <LinhaTripla
           rotulo="Adesão ao upsell" detalhe={`de ${a.vendas} vendas do front`}
           valor={a.upsell_adesao_pct} anterior={ant.upsell_adesao_pct}
-          formato={pct2} destaque
+          formato={pct2}
           topo={formatNumber(a.upsell_qtd)} topoAntes={formatNumber(ant.upsell_qtd)}
           base={formatCurrency(a.upsell_faturamento)}
           baseAntes={formatCurrency(ant.upsell_faturamento)}
