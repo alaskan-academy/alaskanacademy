@@ -22,21 +22,60 @@ const ALL_SUB_PAGES = [
   { path: '/clientes', label: 'Clientes',    icon: Users,           key: 'clientes' },
 ];
 
-const ALL_FIXED_ITEMS = [
-  // O Início é a porta de entrada de todo mundo, então mora na lista achatada e
-  // não dentro do seletor de dashboards — aquele grupo é do funil e só sócio vê.
-  { path: '/',              label: 'Início',        icon: Home,          key: 'inicio',       adminOnly: false, sectorOnly: null },
-  { path: '/processos',     label: 'Processos',     icon: GraduationCap, key: 'processos',    adminOnly: false, sectorOnly: null },
-  { path: '/laboratorio',   label: 'Laboratório',   icon: FlaskConical,  key: 'laboratorio',  adminOnly: false, sectorOnly: null },
-  { path: '/acessos',       label: 'Acessos',       icon: KeyRound,      key: 'acessos',      adminOnly: false, sectorOnly: null },
-  { path: '/editores',      label: 'Editores',      icon: BarChart3,     key: 'editores',     adminOnly: false, sectorOnly: null },
-  { path: '/copywriters',   label: 'Copywriters',   icon: PenLine,       key: 'copywriters',  adminOnly: false, sectorOnly: 'Copy' },
-  { path: '/producao',      label: 'Produção',      icon: Film,          key: 'producao',     adminOnly: false, sectorOnly: null },
-  { path: '/criativos',     label: 'Criativos',     icon: Clapperboard,  key: 'criativos',    adminOnly: true,  sectorOnly: null },
-  { path: '/funis-gestao',  label: 'Funis',         icon: Layers,        key: 'funis-gestao', adminOnly: false, sectorOnly: null },
-  { path: '/analises',      label: 'Análises',      icon: LineChart,     key: 'analises',     adminOnly: true,  sectorOnly: null },
-  { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false, sectorOnly: null },
-  { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true, sectorOnly: null  },
+/**
+ * O menu, agrupado pelo MOTIVO de abrir cada tela.
+ *
+ * Eram doze entradas numa lista chapada, sem separação nenhuma, e a leitura era
+ * "informação perdida e jogada" — com razão: Produção, Financeiro e
+ * Configurações são coisas de naturezas completamente diferentes, e nada na
+ * barra dizia isso.
+ *
+ * O critério é o motivo de abrir, e não o que a tela tem dentro. Ninguém abre
+ * Editores para cadastrar um editor: abre para ver desempenho, então ela é
+ * dado. Financeiro tem revisão diária dentro, mas quem clica ali está atrás de
+ * dinheiro, não de tarefa.
+ *
+ * ESTRUTURA existe porque cadastro não é nem trabalho do dia nem leitura de
+ * número: são as três telas que definem COMO as coisas são, abertas de vez em
+ * quando. Empurradas para dentro de "Operação" recriariam a bagunça em escala
+ * menor, e no rodapé saem do caminho sem sumir.
+ *
+ * O Início fica fora de qualquer grupo, sozinho no topo: é a porta de entrada
+ * de todo mundo, e porta de entrada não pertence a categoria nenhuma.
+ */
+const GRUPOS = [
+  {
+    titulo: null,   // Início não tem cabeçalho: é a porta, não uma seção.
+    itens: [
+      { path: '/', label: 'Início', icon: Home, key: 'inicio', adminOnly: false, sectorOnly: null },
+    ],
+  },
+  {
+    titulo: 'Operação',
+    itens: [
+      { path: '/processos',   label: 'Processos',   icon: GraduationCap, key: 'processos',   adminOnly: false, sectorOnly: null },
+      { path: '/producao',    label: 'Produção',    icon: Film,          key: 'producao',    adminOnly: false, sectorOnly: null },
+      { path: '/criativos',   label: 'Criativos',   icon: Clapperboard,  key: 'criativos',   adminOnly: true,  sectorOnly: null },
+      { path: '/copywriters', label: 'Copywriters', icon: PenLine,       key: 'copywriters', adminOnly: false, sectorOnly: 'Copy' },
+      { path: '/laboratorio', label: 'Laboratório', icon: FlaskConical,  key: 'laboratorio', adminOnly: false, sectorOnly: null },
+    ],
+  },
+  {
+    titulo: 'Dados',
+    itens: [
+      { path: '/analises',   label: 'Análises',   icon: LineChart, key: 'analises',   adminOnly: true,  sectorOnly: null },
+      { path: '/editores',   label: 'Editores',   icon: BarChart3, key: 'editores',   adminOnly: false, sectorOnly: null },
+      { path: '/financeiro', label: 'Financeiro', icon: Wallet,    key: 'financeiro', adminOnly: false, sectorOnly: null },
+    ],
+  },
+  {
+    titulo: 'Estrutura',
+    itens: [
+      { path: '/funis-gestao',  label: 'Funis',         icon: Layers,   key: 'funis-gestao',  adminOnly: false, sectorOnly: null },
+      { path: '/acessos',       label: 'Acessos',       icon: KeyRound, key: 'acessos',       adminOnly: false, sectorOnly: null },
+      { path: '/configuracoes', label: 'Configurações', icon: Settings, key: 'configuracoes', adminOnly: true,  sectorOnly: null },
+    ],
+  },
 ];
 
 const prodColors: Record<string, string> = {
@@ -55,12 +94,20 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const subPages   = ALL_SUB_PAGES.filter(p => canAccess(p.key));
-  const fixedItems = ALL_FIXED_ITEMS.filter(p => {
-    if (p.adminOnly) return perfil?.is_admin;
-    if (p.sectorOnly) return perfil?.is_admin || perfil?.setor?.nome === p.sectorOnly;
-    return canAccess(p.key);
-  });
+  const subPages = ALL_SUB_PAGES.filter(p => canAccess(p.key));
+
+  // Grupo que ficou sem nenhum item permitido some inteiro, cabeçalho junto:
+  // um título de seção com nada embaixo é pior que a seção não existir.
+  const grupos = GRUPOS
+    .map(g => ({
+      ...g,
+      itens: g.itens.filter(p => {
+        if (p.adminOnly) return perfil?.is_admin;
+        if (p.sectorOnly) return perfil?.is_admin || perfil?.setor?.nome === p.sectorOnly;
+        return canAccess(p.key);
+      }),
+    }))
+    .filter(g => g.itens.length > 0);
 
   const handleSignOut = async () => {
     await signOut();
@@ -135,58 +182,60 @@ export function AppSidebar() {
 
   const SidebarInner = ({ onNav }: { onNav?: () => void }) => (
     <>
-      {/* Fixed items */}
-      <div className={cn("border-b border-sidebar-border py-2", showLabels ? "px-3" : "px-2")}>
-        {fixedItems.map((item) => {
-          const isActive = item.path === '/financeiro'
-            ? location.pathname.startsWith('/financeiro')
-            : location.pathname === item.path;
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={onNav}
-              className={cn(
-                "flex items-center gap-2.5 rounded-md text-sm font-medium transition-colors mb-0.5",
-                showLabels ? "px-3 py-2" : "justify-center py-2 px-1",
-                isActive
-                  ? "bg-primary/15 text-primary"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {showLabels && <span>{item.label}</span>}
-            </NavLink>
-          );
-        })}
-      </div>
+      {/* Os grupos, na ordem em que o dia acontece: fazer, ler, configurar.
+          `flex-1` aqui é o que empurra o rodapé para o fim da barra, e a
+          rolagem vive nele porque agora é este bloco que pode passar da tela. */}
+      <div className={cn("flex-1 overflow-y-auto py-2", showLabels ? "px-3" : "px-2")}>
+        {grupos.map((grupo, i) => (
+          <div key={grupo.titulo ?? 'inicio'} className={cn(i > 0 && 'mt-3')}>
+            {/* Recolhida, a barra fica só com ícones: um título de seção ali
+                viraria três letras cortadas. O espaçamento entre grupos
+                continua separando, e é o suficiente sem os rótulos. */}
+            {showLabels && grupo.titulo && (
+              <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1 px-3">
+                {grupo.titulo}
+              </div>
+            )}
+            {grupo.itens.map((item) => {
+              const isActive = item.path === '/financeiro'
+                ? location.pathname.startsWith('/financeiro')
+                : location.pathname === item.path;
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onClick={onNav}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-md text-sm font-medium transition-colors mb-0.5",
+                    showLabels ? "px-3 py-2" : "justify-center py-2 px-1",
+                    isActive
+                      ? "bg-primary/15 text-primary"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  )}
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  {showLabels && <span>{item.label}</span>}
+                </NavLink>
+              );
+            })}
 
-      {/* Dashboards — some inteiro para quem não alcança nenhuma sub-página.
-          Na prática hoje isso é "só sócio e admin": as três pessoas não-admin não
-          têm nenhuma das páginas de dashboard liberada, e o grupo aparecia para
-          elas como um bloco que abria e não tinha nada dentro. A condição olha o
-          que a pessoa alcança em vez de checar `is_admin`, para que liberar
-          Vendas a alguém no Acessos volte a mostrar o grupo sozinho. */}
-      {subPages.length > 0 && (
-      <div className={cn("py-2 flex-1 overflow-y-auto", showLabels ? "px-3" : "px-2")}>
-        {showLabels && (
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2 px-1">
-            Dashboards
+            {/* O seletor de funil mora DENTRO de Dados, e não num grupo
+                "Dashboards" à parte: as sete sub-páginas são dados por funil,
+                exatamente como Análises e Financeiro são dados. Separá-las
+                sugeria que fossem outra coisa.
+
+                Some inteiro para quem não alcança nenhuma sub-página — na
+                prática só sócio e admin. Antes aparecia para os outros como um
+                bloco que abria e não tinha nada dentro. */}
+            {grupo.titulo === 'Dados' && subPages.length > 0 && (
+              <div className="mt-0.5">
+                <DashboardItem label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} />
+              </div>
+            )}
           </div>
-        )}
-
-        <div className="space-y-0.5">
-          <DashboardItem label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} />
-        </div>
+        ))}
       </div>
-      )}
 
-      {/* Era o bloco acima, com `flex-1`, que empurrava o rodapé (nome, sino e
-          sair) para o fim da barra. Escondendo o bloco para quem não é sócio, o
-          rodapé subia e ficava colado no último item do menu. Este espaçador
-          repõe o esticamento só quando o bloco não existe — quem é sócio
-          continua com o comportamento de antes, inclusive a rolagem do grupo. */}
-      {subPages.length === 0 && <div className="flex-1" />}
     </>
   );
 
