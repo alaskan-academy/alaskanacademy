@@ -36,7 +36,7 @@ export function BlocoUpsell({ a, ant }: { a: BlocoMetricas; ant: BlocoMetricas }
     <div className="space-y-1.5">
       {a.front_se_paga != null && (
         <div className={cn(
-          'flex items-start gap-2 rounded-lg border px-3 py-2 text-xs',
+          'flex items-start gap-2 rounded-lg border px-3 py-2 text-sm',
           sustentadoPeloUp
             ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
             : 'border-emerald-500/25 bg-emerald-500/5 text-emerald-300',

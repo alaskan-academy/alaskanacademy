@@ -61,7 +61,7 @@ export function ResumoComparacao({ colunas }: Props) {
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div className="flex items-baseline gap-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
           Resumo da comparação
         </h3>
         <div className="h-px flex-1 bg-border" />
@@ -75,9 +75,9 @@ export function ResumoComparacao({ colunas }: Props) {
       )}>
         <Trophy className={cn('h-4 w-4 mt-0.5 shrink-0',
           escalavel ? 'text-emerald-400' : 'text-amber-400')} />
-        <div className="text-xs space-y-1">
+        <div className="text-sm space-y-1">
           <p>
-            <strong className="text-sm">{maisEficiente.rev}</strong>
+            <strong className="text-base">{maisEficiente.rev}</strong>
             {maisEficiente.projeto && (
               <span className="text-muted-foreground"> · {maisEficiente.projeto}</span>
             )}
@@ -98,8 +98,8 @@ export function ResumoComparacao({ colunas }: Props) {
         {maisLucro && (
           <div className="flex items-start gap-2 rounded-md border border-border px-3 py-2">
             <Wallet className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-            <div className="text-xs">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            <div className="text-sm">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
                 Mais dinheiro no bolso
               </div>
               <div className="mt-0.5">
@@ -115,8 +115,8 @@ export function ResumoComparacao({ colunas }: Props) {
         {melhorFront && (
           <div className="flex items-start gap-2 rounded-md border border-border px-3 py-2">
             <TrendingUp className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground" />
-            <div className="text-xs">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            <div className="text-sm">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
                 Página mais saudável
               </div>
               <div className="mt-0.5">
@@ -134,7 +134,7 @@ export function ResumoComparacao({ colunas }: Props) {
           mais útil que eleger um: é exatamente a tensão que ela descreveu entre
           "entrega mais dinheiro" e "precisa de otimização". */}
       {discordam && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           Os critérios não apontam para o mesmo REV — o que rende mais por real
           não é o que entrega mais dinheiro nem o que tem a melhor página. Escalar
           e otimizar aqui são decisões separadas.
@@ -142,7 +142,7 @@ export function ResumoComparacao({ colunas }: Props) {
       )}
 
       {noVermelho.length > 0 && (
-        <p className="text-[11px] text-amber-400/90 flex items-start gap-1.5">
+        <p className="text-[13px] text-amber-400/90 flex items-start gap-1.5">
           <AlertTriangle className="h-3.5 w-3.5 mt-px shrink-0" />
           <span>
             {noVermelho.length === 1

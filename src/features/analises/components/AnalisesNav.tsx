@@ -24,7 +24,7 @@ export function AnalisesNav() {
           to={item.path}
           end={item.exato}
           className={({ isActive }) => cn(
-            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-base font-medium transition-colors',
             isActive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
           )}
         >

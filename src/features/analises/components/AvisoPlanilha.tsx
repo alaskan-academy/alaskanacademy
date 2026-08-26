@@ -86,11 +86,11 @@ export function AvisoPlanilha() {
 
   return (
     <div className="rounded-lg border border-dashed border-border px-3 py-2 space-y-2">
-      <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 flex-wrap text-[13px] text-muted-foreground">
         <Table2 className="h-3.5 w-3.5 shrink-0" />
         <span>Nenhuma planilha ligada — a rodada está indo só para o Obsidian.</span>
         {!abrindo && (
-          <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2"
+          <Button size="sm" variant="ghost" className="h-7 text-[13px] px-2"
             onClick={() => setAbrindo(true)}>
             ligar uma
           </Button>
@@ -99,7 +99,7 @@ export function AvisoPlanilha() {
 
       {abrindo && (
         <div className="space-y-2">
-          <div className="text-[11px] text-muted-foreground space-y-1">
+          <div className="text-[13px] text-muted-foreground space-y-1">
             <p className="text-muted-foreground/80">
               Uma planilha só, para todas as análises — isto se configura uma
               vez e nunca mais.
@@ -109,11 +109,11 @@ export function AvisoPlanilha() {
               compartilhe com esta conta, como <strong>Editor</strong>:
             </p>
             <div className="flex items-center gap-1.5">
-              <code className="flex-1 min-w-0 truncate rounded bg-secondary px-2 py-1 text-[11px] text-foreground">
+              <code className="flex-1 min-w-0 truncate rounded bg-secondary px-2 py-1 text-[13px] text-foreground">
                 {conta ?? 'carregando…'}
               </code>
               <Button
-                size="sm" variant="outline" className="h-7 gap-1 shrink-0 text-[11px]"
+                size="sm" variant="outline" className="h-9 gap-1 shrink-0 text-[13px]"
                 disabled={!conta}
                 onClick={() => {
                   if (!conta) return;
@@ -133,19 +133,19 @@ export function AvisoPlanilha() {
 
           <div className="flex items-center gap-2">
             <Input
-              className="h-8 text-sm"
+              className="h-9 text-base"
               placeholder="https://docs.google.com/spreadsheets/d/…"
               value={texto} onChange={e => setTexto(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); salvar(); } }}
             />
-            <Button size="sm" className="h-8 gap-1 shrink-0"
+            <Button size="sm" className="h-9 gap-1 shrink-0"
               onClick={salvar} disabled={!texto.trim() || salvando}>
               <Check className="h-3.5 w-3.5" />
               {salvando ? 'Ligando…' : 'Ligar'}
             </Button>
           </div>
 
-          <p className="text-[10px] text-muted-foreground/70">
+          <p className="text-xs text-muted-foreground/70">
             Cada REV vira uma aba própria, com uma linha por rodada. As ações
             ficam numa aba só, com a coluna do REV.
           </p>

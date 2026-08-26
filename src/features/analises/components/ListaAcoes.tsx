@@ -70,11 +70,11 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
   return (
     <div className="space-y-2">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
           Próximas ações
         </h3>
         <div className="h-px flex-1 min-w-4 bg-border" />
-        <span className="text-[10px] text-muted-foreground/80">
+        <span className="text-xs text-muted-foreground/80">
           {abertas.length === 0 ? 'nenhuma em aberto'
             : abertas.length === 1 ? '1 em aberto' : `${abertas.length} em aberto`}
         </span>
@@ -93,16 +93,16 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
                 aria-label={`Marcar como feita: ${a.texto}`}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-sm">{a.texto}</p>
+                <p className="text-base">{a.texto}</p>
                 {a.expectativa && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5 flex items-start gap-1">
+                  <p className="text-[13px] text-muted-foreground mt-0.5 flex items-start gap-1">
                     <Target className="h-3 w-3 mt-0.5 shrink-0" />
                     {a.expectativa}
                   </p>
                 )}
               </div>
               {deOutraRodada && (
-                <span className="shrink-0 inline-flex items-center gap-1 text-[10px] text-amber-400/90 mt-1">
+                <span className="shrink-0 inline-flex items-center gap-1 text-xs text-amber-400/90 mt-1">
                   <Clock className="h-3 w-3" />
                   desde {formatarData(a.data_origem!)}
                 </span>
@@ -114,7 +114,7 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
         <div className="px-3 py-2 space-y-1.5">
           <div className="flex items-center gap-2">
             <Input
-              className="h-8 text-sm border-0 bg-transparent px-0 focus-visible:ring-0"
+              className="h-9 text-base border-0 bg-transparent px-0 focus-visible:ring-0"
               placeholder="O que fazer a respeito…"
               value={texto}
               onChange={e => setTexto(e.target.value)}
@@ -123,7 +123,7 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
               }}
             />
             <Button
-              size="sm" variant="ghost" className="h-8 gap-1 shrink-0 text-[11px]"
+              size="sm" variant="ghost" className="h-9 gap-1 shrink-0 text-[13px]"
               onClick={() => setAbrindo(v => !v)}
               disabled={!texto.trim()}
             >
@@ -131,7 +131,7 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
               Expectativa
             </Button>
             <Button
-              size="sm" variant="ghost" className="h-8 gap-1 shrink-0"
+              size="sm" variant="ghost" className="h-9 gap-1 shrink-0"
               onClick={adicionar} disabled={!texto.trim() || salvando}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -141,7 +141,7 @@ export function ListaAcoes({ acoes, onAdicionar, onMarcar, dataRodada }: Props) 
 
           {abrindoExpectativa && (
             <Textarea
-              className="h-16 resize-none text-sm"
+              className="h-20 resize-none text-base"
               // Opcional de propósito: obrigar a escrever faria escrever
               // qualquer coisa, e campo preenchido por obrigação vira ficção.
               placeholder="O que você espera disso? Meta, hipótese ou motivo — opcional, mas é o que permite dizer depois se deu certo."
@@ -174,11 +174,11 @@ export function AcoesFeitas({
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
           O que já foi feito
         </h3>
         <div className="h-px flex-1 min-w-4 bg-border" />
-        <span className="text-[10px] text-muted-foreground/80">
+        <span className="text-xs text-muted-foreground/80">
           desmarque para devolver às pendentes
         </span>
       </div>
@@ -195,14 +195,14 @@ export function AcoesFeitas({
                 aria-label={`Desmarcar: ${a.texto}`}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-sm">{a.texto}</p>
+                <p className="text-base">{a.texto}</p>
                 {a.expectativa && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5 flex items-start gap-1">
+                  <p className="text-[13px] text-muted-foreground mt-0.5 flex items-start gap-1">
                     <Target className="h-3 w-3 mt-0.5 shrink-0" />
                     {a.expectativa}
                   </p>
                 )}
-                <p className="text-[10px] text-muted-foreground/80 mt-0.5">
+                <p className="text-xs text-muted-foreground/80 mt-0.5">
                   feita em {quandoFoiFeita(a.feita_em!)}
                   {a.feita_por_nome && ` por ${a.feita_por_nome}`}
                 </p>
@@ -210,7 +210,7 @@ export function AcoesFeitas({
               {/* A análise de 24/08 dizia "não saberemos muito bem o impacto,
                   poucos dias". A tela diz isso sozinha agora. */}
               <span className={cn(
-                'shrink-0 text-[10px] mt-1 tabular-nums',
+                'shrink-0 text-xs mt-1 tabular-nums',
                 dias < 7 ? 'text-amber-400/90' : 'text-muted-foreground',
               )}>
                 {dias <= 0 ? 'sem dados ainda'

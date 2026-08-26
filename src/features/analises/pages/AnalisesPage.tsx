@@ -407,8 +407,8 @@ export default function AnalisesPage() {
       <DashboardLayout title="Análises" hideFilters>
         <AnalisesNav />
         <div className="py-20 text-center space-y-2">
-          <p className="text-sm text-muted-foreground">Nenhum REV ativo para analisar.</p>
-          <p className="text-xs text-muted-foreground/70">
+          <p className="text-base text-muted-foreground">Nenhum REV ativo para analisar.</p>
+          <p className="text-sm text-muted-foreground/70">
             A rodada percorre só os REVs no ar — marque um como Ativo em Funis.
           </p>
         </div>
@@ -446,7 +446,7 @@ export default function AnalisesPage() {
         {/* Barra da rodada */}
         <div className="flex flex-wrap items-center gap-2">
           <Select value={preset} onValueChange={trocarPreset}>
-            <SelectTrigger className="h-9 w-44 text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-48 text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               {PERIODOS.map(p => (
                 <SelectItem key={p.dias} value={String(p.dias)}>{p.label}</SelectItem>
@@ -458,13 +458,13 @@ export default function AnalisesPage() {
           {preset === PERSONALIZADO && (
             <div className="flex items-center gap-1">
               <Input
-                type="date" className="h-9 w-[9.5rem] text-sm"
+                type="date" className="h-10 w-[11rem] text-base"
                 value={janela.inicio} max={janela.fim}
                 onChange={e => e.target.value && setJanela(j => ({ ...j, inicio: e.target.value }))}
               />
-              <span className="text-xs text-muted-foreground">até</span>
+              <span className="text-sm text-muted-foreground">até</span>
               <Input
-                type="date" className="h-9 w-[9.5rem] text-sm"
+                type="date" className="h-10 w-[11rem] text-base"
                 value={janela.fim} min={janela.inicio}
                 onChange={e => e.target.value && setJanela(j => ({ ...j, fim: e.target.value }))}
               />
@@ -473,14 +473,14 @@ export default function AnalisesPage() {
 
           {/* Escolher o REV direto, sem percorrer um a um. */}
           <Select value={atual?.id ?? ''} onValueChange={id => { salvarItem(id); }}>
-            <SelectTrigger className="h-9 w-72 text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-72 text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               {revs.map(r => (
                 <SelectItem key={r.id} value={r.id}>
                   <span className="inline-flex items-center gap-1.5">
                     {r.id in lidos && <Check className="h-3 w-3 text-emerald-400" />}
                     {r.projeto ? `${r.projeto} · ` : ''}{r.rev}
-                    {r.metodo && <span className="text-[10px] text-muted-foreground">{r.metodo}</span>}
+                    {r.metodo && <span className="text-xs text-muted-foreground">{r.metodo}</span>}
                   </span>
                 </SelectItem>
               ))}
@@ -512,7 +512,7 @@ export default function AnalisesPage() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           REV {indice + 1} de {revs.length}
           {analisados > 0 && ` · ${analisados} ${analisados === 1 ? 'salvo' : 'salvos'}`}
           {dataRodada && ` · rodada de ${formatarData(dataRodada)}`}
@@ -528,17 +528,17 @@ export default function AnalisesPage() {
         {/* O REV em foco */}
         <div className="rounded-lg border border-border bg-card p-4 space-y-5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-muted-foreground">
+            <span className="text-sm font-semibold text-muted-foreground">
               {atual?.projeto ?? 'sem projeto'}
             </span>
-            <span className="text-base font-semibold">{atual?.rev}</span>
+            <span className="text-lg font-semibold">{atual?.rev}</span>
             {atual?.metodo && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
                 {atual.metodo}
               </span>
             )}
             {(atual?.id ?? '') in lidos && (
-              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 <Check className="h-3 w-3" /> salvo
               </span>
             )}
@@ -577,12 +577,12 @@ export default function AnalisesPage() {
                   cada coluna é outra medida da MESMA oferta. */}
               <section className="space-y-1.5">
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Ofertas
                   </h3>
                   <div className="h-px flex-1 min-w-4 bg-border" />
                   {a.pct_ofertas_extras != null && (
-                    <span className="text-[11px] font-medium text-foreground tabular-nums">
+                    <span className="text-[13px] font-medium text-foreground tabular-nums">
                       {pct2(a.pct_ofertas_extras)}
                       <span className="font-normal text-muted-foreground"> do faturamento veio dos bumps</span>
                     </span>
@@ -641,7 +641,7 @@ export default function AnalisesPage() {
               </ListaMetricas>
 
               {atribuicaoDuvidosa && (
-                <p className="text-xs text-amber-400/90 flex items-start gap-1.5">
+                <p className="text-sm text-amber-400/90 flex items-start gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <span>
                     Contamos {formatNumber(a.vendas)} vendas e o Meta reporta{' '}
@@ -653,7 +653,7 @@ export default function AnalisesPage() {
               )}
 
               {a.vendas === 0 && (
-                <p className="text-xs text-amber-400/90 flex items-center gap-1.5">
+                <p className="text-sm text-amber-400/90 flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5" />
                   Nenhuma venda atribuída a este REV no período — pode ser que o checkout
                   dele ainda não esteja vinculado, em Funis → Checkouts.
@@ -661,7 +661,7 @@ export default function AnalisesPage() {
               )}
             </>
           ) : (
-            <p className="text-xs text-muted-foreground/60 italic">Sem métricas para o período.</p>
+            <p className="text-sm text-muted-foreground/60 italic">Sem métricas para o período.</p>
           )}
 
           {/* O que já foi mexido, ao lado dos números que isso deveria ter
@@ -676,14 +676,14 @@ export default function AnalisesPage() {
               sem ocupar uma linha inteira com botão e legenda. */}
           <div className="space-y-1.5">
             <div className="flex items-baseline gap-2">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
                 O que você lê nisso
               </h3>
               <div className="h-px flex-1 bg-border" />
               <EstadoEspelho resultado={espelho} salvando={salvando} porSalvar={porSalvar} />
             </div>
             <Textarea
-              className="h-24 resize-none text-sm"
+              className="h-28 resize-none text-base"
               placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
               value={leitura} onChange={e => setLeitura(e.target.value)}
               // É esta linha que grava: sair do campo basta.

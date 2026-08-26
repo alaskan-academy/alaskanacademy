@@ -64,7 +64,7 @@ function Delta({ valor, anterior, subirEhRuim = false }: {
   const Icone = v.direcao === 'subiu' ? ArrowUp : ArrowDown;
   return (
     <span className={cn(
-      'inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums',
+      'inline-flex items-center gap-0.5 text-xs font-medium tabular-nums',
       bom ? 'text-emerald-400' : 'text-red-400',
     )}>
       <Icone className="h-2.5 w-2.5" />
@@ -151,7 +151,7 @@ export default function CompararPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Select value={preset} onValueChange={trocarPreset}>
-            <SelectTrigger className="h-9 w-44 text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-48 text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               {PERIODOS.map(p => (
                 <SelectItem key={p.dias} value={String(p.dias)}>{p.label}</SelectItem>
@@ -163,13 +163,13 @@ export default function CompararPage() {
           {preset === PERSONALIZADO && (
             <div className="flex items-center gap-1">
               <Input
-                type="date" className="h-9 w-[9.5rem] text-sm"
+                type="date" className="h-10 w-[11rem] text-base"
                 value={janela.inicio} max={janela.fim}
                 onChange={e => e.target.value && setJanela(j => ({ ...j, inicio: e.target.value }))}
               />
-              <span className="text-xs text-muted-foreground">até</span>
+              <span className="text-sm text-muted-foreground">até</span>
               <Input
-                type="date" className="h-9 w-[9.5rem] text-sm"
+                type="date" className="h-10 w-[11rem] text-base"
                 value={janela.fim} min={janela.inicio}
                 onChange={e => e.target.value && setJanela(j => ({ ...j, fim: e.target.value }))}
               />
@@ -178,7 +178,7 @@ export default function CompararPage() {
 
           {!ladoALado && (
             <Select value={ordem} onValueChange={v => setOrdem(v as Ordem)}>
-              <SelectTrigger className="h-9 w-56 text-sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-56 text-base"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {ORDENS.map(o => (
                   <SelectItem key={o.valor} value={o.valor}>{o.label}</SelectItem>
@@ -189,7 +189,7 @@ export default function CompararPage() {
 
           <div className="flex-1" />
 
-          <span className="text-xs text-muted-foreground">
+          <span className="text-sm text-muted-foreground">
             {formatarData(janela.inicio)} a {formatarData(janela.fim)} ({dias} dias)
           </span>
         </div>
@@ -202,7 +202,7 @@ export default function CompararPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Popover modal>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm">
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-base">
                   <Columns3 className="h-3.5 w-3.5" />
                   {escolhidos.length === 0
                     ? 'Comparar em detalhe'
@@ -232,8 +232,8 @@ export default function CompararPage() {
                           {on && <Check className="h-2.5 w-2.5" />}
                         </span>
                         <span className="flex-1 min-w-0">
-                          <span className="block text-sm leading-tight">{l.rev}</span>
-                          <span className="block text-[10px] text-muted-foreground leading-tight">
+                          <span className="block text-base leading-tight">{l.rev}</span>
+                          <span className="block text-xs text-muted-foreground leading-tight">
                             {l.projeto ?? 'sem projeto'} · {formatCurrency(l.atual.investimento)}
                           </span>
                         </span>
@@ -247,7 +247,7 @@ export default function CompararPage() {
                 {escolhidos.length > 0 && (
                   <button
                     onClick={() => setEscolhidos([])}
-                    className="w-full mt-1 border-t border-border pt-1.5 pb-1 inline-flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                    className="w-full mt-1 border-t border-border pt-1.5 pb-1 inline-flex items-center justify-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
                   >
                     <X className="h-3 w-3" />
                     limpar seleção
@@ -257,12 +257,12 @@ export default function CompararPage() {
             </Popover>
 
             {escolhidos.length === 1 && (
-              <span className="text-[11px] text-muted-foreground/70">
+              <span className="text-[13px] text-muted-foreground/70">
                 escolha mais um para comparar lado a lado
               </span>
             )}
             {ladoALado && (
-              <span className="text-[11px] text-muted-foreground/70">
+              <span className="text-[13px] text-muted-foreground/70">
                 do maior investimento para o menor
               </span>
             )}
@@ -270,7 +270,7 @@ export default function CompararPage() {
         )}
 
         {emRisco > 0 && (
-          <p className="text-xs text-amber-400/90 flex items-start gap-1.5">
+          <p className="text-sm text-amber-400/90 flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
               {emRisco === 1
@@ -287,7 +287,7 @@ export default function CompararPage() {
           </div>
         ) : ordenadas.length === 0 ? (
           <div className="py-20 text-center space-y-2">
-            <p className="text-sm text-muted-foreground">Nenhum REV ativo para comparar.</p>
+            <p className="text-base text-muted-foreground">Nenhum REV ativo para comparar.</p>
           </div>
         ) : ladoALado ? (
           <>
@@ -298,15 +298,15 @@ export default function CompararPage() {
           </>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm min-w-[52rem]">
+            <table className="w-full text-base min-w-[60rem]">
               <thead>
-                <tr className="border-b border-border bg-secondary/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <tr className="border-b border-border bg-secondary/40 text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="text-left  font-medium px-3 py-1.5">REV</th>
-                  <th className="text-right font-medium px-3 py-1.5 w-32">Investimento</th>
-                  <th className="text-right font-medium px-3 py-1.5 w-28">ROAS front</th>
-                  <th className="text-right font-medium px-3 py-1.5 w-32">Adesão ao up</th>
-                  <th className="text-right font-medium px-3 py-1.5 w-28">ROAS total</th>
-                  <th className="text-right font-medium px-3 py-1.5 w-36">Lucro c/ upsell</th>
+                  <th className="text-right font-medium px-3 py-1.5 w-36">Investimento</th>
+                  <th className="text-right font-medium px-3 py-1.5 w-32">ROAS front</th>
+                  <th className="text-right font-medium px-3 py-1.5 w-36">Adesão ao up</th>
+                  <th className="text-right font-medium px-3 py-1.5 w-32">ROAS total</th>
+                  <th className="text-right font-medium px-3 py-1.5 w-40">Lucro c/ upsell</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,12 +322,12 @@ export default function CompararPage() {
                             : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/70" />)}
                           <span className="font-medium">{l.rev}</span>
                           {l.metodo && (
-                            <span className="text-[9px] px-1 py-px rounded bg-secondary text-muted-foreground border border-border">
+                            <span className="text-[11px] px-1 py-px rounded bg-secondary text-muted-foreground border border-border">
                               {l.metodo}
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                        <div className="text-xs text-muted-foreground mt-0.5">
                           {l.projeto ?? 'sem projeto'} · {formatNumber(a.vendas)} vendas
                         </div>
                       </td>
@@ -388,7 +388,7 @@ export default function CompararPage() {
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-t border-border bg-secondary/30 text-sm">
+                <tr className="border-t border-border bg-secondary/30 text-base">
                   <td className="px-3 py-2 font-semibold">Todos os REVs ativos</td>
                   <td className="px-3 py-2 text-right tabular-nums font-semibold">
                     {formatCurrency(totais.investimento)}

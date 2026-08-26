@@ -53,15 +53,15 @@ export function EstadoEspelho({ resultado, salvando, porSalvar }: Props) {
   }
 
   if (salvando) {
-    return <span className="text-[10px] text-muted-foreground">salvando…</span>;
+    return <span className="text-xs text-muted-foreground">salvando…</span>;
   }
   if (porSalvar) {
-    return <span className="text-[10px] text-muted-foreground">não salvo</span>;
+    return <span className="text-xs text-muted-foreground">não salvo</span>;
   }
   if (!resultado) {
     // Salvo em algum momento anterior, mas nada espelhado nesta sessão.
     return (
-      <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
         <Check className="h-3 w-3 text-emerald-400" />
         salvo
       </span>
@@ -72,7 +72,7 @@ export function EstadoEspelho({ resultado, salvando, porSalvar }: Props) {
   const sheetsOk = resultado.sheets === 'ok';
 
   return (
-    <span className="text-[10px] inline-flex items-center gap-1.5 flex-wrap justify-end">
+    <span className="text-xs inline-flex items-center gap-1.5 flex-wrap justify-end">
       <span className={cn(
         'inline-flex items-center gap-1',
         obsidianOk && sheetsOk ? 'text-muted-foreground' : 'text-amber-400/90',
@@ -93,7 +93,7 @@ export function EstadoEspelho({ resultado, salvando, porSalvar }: Props) {
 
       {!obsidianOk && resultado.obsidian === 'fora' && (
         <Button
-          size="sm" variant="ghost" className="h-5 px-1.5 text-[10px] gap-1"
+          size="sm" variant="ghost" className="h-6 px-1.5 text-xs gap-1"
           onClick={reenviar} disabled={reenviando}
         >
           <RefreshCw className={cn('h-3 w-3', reenviando && 'animate-spin')} />

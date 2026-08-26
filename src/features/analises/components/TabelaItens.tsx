@@ -83,13 +83,13 @@ export function TabelaItens({ atual, anterior, principal }: Props) {
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm min-w-[26rem]">
+      <table className="w-full text-base min-w-[34rem]">
         <thead>
-          <tr className="border-b border-border bg-secondary/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <tr className="border-b border-border bg-secondary/40 text-xs uppercase tracking-wide text-muted-foreground">
             <th className="text-left  font-medium px-3 py-1">Oferta</th>
-            <th className="text-right font-medium px-3 py-1 w-36">Agora</th>
-            <th className="text-right font-medium px-3 py-1 w-16" />
-            <th className="text-right font-medium px-3 py-1 w-36">Anterior</th>
+            <th className="text-right font-medium px-3 py-1 w-40">Agora</th>
+            <th className="text-right font-medium px-3 py-1 w-20" />
+            <th className="text-right font-medium px-3 py-1 w-40">Anterior</th>
           </tr>
         </thead>
         <tbody>
@@ -102,14 +102,14 @@ export function TabelaItens({ atual, anterior, principal }: Props) {
                 'border-b border-border/40 last:border-0 align-top',
                 l.forte && 'bg-secondary/20',
               )}>
-                <td className={cn('px-3 py-2 text-sm', l.forte && 'font-semibold')}>{l.nome}</td>
+                <td className={cn('px-3 py-2 text-base', l.forte && 'font-semibold')}>{l.nome}</td>
                 <td className="px-3 py-2 text-right">
                   <Celula adesao={l.adesao} valor={l.valor} qtd={l.qtd} />
                 </td>
                 <td className="px-3 py-2 text-right">
                   {v.pct != null && v.direcao !== 'igual' && (
                     <span className={cn(
-                      'inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums',
+                      'inline-flex items-center gap-0.5 text-[13px] font-medium tabular-nums',
                       v.direcao === 'subiu' ? 'text-emerald-400' : 'text-red-400',
                     )}>
                       <Icone className="h-3 w-3" />

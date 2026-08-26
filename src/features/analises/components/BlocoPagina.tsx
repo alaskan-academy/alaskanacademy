@@ -18,7 +18,7 @@ export function BlocoVsl({ r, anterior }: { r: RetencaoVsl | null; anterior: Ret
   if (!r) {
     return (
       <ListaMetricas titulo="Retenção da VSL">
-        <p className="px-3 py-3 text-xs text-muted-foreground/70">
+        <p className="px-3 py-3 text-sm text-muted-foreground/70">
           Este REV não tem VSL vinculada.{' '}
           <Link to="/funis-gestao" className="text-primary hover:underline">
             Vincule em Funis
@@ -54,7 +54,7 @@ export function BlocoVsl({ r, anterior }: { r: RetencaoVsl | null; anterior: Ret
 export function BlocoTsl() {
   return (
     <ListaMetricas titulo="Rolagem da página">
-      <p className="px-3 py-3 text-xs text-muted-foreground/70">
+      <p className="px-3 py-3 text-sm text-muted-foreground/70">
         Topo, 20%, 30%, Oferta e Final da página ainda não são medidos — dependem
         do Clarity, que não está integrado. Enquanto isso, esta parte continua na
         planilha; é o único pedaço dela que ainda não vive aqui.

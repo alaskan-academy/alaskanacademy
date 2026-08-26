@@ -35,10 +35,10 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
           comparação, uma % ao lado do número convida a ser lida como "em
           relação à outra coluna". Ela é contra o passado do próprio REV, e
           isso precisa estar escrito, não deduzido. */}
-      <p className="text-[10px] text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+      <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="inline-flex items-center gap-1">
-          <ArrowUp className="h-2.5 w-2.5 text-emerald-400" />
-          <ArrowDown className="h-2.5 w-2.5 text-red-400" />
+          <ArrowUp className="h-3 w-3 text-emerald-400" />
+          <ArrowDown className="h-3 w-3 text-red-400" />
           variação de cada REV contra o próprio período anterior — não contra a outra coluna
         </span>
         <span className="inline-flex items-center gap-1">
@@ -48,26 +48,26 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
       </p>
 
       <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm">
+      <table className="w-full text-base">
         <thead className="sticky top-0 z-10">
           <tr className="border-b border-border bg-secondary/60">
-            <th className="text-left font-medium px-3 py-2 w-52 min-w-[13rem] text-[10px] uppercase tracking-wide text-muted-foreground align-bottom">
+            <th className="text-left font-medium px-3 py-2 w-60 min-w-[15rem] text-xs uppercase tracking-wide text-muted-foreground align-bottom">
               <span className="block">Métrica</span>
               <span className="block normal-case tracking-normal font-normal text-muted-foreground/70 mt-0.5">
                 valor no período · vs. anterior
               </span>
             </th>
             {colunas.map(c => (
-              <th key={c.funil_id} className="px-3 py-2 text-right min-w-[9rem]">
+              <th key={c.funil_id} className="px-3 py-2 text-right min-w-[10.5rem]">
                 <div className="flex items-center justify-end gap-1.5">
                   {/* O sinal de saúde do front vem no cabeçalho: é o que
                       qualifica a coluna inteira abaixo dele. */}
                   {c.atual.front_se_paga != null && (c.atual.front_se_paga
                     ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400/70" />
                     : <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />)}
-                  <span className="text-sm font-semibold">{c.rev}</span>
+                  <span className="text-base font-semibold">{c.rev}</span>
                 </div>
-                <div className="text-[10px] font-normal text-muted-foreground mt-0.5">
+                <div className="text-xs font-normal text-muted-foreground mt-0.5">
                   {c.projeto ?? 'sem projeto'}{c.metodo ? ` · ${c.metodo}` : ''}
                 </div>
               </th>
@@ -87,14 +87,14 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
                   <tr className="bg-secondary/25">
                     <td
                       colSpan={colunas.length + 1}
-                      className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                      className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                     >
                       {def.grupo}
                     </td>
                   </tr>
                 )}
                 <tr className="border-b border-border/40 last:border-0">
-                  <td className="px-3 py-1.5 text-xs">{def.rotulo}</td>
+                  <td className="px-3 py-1.5 text-sm">{def.rotulo}</td>
                   {colunas.map((c, i) => {
                     const v = valores[i];
                     const ant = def.valor(c.anterior);
@@ -113,17 +113,17 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
                             <Crown className="h-3 w-3 shrink-0 text-emerald-400/80 self-center" />
                           )}
                           <span className={cn(
-                            'text-sm',
+                            'text-base',
                             vencedor === i ? 'font-semibold' : 'font-medium',
                           )}>
                             {v == null ? '—' : def.formato(v)}
                           </span>
                           {varia.pct != null && varia.direcao !== 'igual' && (
                             <span className={cn(
-                              'text-[10px] font-medium',
+                              'text-xs font-medium',
                               bom ? 'text-emerald-400' : 'text-red-400',
                             )}>
-                              <Icone className="h-2.5 w-2.5 inline" />
+                              <Icone className="h-3 w-3 inline" />
                               {Math.abs(varia.pct) >= 1000
                                 ? `${(Math.abs(varia.pct) / 100).toFixed(0)}×`
                                 : `${Math.abs(varia.pct).toFixed(0)}%`}

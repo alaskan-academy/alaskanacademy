@@ -60,12 +60,12 @@ export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar }: Props) {
     return (
       <div className="rounded-md border border-primary/40 bg-secondary/20 p-2 space-y-2">
         <Input
-          className="h-8 text-sm" value={texto}
+          className="h-9 text-base" value={texto}
           onChange={e => setTexto(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); salvar(); } }}
         />
         <Textarea
-          className="h-16 resize-none text-sm"
+          className="h-20 resize-none text-base"
           placeholder="O que você esperava disso? Opcional."
           value={expectativa} onChange={e => setExpectativa(e.target.value)}
         />
@@ -80,7 +80,7 @@ export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar }: Props) {
           </Button>
           <div className="flex-1" />
           <Button
-            size="sm" variant="ghost" className="h-7 gap-1 text-destructive hover:text-destructive"
+            size="sm" variant="ghost" className="h-9 gap-1 text-destructive hover:text-destructive"
             onClick={() => onApagar(acao.id)}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -100,18 +100,18 @@ export function AcaoEditavel({ acao, onSalvar, onMarcar, onApagar }: Props) {
         aria-label={`${acao.feita ? 'Desmarcar' : 'Marcar como feita'}: ${acao.texto}`}
       />
       <div className="flex-1 min-w-0">
-        <p className={cn('text-sm', acao.feita && 'line-through text-muted-foreground')}>
+        <p className={cn('text-base', acao.feita && 'line-through text-muted-foreground')}>
           {acao.texto}
         </p>
         {acao.expectativa && (
-          <p className="text-[11px] text-muted-foreground mt-0.5 flex items-start gap-1">
+          <p className="text-[13px] text-muted-foreground mt-0.5 flex items-start gap-1">
             <Target className="h-3 w-3 mt-0.5 shrink-0" />
             {acao.expectativa}
           </p>
         )}
         {acao.feita && acao.feita_em && (
           // Carimbo, não opinião: quem quiser mudar desmarca e marca de novo.
-          <p className="text-[10px] text-muted-foreground/80 mt-0.5">
+          <p className="text-xs text-muted-foreground/80 mt-0.5">
             feita em {quando(acao.feita_em)}
             {acao.feita_por_nome && ` por ${acao.feita_por_nome}`}
           </p>

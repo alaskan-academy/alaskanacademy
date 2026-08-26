@@ -260,7 +260,7 @@ export default function HistoricoPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Select value={filtro} onValueChange={setFiltro}>
-            <SelectTrigger className="h-9 w-72 text-sm"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-72 text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={TODOS}>Todos os REVs</SelectItem>
               {revsComAnalise.map(r => (
@@ -268,7 +268,7 @@ export default function HistoricoPage() {
               ))}
             </SelectContent>
           </Select>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-sm text-muted-foreground">
             {visiveis.length === 1 ? '1 rodada' : `${visiveis.length} rodadas`}
             {filtro !== TODOS && ' com este REV'}
           </span>
@@ -280,8 +280,8 @@ export default function HistoricoPage() {
           </div>
         ) : visiveis.length === 0 ? (
           <div className="py-20 text-center space-y-2">
-            <p className="text-sm text-muted-foreground">Nenhuma leitura registrada ainda.</p>
-            <p className="text-xs text-muted-foreground/70">
+            <p className="text-base text-muted-foreground">Nenhuma leitura registrada ainda.</p>
+            <p className="text-sm text-muted-foreground/70">
               O que você escrever na Rodada aparece aqui, com os números do dia ao lado.
             </p>
           </div>
@@ -289,9 +289,9 @@ export default function HistoricoPage() {
           visiveis.map(rodada => (
             <section key={rodada.id} className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-semibold">{formatarData(rodada.data)}</h2>
+                <h2 className="text-base font-semibold">{formatarData(rodada.data)}</h2>
                 <span className={cn(
-                  'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border',
+                  'inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border',
                   rodada.fechada_em
                     ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                     : 'bg-amber-500/15 text-amber-400 border-amber-500/30',
@@ -299,7 +299,7 @@ export default function HistoricoPage() {
                   {rodada.fechada_em ? <Lock className="h-3 w-3" /> : <PenLine className="h-3 w-3" />}
                   {rodada.fechada_em ? 'fechada' : 'em andamento'}
                 </span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[13px] text-muted-foreground">
                   {rodada.cartoes.length === 1 ? '1 REV' : `${rodada.cartoes.length} REVs`}
                 </span>
               </div>
@@ -338,13 +338,13 @@ function ItemDaRodada(
   return (
     <article className="rounded-lg border border-border bg-card p-3 space-y-2">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-sm font-semibold">{nome}</span>
-        {janela && <span className="text-[10px] text-muted-foreground">{janela}</span>}
+        <span className="text-base font-semibold">{nome}</span>
+        {janela && <span className="text-xs text-muted-foreground">{janela}</span>}
       </div>
 
       {/* O retrato: os números como estavam quando a leitura foi escrita. */}
       {m && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground tabular-nums">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground tabular-nums">
           <span>{formatNumber(m.vendas)} vendas</span>
           <span>{formatCurrency(m.faturamento)}</span>
           {m.roas != null && <span>ROAS {m.roas.toFixed(2)}</span>}
@@ -359,7 +359,7 @@ function ItemDaRodada(
       )}
 
       {item?.leitura && (
-        <p className="text-sm whitespace-pre-wrap">{item.leitura}</p>
+        <p className="text-base whitespace-pre-wrap">{item.leitura}</p>
       )}
 
       {acoes.length > 0 && (

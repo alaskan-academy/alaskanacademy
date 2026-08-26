@@ -29,22 +29,22 @@ export function ListaMetricas({
   return (
     <section className="space-y-1.5">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
           {titulo}
         </h3>
         <div className="h-px flex-1 min-w-4 bg-border" />
-        {nota && <span className="text-[10px] text-muted-foreground/80">{nota}</span>}
+        {nota && <span className="text-xs text-muted-foreground/80">{nota}</span>}
       </div>
       <div className="rounded-lg border border-border overflow-x-auto">
-        <div className="min-w-[26rem]">
+        <div className="min-w-[34rem]">
           {/* Um cabeçalho por bloco, em vez de "antes:" repetido em cada linha:
               o rótulo da coluna precisa existir uma vez, não vinte. */}
           <div className="flex items-baseline gap-3 px-3 py-1 border-b border-border bg-secondary/40
-                          text-[10px] uppercase tracking-wide text-muted-foreground">
+                          text-xs uppercase tracking-wide text-muted-foreground">
             <span className="flex-1 min-w-0" />
-            <span className="w-32 shrink-0 text-right">agora</span>
-            <span className="w-16 shrink-0" />
-            <span className="w-28 shrink-0 text-right">anterior</span>
+            <span className="w-40 shrink-0 text-right">agora</span>
+            <span className="w-20 shrink-0" />
+            <span className="w-36 shrink-0 text-right">anterior</span>
           </div>
           {children}
         </div>
@@ -83,27 +83,27 @@ export function LinhaMetrica({
       destaque && 'bg-secondary/30',
     )}>
       <span className="flex-1 min-w-0">
-        <span className={cn('block text-sm leading-tight', destaque && 'font-semibold')}>
+        <span className={cn('block text-base leading-tight', destaque && 'font-semibold')}>
           {rotulo}
         </span>
         {detalhe && (
-          <span className="block text-[10px] leading-tight text-muted-foreground mt-0.5">
+          <span className="block text-xs leading-tight text-muted-foreground mt-0.5">
             {detalhe}
           </span>
         )}
       </span>
 
       <span className={cn(
-        'w-32 shrink-0 text-right tabular-nums',
-        destaque ? 'text-base font-semibold' : 'text-sm font-medium',
+        'w-40 shrink-0 text-right tabular-nums',
+        destaque ? 'text-lg font-semibold' : 'text-base font-medium',
       )}>
         {valor == null ? '—' : formato(valor)}
       </span>
 
-      <span className="w-16 shrink-0 text-right">
+      <span className="w-20 shrink-0 text-right">
         {v.pct != null && v.direcao !== 'igual' && (
           <span className={cn(
-            'inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums',
+            'inline-flex items-center gap-0.5 text-[13px] font-medium tabular-nums',
             bom ? 'text-emerald-400' : 'text-red-400',
           )}>
             <Icone className="h-3 w-3" />
@@ -119,7 +119,7 @@ export function LinhaMetrica({
         )}
       </span>
 
-      <span className="w-28 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
+      <span className="w-36 shrink-0 text-right text-[13px] text-muted-foreground tabular-nums">
         {anterior == null
           // Sem período anterior a comparação não existe — e dizer isso é
           // melhor que mostrar "0%", que pareceria estabilidade.
@@ -152,22 +152,22 @@ export function CelulaTripla({
       {topo != null && (
         <span className={cn(
           'block tabular-nums leading-tight',
-          secundaria ? 'text-[10px] text-muted-foreground/70' : 'text-[10px] text-muted-foreground',
+          secundaria ? 'text-xs text-muted-foreground/70' : 'text-xs text-muted-foreground',
         )}>
           {topo}
         </span>
       )}
       <span className={cn(
         'block tabular-nums leading-tight',
-        secundaria ? 'text-[11px] text-muted-foreground'
-          : destaque ? 'text-base font-semibold' : 'text-sm font-semibold',
+        secundaria ? 'text-[13px] text-muted-foreground'
+          : destaque ? 'text-lg font-semibold' : 'text-base font-semibold',
       )}>
         {principal}
       </span>
       {base != null && (
         <span className={cn(
           'block tabular-nums leading-tight mt-0.5',
-          secundaria ? 'text-[10px] text-muted-foreground/70' : 'text-[10px] text-muted-foreground',
+          secundaria ? 'text-xs text-muted-foreground/70' : 'text-xs text-muted-foreground',
         )}>
           {base}
         </span>
@@ -205,27 +205,27 @@ export function LinhaTripla({
       destaque && 'bg-secondary/30',
     )}>
       <span className="flex-1 min-w-0">
-        <span className={cn('block text-sm leading-tight', destaque && 'font-semibold')}>
+        <span className={cn('block text-base leading-tight', destaque && 'font-semibold')}>
           {rotulo}
         </span>
         {detalhe && (
-          <span className="block text-[10px] leading-tight text-muted-foreground mt-0.5">
+          <span className="block text-xs leading-tight text-muted-foreground mt-0.5">
             {detalhe}
           </span>
         )}
       </span>
 
-      <span className="w-32 shrink-0 text-right">
+      <span className="w-40 shrink-0 text-right">
         <CelulaTripla
           topo={topo} base={base} destaque={destaque}
           principal={valor == null ? '—' : formato(valor)}
         />
       </span>
 
-      <span className="w-16 shrink-0 text-right pt-3">
+      <span className="w-20 shrink-0 text-right pt-3">
         {v.pct != null && v.direcao !== 'igual' && (
           <span className={cn(
-            'inline-flex items-center gap-0.5 text-[11px] font-medium tabular-nums',
+            'inline-flex items-center gap-0.5 text-[13px] font-medium tabular-nums',
             bom ? 'text-emerald-400' : 'text-red-400',
           )}>
             <Icone className="h-3 w-3" />
@@ -238,7 +238,7 @@ export function LinhaTripla({
         )}
       </span>
 
-      <span className="w-28 shrink-0 text-right">
+      <span className="w-36 shrink-0 text-right">
         <CelulaTripla
           secundaria topo={topoAntes} base={baseAntes}
           principal={anterior == null ? 'sem anterior' : formato(anterior)}
