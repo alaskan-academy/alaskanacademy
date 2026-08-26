@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
+import { BlocosEditor } from '../components/BlocosEditor';
+import { lerBlocos, semVazios, type Bloco } from '../components/BlocosRenderer';
 import {
   ChevronRight, Plus, Edit2, Trash2, Loader2, FileText, Video, ArrowLeft,
 } from 'lucide-react';
@@ -62,9 +64,7 @@ export default function ProcessosCategoriaPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editArtigo, setEditArtigo] = useState<Artigo | null>(null);
   const [fTitulo, setFTitulo] = useState('');
-  const [fVideo, setFVideo] = useState('');
-  const [fConteudo, setFConteudo] = useState('');
-  const [fImagens, setFImagens] = useState('');
+  const [fBlocos, setFBlocos] = useState<Bloco[]>([]);
   const [fCategoriasAdicionais, setFCategoriasAdicionais] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -115,9 +115,10 @@ export default function ProcessosCategoriaPage() {
   const openNew = () => {
     setEditArtigo(null);
     setFTitulo('');
-    setFVideo('');
-    setFConteudo('');
-    setFImagens('');
+    // Já começa com um bloco de texto: uma tela em branco com quatro botões
+    // faz a pessoa escolher antes de saber o que quer, e o texto é sempre o
+    // primeiro passo.
+    setFBlocos([{ tipo: 'texto', dados: { html: '' } }]);
     setFCategoriasAdicionais([]);
     setFormOpen(true);
   };
@@ -126,16 +127,22 @@ export default function ProcessosCategoriaPage() {
     e.stopPropagation();
     supabase
       .from('processos_artigos')
-      .select('id, titulo, video_url, conteudo, imagens, categorias_adicionais')
+      .select('id, titulo, blocos, categorias_adicionais')
       .eq('id', a.id)
       .single()
-      .then(({ data }) => {
-        if (!data) return;
+      .then(({ data, error }) => {
+        // Falhava em silêncio: sem `error`, um problema de rede deixava o botão
+        // "Editar" simplesmente não fazendo nada.
+        if (error || !data) {
+          toast({
+            title: 'Não consegui abrir este processo',
+            description: error?.message, variant: 'destructive',
+          });
+          return;
+        }
         setEditArtigo(a);
         setFTitulo(data.titulo);
-        setFVideo(data.video_url || '');
-        setFConteudo(data.conteudo || '');
-        setFImagens((data.imagens || []).join('\n'));
+        setFBlocos(lerBlocos(data.blocos));
         setFCategoriasAdicionais(data.categorias_adicionais || []);
         setFormOpen(true);
       });
@@ -161,9 +168,8 @@ export default function ProcessosCategoriaPage() {
   const handleSave = async () => {
     if (!fTitulo.trim() || !categoriaId) return;
     setSaving(true);
-    const imagens = fImagens.split('\n').map(l => l.trim()).filter(Boolean);
-    const videoUrl = fVideo.trim() ? extractVideoUrl(fVideo.trim()) : null;
     const now = new Date().toISOString();
+    const blocos = semVazios(fBlocos);
 
     let error;
     if (editArtigo) {
@@ -171,9 +177,12 @@ export default function ProcessosCategoriaPage() {
         .from('processos_artigos')
         .update({
           titulo: fTitulo.trim(),
-          video_url: videoUrl,
-          conteudo: fConteudo.trim() || null,
-          imagens,
+          blocos,
+          // Os campos antigos são zerados ao salvar: manter os dois seria duas
+          // versões do mesmo texto, e elas divergiriam na primeira edição.
+          conteudo: null,
+          video_url: null,
+          imagens: [],
           categorias_adicionais: fCategoriasAdicionais,
           atualizado_por: user?.id,
           atualizado_em: now,
@@ -185,9 +194,7 @@ export default function ProcessosCategoriaPage() {
         .insert({
           titulo: fTitulo.trim(),
           categoria_id: categoriaId,
-          video_url: videoUrl,
-          conteudo: fConteudo.trim() || null,
-          imagens,
+          blocos,
           categorias_adicionais: fCategoriasAdicionais,
           criado_por: user?.id,
         }));
@@ -380,50 +387,15 @@ export default function ProcessosCategoriaPage() {
             </div>
 
             <div>
-              <Label htmlFor="art-video">
-                URL do Vídeo{' '}
-                <span className="text-muted-foreground font-normal">(opcional — Panda Video)</span>
-              </Label>
-              <Input
-                id="art-video"
-                className="mt-1.5 font-mono text-xs"
-                value={fVideo}
-                onChange={e => setFVideo(e.target.value)}
-                placeholder="Cole a URL de embed ou o código iframe do Panda Video"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="art-conteudo">
+              <Label>
                 Conteúdo{' '}
-                <span className="text-muted-foreground font-normal">(suporta Markdown)</span>
+                <span className="text-muted-foreground font-normal">
+                  (blocos — a ordem é sua)
+                </span>
               </Label>
-              <Textarea
-                id="art-conteudo"
-                className="mt-1.5 resize-none font-mono text-xs leading-relaxed"
-                rows={14}
-                value={fConteudo}
-                onChange={e => setFConteudo(e.target.value)}
-                placeholder={`## Introdução\n\nDescreva o processo aqui...\n\n## Passo a passo\n\n1. Primeiro passo\n2. Segundo passo`}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                ## Título &nbsp;•&nbsp; ### Subtítulo &nbsp;•&nbsp; **negrito** &nbsp;•&nbsp; *itálico* &nbsp;•&nbsp; 1. lista &nbsp;•&nbsp; [link](url)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="art-imagens">
-                Imagens ilustrativas{' '}
-                <span className="text-muted-foreground font-normal">(opcional — uma URL por linha)</span>
-              </Label>
-              <Textarea
-                id="art-imagens"
-                className="mt-1.5 resize-none font-mono text-xs"
-                rows={3}
-                value={fImagens}
-                onChange={e => setFImagens(e.target.value)}
-                placeholder={"https://exemplo.com/imagem1.png\nhttps://exemplo.com/imagem2.png"}
-              />
+              <div className="mt-1.5">
+                <BlocosEditor blocos={fBlocos} onChange={setFBlocos} />
+              </div>
             </div>
 
             {/* Extra categories */}

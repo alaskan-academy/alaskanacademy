@@ -6,11 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { MarkdownRenderer, extractTOC, type TocItem } from '@/features/processos/components/MarkdownRenderer';
-import { ChevronRight, Edit2, Loader2, ImageIcon, ArrowLeft, Clock, History } from 'lucide-react';
+import {
+  BlocosRenderer, lerBlocos, sumarioDosBlocos, textoDosBlocos, semVazios, type Bloco,
+} from '../components/BlocosRenderer';
+import { BlocosEditor } from '../components/BlocosEditor';
+import { ChevronRight, Edit2, Loader2, ArrowLeft, Clock, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,14 +36,10 @@ interface Artigo {
   categoria_icone: string;
   categorias_adicionais: string[];
   categorias_extras: CatExtra[];
+  blocos: Bloco[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function extractVideoUrl(raw: string): string {
-  const m = raw.match(/src=["']([^"']+)["']/);
-  return m ? m[1] : raw.trim();
-}
 
 /** A relação embutida chega como objeto ou como array; aqui vira sempre um só. */
 type CategoriaEmbutida = { nome: string | null; icone: string | null };
@@ -92,14 +90,12 @@ export default function ProcessosArtigoPage() {
 
   const [artigo, setArtigo] = useState<Artigo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [toc, setToc] = useState<TocItem[]>([]);
+  const [toc, setToc] = useState<{ id: string; text: string; level: number }[]>([]);
 
   // Edit form
   const [formOpen, setFormOpen] = useState(false);
   const [fTitulo, setFTitulo] = useState('');
-  const [fVideo, setFVideo] = useState('');
-  const [fConteudo, setFConteudo] = useState('');
-  const [fImagens, setFImagens] = useState('');
+  const [fBlocos, setFBlocos] = useState<Bloco[]>([]);
   const [fCategoriasAdicionais, setFCategoriasAdicionais] = useState<string[]>([]);
   const [todasCategorias, setTodasCategorias] = useState<CatExtra[]>([]);
   const [saving, setSaving] = useState(false);
@@ -118,7 +114,7 @@ export default function ProcessosArtigoPage() {
     const { data, error } = await supabase
       .from('processos_artigos')
       .select(`
-        id, titulo, video_url, conteudo, imagens, criado_em, atualizado_em,
+        id, titulo, video_url, conteudo, imagens, blocos, criado_em, atualizado_em,
         categoria_id, categorias_adicionais,
         processos_categorias ( nome, icone )
       `)
@@ -166,10 +162,11 @@ export default function ProcessosArtigoPage() {
       categoria_icone: umaCategoria(data.processos_categorias)?.icone ?? '📋',
       categorias_adicionais: extraIds,
       categorias_extras: extras,
+      blocos: lerBlocos(data.blocos),
     };
 
     setArtigo(loaded);
-    setToc(loaded.conteudo ? extractTOC(loaded.conteudo) : []);
+    setToc(sumarioDosBlocos(loaded.blocos));
     setLoading(false);
   };
 
@@ -180,9 +177,7 @@ export default function ProcessosArtigoPage() {
   const openEdit = () => {
     if (!artigo) return;
     setFTitulo(artigo.titulo);
-    setFVideo(artigo.video_url || '');
-    setFConteudo(artigo.conteudo || '');
-    setFImagens(artigo.imagens.join('\n'));
+    setFBlocos(artigo.blocos);
     setFCategoriasAdicionais(artigo.categorias_adicionais);
     setFormOpen(true);
   };
@@ -190,16 +185,19 @@ export default function ProcessosArtigoPage() {
   const handleSave = async () => {
     if (!fTitulo.trim() || !artigo) return;
     setSaving(true);
-    const imagens = fImagens.split('\n').map(l => l.trim()).filter(Boolean);
-    const videoUrl = fVideo.trim() ? extractVideoUrl(fVideo.trim()) : null;
 
     const { error } = await supabase
       .from('processos_artigos')
       .update({
         titulo: fTitulo.trim(),
-        video_url: videoUrl,
-        conteudo: fConteudo.trim() || null,
-        imagens,
+        blocos: semVazios(fBlocos),
+        // Os três campos antigos são ZERADOS ao salvar em blocos. Deixá-los com
+        // o valor velho seria manter duas versões do mesmo texto, e elas
+        // divergiriam na primeira edição — a armadilha nº 1 do CLAUDE.md. A
+        // busca já lê os blocos, então nada se perde ao limpar.
+        conteudo: null,
+        video_url: null,
+        imagens: [],
         categorias_adicionais: fCategoriasAdicionais,
         atualizado_por: user?.id,
         atualizado_em: new Date().toISOString(),
@@ -289,12 +287,15 @@ export default function ProcessosArtigoPage() {
                     <span className="text-xs text-muted-foreground font-medium">{cat.nome}</span>
                   </Link>
                 ))}
-                {artigo.conteudo && (
+                {/* O tempo sai dos BLOCOS. Lia `conteudo`, que agora fica nulo
+                    assim que o artigo passa pelo editor novo — o número
+                    desapareceria em silêncio na primeira edição. */}
+                {artigo.blocos.length > 0 && (
                   <>
                     <span className="text-muted-foreground/30">·</span>
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
-                      {readingTime(artigo.conteudo)}
+                      {readingTime(textoDosBlocos(artigo.blocos))}
                     </span>
                   </>
                 )}
@@ -329,59 +330,12 @@ export default function ProcessosArtigoPage() {
               </div>
             </div>
 
-            {/* Video embed */}
-            {artigo.video_url && (
-              <div className="mb-8">
-                <div
-                  className="relative w-full rounded-xl overflow-hidden border border-border bg-black"
-                  style={{ paddingBottom: '56.25%' }}
-                >
-                  <iframe
-                    src={artigo.video_url}
-                    className="absolute inset-0 w-full h-full"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-                    allowFullScreen
-                    title={artigo.titulo}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Markdown content */}
-            {artigo.conteudo && (
-              <div className="bg-card border border-border rounded-xl px-8 py-7 mb-6">
-                <MarkdownRenderer content={artigo.conteudo} />
-              </div>
-            )}
-
-            {/* Images */}
-            {artigo.imagens.length > 0 && (
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-medium text-muted-foreground">Imagens ilustrativas</h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {artigo.imagens.map((url, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setLightbox(url)}
-                      className="relative aspect-video rounded-lg overflow-hidden border border-border bg-muted hover:opacity-90 transition-opacity"
-                      title="Clique para ampliar"
-                    >
-                      <img
-                        src={url}
-                        alt={`Imagem ${i + 1}`}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Os blocos, na ordem que a autora montou. Vídeo, texto e imagem
+                deixaram de ter posição fixa no código: onde cada um aparece é
+                decisão de quem escreveu, e isso é o conteúdo. */}
+            <div className="bg-card border border-border rounded-xl px-8 py-7 mb-6">
+              <BlocosRenderer blocos={artigo.blocos} titulo={artigo.titulo} onAmpliar={setLightbox} />
+            </div>
 
             {/* Footer — a data saiu daqui e subiu para o cabeçalho. Repetir nos
                 dois lugares seria dizer duas vezes o que só precisa ser dito
@@ -466,49 +420,15 @@ export default function ProcessosArtigoPage() {
             </div>
 
             <div>
-              <Label htmlFor="edit-video">
-                URL do Vídeo{' '}
-                <span className="text-muted-foreground font-normal">(opcional — Panda Video)</span>
-              </Label>
-              <Input
-                id="edit-video"
-                className="mt-1.5 font-mono text-xs"
-                value={fVideo}
-                onChange={e => setFVideo(e.target.value)}
-                placeholder="Cole a URL de embed ou o código iframe do Panda Video"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="edit-conteudo">
+              <Label>
                 Conteúdo{' '}
-                <span className="text-muted-foreground font-normal">(suporta Markdown)</span>
+                <span className="text-muted-foreground font-normal">
+                  (blocos — a ordem é sua)
+                </span>
               </Label>
-              <Textarea
-                id="edit-conteudo"
-                className="mt-1.5 resize-none font-mono text-xs leading-relaxed"
-                rows={14}
-                value={fConteudo}
-                onChange={e => setFConteudo(e.target.value)}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                ## Título &nbsp;•&nbsp; ### Subtítulo &nbsp;•&nbsp; **negrito** &nbsp;•&nbsp; *itálico* &nbsp;•&nbsp; 1. lista &nbsp;•&nbsp; [link](url)
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="edit-imagens">
-                Imagens ilustrativas{' '}
-                <span className="text-muted-foreground font-normal">(opcional — uma URL por linha)</span>
-              </Label>
-              <Textarea
-                id="edit-imagens"
-                className="mt-1.5 resize-none font-mono text-xs"
-                rows={3}
-                value={fImagens}
-                onChange={e => setFImagens(e.target.value)}
-                placeholder={"https://exemplo.com/imagem1.png\nhttps://exemplo.com/imagem2.png"}
-              />
+              <div className="mt-1.5">
+                <BlocosEditor blocos={fBlocos} onChange={setFBlocos} />
+              </div>
             </div>
 
             {/* Extra categories */}
