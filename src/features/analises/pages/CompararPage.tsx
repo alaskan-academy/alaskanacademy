@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
-import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, Check, CheckCircle2, ChevronDown, Columns3, X } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { CelulaTripla } from '../components/ListaMetricas';
+import { TabelaLadoALado } from '../components/TabelaLadoALado';
+import { ResumoComparacao } from '../components/ResumoComparacao';
 import { BlocoMetricas, variacao } from '../metricas';
 import {
   Janela, PERIODOS, PERSONALIZADO, janelaDeDias, diasDaJanela, formatarData,
@@ -75,7 +79,8 @@ export default function CompararPage() {
   const [linhas, setLinhas] = useState<LinhaRev[]>([]);
   const [preset, setPreset] = useState<string>('14');
   const [janela, setJanela] = useState<Janela>(() => janelaDeDias(14));
-  const [ordem, setOrdem]   = useState<Ordem>('lucro');
+  const [ordem, setOrdem]   = useState<Ordem>('investimento');
+  const [escolhidos, setEscolhidos] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(true);
 
   const carregar = useCallback(async (j: Janela) => {
@@ -119,6 +124,26 @@ export default function CompararPage() {
   const dias = diasDaJanela(janela);
   const emRisco = linhas.filter(l => l.atual.front_se_paga === false).length;
 
+  // Escolher REVs troca a tabela de eixo: em vez de uma linha por REV com cinco
+  // colunas de resumo, uma linha por MÉTRICA com uma coluna por REV. É o mesmo
+  // dado visto de lado, e é o lado certo quando a pergunta é "qual destes".
+  //
+  // As colunas saem do maior investimento para o menor, e não na ordem em que
+  // foram clicadas: quem gasta mais é quem decide o resultado da conta, e ler
+  // sempre na mesma ordem evita comparar 1,74 com 0,88 achando que o 0,88 é o
+  // grande — que é o erro que a coluna fora de ordem convida a cometer.
+  const selecionadas = useMemo(
+    () => escolhidos
+      .map(id => linhas.find(l => l.funil_id === id))
+      .filter((l): l is LinhaRev => l != null)
+      .sort((a, b) => b.atual.investimento - a.atual.investimento),
+    [escolhidos, linhas],
+  );
+  const ladoALado = selecionadas.length >= 2;
+
+  const alternar = (id: string) => setEscolhidos(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
   return (
     <DashboardLayout title="Análises" hideFilters>
       <AnalisesNav />
@@ -151,14 +176,16 @@ export default function CompararPage() {
             </div>
           )}
 
-          <Select value={ordem} onValueChange={v => setOrdem(v as Ordem)}>
-            <SelectTrigger className="h-9 w-56 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {ORDENS.map(o => (
-                <SelectItem key={o.valor} value={o.valor}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!ladoALado && (
+            <Select value={ordem} onValueChange={v => setOrdem(v as Ordem)}>
+              <SelectTrigger className="h-9 w-56 text-sm"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ORDENS.map(o => (
+                  <SelectItem key={o.valor} value={o.valor}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <div className="flex-1" />
 
@@ -166,6 +193,81 @@ export default function CompararPage() {
             {formatarData(janela.inicio)} a {formatarData(janela.fim)} ({dias} dias)
           </span>
         </div>
+
+        {/* Escolher os REVs, quando a pergunta é "qual destes dois".
+            Lista suspensa e não fileira de chips: com sete REVs os chips
+            quebravam em três linhas e empurravam a tabela para fora da tela —
+            o seletor tem que ocupar uma linha, não um terço da dobra. */}
+        {linhas.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Popover modal>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm">
+                  <Columns3 className="h-3.5 w-3.5" />
+                  {escolhidos.length === 0
+                    ? 'Comparar em detalhe'
+                    : `${escolhidos.length} selecionados`}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </PopoverTrigger>
+              {/* `modal` porque o Radix Dialog usa react-remove-scroll e sem
+                  isso a roda do mouse não rola a lista dentro do popover. */}
+              <PopoverContent align="start" className="w-72 p-1">
+                <div className="max-h-72 overflow-y-auto">
+                  {ordenadas.map(l => {
+                    const on = escolhidos.includes(l.funil_id);
+                    return (
+                      <button
+                        key={l.funil_id}
+                        onClick={() => alternar(l.funil_id)}
+                        className={cn(
+                          'w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
+                          on ? 'bg-primary/10' : 'hover:bg-secondary',
+                        )}
+                      >
+                        <span className={cn(
+                          'mt-0.5 h-3.5 w-3.5 shrink-0 rounded-[3px] border flex items-center justify-center',
+                          on ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40',
+                        )}>
+                          {on && <Check className="h-2.5 w-2.5" />}
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm leading-tight">{l.rev}</span>
+                          <span className="block text-[10px] text-muted-foreground leading-tight">
+                            {l.projeto ?? 'sem projeto'} · {formatCurrency(l.atual.investimento)}
+                          </span>
+                        </span>
+                        {l.atual.front_se_paga === false && (
+                          <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0 text-amber-400" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {escolhidos.length > 0 && (
+                  <button
+                    onClick={() => setEscolhidos([])}
+                    className="w-full mt-1 border-t border-border pt-1.5 pb-1 inline-flex items-center justify-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                    limpar seleção
+                  </button>
+                )}
+              </PopoverContent>
+            </Popover>
+
+            {escolhidos.length === 1 && (
+              <span className="text-[11px] text-muted-foreground/70">
+                escolha mais um para comparar lado a lado
+              </span>
+            )}
+            {ladoALado && (
+              <span className="text-[11px] text-muted-foreground/70">
+                do maior investimento para o menor
+              </span>
+            )}
+          </div>
+        )}
 
         {emRisco > 0 && (
           <p className="text-xs text-amber-400/90 flex items-start gap-1.5">
@@ -187,6 +289,13 @@ export default function CompararPage() {
           <div className="py-20 text-center space-y-2">
             <p className="text-sm text-muted-foreground">Nenhum REV ativo para comparar.</p>
           </div>
+        ) : ladoALado ? (
+          <>
+            <TabelaLadoALado colunas={selecionadas} />
+            {/* O resumo vem DEPOIS da tabela: ele é conclusão, e conclusão
+                antes da evidência é palpite. */}
+            <ResumoComparacao colunas={selecionadas} />
+          </>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm min-w-[52rem]">

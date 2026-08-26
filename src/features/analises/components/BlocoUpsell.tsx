@@ -90,7 +90,14 @@ export function BlocoUpsell({ a, ant }: { a: BlocoMetricas; ant: BlocoMetricas }
         />
         <LinhaTripla
           rotulo="Lucro com upsell"
-          detalhe={`só front: ${formatCurrency(a.lucro_liquido)}`}
+          // As duas margens à vista, uma em cada altura: a do front no detalhe,
+          // a com upsell embaixo do valor. É a travessia inteira numa linha.
+          detalhe={
+            <>
+              só front: {formatCurrency(a.lucro_liquido)}
+              {a.margem_pct != null && ` · margem de ${pct(a.margem_pct)}`}
+            </>
+          }
           valor={a.lucro_com_upsell} anterior={ant.lucro_com_upsell}
           formato={formatCurrency} destaque
           base={a.margem_com_upsell_pct != null ? `margem de ${pct(a.margem_com_upsell_pct)}` : undefined}
