@@ -30,10 +30,10 @@ const ALL_SUB_PAGES = [
  * Configurações são coisas de naturezas completamente diferentes, e nada na
  * barra dizia isso.
  *
- * O critério é o motivo de abrir, e não o que a tela tem dentro. Ninguém abre
- * Editores para cadastrar um editor: abre para ver desempenho, então ela é
- * dado. Financeiro tem revisão diária dentro, mas quem clica ali está atrás de
- * dinheiro, não de tarefa.
+ * O critério é o motivo de abrir, e não o que a tela tem dentro. Financeiro tem
+ * revisão diária dentro, mas quem clica ali está atrás de dinheiro, não de
+ * tarefa. Quando o motivo muda conforme quem olha, o grupo muda junto — ver
+ * `grupoDoItem`, e o caso de Editores.
  *
  * ESTRUTURA existe porque cadastro não é nem trabalho do dia nem leitura de
  * número: são as três telas que definem COMO as coisas são, abertas de vez em
@@ -55,7 +55,10 @@ const GRUPOS = [
     itens: [
       { path: '/processos',   label: 'Processos',   icon: GraduationCap, key: 'processos',   adminOnly: false, sectorOnly: null },
       { path: '/producao',    label: 'Produção',    icon: Film,          key: 'producao',    adminOnly: false, sectorOnly: null },
-      { path: '/criativos',   label: 'Criativos',   icon: Clapperboard,  key: 'criativos',   adminOnly: true,  sectorOnly: null },
+      // Aqui é o lugar dele para a sócia, que abre para avaliar criativo,
+      // lançar nota fiscal e mexer em perfil. Para o editor desce para Dados:
+      // ele abre para ver a performance dos criativos dele. Ver `grupoDoItem`.
+      { path: '/editores',    label: 'Editores',    icon: BarChart3,     key: 'editores',    adminOnly: false, sectorOnly: null, grupoSeNaoAdmin: 'Dados' },
       { path: '/copywriters', label: 'Copywriters', icon: PenLine,       key: 'copywriters', adminOnly: false, sectorOnly: 'Copy' },
       { path: '/laboratorio', label: 'Laboratório', icon: FlaskConical,  key: 'laboratorio', adminOnly: false, sectorOnly: null },
     ],
@@ -63,8 +66,10 @@ const GRUPOS = [
   {
     titulo: 'Dados',
     itens: [
-      { path: '/analises',   label: 'Análises',   icon: LineChart, key: 'analises',   adminOnly: true,  sectorOnly: null },
-      { path: '/editores',   label: 'Editores',   icon: BarChart3, key: 'editores',   adminOnly: false, sectorOnly: null },
+      { path: '/analises',   label: 'Análises',   icon: LineChart,    key: 'analises',   adminOnly: true,  sectorOnly: null },
+      // Dado sobre a operação, e só sócio alcança: Desempenho e Por Projeto são
+      // leitura, e a Avaliação que escreve é o julgamento de quem já veio ler.
+      { path: '/criativos',  label: 'Criativos',  icon: Clapperboard, key: 'criativos',  adminOnly: true,  sectorOnly: null },
       { path: '/financeiro', label: 'Financeiro', icon: Wallet,    key: 'financeiro', adminOnly: false, sectorOnly: null },
     ],
   },
@@ -96,16 +101,41 @@ export function AppSidebar() {
 
   const subPages = ALL_SUB_PAGES.filter(p => canAccess(p.key));
 
+  /**
+   * Alguns itens mudam de grupo conforme quem olha.
+   *
+   * Editores serve dois públicos com motivos opostos: a sócia abre para avaliar
+   * criativo, lançar nota fiscal e mexer em perfil — trabalho. O editor abre
+   * para ver a performance dos criativos dele — dado. Uma classificação só
+   * estaria errada para metade das pessoas.
+   *
+   * Isso não é remendo: a TELA já se comporta assim por dentro. `PerfisTab` e
+   * `NotasFiscaisTab` olham `is_admin` e mostram tudo para a sócia e só o que é
+   * seu para o editor. O menu estava tratando como um caso o que a tela já
+   * tratava como dois.
+   *
+   * E menu diferente por pessoa já é a regra aqui, não a exceção: um editor não
+   * vê Criativos, Análises nem Configurações. Mover de grupo não inventa uma
+   * divergência nova.
+   */
+  const grupoDoItem = (p: { grupoSeNaoAdmin?: string }, grupoPadrao: string | null) =>
+    (!perfil?.is_admin && p.grupoSeNaoAdmin) ? p.grupoSeNaoAdmin : grupoPadrao;
+
+  const podeVer = (p: { adminOnly: boolean; sectorOnly: string | null; key: string }) => {
+    if (p.adminOnly) return perfil?.is_admin;
+    if (p.sectorOnly) return perfil?.is_admin || perfil?.setor?.nome === p.sectorOnly;
+    return canAccess(p.key);
+  };
+
   // Grupo que ficou sem nenhum item permitido some inteiro, cabeçalho junto:
   // um título de seção com nada embaixo é pior que a seção não existir.
   const grupos = GRUPOS
     .map(g => ({
       ...g,
-      itens: g.itens.filter(p => {
-        if (p.adminOnly) return perfil?.is_admin;
-        if (p.sectorOnly) return perfil?.is_admin || perfil?.setor?.nome === p.sectorOnly;
-        return canAccess(p.key);
-      }),
+      itens: GRUPOS
+        .flatMap(origem => origem.itens.map(p => ({ p, padrao: origem.titulo })))
+        .filter(({ p, padrao }) => grupoDoItem(p, padrao) === g.titulo && podeVer(p))
+        .map(({ p }) => p),
     }))
     .filter(g => g.itens.length > 0);
 
