@@ -176,13 +176,13 @@ function ItemDaRodada({ item, nome }: { item: ItemHistorico; nome: string }) {
           <span>{formatNumber(m.vendas)} vendas</span>
           <span>{formatCurrency(m.faturamento)}</span>
           {m.roas != null && <span>ROAS {m.roas.toFixed(2)}</span>}
-          {m.lucro != null && (
-            <span className={m.lucro < 0 ? 'text-red-400' : 'text-emerald-400'}>
-              lucro {formatCurrency(m.lucro)}
+          {m.lucro_liquido != null && (
+            <span className={m.lucro_liquido < 0 ? 'text-red-400' : 'text-emerald-400'}>
+              lucro {formatCurrency(m.lucro_liquido)}
             </span>
           )}
           {m.cpa != null && <span>CPA {formatCurrency(m.cpa)}</span>}
-          {m.bump_adesao_pct != null && <span>bump {m.bump_adesao_pct.toFixed(1)}%</span>}
+          {m.conv_funil_pct != null && <span>conversão {m.conv_funil_pct.toFixed(2)}%</span>}
         </div>
       )}
 

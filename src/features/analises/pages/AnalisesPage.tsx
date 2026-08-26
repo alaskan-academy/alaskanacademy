@@ -13,10 +13,10 @@ import { AnalisesNav } from '../components/AnalisesNav';
 import { CartaoMetrica } from '../components/CartaoMetrica';
 import { SecaoMetricas } from '../components/SecaoMetricas';
 import { TabelaItens } from '../components/TabelaItens';
+import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
-import {
-  Janela, PERIODOS, PERSONALIZADO, janelaDeDias, diasDaJanela, formatarData,
-} from '../periodo';
+import { RetencaoVsl, buscarRetencao } from '../retencao';
+import { Janela, PERIODOS, PERSONALIZADO, janelaDeDias, janelaAnterior, diasDaJanela, formatarData } from '../periodo';
 
 /**
  * A rodada de análise — a tela onde moram as 3 horas quinzenais.
@@ -25,9 +25,10 @@ import {
  * planilha do funil, transcrever investimento, faturamento, vendas, conversões,
  * cada order bump. Quase tudo já está no banco.
  *
- * Então aqui nada de numérico se digita. A tela calcula, mostra ao lado do
- * período anterior, e pede só o julgamento: o que você leu nisso, e o que vai
- * fazer a respeito.
+ * A ORDEM aqui é a da planilha dela, e isso é deliberado. A primeira versão
+ * agrupou os números por afinidade técnica e a resposta foi "estou me sentindo
+ * perdida": quem analisa há anos lê na mesma sequência todo mês, e mudar a
+ * sequência custa mais do que qualquer número a mais que se ganhe.
  *
  * A regra que decide se este módulo deu certo: se sobrar campo numérico para
  * preencher, ele falhou — voltou a ser a planilha.
@@ -38,6 +39,8 @@ interface RevDaRodada {
   rev: string;
   projeto: string | null;
   vendas: number;
+  metodo: string | null;
+  vsl_id: string | null;
 }
 
 interface ItemSalvo {
@@ -45,7 +48,7 @@ interface ItemSalvo {
   proximas_acoes: string;
 }
 
-const pct = (n: number) => `${n.toFixed(1)}%`;
+const pct  = (n: number) => `${n.toFixed(1)}%`;
 const pct2 = (n: number) => `${n.toFixed(2)}%`;
 const num2 = (n: number) => n.toFixed(2);
 
@@ -57,6 +60,8 @@ export default function AnalisesPage() {
   const [preset, setPreset]     = useState<string>('14');
   const [janela, setJanela]     = useState<Janela>(() => janelaDeDias(14));
   const [metricas, setMetricas] = useState<MetricasDoRev | null>(null);
+  const [retencao, setRetencao] = useState<RetencaoVsl | null>(null);
+  const [retencaoAntes, setRetencaoAntes] = useState<RetencaoVsl | null>(null);
   const [carregando, setCarregando]     = useState(true);
   const [buscandoMetricas, setBuscando] = useState(false);
 
@@ -79,16 +84,24 @@ export default function AnalisesPage() {
    * ninguém faz.
    */
   const carregarRevs = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('vw_mapa_revs')
-      .select('id,rev,projeto,vendas,status')
-      .eq('status', 'ativo')
-      .order('vendas', { ascending: false });
+    const [{ data, error }, { data: metodos }] = await Promise.all([
+      supabase.from('vw_mapa_revs').select('id,rev,projeto,vendas,status')
+        .eq('status', 'ativo').order('vendas', { ascending: false }),
+      supabase.from('funis').select('id,metodo,vsl_id'),
+    ]);
 
     if (error) {
       toast({ title: 'Erro ao carregar os REVs', description: error.message, variant: 'destructive' });
     }
-    const lista = (data ?? []) as RevDaRodada[];
+    const por = new Map(((metodos ?? []) as Array<{ id: string; metodo: string | null; vsl_id: string | null }>)
+      .map(f => [f.id, f]));
+    const lista: RevDaRodada[] = ((data ?? []) as Array<{
+      id: string; rev: string; projeto: string | null; vendas: number;
+    }>).map(r => ({
+      ...r,
+      metodo: por.get(r.id)?.metodo ?? null,
+      vsl_id: por.get(r.id)?.vsl_id ?? null,
+    }));
     setRevs(lista);
     return lista;
   }, []);
@@ -99,9 +112,6 @@ export default function AnalisesPage() {
    * Sem isto, recarregar a página no meio das 3 horas criaria uma segunda
    * rodada da mesma data, e a leitura ficaria partida entre duas — o mesmo
    * defeito de dois registros dizendo a mesma coisa que já custou caro aqui.
-   *
-   * O limite de 7 dias existe porque rodada aberta há um mês é rodada
-   * esquecida, não rodada em andamento: retomá-la misturaria períodos.
    */
   const retomarRodada = useCallback(async () => {
     const limite = janelaDeDias(8).inicio;
@@ -145,25 +155,37 @@ export default function AnalisesPage() {
     })();
   }, [carregarRevs, retomarRodada]);
 
-  // Métricas do REV em foco. Buscadas por REV, e não todas de uma vez: a função
-  // agrega vendas, itens e investimento — carregar os 6 de antemão faria a tela
-  // esperar por dado que talvez ninguém veja.
+  // Métricas do REV em foco. A retenção vem junto, mas por fora do SQL: muda
+  // todo dia, e espelhá-la numa tabela nossa seria guardar retrato velho.
   useEffect(() => {
     if (!atual) return;
     let cancelado = false;
     setBuscando(true);
-    supabase
-      .rpc('fn_metricas_do_rev', {
-        p_funil_id: atual.id,
-        p_inicio: janela.inicio,
-        p_fim: janela.fim,
-      })
-      .then(({ data, error }) => {
-        if (cancelado) return;
-        if (error) toast({ title: 'Erro ao calcular', description: error.message, variant: 'destructive' });
-        setMetricas((data as MetricasDoRev) ?? null);
-        setBuscando(false);
+    setRetencao(null); setRetencaoAntes(null);
+
+    (async () => {
+      const { data, error } = await supabase.rpc('fn_metricas_do_rev', {
+        p_funil_id: atual.id, p_inicio: janela.inicio, p_fim: janela.fim,
       });
+      if (cancelado) return;
+      if (error) toast({ title: 'Erro ao calcular', description: error.message, variant: 'destructive' });
+      setMetricas((data as MetricasDoRev) ?? null);
+      setBuscando(false);
+
+      // A VSL é acessória e falha em silêncio de propósito: se o VTurb estiver
+      // fora do ar, a rodada continua — o resto dos números não depende dela.
+      if (atual.vsl_id) {
+        try {
+          const ja = janelaAnterior(janela);
+          const [agora, antes] = await Promise.all([
+            buscarRetencao(atual.vsl_id, janela.inicio, janela.fim),
+            buscarRetencao(atual.vsl_id, ja.inicio, ja.fim),
+          ]);
+          if (!cancelado) { setRetencao(agora); setRetencaoAntes(antes); }
+        } catch { /* sem retenção, a tela mostra o bloco vazio */ }
+      }
+    })();
+
     return () => { cancelado = true; };
   }, [atual, janela]);
 
@@ -176,10 +198,7 @@ export default function AnalisesPage() {
   async function garantirRodada(): Promise<string | null> {
     if (analiseId) return analiseId;
     const { data, error } = await supabase
-      .from('analises')
-      .insert({ autor_id: user?.id ?? null })
-      .select('id,data')
-      .single();
+      .from('analises').insert({ autor_id: user?.id ?? null }).select('id,data').single();
     if (error || !data) {
       toast({ title: 'Erro ao abrir a rodada', description: error?.message, variant: 'destructive' });
       return null;
@@ -199,9 +218,6 @@ export default function AnalisesPage() {
   async function salvarItem(destinoId: string | null): Promise<string | null> {
     if (!atual) return null;
 
-    // Andar e trocar o texto acontecem juntos: o campo pertence ao REV em foco,
-    // e trocar um sem o outro mostraria a leitura de um REV sobre os números de
-    // outro.
     const ir = (mapa: Record<string, ItemSalvo>) => {
       if (!destinoId || destinoId === atual.id) return;
       const i = revs.findIndex(r => r.id === destinoId);
@@ -226,6 +242,7 @@ export default function AnalisesPage() {
       // depois, a leitura continua fazendo sentido ao lado dos números que a
       // motivaram — ver o comentário da tabela no banco.
       metricas: metricas as unknown as Record<string, unknown>,
+      retencao: retencao as unknown as Record<string, unknown>,
       leitura: leitura.trim() || null,
       proximas_acoes: acoes.trim() || null,
     }, { onConflict: 'analise_id,funil_id' });
@@ -246,11 +263,7 @@ export default function AnalisesPage() {
     return salvarItem(destino?.id ?? null);
   };
 
-  /**
-   * Fecha a rodada. É o marco que separa "estou analisando" de "analisei" — e
-   * é o que faz a próxima abertura da tela começar limpa em vez de retomar
-   * esta.
-   */
+  /** Fecha a rodada — o marco que separa "estou analisando" de "analisei". */
   async function fecharRodada() {
     // O id vem do próprio salvar, e não do estado: se a rodada acabou de
     // nascer nesta gravação, `analiseId` ainda é o valor velho desta closure e
@@ -262,15 +275,9 @@ export default function AnalisesPage() {
     }
     setFechando(true);
     const { error } = await supabase
-      .from('analises')
-      .update({ fechada_em: new Date().toISOString() })
-      .eq('id', id);
-    // Conta do banco, não do estado: o item recém-gravado ainda não está em
-    // `salvos` nesta closure, e o número do aviso ficaria um a menos.
+      .from('analises').update({ fechada_em: new Date().toISOString() }).eq('id', id);
     const { count } = await supabase
-      .from('analise_itens')
-      .select('id', { count: 'exact', head: true })
-      .eq('analise_id', id);
+      .from('analise_itens').select('id', { count: 'exact', head: true }).eq('analise_id', id);
     setFechando(false);
     if (error) {
       toast({ title: 'Erro ao fechar a rodada', description: error.message, variant: 'destructive' });
@@ -282,12 +289,8 @@ export default function AnalisesPage() {
         ? '1 REV com leitura escrita. Está no Histórico.'
         : `${count ?? 0} REVs com leitura escrita. Estão no Histórico.`,
     });
-    setAnaliseId(null);
-    setDataRodada(null);
-    setSalvos({});
-    setLeitura('');
-    setAcoes('');
-    setIndice(0);
+    setAnaliseId(null); setDataRodada(null); setSalvos({});
+    setLeitura(''); setAcoes(''); setIndice(0);
   }
 
   const analisados = useMemo(() => Object.keys(salvos).length, [salvos]);
@@ -322,8 +325,6 @@ export default function AnalisesPage() {
   const ant = metricas?.anterior;
   const distancia = a ? distanciaDoMeta(a) : null;
   const atribuicaoDuvidosa = distancia != null && distancia > LIMITE_DISTANCIA;
-  // Quando os anúncios mal rodaram antes, toda comparação de métrica paga vira
-  // "começou a rodar", não "melhorou" ou "piorou".
   const semBaseParaPago = a && ant ? baseAnteriorFragil(a, ant) : false;
   const avisoDeBase = semBaseParaPago
     ? 'os anúncios mal rodaram no período anterior — o "antes" aqui não é linha de base'
@@ -363,17 +364,15 @@ export default function AnalisesPage() {
           )}
 
           {/* Escolher o REV direto, sem percorrer um a um. */}
-          <Select
-            value={atual?.id ?? ''}
-            onValueChange={id => { salvarItem(id); }}
-          >
-            <SelectTrigger className="h-9 w-64 text-sm"><SelectValue /></SelectTrigger>
+          <Select value={atual?.id ?? ''} onValueChange={id => { salvarItem(id); }}>
+            <SelectTrigger className="h-9 w-72 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
               {revs.map(r => (
                 <SelectItem key={r.id} value={r.id}>
                   <span className="inline-flex items-center gap-1.5">
                     {salvos[r.id] && <Check className="h-3 w-3 text-emerald-400" />}
                     {r.projeto ? `${r.projeto} · ` : ''}{r.rev}
+                    {r.metodo && <span className="text-[10px] text-muted-foreground">{r.metodo}</span>}
                   </span>
                 </SelectItem>
               ))}
@@ -385,8 +384,7 @@ export default function AnalisesPage() {
           <div className="flex items-center gap-1">
             <Button
               size="sm" variant="outline" className="h-9 w-9 p-0"
-              onClick={() => irPara(-1)}
-              disabled={salvando || fechando || indice === 0}
+              onClick={() => irPara(-1)} disabled={salvando || fechando || indice === 0}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -426,6 +424,11 @@ export default function AnalisesPage() {
               {atual?.projeto ?? 'sem projeto'}
             </span>
             <span className="text-base font-semibold">{atual?.rev}</span>
+            {atual?.metodo && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
+                {atual.metodo}
+              </span>
+            )}
             {salvos[atual?.id ?? ''] && (
               <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 <Check className="h-3 w-3" /> leitura salva
@@ -439,96 +442,86 @@ export default function AnalisesPage() {
             </div>
           ) : a && ant ? (
             <>
-              {/* O veredito primeiro: é a pergunta que a rodada responde. */}
+              {/* 1 — o cabeçalho da planilha, na mesma ordem */}
               <SecaoMetricas
                 titulo="Resultado"
-                nota={avisoDeBase ?? 'lucro = líquido do produtor − reembolso − imposto − investimento. Custo fixo não entra: é da empresa, não do REV.'}
+                nota={avisoDeBase ?? 'faturamento já sem juros de parcelamento e sem reembolso'}
               >
-                <CartaoMetrica rotulo="Lucro" valor={a.lucro} anterior={ant.lucro} formato={formatCurrency} destaque />
-                <CartaoMetrica rotulo="Margem" valor={a.margem_pct} anterior={ant.margem_pct} formato={pct} destaque />
-                <CartaoMetrica
-                  rotulo="ROAS" valor={a.roas} anterior={ant.roas} formato={num2} destaque
-                  nota={a.roas != null ? 'investimento é piso: anúncio sem venda fica de fora' : undefined}
-                />
-                <CartaoMetrica
-                  rotulo="CPA (custo por venda)" valor={a.cpa} anterior={ant.cpa} formato={formatCurrency} subirEhRuim
-                  nota={a.ticket_medio != null && a.cpa != null && a.cpa > a.ticket_medio
-                    ? 'acima do ticket médio'
-                    : 'investimento sobre TODAS as vendas do REV, orgânicas inclusas'}
-                />
-              </SecaoMetricas>
-
-              <SecaoMetricas titulo="Venda">
+                <CartaoMetrica rotulo="Investimento" valor={a.investimento} anterior={ant.investimento} formato={formatCurrency} subirEhRuim
+                  nota={a.nivel_investimento === 'campanha' ? 'campanha inteira'
+                    : a.nivel_investimento === 'misto' ? 'campanha dividida com outro REV: só os anúncios deste'
+                    : 'só anúncios com venda atribuída'} />
+                <CartaoMetrica rotulo="Faturamento" valor={a.faturamento} anterior={ant.faturamento} formato={formatCurrency} destaque />
+                <CartaoMetrica rotulo="Resultado" valor={a.resultado} anterior={ant.resultado} formato={formatCurrency} />
                 <CartaoMetrica rotulo="Vendas" valor={a.vendas} anterior={ant.vendas} formato={formatNumber} />
-                <CartaoMetrica rotulo="Faturamento" valor={a.faturamento} anterior={ant.faturamento} formato={formatCurrency} />
-                <CartaoMetrica rotulo="Receita (s/ juros)" valor={a.receita} anterior={ant.receita} formato={formatCurrency} />
-                <CartaoMetrica rotulo="Ticket médio (AOV)" valor={a.ticket_medio} anterior={ant.ticket_medio} formato={formatCurrency} />
+                <CartaoMetrica rotulo="ROAS" valor={a.roas} anterior={ant.roas} formato={num2} destaque />
+                <CartaoMetrica rotulo="Imposto" valor={a.imposto_simples + a.imposto_meta} anterior={ant.imposto_simples + ant.imposto_meta} formato={formatCurrency} subirEhRuim
+                  nota="Simples + imposto sobre o Meta" />
+                <CartaoMetrica rotulo="Taxa da plataforma" valor={a.taxa_plataforma} anterior={ant.taxa_plataforma} formato={formatCurrency} subirEhRuim
+                  nota="a taxa real cobrada, não 7% fixo" />
+                <CartaoMetrica rotulo="Lucro líquido" valor={a.lucro_liquido} anterior={ant.lucro_liquido} formato={formatCurrency} destaque
+                  nota={a.margem_pct != null ? `margem de ${pct(a.margem_pct)}` : undefined} />
               </SecaoMetricas>
 
-              <SecaoMetricas
-                titulo="Tráfego"
-                nota={avisoDeBase ?? (a.cobertura_geral_pct != null
-                  ? `${a.cobertura_geral_pct}% do gasto da conta está amarrado a algum REV`
-                  : undefined)}
-              >
-                <CartaoMetrica rotulo="Investimento" valor={a.investimento} anterior={ant.investimento} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="Impressões" valor={a.impressoes} anterior={ant.impressoes} formato={formatNumber} />
-                <CartaoMetrica rotulo="Cliques no link" valor={a.cliques} anterior={ant.cliques} formato={formatNumber} />
-                <CartaoMetrica rotulo="Visitas à página" valor={a.visitas} anterior={ant.visitas} formato={formatNumber} />
-                <CartaoMetrica rotulo="Checkouts iniciados" valor={a.checkouts_iniciados} anterior={ant.checkouts_iniciados} formato={formatNumber} />
-                <CartaoMetrica
-                  rotulo="Compras (contagem do Meta)" valor={a.compras_meta} anterior={ant.compras_meta} formato={formatNumber}
-                  nota={`nós contamos ${formatNumber(a.vendas)}`}
-                />
+              {/* 2 — as ofertas */}
+              <SecaoMetricas titulo="Ofertas" nota={a.pct_ofertas_extras != null
+                ? `${pct2(a.pct_ofertas_extras)} do faturamento veio de bump e upsell` : undefined}>
+                <div className="col-span-full">
+                  <TabelaItens
+                    atual={a.itens ?? []} anterior={ant.itens ?? []}
+                    principal={{ qtd: a.oferta_principal_qtd, valor: a.oferta_principal_valor, antesQtd: ant.oferta_principal_qtd }}
+                    upsell={{
+                      qtd: a.upsell_qtd, valor: a.upsell_faturamento, antesQtd: ant.upsell_qtd,
+                      adesao: a.vendas > 0 ? (a.upsell_qtd / a.vendas) * 100 : null,
+                    }}
+                  />
+                </div>
               </SecaoMetricas>
 
-              {/* Fonte única de propósito: cruzar as nossas vendas com o
-                  denominador do pixel já produziu 202,9% de conversão de
-                  checkout, e uma queda de 70% que não existia. */}
-              <SecaoMetricas
-                titulo="Conversão, etapa a etapa"
-                nota="tudo medido pelo Meta, do clique à compra — para as etapas serem comparáveis entre si"
-              >
-                <CartaoMetrica rotulo="Connect rate (clique → página)" valor={a.connect_rate_pct} anterior={ant.connect_rate_pct} formato={pct} />
-                <CartaoMetrica rotulo="Página → checkout" valor={a.taxa_checkout_pct} anterior={ant.taxa_checkout_pct} formato={pct2} />
-                <CartaoMetrica rotulo="Checkout → compra" valor={a.conv_checkout_pct} anterior={ant.conv_checkout_pct} formato={pct} />
-                <CartaoMetrica rotulo="Conversão do funil" valor={a.conv_pagina_pct} anterior={ant.conv_pagina_pct} formato={pct2} destaque />
+              {/* 3 — o tráfego, com o custo de cada etapa ao lado, como na planilha */}
+              <SecaoMetricas titulo="Tráfego" nota={avisoDeBase ?? (a.cobertura_geral_pct != null
+                ? `${a.cobertura_geral_pct}% do gasto da conta está amarrado a algum REV` : undefined)}>
+                <CartaoMetrica rotulo="Cliques" valor={a.cliques} anterior={ant.cliques} formato={formatNumber}
+                  nota={a.cpc != null ? `${formatCurrency(a.cpc)} por clique` : undefined} />
+                <CartaoMetrica rotulo="Visualização da Página" valor={a.visitas} anterior={ant.visitas} formato={formatNumber}
+                  nota={a.cpv != null ? `${formatCurrency(a.cpv)} por visita` : undefined} />
+                <CartaoMetrica rotulo="Initiate Checkout" valor={a.checkouts_iniciados} anterior={ant.checkouts_iniciados} formato={formatNumber}
+                  nota={a.cpi != null ? `${formatCurrency(a.cpi)} por checkout` : undefined} />
+                <CartaoMetrica rotulo="Impressões" valor={a.impressoes} anterior={ant.impressoes} formato={formatNumber}
+                  nota={a.cpm != null ? `${formatCurrency(a.cpm)} de CPM` : undefined} />
               </SecaoMetricas>
 
-              <SecaoMetricas titulo="Por etapa" nota={avisoDeBase ?? 'EPC − CPC negativo é escala comprando prejuízo'}>
-                <CartaoMetrica rotulo="CPM" valor={a.cpm} anterior={ant.cpm} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="CPC (clique)" valor={a.cpc} anterior={ant.cpc} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="CPV (visita)" valor={a.cpv} anterior={ant.cpv} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="EPC (ganho por clique)" valor={a.epc} anterior={ant.epc} formato={formatCurrency} />
-                <CartaoMetrica rotulo="EPC − CPC" valor={a.margem_por_clique} anterior={ant.margem_por_clique} formato={formatCurrency} destaque />
+              {/* 4 — as conversões */}
+              <SecaoMetricas titulo="Conversões">
+                <CartaoMetrica rotulo="Conversão do Funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2} destaque />
+                <CartaoMetrica rotulo="Conversão do Checkout" valor={a.conv_checkout_pct} anterior={ant.conv_checkout_pct} formato={pct2} />
+                <CartaoMetrica rotulo="Connect Rate da Page" valor={a.connect_rate_pct} anterior={ant.connect_rate_pct} formato={pct2} />
+                <CartaoMetrica rotulo="Initiate Checkout %" valor={a.taxa_checkout_pct} anterior={ant.taxa_checkout_pct} formato={pct2} />
               </SecaoMetricas>
 
-              <SecaoMetricas titulo="Custos e descontos">
-                <CartaoMetrica rotulo="Taxa da plataforma" valor={a.taxa_plataforma} anterior={ant.taxa_plataforma} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="Imposto estimado" valor={a.imposto} anterior={ant.imposto} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="Reembolsos" valor={a.reembolsos} anterior={ant.reembolsos} formato={formatCurrency} subirEhRuim />
-                <CartaoMetrica rotulo="Juros de parcelamento" valor={a.juros_plataforma} anterior={ant.juros_plataforma} formato={formatCurrency} subirEhRuim
-                  nota="ficam com a plataforma" />
+              {/* 5 — o quanto cada visitante custa e traz */}
+              <SecaoMetricas titulo="Por visitante" nota="EPC − CPV negativo é escala comprando prejuízo">
+                <CartaoMetrica rotulo="CPV (custo por visitante)" valor={a.cpv} anterior={ant.cpv} formato={formatCurrency} subirEhRuim />
+                <CartaoMetrica rotulo="CPA (custo por venda)" valor={a.cpa} anterior={ant.cpa} formato={formatCurrency} subirEhRuim
+                  nota={a.aov != null && a.cpa != null && a.cpa > a.aov ? 'acima do AOV' : undefined} />
+                <CartaoMetrica rotulo="EPC (quanto cada um traz)" valor={a.epc} anterior={ant.epc} formato={formatCurrency} />
+                <CartaoMetrica rotulo="AOV" valor={a.aov} anterior={ant.aov} formato={formatCurrency} />
+                <CartaoMetrica rotulo="EPC − CPV" valor={a.epc_menos_cpv} anterior={ant.epc_menos_cpv} formato={formatCurrency} destaque />
               </SecaoMetricas>
 
-              <SecaoMetricas titulo="Ofertas" nota="adesão sobre as vendas do período">
-                <CartaoMetrica rotulo="Order bumps" valor={a.bump_qtd} anterior={ant.bump_qtd} formato={formatNumber} />
-                <CartaoMetrica rotulo="Adesão a bump" valor={a.bump_adesao_pct} anterior={ant.bump_adesao_pct} formato={pct} />
-                <CartaoMetrica rotulo="Receita de bumps" valor={a.bump_faturamento} anterior={ant.bump_faturamento} formato={formatCurrency} />
-                <CartaoMetrica rotulo="Upsells" valor={a.upsell_qtd} anterior={ant.upsell_qtd} formato={formatNumber} />
-              </SecaoMetricas>
-
-              <TabelaItens atual={a.itens ?? []} anterior={ant.itens ?? []} />
+              {/* 6 — o fim da planilha, que muda com o método */}
+              {atual?.metodo === 'VSL' || atual?.vsl_id
+                ? <BlocoVsl r={retencao} anterior={retencaoAntes} />
+                : <BlocoTsl />}
 
               {atribuicaoDuvidosa && (
                 <p className="text-xs text-amber-400/90 flex items-start gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                   <span>
                     Contamos {formatNumber(a.vendas)} vendas e o Meta reporta{' '}
-                    {formatNumber(a.compras_meta)} compras para os mesmos anúncios — e só{' '}
-                    {formatNumber(a.vendas_de_anuncio)} das nossas trazem o anúncio identificado.
-                    O que cada fonte chama de venda não bate: leia CPA, EPC e conversão como
-                    ordem de grandeza, não como número exato.
+                    {formatNumber(a.compras_meta)} compras para os mesmos anúncios. O que cada
+                    fonte chama de venda não bate: leia CPA, EPC e conversão como ordem de
+                    grandeza, não como número exato.
                   </span>
                 </p>
               )}
@@ -552,8 +545,7 @@ export default function AnalisesPage() {
               <Textarea
                 className="mt-1 h-28 resize-none text-sm"
                 placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
-                value={leitura}
-                onChange={e => setLeitura(e.target.value)}
+                value={leitura} onChange={e => setLeitura(e.target.value)}
               />
             </div>
             <div>
@@ -561,18 +553,13 @@ export default function AnalisesPage() {
               <Textarea
                 className="mt-1 h-28 resize-none text-sm"
                 placeholder="O que fazer a respeito, em texto livre…"
-                value={acoes}
-                onChange={e => setAcoes(e.target.value)}
+                value={acoes} onChange={e => setAcoes(e.target.value)}
               />
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              size="sm" variant="outline" className="h-8"
-              onClick={() => salvarItem(null)}
-              disabled={salvando || fechando}
-            >
+            <Button size="sm" variant="outline" className="h-8" onClick={() => salvarItem(null)} disabled={salvando || fechando}>
               Salvar
             </Button>
             <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">

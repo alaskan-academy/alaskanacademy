@@ -38,6 +38,22 @@ export function janelaDeDias(dias: number): Janela {
   return { inicio: iso(inicio), fim: iso(fim) };
 }
 
+/**
+ * A janela anterior, do mesmo tamanho e colada nesta.
+ *
+ * O SQL calcula a dele por dentro; isto existe para a retenção de VSL, que vem
+ * do VTurb e precisa das duas datas explícitas. As duas contas têm que dar a
+ * mesma janela, senão a retenção compararia um período e os números outro.
+ */
+export function janelaAnterior(j: Janela): Janela {
+  const dias = diasDaJanela(j);
+  const fim = new Date(`${j.inicio}T00:00:00`);
+  fim.setDate(fim.getDate() - 1);
+  const inicio = new Date(fim);
+  inicio.setDate(inicio.getDate() - (dias - 1));
+  return { inicio: iso(inicio), fim: iso(fim) };
+}
+
 /** Quantos dias a janela cobre, contando as duas pontas. */
 export function diasDaJanela(j: Janela): number {
   const ms = new Date(`${j.fim}T00:00:00`).getTime() - new Date(`${j.inicio}T00:00:00`).getTime();

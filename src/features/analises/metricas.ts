@@ -1,15 +1,18 @@
 /**
  * As métricas de um REV, e como lê-las honestamente.
  *
- * O tipo espelha o que `fn_metricas_do_rev` devolve. Fica separado do
- * componente porque o retrato gravado em `analise_itens.metricas` é lido de
- * volta com o mesmo formato — se as duas leituras divergirem, uma análise
- * antiga passa a renderizar errado.
+ * O tipo espelha o que `fn_metricas_do_rev` devolve, e a ORDEM aqui é a ordem
+ * da planilha que ela já usa — resultado, ofertas, tráfego, conversões, custo
+ * por etapa. Não é decoração: a tela lê esta ordem, e ler os números fora da
+ * sequência em que ela pensa foi exatamente a queixa que motivou a reescrita.
+ *
+ * Fica separado do componente porque o retrato gravado em
+ * `analise_itens.metricas` é lido de volta com o mesmo formato — se as duas
+ * leituras divergirem, uma análise antiga passa a renderizar errado.
  */
 
 export interface ItemVendido {
   nome: string;
-  tipo: string;
   qtd: number;
   faturamento: number;
   adesao_pct: number | null;
@@ -18,57 +21,59 @@ export interface ItemVendido {
 export interface BlocoMetricas {
   dias: number;
 
-  // Venda
-  vendas: number;
-  vendas_de_anuncio: number;
-  vendas_organicas: number;
+  // ── Resultado ──────────────────────────────────────────────────────────────
+  investimento: number;
+  /** Já líquido de juros de parcelamento e de reembolso. */
   faturamento: number;
-  receita: number;
-  ticket_medio: number | null;
+  resultado: number;
+  vendas: number;
+  roas: number | null;
+  imposto_simples: number;
+  imposto_meta: number;
+  taxa_plataforma: number;
+  lucro_liquido: number;
+  margem_pct: number | null;
+  reembolsos: number;
 
-  // Ofertas
+  // ── Ofertas ────────────────────────────────────────────────────────────────
+  oferta_principal_qtd: number;
+  oferta_principal_valor: number;
   bump_qtd: number;
   bump_faturamento: number;
   bump_adesao_pct: number | null;
   upsell_qtd: number;
   upsell_faturamento: number;
   itens: ItemVendido[];
+  /** Fatia do faturamento que veio de bump e upsell — o 21,59% da planilha. */
+  pct_ofertas_extras: number | null;
 
-  // Tráfego
-  investimento: number;
-  investimento_e_piso: boolean;
+  // ── Tráfego ────────────────────────────────────────────────────────────────
+  /** `campanha`, `misto` ou `anuncio`: em que nível o investimento foi somado. */
+  nivel_investimento: 'campanha' | 'misto' | 'anuncio';
   impressoes: number;
   cliques: number;
   visitas: number;
   checkouts_iniciados: number;
   /** A contagem do próprio Meta, para conferir a nossa contra uma segunda fonte. */
   compras_meta: number;
-  faturamento_meta: number;
-  roas: number | null;
-  /** Da CONTA inteira, não deste REV. Ver o comentário da função no banco. */
+  vendas_de_anuncio: number;
   cobertura_geral_pct: number | null;
 
-  // Conversões
-  connect_rate_pct: number | null;
-  conv_pagina_pct: number | null;
+  // ── Conversões ─────────────────────────────────────────────────────────────
+  conv_funil_pct: number | null;
   conv_checkout_pct: number | null;
+  connect_rate_pct: number | null;
   taxa_checkout_pct: number | null;
 
-  // Custo e ganho por etapa
+  // ── Custo e ganho por etapa ────────────────────────────────────────────────
   cpm: number | null;
   cpc: number | null;
   cpv: number | null;
+  cpi: number | null;
   cpa: number | null;
   epc: number | null;
-  margem_por_clique: number | null;
-
-  // Resultado
-  taxa_plataforma: number;
-  juros_plataforma: number;
-  reembolsos: number;
-  imposto: number;
-  lucro: number;
-  margem_pct: number | null;
+  aov: number | null;
+  epc_menos_cpv: number | null;
 }
 
 export interface MetricasDoRev {
