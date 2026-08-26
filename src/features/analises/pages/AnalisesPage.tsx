@@ -8,15 +8,17 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
-import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertTriangle, Check, FlaskConical, Lock } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { ListaMetricas, LinhaMetrica, LinhaTripla } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
 import { ListaAcoes, AcoesFeitas, Acao } from '../components/ListaAcoes';
 import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
 import { BlocoUpsell } from '../components/BlocoUpsell';
+import { AvisoPlanilha } from '../components/AvisoPlanilha';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
 import { RetencaoVsl, buscarRetencao } from '../retencao';
+import { exportarRodada } from '../exportar';
 import {
   Janela, PERIODOS, PERSONALIZADO, janelaDeDias, janelaAnterior, diasDaJanela, formatarData,
 } from '../periodo';
@@ -166,12 +168,16 @@ export default function AnalisesPage() {
       analises: { data: string } | { data: string }[] | null;
       perfis: { nome: string | null } | { nome: string | null }[] | null;
     }>;
-    setAcoes(linhas.map(l => ({
+    const lista: Acao[] = linhas.map(l => ({
       id: l.id, texto: l.texto, expectativa: l.expectativa,
       feita: l.feita, feita_em: l.feita_em, criada_em: l.criada_em,
       feita_por_nome: um(l.perfis)?.nome ?? null,
       data_origem: um(l.analises)?.data ?? null,
-    })));
+    }));
+    setAcoes(lista);
+    // Devolve a lista porque o espelho precisa da versão recém-gravada: ler o
+    // estado logo depois de `setAcoes` traria a anterior.
+    return lista;
   }, []);
 
   // Métricas do REV em foco. A retenção vem junto, mas por fora do SQL: muda
@@ -240,7 +246,7 @@ export default function AnalisesPage() {
       toast({ title: 'Erro ao salvar a ação', description: error.message, variant: 'destructive' });
       return;
     }
-    await carregarAcoes(atual.id);
+    espelhar(await carregarAcoes(atual.id));
   }
 
   async function marcarAcao(id: string, feita: boolean) {
@@ -252,7 +258,7 @@ export default function AnalisesPage() {
     if (error) {
       toast({ title: 'Erro ao marcar', description: error.message, variant: 'destructive' });
     }
-    if (atual) await carregarAcoes(atual.id);
+    if (atual) espelhar(await carregarAcoes(atual.id));
   }
 
   /**
@@ -299,8 +305,35 @@ export default function AnalisesPage() {
     }
     const mapa = { ...lidos, [atual.id]: leitura };
     setLidos(mapa);
+    espelhar();
     ir(mapa);
     return id;
+  }
+
+  /**
+   * Manda a rodada para o Obsidian e para a planilha.
+   *
+   * Chamado a cada gravação, e não só ao fechar a rodada, porque ela pediu
+   * assim — e só é seguro porque as duas pontas sobrescrevem em vez de
+   * acrescentar. Silencioso: o Obsidian roda na máquina dela e pode estar
+   * fechado, e um toast de erro a cada salvar seria pior que a falta do
+   * espelho.
+   */
+  function espelhar(acoesAgora: Acao[] = acoes) {
+    if (!atual || !dataRodada) return;
+    exportarRodada({
+      dataRodada,
+      projeto: atual.projeto,
+      rev: atual.rev,
+      metodo: atual.metodo,
+      metricas,
+      retencao,
+      leitura,
+      acoes: acoesAgora.map(a => ({
+        texto: a.texto, expectativa: a.expectativa, feita: a.feita,
+        feita_em: a.feita_em, feita_por_nome: a.feita_por_nome,
+      })),
+    });
   }
 
   const irPara = (passo: -1 | 1) => {
@@ -621,8 +654,26 @@ export default function AnalisesPage() {
               className="h-24 resize-none text-sm"
               placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
               value={leitura} onChange={e => setLeitura(e.target.value)}
+              // Rede de segurança: sair do campo grava mesmo sem clicar.
               onBlur={() => salvarItem(null)}
             />
+            {/* O botão voltou. Gravar só no `onBlur` funcionava e era invisível
+                — não dá para confiar num salvamento que não se vê acontecer, e
+                é dele que sai o espelho para o Obsidian e a planilha. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm" variant="outline" className="h-8"
+                onClick={() => salvarItem(null)}
+                disabled={salvando || fechando || !leitura.trim()}
+              >
+                {salvando ? 'Salvando…' : 'Salvar'}
+              </Button>
+              <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+                <FlaskConical className="h-3 w-3" />
+                grava o retrato dos números e espelha no Obsidian e na planilha
+              </span>
+            </div>
+            <AvisoPlanilha />
           </div>
 
           <ListaAcoes

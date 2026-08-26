@@ -153,20 +153,29 @@ esconder o item da sidebar.
 
 ---
 
-## Exportações — **não implementadas**
+## Exportações
 
-Estavam no plano e continuam pendentes. Ficaram por último de propósito: são
-acessórias, e o módulo funciona sem elas.
+**Disparadas a cada salvar**, e não só ao fechar a rodada — foi o que ela
+pediu. Só é seguro porque as duas pontas SOBRESCREVEM: salvar vinte vezes
+deixa o mesmo resultado de salvar uma. Se qualquer das duas passasse a
+acrescentar, viraria vinte cópias da mesma análise.
 
-Disparadas ao fechar a rodada, nunca a cada digitação.
-
-- **Google Sheets** — uma aba por rodada, no formato da planilha atual. Já
-  existem duas edge functions com Sheets (`radar-sheets-sync`,
-  `referencias-sheets-sync`) e a conta de serviço do Google já está configurada
-  para o Drive; é o mesmo caminho.
-- **Obsidian** — markdown no formato do PDF (funil → alteração → `==` resultado
-  → próximas alterações). `RadarPage` já fala com o Obsidian local em
-  `127.0.0.1:27123`; reaproveitar.
+- **Google Sheets** — edge function `analises-sheets-sync`. Duas abas,
+  "Análises" e "Ações", reescritas por inteiro a cada chamada. Usa a mesma
+  conta de serviço do `radar-sheets-sync` (secret `GOOGLE_SERVICE_ACCOUNT`), e
+  o id da planilha vive em `configuracoes_texto.analises_spreadsheet_id` — não
+  no código, para trocar de planilha sem deploy. Vazio, ela pula e diz que
+  pulou; a tela mostra um convite para ligar uma.
+  Os números saem do RETRATO gravado, não de recálculo: a planilha é o
+  histórico da decisão, e recalcular faria uma linha de agosto mudar sozinha
+  quando uma venda fosse recategorizada em setembro.
+- **Obsidian** — `PUT` em `127.0.0.1:27123/vault/Análises Alaskan/{data}/{rev}.md`,
+  com a chave em `configuracoes_texto.obsidian_api_key`. Frontmatter com os
+  números que valem filtro e gráfico, corpo com as tabelas, a leitura em
+  `==destaque==` e as ações como checkbox de markdown — que o Obsidian marca
+  nativamente, então a nota continua útil lida fora do dashboard.
+  O caminho vem da data e do REV, nunca de um id: nome legível no vault, e a
+  mesma nota entre salvamentos.
 
 **As duas são acessórias e falham em silêncio de propósito** — o Obsidian roda
 na máquina de quem está usando e pode não estar aberto. A análise não pode

@@ -4,6 +4,7 @@ import {
 } from '@/features/analises/metricas';
 import { indiceVencedor } from '@/features/analises/comparacao';
 import { janelaDeDias, janelaAnterior, diasDaJanela } from '@/features/analises/periodo';
+import { montarNota } from '@/features/analises/exportar';
 
 /**
  * As decisões do módulo Análises, presas por teste.
@@ -180,5 +181,69 @@ describe('janela da análise', () => {
     expect(j.inicio).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(j.fim).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(diasDaJanela(j)).toBe(30);
+  });
+});
+
+describe('nota do Obsidian', () => {
+  const rodada = {
+    dataRodada: '2026-08-26',
+    projeto: 'Saponaria Brasil',
+    rev: 'REV3 - VSL',
+    metodo: 'VSL',
+    metricas: { dias: 14, inicio: '2026-08-12', fim: '2026-08-25', atual: bloco(), anterior: bloco() },
+    retencao: {
+      play_rate_pct: 64, um_minuto_pct: 70.8, fim_da_lead_pct: null,
+      pitch_pct: 28.8, final_pct: 5.6,
+      lead_fim_seg: null, pitch_seg: 801, duracao_seg: 1347, nome: 'VSL 02',
+    },
+    leitura: 'Escalamos 4x e a margem caiu.',
+    acoes: [
+      { texto: 'Segurar a escala', expectativa: 'Margem voltar a 30%',
+        feita: false, feita_em: null, feita_por_nome: null },
+      { texto: 'Trocar a headline', expectativa: null,
+        feita: true, feita_em: '2026-08-20T14:02:00-03:00', feita_por_nome: 'Jessica' },
+    ],
+  };
+
+  it('abre com frontmatter que o Obsidian consegue filtrar', () => {
+    const md = montarNota(rodada);
+    expect(md.startsWith('---\n')).toBe(true);
+    expect(md).toContain('rev: "REV3 - VSL"');
+    expect(md).toContain('front_se_paga: true');
+    expect(md).toContain('tags: [analise, alaskan]');
+  });
+
+  it('leva a frase do veredito, não só a tabela', () => {
+    // Sem ela a nota é um monte de número, e "o front se paga?" teria que ser
+    // respondido de cabeça toda vez que alguém reabrisse a nota.
+    expect(montarNota(rodada)).toContain('O front se paga');
+  });
+
+  it('marca ação feita com checkbox de markdown, e a pendente vazia', () => {
+    const md = montarNota(rodada);
+    expect(md).toContain('- [ ] Segurar a escala');
+    expect(md).toContain('- [x] Trocar a headline');
+  });
+
+  it('leva expectativa e carimbo de execução junto da ação', () => {
+    const md = montarNota(rodada);
+    expect(md).toContain('🎯 Margem voltar a 30%');
+    expect(md).toMatch(/✅ feita em .+ por Jessica/);
+  });
+
+  it('destaca a leitura no formato que ela já usa no Obsidian', () => {
+    expect(montarNota(rodada)).toContain('==Escalamos 4x e a margem caiu.==');
+  });
+
+  it('avisa que o upsell é caixa e não receita recorrente', () => {
+    expect(montarNota(rodada)).toContain('não receita recorrente do período');
+  });
+
+  it('não quebra quando não há métricas nem retenção', () => {
+    const vazia = { ...rodada, metricas: null, retencao: null, acoes: [] };
+    const md = montarNota(vazia);
+    expect(md).toContain('# Saponaria Brasil · REV3 - VSL');
+    expect(md).not.toContain('undefined');
+    expect(md).not.toContain('NaN');
   });
 });
