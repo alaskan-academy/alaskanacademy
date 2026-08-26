@@ -38,6 +38,7 @@ interface Checkout {
   vendas: number | null;
   preco: number | null;
   preco_praticado: number | null;
+  vendas_pendentes: number | null;
   primeira_venda: string | null;
   ultima_venda: string | null;
 }
@@ -62,7 +63,7 @@ export function SeletorCheckouts({ funilId }: Props) {
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
       .from('vw_checkouts_a_confirmar')
-      .select('id,url,titulo,funil_id,eh_funil,vendas,primeira_venda,ultima_venda,preco,preco_praticado');
+      .select('id,url,titulo,funil_id,eh_funil,vendas,primeira_venda,ultima_venda,preco,preco_praticado,vendas_pendentes');
     if (error) {
       toast({ title: 'Erro ao carregar checkouts', description: error.message, variant: 'destructive' });
     }
@@ -216,6 +217,7 @@ export function SeletorCheckouts({ funilId }: Props) {
                           </div>
                           <div className="text-[10px] text-muted-foreground tabular-nums truncate">
                             {c.vendas ? `${formatNumber(c.vendas)} vendas · ` : ''}
+                            {!c.vendas && c.vendas_pendentes ? `${formatNumber(c.vendas_pendentes)} carrinhos abandonados, 0 vendas · ` : ''}
                             {c.primeira_venda ? `${dataCurta(c.primeira_venda)}–${dataCurta(c.ultima_venda)} · ` : ''}
                             {c.url.replace(/^https?:\/\//, '')}
                           </div>

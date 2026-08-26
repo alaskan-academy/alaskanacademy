@@ -34,6 +34,7 @@ interface Linha {
   rev_nome: string | null;
   projeto_nome: string | null;
   vendas: number | null;
+  vendas_pendentes: number | null;
   primeira_venda: string | null;
   ultima_venda: string | null;
   rev_no_titulo: string | null;
@@ -72,7 +73,10 @@ export function CheckoutsTab({ funis, projetos }: Props) {
   const carregar = useCallback(async () => {
     const [c, v] = await Promise.all([
       supabase.from('vw_checkouts_a_confirmar').select('*'),
-      supabase.from('vendas').select('id', { count: 'exact', head: true }).not('funil_id', 'is', null),
+      // `aprovada` também aqui: a atribuição vale para toda venda, mas o
+      // contador precisa falar a mesma língua da coluna ao lado.
+      supabase.from('vendas').select('id', { count: 'exact', head: true })
+        .not('funil_id', 'is', null).eq('status', 'aprovada'),
     ]);
     if (c.error) {
       toast({ title: 'Erro ao carregar checkouts', description: c.error.message, variant: 'destructive' });
@@ -269,7 +273,21 @@ export function CheckoutsTab({ funis, projetos }: Props) {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatNumber(l.vendas ?? 0)}</td>
+                  {/* Só venda APROVADA conta. `lost_cart` da Payt — carrinho
+                      abandonado — entrava aqui como venda e mandava para o topo
+                      da fila checkout que nunca vendeu nada: um deles tinha 283
+                      "vendas" e zero aprovadas.
+
+                      O abandono aparece embaixo em vez de sumir: checkout com
+                      muito abandono e nenhuma venda não é lixo, é sintoma. */}
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    <div>{formatNumber(l.vendas ?? 0)}</div>
+                    {(l.vendas_pendentes ?? 0) > 0 && (
+                      <div className="text-[10px] text-muted-foreground/70">
+                        +{formatNumber(l.vendas_pendentes ?? 0)} abandonos
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
                     {dataCurta(l.primeira_venda)} – {dataCurta(l.ultima_venda)}
                   </td>
