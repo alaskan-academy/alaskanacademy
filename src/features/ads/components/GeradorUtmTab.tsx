@@ -22,6 +22,14 @@ interface UtmLink {
   term: string | null;
   arquivado: boolean;
   criado_em: string;
+  // Vem da view `vw_utm_links_desempenho`. Existiam 134 links e nenhuma tela
+  // dizia qual vendeu — era o defeito central desta área.
+  vendas: number;
+  faturamento: number;
+  dias_de_vida: number;
+  // > 1 quando outros links tem a MESMA combinacao de UTMs. Ai a venda conta
+  // para todos eles, e somar a coluna infla o total.
+  links_com_mesma_utm: number;
 }
 
 const CANAIS = [
@@ -42,7 +50,7 @@ const CONTAS_SUGERIDAS  = ['handify', 'laura', 'lumii'];
 const CONTENT_SUGGESTIONS = ['vitrine', 'banner', 'feed', 'bio', 'automacao', 'site', 'vendedor', 'email'];
 const PAGE_SIZE = 50;
 
-type SortKey = 'nome' | 'campaign' | 'source' | 'content';
+type SortKey = 'nome' | 'campaign' | 'source' | 'content' | 'vendas';
 type SortDir = 'asc' | 'desc';
 type HistTab = 'ativos' | 'arquivados';
 
@@ -270,7 +278,7 @@ export function GeradorUtmTab() {
   const load = useCallback(async () => {
     const [p, l] = await Promise.all([
       supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
-      supabase.from('utm_links').select('*').order('criado_em', { ascending: false }).limit(500),
+      supabase.from('vw_utm_links_desempenho').select('*').order('criado_em', { ascending: false }).limit(500),
     ]);
     setProjetos((p.data ?? []) as Projeto[]);
     setLinks((l.data ?? []) as UtmLink[]);
@@ -342,6 +350,10 @@ export function GeradorUtmTab() {
         )
       : [...baseLinks];
     return base.sort((a, b) => {
+      // Vendas é número; ordenar como texto colocaria "9" depois de "13".
+      if (sortKey === 'vendas') {
+        return sortDir === 'asc' ? a.vendas - b.vendas : b.vendas - a.vendas;
+      }
       const av = (sortKey === 'content' ? (a.content ?? '') : a[sortKey]).toLowerCase();
       const bv = (sortKey === 'content' ? (b.content ?? '') : b[sortKey]).toLowerCase();
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -583,7 +595,7 @@ export function GeradorUtmTab() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      {([ ['nome', 'Nome'], ['campaign', 'Campanha'], ['source', 'Source'], ['content', 'Conteúdo'] ] as [SortKey, string][]).map(([key, label]) => (
+                      {([ ['nome', 'Nome'], ['campaign', 'Campanha'], ['source', 'Source'], ['content', 'Conteúdo'], ['vendas', 'Vendas'] ] as [SortKey, string][]).map(([key, label]) => (
                         <th key={key} className="text-left px-3 py-2 text-xs font-medium text-muted-foreground whitespace-nowrap">
                           <button
                             type="button"
@@ -607,6 +619,36 @@ export function GeradorUtmTab() {
                         <td className="px-3 py-2 text-xs font-mono text-muted-foreground whitespace-nowrap">{l.campaign}</td>
                         <td className="px-3 py-2 text-xs font-mono text-muted-foreground whitespace-nowrap">{l.source}</td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">{l.content ?? '—'}</td>
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">
+                          {l.vendas > 0 ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="font-medium tabular-nums">{l.vendas}</span>
+                              <span className="text-muted-foreground tabular-nums">
+                                {l.faturamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}
+                              </span>
+                              {/* A mesma venda conta para todo link que compartilha a
+                                  combinação de UTMs. Sem este aviso, somar a coluna dá
+                                  um total inflado e ninguém desconfia. */}
+                              {l.links_com_mesma_utm > 1 && (
+                                <span
+                                  title={`${l.links_com_mesma_utm} links têm esta mesma combinação de UTMs — estas vendas são do conjunto, não deste link.`}
+                                  className="text-[10px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                >
+                                  ÷{l.links_com_mesma_utm}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            // Link novo e link morto parecem iguais olhando só o zero,
+                            // e pedem reações opostas: esperar ou investigar.
+                            <span className={cn(
+                              'text-[11px]',
+                              l.dias_de_vida >= 30 ? 'text-red-400/80' : 'text-muted-foreground/50',
+                            )}>
+                              {l.dias_de_vida >= 30 ? `0 em ${l.dias_de_vida} dias` : 'ainda sem vendas'}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                             <DropdownMenu>

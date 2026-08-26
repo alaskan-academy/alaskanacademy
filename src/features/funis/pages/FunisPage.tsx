@@ -8,10 +8,10 @@ import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
 import { TestesTab } from '../components/TestesTab';
 import { semVeredito } from '../testes';
-import { GeradorUtmTab } from '../components/GeradorUtmTab';
 import { CheckoutsTab } from '../components/CheckoutsTab';
+import { MapaTab } from '../components/MapaTab';
 
-type Tab = 'funis' | 'testes' | 'dominios' | 'checkouts' | 'utm';
+type Tab = 'funis' | 'mapa' | 'testes' | 'dominios' | 'checkouts';
 
 interface State {
   funis: Funil[];
@@ -25,10 +25,10 @@ interface State {
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'funis',      label: 'Funis' },
+  { key: 'mapa',       label: 'Mapa' },
   { key: 'testes',     label: 'Testes' },
   { key: 'dominios',   label: 'Domínios' },
   { key: 'checkouts',  label: 'Checkouts' },
-  { key: 'utm',        label: 'UTM' },
 ];
 
 export default function FunisPage() {
@@ -216,7 +216,7 @@ export default function FunisPage() {
               onReload={load}
             />
           )}
-          {activeTab === 'utm' && <GeradorUtmTab />}
+          {activeTab === 'mapa' && <MapaTab />}
         </div>
       </div>
     </DashboardLayout>

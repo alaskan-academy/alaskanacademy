@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GeradorUtmTab } from "../components/GeradorUtmTab";
 import { cn } from "@/lib/utils";
 
 const LEVELS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_placement"] as const;
@@ -276,7 +277,24 @@ export default function UTMPage() {
           >
             Por Placement
           </TabsTrigger>
+          <TabsTrigger
+            value="gerador"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            Gerador de links
+          </TabsTrigger>
         </TabsList>
+
+        {/* O gerador veio de Funis, onde estava por acidente de história: só 1
+            dos 134 links é de funil — o resto é suporte, bio do Instagram, área
+            de membros.
+
+            Criar o link e MEDIR o link são a mesma conversa. Separados em duas
+            áreas do dash, ninguém nunca soube qual link vendeu; por isso a lista
+            aqui ganhou a coluna de vendas. */}
+        <TabsContent value="gerador">
+          <GeradorUtmTab />
+        </TabsContent>
 
         {/* ── UTM Drill-down (código original preservado) ─── */}
         <TabsContent value="drilldown">
