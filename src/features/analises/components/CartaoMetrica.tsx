@@ -54,7 +54,12 @@ export function CartaoMetrica({
               : bom ? 'text-emerald-400' : 'text-red-400',
           )}>
             <Icone className="h-3 w-3" />
-            {Math.abs(v.pct).toFixed(1)}%
+            {/* Acima de 10x, "+18863,2%" não é lido como número — é lido como
+                ruído, e treina a pessoa a ignorar a seta ao lado dos números
+                que importam. O múltiplo diz a mesma coisa e cabe no olho. */}
+            {Math.abs(v.pct) >= 1000 && valor != null && anterior
+              ? `${(valor / anterior).toFixed(0)}×`
+              : `${Math.abs(v.pct).toFixed(1)}%`}
           </span>
         )}
       </div>
