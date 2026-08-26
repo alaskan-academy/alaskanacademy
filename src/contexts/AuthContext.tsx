@@ -13,7 +13,9 @@ export const PAGINAS = [
   { key: 'meta-ads',      path: '/meta-ads',      label: 'Meta Ads' },
   { key: 'funil',         path: '/funil',         label: 'Funil' },
   { key: 'vendas',        path: '/vendas',        label: 'Vendas' },
-  { key: 'utm',           path: '/utm',           label: 'Análise UTM' },
+  // 'UTM' e nao 'Analise UTM': ela vive no grupo de dashboards, onde tudo e
+  // analise -- o prefixo so criava colisao com o modulo de Analises.
+  { key: 'utm',           path: '/utm',           label: 'UTM' },
   { key: 'tendencias',    path: '/tendencias',    label: 'Tendências' },
   { key: 'clientes',      path: '/clientes',      label: 'Clientes' },
   { key: 'editores',      path: '/editores',      label: 'Editores' },
@@ -23,6 +25,7 @@ export const PAGINAS = [
   { key: 'acessos',      path: '/acessos',      label: 'Acessos'      },
   { key: 'producao',     path: '/producao',     label: 'Produção'     },
   { key: 'copywriters',  path: '/copywriters',  label: 'Copywriters'  },
+  { key: 'analises',     path: '/analises',     label: 'Análises'     },
 ] as const;
 
 export type PaginaKey = (typeof PAGINAS)[number]['key'];

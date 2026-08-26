@@ -42,6 +42,7 @@ const AcessosPage              = lazy(() => import("./features/acessos/pages/Ace
 const ProducaoPage             = lazy(() => import("./features/producao/pages/ProducaoPage"));
 const CopywritersPage          = lazy(() => import("./features/copywriters/pages/CopywritersPage"));
 const FunisPage                = lazy(() => import("./features/funis/pages/FunisPage"));
+const AnalisesPage             = lazy(() => import("./features/analises/pages/AnalisesPage"));
 const CriativosPage            = lazy(() => import("./features/criativos/pages/CriativosPage"));
 const NotFound                 = lazy(() => import("./pages/NotFound"));
 
@@ -101,6 +102,7 @@ const App = () => (
                     <Route path="/producao" element={<ProtectedRoute pageKey="producao"><ProducaoPage /></ProtectedRoute>} />
                     <Route path="/criativos" element={<ProtectedRoute><CriativosPage /></ProtectedRoute>} />
                     <Route path="/funis-gestao" element={<ProtectedRoute pageKey="funis-gestao"><FunisPage /></ProtectedRoute>} />
+                    <Route path="/analises" element={<ProtectedRoute pageKey="analises"><AnalisesPage /></ProtectedRoute>} />
                     <Route path="/copywriters" element={<ProtectedRoute pageKey="copywriters"><CopywritersPage /></ProtectedRoute>} />
                     <Route path="/configuracoes" element={<ProtectedRoute pageKey="configuracoes"><SettingsPage /></ProtectedRoute>} />
                     <Route path="/administrativo" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />

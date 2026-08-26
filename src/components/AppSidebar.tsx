@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, Filter, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard,
+  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -17,7 +17,7 @@ const ALL_SUB_PAGES = [
   { path: '/meta-ads', label: 'Meta Ads',    icon: TrendingUp,      key: 'meta-ads' },
   { path: '/funil',    label: 'Funil',       icon: Filter,          key: 'funil' },
   { path: '/vendas',   label: 'Vendas',      icon: ShoppingCart,    key: 'vendas' },
-  { path: '/utm',      label: 'Análise UTM', icon: Link2,           key: 'utm' },
+  { path: '/utm',      label: 'UTM'         , icon: Link2,           key: 'utm' },
   { path: '/tendencias', label: 'Tendências', icon: Activity,        key: 'tendencias' },
   { path: '/clientes', label: 'Clientes',    icon: Users,           key: 'clientes' },
 ];
@@ -34,6 +34,7 @@ const ALL_FIXED_ITEMS = [
   { path: '/producao',      label: 'Produção',      icon: Film,          key: 'producao',     adminOnly: false, sectorOnly: null },
   { path: '/criativos',     label: 'Criativos',     icon: Clapperboard,  key: 'criativos',    adminOnly: true,  sectorOnly: null },
   { path: '/funis-gestao',  label: 'Funis',         icon: Layers,        key: 'funis-gestao', adminOnly: false, sectorOnly: null },
+  { path: '/analises',      label: 'Análises',      icon: LineChart,     key: 'analises',     adminOnly: true,  sectorOnly: null },
   { path: '/financeiro',    label: 'Financeiro',    icon: Wallet,        key: 'financeiro',   adminOnly: false, sectorOnly: null },
   { path: '/configuracoes', label: 'Configurações', icon: Settings,      key: 'configuracoes', adminOnly: true, sectorOnly: null  },
 ];
