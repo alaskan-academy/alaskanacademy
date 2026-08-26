@@ -216,7 +216,12 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
       <div className="flex items-center justify-between mb-2">
         <Label className="text-xs">Checkouts deste REV</Label>
         {(funilId || onPendentesChange) && (
-          <Popover open={aberto} onOpenChange={setAberto}>
+          // `modal` porque este Popover vive DENTRO de um Dialog. O Dialog usa
+          // `react-remove-scroll`, que trava a rolagem de tudo o que está fora
+          // dele — e o Popover renderiza em portal, ou seja, fora. Sem isto a
+          // lista rola pela barra mas IGNORA A RODA DO MOUSE. Com `modal`, o
+          // Popover instala a própria trava e libera o próprio conteúdo.
+          <Popover open={aberto} onOpenChange={setAberto} modal>
             <PopoverTrigger asChild>
               <button
                 type="button"

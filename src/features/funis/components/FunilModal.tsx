@@ -46,6 +46,15 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
 
   const [nome, setNome]           = useState('');
   const [ofertaId, setOfertaId]   = useState('');
+
+  /**
+   * '_none_' e sentinela do Radix Select, nao valor de banco.
+   *
+   * O Select nao aceita `value=""` para representar "nenhum", entao a opcao
+   * "Sem projeto" carrega um sentinela -- que ia direto para uma coluna `uuid` e
+   * derrubava o salvamento com `invalid input syntax for type uuid: "_none_"`.
+   */
+  const semSentinela = (v: string) => (v && v !== '_none_' ? v : null);
   const [status, setStatus]       = useState<'planejado' | 'ativo' | 'pausado' | 'pausado_analise' | 'arquivado'>('ativo');
   const [urlPage, setUrlPage]     = useState('');
   const [dominioId, setDominioId] = useState('');
@@ -125,7 +134,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     // Sincroniza primeiro checkout com colunas legadas (compatibilidade com outras páginas)
     const payload: Record<string, unknown> = {
       nome:          nome.trim(),
-      projeto_id:    ofertaId || null,
+      projeto_id:    semSentinela(ofertaId),
       metodo:        metodo || null,
       vsl_id:        vslId || null,
       status,
@@ -176,10 +185,11 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     }
 
     // Sync domínio — busca valores frescos do banco para evitar sobrescrever outros funis
+    const dominioReal = semSentinela(dominioId);
     if (funil) {
       // Remove funil do domínio anterior (lê do banco para não sobrescrever)
       const prevDomId = dominios.find(d =>
-        (d.funil_ids ?? []).includes(funil.id) && d.id !== dominioId,
+        (d.funil_ids ?? []).includes(funil.id) && d.id !== dominioReal,
       )?.id;
       if (prevDomId) {
         const { data: fresh } = await supabase.from('dominios').select('funil_ids').eq('id', prevDomId).single();
@@ -187,12 +197,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
         await supabase.from('dominios').update({ funil_id: newIds[0] ?? null, funil_ids: newIds }).eq('id', prevDomId);
       }
     }
-    if (dominioId && funilId) {
+    if (dominioReal && funilId) {
       // Lê valor atual do banco antes de fazer append para não sobrescrever outros funis
-      const { data: fresh } = await supabase.from('dominios').select('funil_ids').eq('id', dominioId).single();
+      const { data: fresh } = await supabase.from('dominios').select('funil_ids').eq('id', dominioReal).single();
       const newIds = [...new Set([...(fresh?.funil_ids ?? []), funilId])];
-      await supabase.from('dominios').update({ funil_id: funilId, funil_ids: newIds }).eq('id', dominioId);
-    } else if (!dominioId && funil) {
+      await supabase.from('dominios').update({ funil_id: funilId, funil_ids: newIds }).eq('id', dominioReal);
+    } else if (!dominioReal && funil) {
       // Funil removeu o domínio: remove de todos os arrays onde aparece
       const linkedIds = dominios.filter(d => (d.funil_ids ?? []).includes(funil.id)).map(d => d.id);
       for (const domId of linkedIds) {
@@ -213,7 +223,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setSaving(true);
     const res = await supabase.from('funis').insert({
       nome:          `${nome.trim()} (cópia)`,
-      projeto_id:    ofertaId || null,
+      projeto_id:    semSentinela(ofertaId),
       metodo:        metodo || null,
       vsl_id:        vslId || null,
       status:        'planejado',
@@ -268,7 +278,13 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
           <DialogTitle>{funil ? 'Editar funil' : 'Novo funil'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-1">
+        {/* `min-w-0` não é enfeite: o `DialogContent` do shadcn é `grid`, e item
+            de grid nasce com `min-width: auto` — ou seja, se recusa a encolher
+            abaixo do conteúdo. Bastou um checkout de título longo para este
+            contêiner ir a 571px dentro de um modal de 512 e a tela inteira
+            passar a rolar de lado. O `truncate` da linha não salva sozinho,
+            porque quem se recusava a encolher era o contêiner, não o texto. */}
+        <div className="space-y-4 py-1 min-w-0">
           {/* Nome */}
           <div>
             <Label>Nome do funil *</Label>

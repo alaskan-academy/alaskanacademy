@@ -67,8 +67,14 @@ export function SeletorVsl({ value, onChange }: Props) {
 
   const atual = useMemo(() => vsls.find(v => v.id === value), [vsls, value]);
 
+  // `modal` porque este Popover vive DENTRO de um Dialog.
+  //
+  // O Dialog usa `react-remove-scroll`, que trava a rolagem de tudo o que está
+  // fora dele — e o Popover renderiza em portal, ou seja, fora. Sem isto a
+  // lista rola pela barra mas IGNORA A RODA DO MOUSE. Com `modal`, o Popover
+  // instala a própria trava e libera o próprio conteúdo.
   return (
-    <Popover open={aberto} onOpenChange={setAberto}>
+    <Popover open={aberto} onOpenChange={setAberto} modal>
       <PopoverTrigger asChild>
         <button
           type="button"
