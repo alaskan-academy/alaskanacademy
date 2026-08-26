@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
-import { ChevronLeft, ChevronRight, AlertTriangle, Check, FlaskConical, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertTriangle, Check, Lock } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { ListaMetricas, LinhaMetrica, LinhaTripla } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
@@ -418,6 +418,12 @@ export default function AnalisesPage() {
       ? `${a.conjuntos} ${a.conjuntos === 1 ? 'conjunto' : 'conjuntos'} de anúncios`
       : 'sem conjunto identificado — só anúncios com venda';
 
+  // Há algo digitado que ainda não foi gravado. Cobre o item que nunca salvou
+  // e o texto editado depois do último salvamento — os dois casos em que dizer
+  // "salvo" seria mentira.
+  const idEmFoco = atual?.id ?? '';
+  const porSalvar = !(idEmFoco in lidos) || lidos[idEmFoco] !== leitura;
+
   const semBaseParaPago = a && ant ? baseAnteriorFragil(a, ant) : false;
   const avisoDeBase = semBaseParaPago
     ? 'os anúncios mal rodaram no período anterior — o "antes" aqui não é linha de base'
@@ -653,34 +659,36 @@ export default function AnalisesPage() {
               mexido. É a pergunta que a rodada existe para responder. */}
           <AcoesFeitas acoes={acoes} fimDaJanela={janela.fim} onMarcar={marcarAcao} />
 
-          {/* O que se digita — e só isto. */}
+          {/* O que se digita — e só isto.
+
+              Não há botão de salvar aqui: "Salvar e avançar" é o gesto real da
+              rodada, e sair do campo já grava. O que faltava não era o botão —
+              era saber que gravou, e isso o estado ao lado do título resolve
+              sem ocupar uma linha inteira com botão e legenda. */}
           <div className="space-y-1.5">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              O que você lê nisso
-            </h3>
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                O que você lê nisso
+              </h3>
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                {salvando ? 'salvando…'
+                  : porSalvar ? 'não salvo'
+                  : (
+                    <>
+                      <Check className="h-3 w-3 text-emerald-400" />
+                      salvo no Obsidian e na planilha
+                    </>
+                  )}
+              </span>
+            </div>
             <Textarea
               className="h-24 resize-none text-sm"
               placeholder="Ex: todos os OBs caíram a conversão, mas faturamos mais com o combo…"
               value={leitura} onChange={e => setLeitura(e.target.value)}
-              // Rede de segurança: sair do campo grava mesmo sem clicar.
+              // É esta linha que grava: sair do campo basta.
               onBlur={() => salvarItem(null)}
             />
-            {/* O botão voltou. Gravar só no `onBlur` funcionava e era invisível
-                — não dá para confiar num salvamento que não se vê acontecer, e
-                é dele que sai o espelho para o Obsidian e a planilha. */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                size="sm" variant="outline" className="h-8"
-                onClick={() => salvarItem(null)}
-                disabled={salvando || fechando}
-              >
-                {salvando ? 'Salvando…' : 'Salvar'}
-              </Button>
-              <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
-                <FlaskConical className="h-3 w-3" />
-                grava o retrato dos números e espelha no Obsidian e na planilha
-              </span>
-            </div>
             <AvisoPlanilha />
           </div>
 
