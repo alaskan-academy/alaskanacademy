@@ -102,11 +102,31 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
     () => noProjeto.filter(l => l.familia === 'sem_tipo' || l.familia === 'outro'),
     [noProjeto]);
 
+  /*
+    Projetos ativos que a `fn_esteira_defasagem` não devolveu — ela só traz quem
+    gastou nos últimos 7 dias. Sai daqui e não de outra consulta porque `lotes`
+    já tem todos os ativos: o que falta é só a diferença entre os dois conjuntos.
+
+    Um projeto ativo sem NENHUM lote (Handify, Velarte) não aparece em `lotes`,
+    então entra com zero — a lista vem de `defasagem` para o que tem verba e de
+    `lotes` para o resto, e um projeto ativo e vazio não estaria em nenhum dos
+    dois. É uma limitação conhecida: sem card e sem verba, ele é invisível aqui.
+  */
+  const semVerba = useMemo(() => {
+    const porProjeto = new Map<string, number>();
+    for (const l of lotes) {
+      if (l.projeto == null || comVerba.has(l.projeto)) continue;
+      porProjeto.set(l.projeto, (porProjeto.get(l.projeto) ?? 0) + 1);
+    }
+    return Array.from(porProjeto, ([projeto, ads]) => ({ projeto, ads }))
+      .sort((a, b) => b.ads - a.ads);
+  }, [lotes, comVerba]);
+
   return (
     <div className="space-y-4">
       {carregandoDefasagem
         ? <div className="h-16 animate-pulse rounded-lg border border-border bg-card" />
-        : <AlertaDefasagem linhas={defasagem} />}
+        : <AlertaDefasagem linhas={defasagem} semVerba={semVerba} />}
 
       <FilaPedidos onMudou={onRecarregar} />
 

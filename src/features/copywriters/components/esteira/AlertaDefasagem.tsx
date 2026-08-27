@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, Check, HelpCircle } from 'lucide-react';
+import { AlertTriangle, Check, HelpCircle, MinusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Defasagem } from './tipos';
 
@@ -19,7 +19,11 @@ import { Defasagem } from './tipos';
  * A função ainda calcula a sugestão (`sug_ad` e companhia continuam vindo da
  * `fn_esteira_defasagem`) — só não é mostrada aqui.
  */
-export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
+export function AlertaDefasagem({ linhas, semVerba = [] }: {
+  linhas: Defasagem[];
+  /** Projetos ativos que não entraram na conta por não terem gasto em 7 dias. */
+  semVerba?: { projeto: string; ads: number }[];
+}) {
   const urgentes = useMemo(() => linhas.filter(l => l.prioridade < 5), [linhas]);
 
   /*
@@ -117,6 +121,35 @@ export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
             {' '}ficam fora das contas acima —{' '}
             {semFunil.map(l => `${l.projeto} (${l.lotes_sem_funil})`).join(' · ')}.
             {' '}Preencher o campo Funil na Produção faz eles contarem.
+          </div>
+        </div>
+      )}
+
+      {/*
+        Os projetos ativos que NÃO entraram, e por quê.
+
+        O Guia dos Comportamentos sumia da tela por não ter verba, e ela
+        perguntou "cadê o Guia dos Comportamentos?" — que é a mesma coisa que
+        tinha acontecido com o Saponaria VSL. Sumir sem explicação faz o painel
+        parecer quebrado; dizer o motivo transforma a ausência em informação.
+      */}
+      {semVerba.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5">
+          <MinusCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+          <div className="text-[11px] leading-relaxed text-muted-foreground">
+            Fora da conta por não ter investimento nos últimos 7 dias:{' '}
+            {semVerba.map((p, i) => (
+              <span key={p.projeto}>
+                {i > 0 && ' · '}
+                <span className="text-foreground">{p.projeto}</span>
+                {p.ads > 0 && (
+                  <span className="text-muted-foreground/70">
+                    {' '}({p.ads} {p.ads === 1 ? 'AD parado' : 'ADs parados'} na esteira)
+                  </span>
+                )}
+              </span>
+            ))}
+            . Sem verba não há defasagem de criativo — é outra conversa.
           </div>
         </div>
       )}
