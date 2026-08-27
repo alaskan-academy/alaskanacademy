@@ -166,23 +166,34 @@ export function UsuarioPerfisTab() {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: eds }, { data: crgs }] = await Promise.all([
+    // `multiplicador` saiu de `editores` para `editores_remuneracao`, que tem
+    // RLS própria — pedi-lo aqui pelo nome antigo passaria a dar erro de
+    // coluna inexistente, e a aba inteira ficaria vazia.
+    const [{ data: eds }, { data: crgs }, { data: rem }] = await Promise.all([
       supabase
         .from('editores')
-        .select('id, nome, cargo_id, data_inicio, ativo, observacoes, multiplicador')
+        .select('id, nome, cargo_id, data_inicio, ativo')
         .order('nome'),
       supabase.from('cargos').select('id, nome, multiplicador, cor').order('ordem'),
+      supabase.from('editores_remuneracao').select('editor_id, multiplicador, observacoes'),
     ]);
+    type Remuneracao = { editor_id: string; multiplicador: number | null; observacoes: string | null };
+    const remPorEditor = new Map<string, Remuneracao>(
+      ((rem ?? []) as Remuneracao[]).map(r => [r.editor_id, r]),
+    );
     setEditores(
-      (eds ?? []).map(e => ({
-        id: e.id,
-        nome: e.nome ?? '',
-        cargo_id: e.cargo_id ?? '',
-        data_inicio: e.data_inicio ?? '',
-        ativo: e.ativo ?? true,
-        observacoes: e.observacoes ?? '',
-        multiplicador: e.multiplicador != null ? String(e.multiplicador) : '',
-      })),
+      (eds ?? []).map(e => {
+        const r = remPorEditor.get(e.id);
+        return {
+          id: e.id,
+          nome: e.nome ?? '',
+          cargo_id: e.cargo_id ?? '',
+          data_inicio: e.data_inicio ?? '',
+          ativo: e.ativo ?? true,
+          observacoes: r?.observacoes ?? '',
+          multiplicador: r?.multiplicador != null ? String(r.multiplicador) : '',
+        };
+      }),
     );
     setCargos(crgs ?? []);
     setLoading(false);
@@ -202,17 +213,30 @@ export function UsuarioPerfisTab() {
   const handleSave = async (ed: EditorDetalhe) => {
     const f = getForm(ed.id);
     setSavingMap(prev => ({ ...prev, [ed.id]: true }));
+    const multiplicador = (f.multiplicador !== '' && f.multiplicador != null)
+      ? parseFloat(String(f.multiplicador))
+      : null;
+
     const { error } = await supabase.from('editores').update({
       nome: f.nome ?? ed.nome,
       data_inicio: f.data_inicio || null,
       ativo: f.ativo ?? ed.ativo,
-      observacoes: f.observacoes ?? null,
-      multiplicador: (f.multiplicador !== '' && f.multiplicador != null)
-        ? parseFloat(String(f.multiplicador))
-        : null,
     }).eq('id', ed.id);
+
+    // Multiplicador e observações agora moram em outra tabela, com escrita só
+    // de admin. `upsert` porque o editor pode não ter linha de remuneração
+    // ainda — quem nunca teve nenhum dos dois não entrou na carga inicial.
+    const { error: erroRem } = error ? { error: null } : await supabase
+      .from('editores_remuneracao')
+      .upsert({
+        editor_id: ed.id,
+        multiplicador,
+        observacoes: f.observacoes ?? null,
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: 'editor_id' });
+
     setSavingMap(prev => ({ ...prev, [ed.id]: false }));
-    if (error) return toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    if (error || erroRem) return toast({ title: 'Erro ao salvar', variant: 'destructive' });
     toast({ title: 'Perfil atualizado' });
     load();
   };

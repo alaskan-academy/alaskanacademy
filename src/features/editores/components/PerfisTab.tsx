@@ -27,12 +27,36 @@ export function PerfisTab() {
 
   const load = async () => {
     setLoading(true);
-    const [c, e] = await Promise.all([
+    const [c, e, rem] = await Promise.all([
       supabase.from('cargos').select('*').order('ordem'),
       supabase.from('editores').select('*').not('usuario_id', 'is', null).order('nome'),
+      supabase.from('editores_remuneracao').select('editor_id, multiplicador, observacoes'),
     ]);
     const cgs: Cargo[] = c.data || [];
-    const eds: Editor[] = e.data || [];
+
+    /**
+     * Multiplicador e observações mudaram de casa: saíram de `editores` para
+     * `editores_remuneracao`, que restringe por RLS. A linha do editor
+     * continua legível por todos — é dela que saem os nomes —, e o que é
+     * pagamento não.
+     *
+     * As observações vieram junto porque guardam salário por extenso: numa
+     * delas está "aumento gradual de R$300 no salário, passando de R$2.200
+     * para R$2.500". Proteger o multiplicador e deixar a prosa que diz o valor
+     * seria proteger metade.
+     *
+     * Quem não pode ver recebe `null`, e a tela já sabia desenhar isso: todo
+     * lugar que mostra estes campos testa antes e cai num "—".
+     */
+    type Remuneracao = { editor_id: string; multiplicador: number | null; observacoes: string | null };
+    const remPorEditor = new Map<string, Remuneracao>(
+      ((rem.data ?? []) as Remuneracao[]).map(r => [r.editor_id, r]),
+    );
+    const eds: Editor[] = (e.data || []).map((ed: Editor) => ({
+      ...ed,
+      multiplicador: remPorEditor.get(ed.id)?.multiplicador ?? null,
+      observacoes:   remPorEditor.get(ed.id)?.observacoes   ?? null,
+    }));
     setCargos(cgs);
     setEditores(eds);
     // Sincroniza o editor selecionado com os dados frescos do banco

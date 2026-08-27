@@ -27,6 +27,17 @@ const CHAVE_CRIATIVOS = 'criativos_escalados';
 const CHAVE_VSL = 'vsl_escaladas';
 const CHAVE_RESPONSAVEIS = 'editores_responsaveis';
 
+/** A linha do editor como esta tela usa: identidade vinda de `editores`, e
+ *  remuneração de `editores_remuneracao`, juntadas pelo merge do `load`. */
+type EditorLinha = {
+  id: string;
+  nome: string;
+  cargo_id: string | null;
+  usuario_id: string | null;
+  multiplicador: number | null;
+  percentual_lideranca: number | null;
+};
+
 export function AvaliacoesTab() {
   const confirm = useConfirm();
   const { user, perfil: authPerfil } = useAuth();
@@ -66,15 +77,40 @@ export function AvaliacoesTab() {
 
   const load = async () => {
     setLoading(true);
-    const [e, a, c, o, cg] = await Promise.all([
-      supabase.from('editores').select('id, nome, cargo_id, usuario_id, multiplicador, percentual_lideranca').not('usuario_id', 'is', null).order('nome'),
+    const [e, a, c, o, cg, rem] = await Promise.all([
+      supabase.from('editores').select('id, nome, cargo_id, usuario_id').not('usuario_id', 'is', null).order('nome'),
       supabase.from('avaliacoes_mensais').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('criterios_avaliacao').select('*').order('ordem'),
       supabase.from('criterio_opcoes').select('*').order('ordem'),
       supabase.from('cargos').select('*'),
+      supabase.from('editores_remuneracao').select('editor_id, multiplicador, percentual_lideranca'),
     ]);
-    const eds: any[] = e.data || [];
     const cgs: any[] = cg.data || [];
+
+    /**
+     * Multiplicador e percentual de liderança saíram de `editores` para
+     * `editores_remuneracao`, que tem RLS própria: cada um vê o seu, líder vê
+     * o time, admin vê tudo. Antes eram colunas da linha do editor, e a linha
+     * do editor precisa ser legível por todo mundo — os nomes alimentam os
+     * filtros de várias telas. RLS é por linha; o problema era por coluna.
+     *
+     * O merge mantém o FORMATO que o resto do arquivo já espera
+     * (`editorSel.multiplicador`), então só a origem mudou. Quem não pode ver
+     * recebe `undefined`, e os caminhos de fallback que já existiam para
+     * "não definido" cobrem isso sozinhos.
+     */
+    type Remuneracao = { editor_id: string; multiplicador: number | null; percentual_lideranca: number | null };
+    const porEditor = new Map<string, Remuneracao>(
+      ((rem.data ?? []) as Remuneracao[]).map(r => [r.editor_id, r]),
+    );
+    const eds: EditorLinha[] = (e.data ?? []).map(ed => ({
+      id: ed.id,
+      nome: ed.nome,
+      cargo_id: ed.cargo_id,
+      usuario_id: ed.usuario_id,
+      multiplicador:        porEditor.get(ed.id)?.multiplicador ?? null,
+      percentual_lideranca: porEditor.get(ed.id)?.percentual_lideranca ?? null,
+    }));
     setEditores(eds);
     setItems(a.data || []);
     setCargos(cgs);
@@ -87,7 +123,7 @@ export function AvaliacoesTab() {
     // 'head'/'lider'. Saiu junto com a comparação por nome: o cargo já vem
     // pronto no `perfil` do AuthContext, com a flag `pode_aprovar`, e buscá-lo
     // de novo era uma segunda fonte para o mesmo fato.
-    const meuEditor = eds.find((ed: any) => ed.usuario_id === user?.id) ?? null;
+    const meuEditor = eds.find(ed => ed.usuario_id === user?.id) ?? null;
     setMeuEditorId(meuEditor?.id ?? null);
     setLoading(false);
   };
