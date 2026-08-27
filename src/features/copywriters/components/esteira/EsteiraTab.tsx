@@ -149,11 +149,14 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
               <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="text-xs font-medium text-foreground">O que já está em produção</span>
             </div>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-              Cada linha é um <span className="text-foreground">AD ainda não postado</span> — do briefing
-              à esteira de teste. <span className="text-foreground">Hooks</span> é quantos dos hooks
-              daquele AD já entraram; <span className="text-foreground">Parado</span> é o tempo desde a
-              última data de início, não que o card esteja travado.
+            {/*
+              Uma linha, não duas. A versão anterior explicava "Hooks" e
+              "Parado" em prosa aqui em cima — o que é sintoma de nome de coluna
+              ruim, não de falta de texto. A definição foi para o cabeçalho da
+              coluna, que é onde a dúvida aparece.
+            */}
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              ADs ainda não postados, do briefing à esteira de teste.
             </p>
 
             {/*
@@ -251,9 +254,11 @@ function Tabela({ lotes, agrupar }: { lotes: Lote[]; agrupar: boolean }) {
             <th className="px-3 py-2 text-left font-medium text-muted-foreground">AD</th>
             <th className="px-3 py-2 text-left font-medium text-muted-foreground">Tipo</th>
             <th className="px-3 py-2 text-left font-medium text-muted-foreground">Funil</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Hooks</th>
+            <th className="px-3 py-2 text-right font-medium text-muted-foreground"
+                title="Quantos dos hooks deste AD já entraram na esteira">Hooks</th>
             <th className="px-3 py-2 text-left font-medium text-muted-foreground">Fase</th>
-            <th className="px-3 py-2 text-right font-medium text-muted-foreground">Parado</th>
+            <th className="px-3 py-2 text-right font-medium text-muted-foreground"
+                title="Tempo desde a última data de início — não quer dizer que o card esteja travado">Parado</th>
           </tr>
         </thead>
         <tbody>
