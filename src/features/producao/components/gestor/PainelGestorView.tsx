@@ -178,7 +178,7 @@ export function PainelGestorView({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-20">
+    <div className="flex flex-col gap-6">
       {/* A aba dos inativos: eles saem da frente sem sair de existência. */}
       {inativos > 0 && (
         <div className="flex w-fit overflow-hidden rounded-md border border-border">
@@ -199,7 +199,7 @@ export function PainelGestorView({ userId }: { userId: string }) {
           <Inbox className="h-4 w-4 shrink-0 translate-y-0.5 text-muted-foreground" />
           <h2 className="text-sm font-semibold text-foreground">Prontos para testar</h2>
           <span className="text-[11px] text-muted-foreground">
-            {fila.length} cards aprovados · agrupados por projeto, funil e tipo
+            {fila.length} {fila.length === 1 ? 'card aprovado' : 'cards aprovados'} · agrupados por projeto, funil e tipo
           </span>
         </div>
 
@@ -212,7 +212,8 @@ export function PainelGestorView({ userId }: { userId: string }) {
           <div className="mb-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
             <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
             <p className="text-[11px] leading-relaxed text-amber-200/90">
-              <span className="font-medium">{esquecidos.length} cards</span> estão aprovados há mais de{' '}
+              <span className="font-medium">{esquecidos.length} {esquecidos.length === 1 ? 'card' : 'cards'}</span>{' '}
+              {esquecidos.length === 1 ? 'está aprovado' : 'estão aprovados'} há mais de{' '}
               {DIAS_PARA_ESQUECIDO} dias — o mais antigo{' '}
               {rotuloDeDias(Math.max(...esquecidos.map(c => c.dias_na_fase ?? 0)))}. Eles aparecem na
               árvore com o relógio ao lado; vale decidir se ainda vão para teste ou se saem da fila.
@@ -247,12 +248,22 @@ export function PainelGestorView({ userId }: { userId: string }) {
       </section>
 
       {/*
-        A barra só existe quando há seleção, e fica fixa no rodapé: a árvore é
+        A barra só existe quando há seleção, e gruda no rodapé: a árvore é
         longa, e um botão no topo obrigaria a rolar de volta depois de marcar o
         que está lá embaixo.
+
+        `sticky` e não `fixed`. Fixa, a barra media contra a JANELA, e a
+        sidebar tem 224px: o X de limpar a seleção e a contagem "1 AD · 5
+        cards" nasciam atrás dela, invisíveis e o X sem clique. Grudada, a
+        barra mede contra a coluna de conteúdo, que já é a coluna certa — e de
+        quebra dispensa o `pb-20` que existia só para o conteúdo não sumir
+        embaixo dela.
+
+        As margens negativas devolvem à barra a largura inteira da coluna, que
+        o padding do `main` tinha tirado.
       */}
       {selecionados.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-xl md:px-6">
+        <div className="sticky bottom-0 z-40 -mx-4 -mb-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-xl md:-mx-6 md:-mb-6 md:px-6">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
             <button onClick={() => setSelecionados(new Set())}
                     className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -262,7 +273,9 @@ export function PainelGestorView({ userId }: { userId: string }) {
 
             <span className="text-xs text-foreground">
               <span className="font-medium">{adsSelecionados} {adsSelecionados === 1 ? 'AD' : 'ADs'}</span>
-              <span className="text-muted-foreground"> · {selecionados.size} cards</span>
+              <span className="text-muted-foreground">
+                {' · '}{selecionados.size} {selecionados.size === 1 ? 'card' : 'cards'}
+              </span>
             </span>
 
             <div className="ml-auto flex flex-wrap items-center gap-2">

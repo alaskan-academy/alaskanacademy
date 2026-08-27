@@ -58,7 +58,7 @@ export function FilaParaTestar({ cards, selecionados, onToggle, onToggleVarios, 
             aberto={!fechados.has(proj.chave)}
             onClick={() => alternar(proj.chave)}
             titulo={proj.nome}
-            resumo={`${proj.ads} ${proj.ads === 1 ? 'AD' : 'ADs'} · ${proj.cards.length} cards`}
+            resumo={`${proj.ads} ${proj.ads === 1 ? 'AD' : 'ADs'} · ${proj.cards.length} ${proj.cards.length === 1 ? 'card' : 'cards'}`}
             inativo={!proj.ativo}
             selecionados={selecionados}
             ids={proj.cards.map(c => c.id)}

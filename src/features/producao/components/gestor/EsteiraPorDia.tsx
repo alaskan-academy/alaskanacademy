@@ -77,7 +77,7 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
             {tudo
               ? 'Mostrando tudo, inclusive o que já deveria ter saído da esteira.'
               : <>Mostrando de {rotuloCurto(de)} a {rotuloCurto(ate)}.{' '}
-                 <span className="text-amber-300/90">{foraDaJanela} cards fora deste período</span>
+                 <span className="text-amber-300/90">{foraDaJanela} {foraDaJanela === 1 ? 'card fora' : 'cards fora'} deste período</span>
                  {' '}continuam marcados como em teste.</>}
           </span>
           <button onClick={() => setTudo(t => !t)}
@@ -109,7 +109,7 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
               </span>
               {ehHoje && <span className="text-[10px] text-primary/80">hoje</span>}
               <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
-                {ads.length} {ads.length === 1 ? 'AD' : 'ADs'} · {d.cards.length} cards
+                {ads.length} {ads.length === 1 ? 'AD' : 'ADs'} · {d.cards.length} {d.cards.length === 1 ? 'card' : 'cards'}
               </span>
             </div>
 
