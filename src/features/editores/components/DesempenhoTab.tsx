@@ -1,13 +1,14 @@
 import { todasAsLinhas } from '@/lib/supabase';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
+
+
+
 import { Button } from '@/components/ui/button';
-import { ChevronDown } from 'lucide-react';
+
 import { formatNumber, formatPercent } from '@/lib/formatters';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, Legend,
@@ -52,7 +53,7 @@ export function DesempenhoTab() {
   const [projetosAtivos, setProjetosAtivos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [filterEditor, setFilterEditor] = useState('all');
+  const [filterEditores, setFilterEditores] = useState<string[]>([]);
   const [filterOfertas, setFilterOfertas] = useState<string[]>([]);
   const [monthPreset, setMonthPreset] = useState<MonthPreset>('this');
   const [customStart, setCustomStart] = useState(currentYM(-2));
@@ -164,6 +165,10 @@ export function DesempenhoTab() {
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
 
+  /** Quantos filtros peneiram a lista. O período não entra: ele define O QUE
+   *  foi buscado, e zerá-lo não é limpar, é buscar outra coisa. */
+  const filtrosAtivos = (filterEditores.length ? 1 : 0) + (filterOfertas.length ? 1 : 0);
+
   const { startStr, endStr } = useMemo(() => {
     if (monthPreset === 'this') {
       const r = ymToDateRange(currentYM(0));
@@ -182,10 +187,10 @@ export function DesempenhoTab() {
     if (!i.mes_referencia) return false;
     const d = String(i.mes_referencia).slice(0, 10);
     if (d < startStr || d > endStr) return false;
-    if (filterEditor !== 'all' && i.editor_id !== filterEditor) return false;
+    if (filterEditores.length && !filterEditores.includes(i.editor_id)) return false;
     if (filterOfertas.length > 0 && !filterOfertas.includes(i.oferta)) return false;
     return true;
-  }), [items, startStr, endStr, filterEditor, filterOfertas]);
+  }), [items, startStr, endStr, filterEditores, filterOfertas]);
 
   const totals = useMemo(() => {
     const t = filtered.reduce((acc, i) => {
@@ -270,77 +275,65 @@ export function DesempenhoTab() {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <div className="bg-card border border-border rounded-lg p-4 flex items-end gap-3 flex-wrap">
-        <div>
-          <Label className="text-xs">Período</Label>
-          <Select value={monthPreset} onValueChange={(v: MonthPreset) => setMonthPreset(v)}>
-            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="this">Este mês</SelectItem>
-              <SelectItem value="last">Mês passado</SelectItem>
-              <SelectItem value="custom">Personalizado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      {/*
+        Terceiro desenho de barra de filtro da mesma página, agora igual aos
+        outros dois. Era um cartão com borda, rótulo em cima de cada controle e
+        larguras fixas de 180/200/220 — enquanto Criativos Meta usa controles
+        soltos de altura 8 e Avaliações usa um "Filtrar por editor" avulso.
+        Três desenhos numa página só fazem cada aba parecer um produto
+        diferente.
+
+        Os rótulos saíram porque cada controle já diz o que é: o seletor mostra
+        "Este mês", o de editor mostra "Editor". Rótulo acima de um controle
+        que se explica é ruído que ocupa altura.
+      */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={monthPreset} onValueChange={(v: MonthPreset) => setMonthPreset(v)}>
+          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="this">Este mês</SelectItem>
+            <SelectItem value="last">Mês passado</SelectItem>
+            <SelectItem value="custom">Personalizado</SelectItem>
+          </SelectContent>
+        </Select>
+
         {monthPreset === 'custom' && (
           <>
-            <div>
-              <Label className="text-xs">De</Label>
-              <Input type="month" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-[160px]" />
-            </div>
-            <div>
-              <Label className="text-xs">Até</Label>
-              <Input type="month" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-[160px]" />
-            </div>
+            <Input type="month" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                   className="h-8 w-36 text-xs" aria-label="De" />
+            <span className="text-xs text-muted-foreground">até</span>
+            <Input type="month" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                   className="h-8 w-36 text-xs" aria-label="Até" />
           </>
         )}
-        <div>
-          <Label className="text-xs">Editor</Label>
-          <Select value={filterEditor} onValueChange={setFilterEditor}>
-            <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos editores</SelectItem>
-              {editores.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label className="text-xs">Projetos</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="w-[220px] justify-between font-normal">
-                <span className="truncate">
-                  {filterOfertas.length === 0 ? 'Todos projetos' : `${filterOfertas.length} selecionado(s)`}
-                </span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[260px] p-2" align="start">
-              <div className="flex items-center justify-between px-1 pb-2 border-b border-border mb-2">
-                <button className="text-xs text-primary hover:underline" onClick={() => setFilterOfertas(projetosAtivos)}>Todos</button>
-                <button className="text-xs text-muted-foreground hover:underline" onClick={() => setFilterOfertas([])}>Limpar</button>
-              </div>
-              <div className="max-h-64 overflow-y-auto space-y-1">
-                {projetosAtivos.map(o => {
-                  const checked = filterOfertas.includes(o);
-                  return (
-                    <label key={o} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-secondary cursor-pointer text-sm">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(v) => {
-                          setFilterOfertas(prev => v ? [...prev, o] : prev.filter(x => x !== o));
-                        }}
-                      />
-                      <span className="truncate">{o}</span>
-                    </label>
-                  );
-                })}
-                {projetosAtivos.length === 0 && <div className="text-xs text-muted-foreground px-2 py-1">Sem projetos ativos</div>}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+
+        <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden />
+
+        {/* Eram um `Select` de editor e um Popover com Checkbox feito à mão —
+            que é um MultiFilter reescrito. Os dois viram o MultiFilter de
+            verdade, o mesmo da Produção e da Criativos Meta. */}
+        <MultiFilter
+          label="Editor"
+          options={editores.map(e => ({ id: e.id, nome: e.nome }))}
+          value={filterEditores}
+          onChange={setFilterEditores}
+          width="w-40"
+        />
+        <MultiFilter
+          label="Projetos"
+          options={projetosAtivos.map(p => ({ id: p, nome: p }))}
+          value={filterOfertas}
+          onChange={setFilterOfertas}
+          width="w-40"
+        />
+
+        {filtrosAtivos > 0 && (
+          <Button size="sm" variant="ghost"
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => { setFilterEditores([]); setFilterOfertas([]); }}>
+            Limpar {filtrosAtivos}
+          </Button>
+        )}
       </div>
 
       {/* KPIs */}
