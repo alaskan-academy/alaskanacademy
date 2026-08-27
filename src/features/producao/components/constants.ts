@@ -28,7 +28,28 @@ export const FASES_MAP: Record<string, string> = {
   // chaves legadas para retrocompatibilidade com dados existentes
   programado:         'Programado',
   gravacao_concluida: 'Gravação Concluída',
+  // `briefing` veio da carga de 29/07/2026 e nunca foi escrito pelo app —
+  // `getDefaultFase` só devolve `producao_copy` ou `gravacao`. Está aqui para o
+  // valor não aparecer cru na tela; note que uma fase FORA de `FASES` não ganha
+  // coluna no Kanban, então o card fica invisível lá. A Esteira denuncia esse
+  // caso; o Kanban ainda não.
+  briefing:           'Briefing (importado)',
 };
+
+/**
+ * As fases que o app conhece. Serve para uma tela perguntar "isto é uma fase de
+ * verdade?" sem repetir a lista.
+ *
+ * Existe porque `briefing` passou meses despercebida: dois cards numa fase sem
+ * coluna no Kanban, invisíveis, e ninguém soube. Uma fase nova vinda de import
+ * precisa APARECER em algum lugar em vez de sumir.
+ */
+export function faseConhecida(fase: string): boolean {
+  return fase in FASES_MAP;
+}
+
+/** Fases que o Kanban desenha como coluna — nem toda fase conhecida vira uma. */
+export const FASES_COM_COLUNA = new Set(FASES.map(f => f.key));
 
 export const FASES_POR_TIPO: Record<CriativoTipo, string[]> = {
   criativo: ['producao_copy','revisao_copy','gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
