@@ -20,6 +20,7 @@ import { supabase, linhas, linha } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
 import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
@@ -231,6 +232,7 @@ function DroppableDay({ ymd, disabled, children }: { ymd: string; disabled?: boo
 
 export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis }: Props) {
   const { toast } = useToast();
+  const confirmar = useConfirm();
   const now = new Date();
 
   const [year, setYear]   = useState(now.getFullYear());
@@ -365,7 +367,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     setTruncado(linhasLidas.length >= LIMITE_DE_CARDS);
     setCriativos(linhasLidas);
     setLoading(false);
-  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus]);
+  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, toast]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
@@ -596,6 +598,19 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
   }, [selectedIds, bulkFase, bulkResp, toast, loadCriativos]);
 
+  /** Os nomes do que está prestes a sumir, para a confirmação poder mostrá-los.
+   *  Corta em 8 para o diálogo não virar uma lista rolável. */
+  const nomesSelecionados = useCallback((ids: string[]) => {
+    const nomes = ids
+      .map(id => criativos.find(c => c.id === id)?.nome)
+      .filter((n): n is string => !!n);
+    const mostrar = nomes.slice(0, 8).join(', ');
+    const resto   = nomes.length - 8;
+    return resto > 0
+      ? `${mostrar} e mais ${resto}. Esta ação não pode ser desfeita.`
+      : `${mostrar}. Esta ação não pode ser desfeita.`;
+  }, [criativos]);
+
   /**
    * A SEGUNDA implementação de "duplicar" morava aqui, com a mesma lista de ~25
    * campos escrita de novo — e já divergindo da outra: esta não gravava
@@ -617,19 +632,29 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     limparSelecao();
     // `selectMode` deixou de existir: limpar o conjunto JÁ sai do modo.
     loadCriativos();
-  }, [selectedIds, userId, toast, loadCriativos]);
+  }, [selectedIds, userId, toast, loadCriativos, limparSelecao]);
 
   const handleBulkDelete = useCallback(async () => {
     const ids = [...selectedIds];
     if (!ids.length) return;
-    if (!confirm(`Excluir ${ids.length} criativo${ids.length !== 1 ? 's' : ''}? Esta ação não pode ser desfeita.`)) return;
+    // `confirm()` do navegador era o único no projeto que ainda não usava
+    // `useConfirm` — e logo no gesto mais perigoso da tela. A diferença não é
+    // estética: a caixa nativa não diz QUAIS cards vão sumir, e aqui pode
+    // haver dezenas selecionados por um arrasto que pegou mais do que se viu.
+    const ok = await confirmar({
+      title: `Excluir ${ids.length} criativo${ids.length !== 1 ? 's' : ''}?`,
+      description: nomesSelecionados(ids),
+      confirmText: 'Excluir',
+      destructive: true,
+    });
+    if (!ok) return;
     const { error } = await supabase.from('producoes').delete().in('id', ids);
     if (error) { toast({ title: 'Erro ao excluir', variant: 'destructive' }); return; }
     toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} excluído${ids.length !== 1 ? 's' : ''}` });
     limparSelecao();
     // `selectMode` deixou de existir: limpar o conjunto JÁ sai do modo.
     loadCriativos();
-  }, [selectedIds, toast, loadCriativos]);
+  }, [selectedIds, toast, loadCriativos, limparSelecao, confirmar, nomesSelecionados]);
 
   // ── Calendar data ─────────────────────────────────────────────────────────
 

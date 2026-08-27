@@ -104,6 +104,24 @@ export function prazoEfetivo(
   return data_prazo ?? data_inicio ?? null;
 }
 
+/**
+ * O texto de uma data ou período — "26/08/2026", "24/08 → 28/08/2026" ou
+ * "Sem data".
+ *
+ * Mora aqui junto de `prazoEfetivo` porque três telas mostram essa mesma
+ * informação: o seletor, o drawer em leitura e o card. Escrita em cada uma,
+ * ela divergiria — foi exatamente o que aconteceu com a regra de atraso.
+ */
+export function rotuloDoPrazo(inicio: string | null, prazo: string | null): string {
+  const dia       = (ymd: string) => new Date(ymd + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const diaComAno = (ymd: string) => new Date(ymd + 'T00:00:00').toLocaleDateString('pt-BR');
+  const de  = inicio ?? prazo;
+  const ate = prazo  ?? inicio;
+  if (!de || !ate) return 'Sem data';
+  if (de === ate)  return diaComAno(de);
+  return `${dia(de)} → ${diaComAno(ate)}`;
+}
+
 export function getUrgency(
   data_prazo: string | null,
   fase?: string,
@@ -142,7 +160,7 @@ export function formatFieldName(campo: string): string {
     responsavel_id: 'Responsável', formato: 'Formato', plataforma: 'Plataforma',
     tipo_teste: 'Tipo de Teste', nivel_consciencia: 'Nível de Consciência',
     angulo_teste: 'Ângulo de Teste', modulo: 'Módulo', ordem: 'Ordem',
-    copy_url: 'Copy URL', video_gravado_url: 'Vídeo Gravado',
+    copy_url: 'Copy URL', video_gravado_url: 'Vídeo Gravado', data_inicio: 'Data',
     video_editado_url: 'Vídeo Editado', data_prazo: 'Prazo', notas: 'Notas',
   };
   return map[campo] ?? campo;

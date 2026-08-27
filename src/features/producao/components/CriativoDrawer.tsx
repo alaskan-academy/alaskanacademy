@@ -24,8 +24,9 @@ import { fetchProjetos } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
-  FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, formatFieldName,
+  FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, formatFieldName, rotuloDoPrazo,
 } from './constants';
+import { SeletorDePrazo } from './SeletorDePrazo';
 import { TipoBadge } from './CriativoCard';
 import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
 import type { Criativo, HistoricoEntry, Comentario, ProducaoNivel, Funil, Perfil, CriativoTipo } from './types';
@@ -549,24 +550,24 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       {/* Cronograma */}
       <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
         {slLabel('Cronograma')}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-          <Field label="Início" editing={editing}>
-            {editing ? (
-              <Input type="date" className="h-7 text-xs mt-0.5"
-                value={val('data_inicio')} onChange={e => ch('data_inicio', e.target.value || null)} />
-            ) : <span>{criativo.data_inicio
-              ? new Date(criativo.data_inicio + 'T00:00:00').toLocaleDateString('pt-BR')
-              : '—'}</span>}
-          </Field>
-          <Field label="Prazo (fim)" editing={editing}>
-            {editing ? (
-              <Input type="date" className="h-7 text-xs mt-0.5"
-                value={val('data_prazo')} onChange={e => ch('data_prazo', e.target.value || null)} />
-            ) : <span>{criativo.data_prazo
-              ? new Date(criativo.data_prazo + 'T00:00:00').toLocaleDateString('pt-BR')
-              : '—'}</span>}
-          </Field>
-        </div>
+        {/* Um campo no lugar de "Início" + "Prazo (fim)". A leitura mostra o
+            período quando existe e a data sozinha quando não — mesma frase
+            que o seletor usa, vinda da mesma função. */}
+        <Field label="Data" editing={editing}>
+          {editing ? (
+            <div className="mt-0.5">
+              <SeletorDePrazo
+                inicio={val('data_inicio') || null}
+                prazo={val('data_prazo') || null}
+                onChange={(i, p) => { ch('data_inicio', i); ch('data_prazo', p); }}
+              />
+            </div>
+          ) : (
+            <span>{criativo.data_inicio || criativo.data_prazo
+              ? rotuloDoPrazo(criativo.data_inicio, criativo.data_prazo)
+              : '—'}</span>
+          )}
+        </Field>
       </div>
 
       {/* Campos específicos por tipo — mesma ordem do form de criação */}

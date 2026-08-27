@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase, linhas, linha } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { getDefaultFase, TIPOS_LABEL, FASES_POR_TIPO, FASES_MAP } from './constants';
+import { SeletorDePrazo } from './SeletorDePrazo';
 import type { CriativoTipo, Funil, Perfil } from './types';
 
 const FALLBACK_FORMATOS           = ['Carrossel', 'Vídeo', 'Estático'];
@@ -77,7 +78,11 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
 
   useEffect(() => {
     if (open) {
-      setForm({ ...makeEmpty(), data_prazo: defaultDate ?? '' });
+      // O "+" de um dia do calendário mandava a data para `data_prazo`,
+      // deixando o início vazio — é de onde vem o único card do banco com
+      // prazo e sem início. Um dia escolhido é o início; o prazo só existe
+      // quando há período.
+      setForm({ ...makeEmpty(), data_inicio: defaultDate ?? '' });
       Promise.all([
         funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
         perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
@@ -449,16 +454,21 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
           {/* Cronograma */}
           <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
             <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Cronograma</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Início</Label>
-                <Input className="mt-1 h-8 text-xs" type="date"
-                  value={form.data_inicio} onChange={e => set('data_inicio', e.target.value)} />
-              </div>
-              <div>
-                <Label className="text-xs">Prazo (fim)</Label>
-                <Input className="mt-1 h-8 text-xs" type="date"
-                  value={form.data_prazo} onChange={e => set('data_prazo', e.target.value)} />
+            {/* Um campo no lugar de dois. "Início" e "Prazo (fim)" pediam
+                duas datas para o que é um dia só em 96% dos cards — e quem
+                preenchia só a primeira deixava para trás um prazo vazio que
+                as telas liam como atraso. */}
+            <div>
+              <Label className="text-xs">Data</Label>
+              <div className="mt-1">
+                <SeletorDePrazo
+                  inicio={form.data_inicio || null}
+                  prazo={form.data_prazo || null}
+                  onChange={(i, p) => {
+                    set('data_inicio', i ?? '');
+                    set('data_prazo',  p ?? '');
+                  }}
+                />
               </div>
             </div>
           </div>
