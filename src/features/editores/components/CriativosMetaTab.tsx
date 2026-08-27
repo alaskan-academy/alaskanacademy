@@ -379,7 +379,7 @@ export function CriativosMetaTab() {
     if (!startDateStr || !endDateStr) return;
     setLoading(true);
     const { data, error } = await supabase.rpc('fn_criativos_meta', {
-      p_ini: startDateStr, p_fim: endDateStr, p_conta: contaIds,
+      p_ini: startDateStr, p_fim: endDateStr, p_contas: contaIds,
     });
     if (error) {
       console.error('fn_criativos_meta:', error.message);
