@@ -1,0 +1,48 @@
+-- Os dois cards que ninguém conseguia ver nem mover.
+--
+-- `AD 004 H04 V02 (cópia)`, duas vezes, no projeto Velas Lembrancinhas:
+--
+--   41968286-8fd4-44c7-b71a-9014bcaf316f   criado 29/07/2026 17:01:56
+--   5e8cbe9b-f863-4ad8-b59c-913601f1cb06   criado 29/07/2026 17:09:08
+--
+-- Ambos em `fase = 'briefing'` — uma fase que não está em `FASES`. O Kanban
+-- monta as colunas com `FASES.filter(...)` e filtra os cards por
+-- `c.fase === fase.key`, então sem coluna eles eram INVISÍVEIS na Produção.
+-- Só apareceram porque a Esteira filtra fase por exclusão.
+--
+-- ── De onde vieram ─────────────────────────────────────────────────────────
+--
+-- Não de uma importação: os horários são 17:01:56 e 17:09:08, sete minutos de
+-- diferença, com `atualizado_em` idêntico ao `criado_em`. Duas ações manuais.
+--
+-- Foi o botão de duplicar do Calendário, que na época não gravava histórico —
+-- as duas cópias não têm NENHUMA linha em `criativo_historico` enquanto o
+-- original tem 17. E `fn_duplicar_criativos` copia a `fase` junto com o resto,
+-- então a cópia herdou o que o original tinha naquele instante.
+--
+-- `briefing` nunca aparece numa troca de fase em todo o histórico — zero linhas
+-- com ele como valor novo ou anterior, em 4 mil cards. O valor entrou na
+-- criação do original e nunca por movimentação.
+--
+-- ── Por que dava para apagar ───────────────────────────────────────────────
+--
+-- Estavam vazios: sem copy_url, sem vídeo gravado, editado ou de story, sem
+-- notas, sem data de início ou prazo, sem avaliação, sem status de veiculação,
+-- sem copy, gestor ou especialista, sem `ad_id_meta`. Só carregavam o que a
+-- duplicação trouxe do original (tipo_teste Horizontal, formato Vídeo, funil
+-- TSL, nível 3, ângulo "Vela para festa de bebê", responsável Jessica Maihato).
+--
+-- E nada apontava para eles: 0 linhas de histórico, 0 comentários, 0 vínculos
+-- em `producao_ads`, 0 filhos por `variacao_de`, 0 pedidos de variação.
+--
+-- O original está intacto e completo: `AD 004 H04 V02`, postado desde 30/07,
+-- com vídeo, avaliação "Não validado", veiculação "Encerrado" desde 14/08. E as
+-- V03 até V10 existem, todas postadas.
+--
+-- Os dois estão em `backup_producoes_20260827` se precisarem voltar.
+--
+-- Conferido depois: 3.967 -> 3.965, e zero cards em `briefing`.
+
+DELETE FROM public.producoes
+ WHERE id IN ('41968286-8fd4-44c7-b71a-9014bcaf316f',
+              '5e8cbe9b-f863-4ad8-b59c-913601f1cb06');

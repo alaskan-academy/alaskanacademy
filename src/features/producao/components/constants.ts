@@ -28,12 +28,6 @@ export const FASES_MAP: Record<string, string> = {
   // chaves legadas para retrocompatibilidade com dados existentes
   programado:         'Programado',
   gravacao_concluida: 'Gravação Concluída',
-  // `briefing` existe em 2 cards e em nenhum outro lugar: não está em `FASES`,
-  // não é o que `getDefaultFase` devolve, e NUNCA aparece numa troca de fase no
-  // histórico inteiro — nada jamais moveu um card para lá pela tela. Está aqui
-  // só para o valor não aparecer cru enquanto os dois cards existirem. Sem
-  // coluna no Kanban, eles são invisíveis lá.
-  briefing:           'Briefing',
 };
 
 export const FASES_POR_TIPO: Record<CriativoTipo, string[]> = {
