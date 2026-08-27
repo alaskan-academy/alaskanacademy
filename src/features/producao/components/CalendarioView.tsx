@@ -27,6 +27,7 @@ import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS, prazoEfetivo } from './co
 import { CriativoDrawer } from './CriativoDrawer';
 import { CriativoFormModal } from './CriativoFormModal';
 import { SeletorDePrazo } from './SeletorDePrazo';
+import { registrarMudancas } from '../registrarHistorico';
 
 interface Props {
   nivel: ProducaoNivel;
@@ -470,6 +471,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
           return { id: c.id, patch: p };
         });
 
+      const antesDe = new Map(criativos.map(c => [c.id, { ...c }]));
       setCriativos(prev => prev.map(c => {
         const p = patches.find(x => x.id === c.id);
         return p ? { ...c, ...p.patch } : c;
@@ -477,6 +479,8 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       await Promise.all(patches.map(({ id, patch }) =>
         supabase.from('producoes').update(patch).eq('id', id),
       ));
+      await registrarMudancas(
+        patches.map(({ id, patch }) => ({ id, antes: antesDe.get(id) ?? {}, patch })), userId);
       return;
     }
 
@@ -496,8 +500,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       setCriativos(prev => prev.map(c =>
         c.id === criativoId ? { ...c, data_prazo: criativo.data_prazo, data_inicio: criativo.data_inicio } : c,
       ));
+      return;
     }
-  }, [criativos, selecionando, selectedIds, toast]);
+    await registrarMudancas([{ id: criativoId, antes: { ...criativo }, patch }], userId);
+  }, [criativos, selecionando, selectedIds, toast, userId]);
 
   // ── Resize: spanning bars ─────────────────────────────────────────────────
 
@@ -525,8 +531,10 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       setCriativos(prev => prev.map(c =>
         c.id === criativo.id ? { ...c, data_inicio: criativo.data_inicio, data_prazo: criativo.data_prazo } : c,
       ));
+      return;
     }
-  }, [toast]);
+    await registrarMudancas([{ id: criativo.id, antes: { ...criativo }, patch }], userId);
+  }, [toast, userId]);
 
   // ── Rubber band ──────────────────────────────────────────────────────────
 
@@ -650,19 +658,23 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       patch.data_prazo  = bulkData.prazo;
     }
 
+    const antesDoLote = new Map(criativos.map(c => [c.id, { ...c }]));
     setCriativos(prev => prev.map(c => ids.includes(c.id) ? { ...c, ...patch } : c));
     const { error } = await supabase.from('producoes').update(patch).in('id', ids);
     if (error) {
       toast({ title: 'Erro ao aplicar alterações', variant: 'destructive' });
       loadCriativos();
     } else {
+      await registrarMudancas(
+        ids.map(id => ({ id, antes: antesDoLote.get(id) ?? {}, patch })), userId);
       toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} atualizado${ids.length !== 1 ? 's' : ''}` });
       limparSelecao();
       // A data mudou, então o card pode ter saído do dia em que estava
       // desenhado: sem recarregar, ele ficaria na célula antiga até um F5.
       loadCriativos();
     }
-  }, [selectedIds, bulkFase, bulkResp, bulkData, toast, loadCriativos, limparSelecao]);
+  }, [selectedIds, bulkFase, bulkResp, bulkData, toast, loadCriativos, limparSelecao,
+      criativos, userId]);
 
   /** Os nomes do que está prestes a sumir, para a confirmação poder mostrá-los.
    *  Corta em 8 para o diálogo não virar uma lista rolável. */
