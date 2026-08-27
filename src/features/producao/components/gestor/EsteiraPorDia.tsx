@@ -15,7 +15,10 @@ const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
  * Cards sem `data_inicio` ganham um bloco próprio no fim em vez de sumirem:
  * um AD em teste sem dia marcado é justamente o que se perde de vista.
  */
-export function EsteiraPorDia({ cards }: { cards: CardDaFila[] }) {
+export function EsteiraPorDia({ cards, onAbrirCard }: {
+  cards: CardDaFila[];
+  onAbrirCard: (id: string) => void;
+}) {
   /*
     A pergunta é "a demanda da SEMANA", e a esteira tem 69 cards espalhados por
     um ano — de outubro, novembro, março. Mostrar tudo por padrão soterra a
@@ -111,8 +114,13 @@ export function EsteiraPorDia({ cards }: { cards: CardDaFila[] }) {
                       {FAMILIA_LABEL[f.familia] ?? f.familia} {f.ads}
                     </span>
                   ))}
-                  <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/60">
-                    {g.nomes.join(' · ')}
+                  <span className="ml-auto flex flex-wrap gap-x-1.5 text-[10px] tabular-nums">
+                    {g.ads.map(a => (
+                      <button key={a.id} onClick={() => onAbrirCard(a.id)} title="Abrir o card"
+                              className="text-muted-foreground/60 hover:text-primary hover:underline">
+                        {a.r}
+                      </button>
+                    ))}
                   </span>
                 </div>
               ))}
@@ -149,7 +157,8 @@ function agruparPorProjetoEFunil(cards: CardDaFila[]) {
       projeto: cs[0].projeto ?? '—',
       funil: cs[0].funil ?? 'Sem funil',
       familias: Array.from(porFamilia, ([familia, ads]) => ({ familia, ads: ads.size })),
-      nomes: Array.from(new Set(cs.map(c => rotuloDoAd(c.ad_num)))).sort(),
+      ads: Array.from(new Map(cs.map(c => [rotuloDoAd(c.ad_num), c.id])), ([r, id]) => ({ r, id }))
+        .sort((a, b) => a.r.localeCompare(b.r)),
     };
   }).sort((a, b) => a.projeto.localeCompare(b.projeto));
 }

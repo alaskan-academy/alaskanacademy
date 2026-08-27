@@ -18,11 +18,12 @@ import {
  * Aqui a hierarquia é a própria estrutura, e a data só aparece na hora de
  * mandar para teste, que é o único momento em que ela significa algo.
  */
-export function FilaParaTestar({ cards, selecionados, onToggle, onToggleVarios }: {
+export function FilaParaTestar({ cards, selecionados, onToggle, onToggleVarios, onAbrirCard }: {
   cards: CardDaFila[];
   selecionados: Set<string>;
   onToggle: (id: string) => void;
   onToggleVarios: (ids: string[], marcar: boolean) => void;
+  onAbrirCard: (id: string) => void;
 }) {
   const arvore = useMemo(() => montarArvore(cards), [cards]);
   const [fechados, setFechados] = useState<Set<string>>(new Set());
@@ -85,7 +86,8 @@ export function FilaParaTestar({ cards, selecionados, onToggle, onToggleVarios }
                   />
                   {fam.ads.map(ad => (
                     <LinhaDoAd key={ad.chave} ad={ad} selecionados={selecionados}
-                               onToggle={onToggle} onToggleVarios={onToggleVarios} />
+                               onToggle={onToggle} onToggleVarios={onToggleVarios}
+                               onAbrirCard={onAbrirCard} />
                   ))}
                 </div>
               ))}
@@ -115,11 +117,16 @@ function Cabecalho({
   const todos = marcados === ids.length && ids.length > 0;
   const algum = marcados > 0 && !todos;
 
+  /*
+    Recuo em passos IGUAIS de 20px. Antes ia 0 → 28 → 48 → 68: o primeiro
+    degrau era maior que os outros e a escada saía torta. E `py-1.5` em toda
+    linha, cabeçalho ou não, para o ritmo vertical não mudar no meio da lista.
+  */
   return (
-    <div className={cn('flex items-center gap-2 border-b border-border/40 px-3 py-1.5',
+    <div className={cn('flex items-center gap-2 border-b border-border/40 py-1.5 pl-3 pr-4',
       nivel === 0 && 'bg-secondary/40',
-      nivel === 1 && 'bg-secondary/15 pl-7',
-      nivel === 2 && 'pl-12')}>
+      nivel === 1 && 'bg-secondary/15 pl-[32px]',
+      nivel === 2 && 'pl-[52px]')}>
       {/* Marcar o grupo marca os filhos: é como ele pensa — "manda o TSL da
           Saponaria inteiro" — e evita cinco cliques para um AD de cinco hooks. */}
       <Caixa marcada={todos} parcial={algum} onClick={() => onToggleVarios(ids, !todos)} />
@@ -157,11 +164,12 @@ function Titulo({ nivel, titulo, selo, inativo }: {
   );
 }
 
-function LinhaDoAd({ ad, selecionados, onToggle, onToggleVarios }: {
+function LinhaDoAd({ ad, selecionados, onToggle, onToggleVarios, onAbrirCard }: {
   ad: AdAgrupado;
   selecionados: Set<string>;
   onToggle: (id: string) => void;
   onToggleVarios: (ids: string[], marcar: boolean) => void;
+  onAbrirCard: (id: string) => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const ids = ad.cards.map(c => c.id);
@@ -171,13 +179,17 @@ function LinhaDoAd({ ad, selecionados, onToggle, onToggleVarios }: {
 
   return (
     <>
-      <div className="flex items-center gap-2 border-b border-border/25 py-1 pl-[68px] pr-3 last:border-0 hover:bg-secondary/20">
+      <div className="flex items-center gap-2 border-b border-border/25 py-1.5 pl-[72px] pr-4 last:border-0 hover:bg-secondary/20">
         <Caixa marcada={todos} parcial={marcados > 0 && !todos}
                onClick={() => onToggleVarios(ids, !todos)} />
 
-        <span className="w-[72px] shrink-0 text-xs font-medium tabular-nums text-foreground">
+        {/* Abre o card do primeiro hook — o AD não é uma linha do banco, os
+            hooks é que são; expandir dá acesso a cada um. */}
+        <button onClick={() => onAbrirCard(ad.cards[0].id)}
+                title="Abrir o card"
+                className="w-[62px] shrink-0 text-left text-xs font-medium tabular-nums text-foreground hover:text-primary hover:underline">
           {rotuloDoAd(ad.ad_num)}
-        </span>
+        </button>
 
         {/* `2 de 5` importa: mandar meio AD para teste é decisão, não descuido */}
         <button onClick={() => setAberto(a => !a)}
@@ -199,10 +211,15 @@ function LinhaDoAd({ ad, selecionados, onToggle, onToggleVarios }: {
 
       {aberto && ad.cards.map(c => (
         <div key={c.id}
-             className="flex items-center gap-2 border-b border-border/15 py-1 pl-[96px] pr-3 last:border-0 hover:bg-secondary/20">
+             className="flex items-center gap-2 border-b border-border/15 py-1.5 pl-[92px] pr-4 last:border-0 hover:bg-secondary/20">
           <Caixa marcada={selecionados.has(c.id)} onClick={() => onToggle(c.id)} />
-          <span className="w-12 shrink-0 text-[11px] tabular-nums text-foreground">{rotuloDoHook(c)}</span>
-          <span className="truncate text-[11px] text-muted-foreground">{c.nome}</span>
+          <button onClick={() => onAbrirCard(c.id)} title="Abrir o card"
+                  className="flex min-w-0 flex-1 items-baseline gap-2 text-left">
+            <span className="w-12 shrink-0 text-[11px] tabular-nums text-foreground hover:text-primary">
+              {rotuloDoHook(c)}
+            </span>
+            <span className="truncate text-[11px] text-muted-foreground hover:text-foreground">{c.nome}</span>
+          </button>
           {c.editor && (
             <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">{c.editor}</span>
           )}

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -50,8 +51,52 @@ export function PainelGestorView({ userId }: { userId: string }) {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const fila    = useMemo(() => cards.filter(c => c.fase === 'aprovado'), [cards]);
-  const emTeste = useMemo(() => cards.filter(c => c.fase === 'esteira_teste'), [cards]);
+  /*
+    Abrir o card sem sair da tela.
+
+    A `ProducaoPage` já monta o `CriativoDrawer` quando existe `?criativo=<id>`
+    na URL — é assim que a notificação abre um card. Reusar isso em vez de
+    montar um segundo drawer aqui evita duas telas de detalhe do mesmo card,
+    que divergiriam; e de quebra o endereço fica compartilhável.
+  */
+  const [params, setParams] = useSearchParams();
+  const abrirCard = useCallback((id: string) => {
+    const p = new URLSearchParams(params);
+    p.set('criativo', id);
+    setParams(p);
+  }, [params, setParams]);
+
+  /*
+    Quando o drawer fecha, a fila recarrega: lá dentro dá para mudar a fase, e
+    sem isto o card continuaria na árvore como se nada tivesse acontecido.
+  */
+  const cardAberto = params.get('criativo');
+  const tinhaAberto = useRef<string | null>(null);
+  useEffect(() => {
+    if (tinhaAberto.current && !cardAberto) void carregar();
+    tinhaAberto.current = cardAberto;
+  }, [cardAberto, carregar]);
+
+  /*
+    Projeto inativo não aparece de cara.
+
+    Ele é metade do volume e nada dele é trabalho: dos 80 cards em esteira de
+    teste, 44 são do Jabones Artesanales 360 — parado desde outubro de 2025 — e
+    5 da Cosmética Natural. Misturados com os ativos, faziam a tela dizer "80
+    cards na esteira" quando o que existe de verdade é um terço disso.
+
+    A aba existe para eles não sumirem: continuam a um clique, com a contagem
+    visível, porque some da tela não é o mesmo que deixar de existir.
+  */
+  const [verInativos, setVerInativos] = useState(false);
+
+  const doEscopo = useCallback(
+    (c: CardDaFila) => c.projeto_ativo !== verInativos, [verInativos]);
+
+  const fila    = useMemo(() => cards.filter(c => c.fase === 'aprovado' && doEscopo(c)), [cards, doEscopo]);
+  const emTeste = useMemo(() => cards.filter(c => c.fase === 'esteira_teste' && doEscopo(c)), [cards, doEscopo]);
+
+  const inativos = useMemo(() => cards.filter(c => !c.projeto_ativo).length, [cards]);
 
   const esquecidos = useMemo(
     () => fila.filter(c => (c.dias_na_fase ?? 0) >= DIAS_PARA_ESQUECIDO),
@@ -118,6 +163,21 @@ export function PainelGestorView({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-6 pb-20">
+      {/* A aba dos inativos: eles saem da frente sem sair de existência. */}
+      {inativos > 0 && (
+        <div className="flex w-fit overflow-hidden rounded-md border border-border">
+          {([[false, 'Projetos ativos'], [true, `Inativos (${inativos})`]] as [boolean, string][])
+            .map(([v, rot]) => (
+              <button key={rot} onClick={() => setVerInativos(v)}
+                      className={cn('px-3 py-1.5 text-xs transition-colors',
+                        verInativos === v ? 'bg-primary text-primary-foreground'
+                                          : 'bg-secondary text-muted-foreground hover:text-foreground')}>
+                {rot}
+              </button>
+            ))}
+        </div>
+      )}
+
       <section>
         <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
           <Inbox className="h-4 w-4 shrink-0 translate-y-0.5 text-muted-foreground" />
@@ -145,7 +205,8 @@ export function PainelGestorView({ userId }: { userId: string }) {
         )}
 
         <FilaParaTestar cards={fila} selecionados={selecionados}
-                        onToggle={alternar} onToggleVarios={alternarVarios} />
+                        onToggle={alternar} onToggleVarios={alternarVarios}
+                        onAbrirCard={abrirCard} />
       </section>
 
       <section>
@@ -156,7 +217,7 @@ export function PainelGestorView({ userId }: { userId: string }) {
             {emTeste.length} cards na esteira
           </span>
         </div>
-        <EsteiraPorDia cards={emTeste} />
+        <EsteiraPorDia cards={emTeste} onAbrirCard={abrirCard} />
       </section>
 
       {/*

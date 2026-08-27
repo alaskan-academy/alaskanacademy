@@ -1,7 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { FASES_MAP } from '@/features/producao/components/constants';
-import { MultiFilter } from '@/features/producao/components/MultiFilter';
+import { MultiFilter } from "@/features/producao/components/MultiFilter";
+import { CriativoDrawer } from "@/features/producao/components/CriativoDrawer";
+import type { ProducaoNivel } from "@/features/producao/components/types";
+import { useAuth } from "@/contexts/AuthContext";
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +46,20 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
   const [projetos, setProjetos] = useState<string[]>([]);
   const [familia, setFamilia] = useState<string>('todas');
   const [soVelhos, setSoVelhos] = useState(false);
+
+  /*
+    Abrir o card sem sair da tela.
+
+    O `CriativoDrawer` é montado aqui, e não apontando para o da Produção como
+    faz o painel do Gestor: lá a página já monta um e basta pôr `?criativo=` na
+    URL; aqui não há nenhum. É o mesmo caminho que Criativos Meta já usa —
+    `funis` e `perfis` vazios, porque fora da Produção não há de onde tirá-los,
+    e o drawer só os usa para o seletor de funil e as menções.
+  */
+  const { user, perfil } = useAuth();
+  const [cardAberto, setCardAberto] = useState<string | null>(null);
+  const nivel: ProducaoNivel = perfil?.is_admin ? 'socio'
+    : perfil?.cargo?.pode_aprovar ? 'head' : 'membro';
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -252,15 +269,29 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
               : 'Nenhum AD com esses filtros.'}
           </div>
         ) : (
-          <Tabela lotes={visiveis} agrupar={projetos.length !== 1} />
+          <Tabela lotes={visiveis} agrupar={projetos.length !== 1} onAbrir={setCardAberto} />
         )}
       </div>
+
+      {/* Ao fechar, recarrega: o drawer permite mudar fase e tipo de teste, e
+          sem isto o lote continuaria na tabela como se nada tivesse mudado. */}
+      <CriativoDrawer
+        criativoId={cardAberto}
+        onClose={() => { setCardAberto(null); void carregar(); }}
+        onUpdate={() => void carregar()}
+        nivel={nivel}
+        userId={user?.id ?? ''}
+        funis={[]}
+        perfis={[]}
+      />
     </div>
   );
 }
 
 
-function Tabela({ lotes, agrupar }: { lotes: Lote[]; agrupar: boolean }) {
+function Tabela({ lotes, agrupar, onAbrir }: {
+  lotes: Lote[]; agrupar: boolean; onAbrir: (id: string) => void;
+}) {
   const grupos = useMemo(() => {
     if (!agrupar) return [{ chave: '', itens: lotes }];
     const mapa = new Map<string, Lote[]>();
@@ -300,7 +331,10 @@ function Tabela({ lotes, agrupar }: { lotes: Lote[]; agrupar: boolean }) {
                   </td>
                 </tr>
               )}
-              {g.itens.map(l => <LinhaLote key={`${l.projeto_id}-${l.ad_num}-${l.tipo_teste}`} l={l} />)}
+              {g.itens.map(l => (
+                <LinhaLote key={`${l.projeto_id}-${l.ad_num}-${l.tipo_teste}`}
+                           l={l} onAbrir={onAbrir} />
+              ))}
             </Fragment>
           ))}
         </tbody>
@@ -309,13 +343,18 @@ function Tabela({ lotes, agrupar }: { lotes: Lote[]; agrupar: boolean }) {
   );
 }
 
-function LinhaLote({ l }: { l: Lote }) {
+function LinhaLote({ l, onAbrir }: { l: Lote; onAbrir: (id: string) => void }) {
   const velho = (l.dias_parado ?? 0) >= DIAS_PARA_VELHO;
   const parcial = l.hooks < l.hooks_totais;
 
   return (
     <tr className="border-b border-border/40 last:border-0">
-      <td className="px-3 py-1.5 font-medium tabular-nums text-foreground">{rotuloDoAd(l.ad_num)}</td>
+      <td className="px-3 py-1.5">
+        <button onClick={() => onAbrir(l.card_id)} title="Abrir o card"
+                className="font-medium tabular-nums text-foreground hover:text-primary hover:underline">
+          {rotuloDoAd(l.ad_num)}
+        </button>
+      </td>
       <td className="px-3 py-1.5">
         <span className={cn('rounded px-1.5 py-px text-[10px]',
           FAMILIA_SELO[l.familia] ?? 'bg-amber-500/15 text-amber-400')}>

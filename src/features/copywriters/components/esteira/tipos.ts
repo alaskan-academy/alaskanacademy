@@ -13,6 +13,8 @@ export type Familia = 'novo' | 'iteracao' | 'variacao' | 'sem_tipo' | 'outro';
 /** Um lote: (projeto, número do AD, tipo_teste). Ver a migração para o porquê. */
 export interface Lote {
   projeto_id: string | null;
+  /** Um card do lote — o lote é agregação e não tem id; serve para abrir o AD. */
+  card_id: string;
   projeto: string | null;
   projeto_ativo: boolean;
   ad_num: number;
