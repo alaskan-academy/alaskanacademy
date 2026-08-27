@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DndContext,
@@ -354,7 +355,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     setLoading(true);
     const windowStart = new Date(year, month - 1, 1);
     const windowEnd   = new Date(year, month + 2, 0);
-    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+    const fmt = paraYmd;
     const hoje = toYMD(new Date());
 
     let q = supabase

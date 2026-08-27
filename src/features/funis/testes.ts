@@ -1,3 +1,4 @@
+import { hoje, diasEntre } from '@/lib/datas';
 import { TesteFunil, ImpactoTest, DificuldadeTest } from './types';
 
 /**
@@ -19,18 +20,13 @@ export const DIAS_ATE_COBRAR = 14;
 /**
  * Hoje no fuso de quem está usando, e não em UTC.
  *
- * `toISOString().slice(0,10)` parece a forma óbvia e está errada aqui: depois
- * das 21h de Brasília o UTC já virou, e um teste iniciado à noite seria
- * carimbado com a data de amanhã. A contagem de dias sairia um dia curta para
- * sempre — e como `data_inicio` também alimenta o aviso de teste sem veredito,
- * o erro se propagaria para a cobrança.
+ * O porquê está em `lib/datas`, junto com o resto das datas do projeto. Aqui
+ * a consequência específica: um teste iniciado à noite seria carimbado com a
+ * data de amanhã, a contagem de dias sairia um dia curta para sempre, e como
+ * `data_inicio` alimenta o aviso de teste sem veredito, o erro se propagaria
+ * até a cobrança.
  */
-export function hojeLocal(): string {
-  const d = new Date();
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  const dia = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
+export const hojeLocal = hoje;
 
 /**
  * Dias corridos desde a data, no fuso local.
@@ -42,9 +38,7 @@ export function hojeLocal(): string {
  */
 export function diasDesde(d: string | null): number | null {
   if (!d) return null;
-  const inicio = new Date(d + 'T00:00:00');
-  const hoje = new Date(hojeLocal() + 'T00:00:00');
-  return Math.round((hoje.getTime() - inicio.getTime()) / 86_400_000);
+  return diasEntre(d, hoje());
 }
 
 export function rotuloDias(d: string | null): string | null {

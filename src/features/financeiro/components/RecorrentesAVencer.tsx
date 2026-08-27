@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/formatters';
@@ -111,7 +112,7 @@ export function RecorrentesAVencer({ ano, mes }: { ano: number; mes: number }) {
    *  a consulta: a linha muda de seção na hora e o resumo acompanha. */
   async function alternarEncerrada(r: Recorrencia) {
     const encerrando = !r.encerrada;
-    const hojeIso = new Date().toISOString().slice(0, 10);
+    const hojeIso = paraYmd(hoje);
 
     const { error } = encerrando
       ? await supabase.from('recorrencias_encerradas')

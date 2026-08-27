@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, Search, CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
@@ -87,20 +88,23 @@ export function AvaliacaoView({ userId }: Props) {
   const [somentePendentes, setSomentePendentes] = useState(false);
   const [mostrarInativos, setMostrarInativos]   = useState(false);
 
+  // `toISOString()` em toda linha aqui — e a última dupla é a que doía: as
+  // datas vêm do calendário, onde a escolhida pode carregar a hora atual. Às
+  // 21h, escolher "26" mandava 27 para a consulta.
   const { dateStart, dateEnd } = useMemo(() => {
     const now = new Date();
     if (preset === 'this') {
       const s = new Date(now.getFullYear(), now.getMonth(), 1);
       const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return { dateStart: s.toISOString().slice(0, 10), dateEnd: e.toISOString().slice(0, 10) };
+      return { dateStart: paraYmd(s), dateEnd: paraYmd(e) };
     }
     if (preset === 'last') {
       const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const e = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { dateStart: s.toISOString().slice(0, 10), dateEnd: e.toISOString().slice(0, 10) };
+      return { dateStart: paraYmd(s), dateEnd: paraYmd(e) };
     }
-    const s = dateRange?.from ? dateRange.from.toISOString().slice(0, 10) : '';
-    const e = dateRange?.to   ? dateRange.to.toISOString().slice(0, 10)   : '';
+    const s = dateRange?.from ? paraYmd(dateRange.from) : '';
+    const e = dateRange?.to   ? paraYmd(dateRange.to)   : '';
     return { dateStart: s, dateEnd: e };
   }, [preset, dateRange]);
 

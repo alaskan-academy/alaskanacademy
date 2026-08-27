@@ -1,3 +1,4 @@
+import { hoje } from '@/lib/datas';
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -48,7 +49,7 @@ export function RotinaCardModal({ open, onClose, onSaved, userId, card, defaultD
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
-  const today = defaultDate ?? new Date().toISOString().slice(0, 10);
+  const today = defaultDate ?? hoje();
 
   // Initialized directly from props — the parent forces remount (key prop) on each open,
   // so these initial values are always fresh. Tiptap only reads content on mount,

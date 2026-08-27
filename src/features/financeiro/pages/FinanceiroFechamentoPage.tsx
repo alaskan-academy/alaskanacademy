@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
@@ -25,7 +26,7 @@ function primeiroDia(yyyy: number, mm: number) {
   return `${yyyy}-${String(mm).padStart(2, '0')}-01`;
 }
 function ultimoDia(yyyy: number, mm: number) {
-  return new Date(yyyy, mm, 0).toISOString().slice(0, 10);
+  return paraYmd(new Date(yyyy, mm, 0));
 }
 function mesesAnteriores(yyyy: number, mm: number, n: number) {
   const list: { yyyy: number; mm: number }[] = [];

@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
@@ -38,7 +39,7 @@ function primeiroDiaMes(): string {
 function ultimoDiaMes(): string {
   const d = new Date();
   const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return last.toISOString().slice(0, 10);
+  return paraYmd(last);
 }
 
 export default function FinanceiroConciliacaoPage() {

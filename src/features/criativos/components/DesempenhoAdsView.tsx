@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
@@ -68,9 +69,13 @@ function endOfMonth(offset = 0): Date {
   return d;
 }
 
-function toYMD(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
+/**
+ * Era `d.toISOString().slice(0, 10)`, e recebia datas com
+ * `setHours(23, 59, 59)`. No Brasil isso é 02:59 UTC do dia seguinte: o fim do
+ * mês virava o dia 1º do mês seguinte, e a janela inteira escorregava um dia.
+ * `paraYmd` lê os componentes locais e não se importa com a hora.
+ */
+const toYMD = paraYmd;
 
 // Pure functions — definidas fora do componente para evitar recriação
 const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalado';

@@ -1,0 +1,49 @@
+-- O banco estava em UTC, e o dashboard é lido no Brasil.
+--
+-- Depois das 21h de Brasília o `current_date` do banco já era o dia seguinte.
+-- Não era só um número feio numa tela: `vendas.data_venda` é timestamptz, e o
+-- faturamento é agrupado por `data_venda::date`. Uma venda das 21h30 de
+-- segunda era contada na terça.
+--
+-- O tamanho disso, medido antes de mexer:
+--   9.026 vendas aprovadas
+--     477 delas (5,3%), R$ 40.002,90, no dia errado
+--       9 delas, R$ 625,72, no MÊS errado
+--
+-- E havia um agravante que ninguém veria olhando só uma tela:
+-- `metricas_meta.data` é `date` puro e vem do Meta, que reporta no fuso da
+-- conta de anúncio — ou seja, já em horário do Brasil. O investimento estava
+-- em dia-BR e a venda em dia-UTC. Os dois lados do ROI diário nunca se
+-- somaram no mesmo dia.
+--
+-- O QUE MUDA
+--   `current_date`, `now()::date` e todo `timestamptz::date` passam a
+--   resolver em horário de Brasília. Os números diários do passado se
+--   corrigem sozinhos: o dado guardado é o mesmo instante, muda a leitura.
+--   Quem olhar um dia específico do histórico pode ver o total mexer — é a
+--   correção, não um efeito colateral dela.
+--
+-- O QUE NÃO MUDA
+--   Nada é reescrito: `ALTER ... SET timezone` mexe em configuração, não em
+--   linha. Para voltar, `SET timezone TO 'UTC'` desfaz por inteiro.
+--
+--   Os agendamentos do pg_cron também ficam onde estão. Eles leem
+--   `cron.timezone`, que é 'GMT' e é do postmaster — nenhum dos seis syncs
+--   sai do horário atual.
+--
+--   E as colunas `date` puras (producoes.data_inicio, metricas_meta.data,
+--   testes_funis.*) não têm fuso: não se movem.
+
+ALTER DATABASE postgres SET timezone TO 'America/Sao_Paulo';
+
+-- O PostgREST entra pelo papel `authenticator` e é nele que a sessão nasce.
+-- Sem esta linha, as consultas do dashboard continuariam em UTC mesmo com o
+-- banco ajustado — que é o caso que importa, porque é por onde passa tudo.
+ALTER ROLE authenticator SET timezone TO 'America/Sao_Paulo';
+
+-- Depois de aplicar, conferir numa conexão NOVA (as abertas mantêm o fuso
+-- antigo até reconectarem):
+--
+--   select current_setting('TimeZone'), current_date, now();
+--
+-- Deve dizer America/Sao_Paulo e a data de hoje no Brasil.

@@ -1,3 +1,4 @@
+import { hoje, ultimoDiaDoMes } from '@/lib/datas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
@@ -160,7 +161,7 @@ export default function FinanceiroRevisaoPage() {
 
   // form state — novo lançamento manual
   const [novoModal,   setNovoModal]   = useState(false);
-  const [novoData,    setNovoData]    = useState(new Date().toISOString().slice(0, 10));
+  const [novoData,    setNovoData]    = useState(hoje());
   const [novoTipo,    setNovoTipo]    = useState<'entrada' | 'saida'>('saida');
   const [novoValor,   setNovoValor]   = useState('');
   const [novoDesc,    setNovoDesc]    = useState('');
@@ -209,7 +210,7 @@ export default function FinanceiroRevisaoPage() {
       // uma base de 1.206: setecentas transações que ela acreditava ter revisado
       // simplesmente não estavam na tela — o oposto de "garantir que nada passe".
       const inicio = `${anoRev}-${String(mesRev + 1).padStart(2, '0')}-01`;
-      const fim = new Date(anoRev, mesRev + 1, 0).toISOString().slice(0, 10);
+      const fim = ultimoDiaDoMes(new Date(anoRev, mesRev, 1));
       query = query.gte('data', inicio).lte('data', fim);
     }
 
@@ -396,7 +397,7 @@ export default function FinanceiroRevisaoPage() {
       toast({ title: 'Lançamento criado com sucesso' });
       setNovoModal(false);
       setNovoDesc(''); setNovoValor(''); setNovoCateg(''); setNovoCentro('');
-      setNovoTipo('saida'); setNovoData(new Date().toISOString().slice(0, 10));
+      setNovoTipo('saida'); setNovoData(hoje());
       load();
     } catch (err: unknown) {
       toast({ title: 'Erro ao criar lançamento', description: err instanceof Error ? err.message : '', variant: 'destructive' });
@@ -560,8 +561,8 @@ export default function FinanceiroRevisaoPage() {
     toast({ title: `${feitas} transações confirmadas` });
     load();
   };
-  const hoje = new Date().toISOString().slice(0, 10);
-  const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hoje).length;
+  const hojeStr = hoje();
+  const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hojeStr).length;
 
   return (
     <DashboardLayout title="Financeiro" hideFilters>

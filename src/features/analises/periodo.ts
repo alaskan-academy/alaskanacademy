@@ -1,3 +1,4 @@
+import { paraYmd } from '@/lib/datas';
 /**
  * A janela que a rodada analisa.
  *
@@ -12,6 +13,7 @@ export interface Janela {
   fim: string;    // yyyy-MM-dd, inclusivo
 }
 
+
 export const PERIODOS = [
   { dias: 7,  label: 'Últimos 7 dias' },
   { dias: 14, label: 'Últimos 14 dias' },
@@ -22,13 +24,9 @@ export const PERIODOS = [
 
 export const PERSONALIZADO = 'personalizado';
 
-function iso(d: Date): string {
-  // Componentes locais, não `toISOString()`: no fuso do Brasil o UTC já virou o
-  // dia seguinte à noite, e a janela pularia um dia sozinha depois das 21h.
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dia = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${dia}`;
-}
+// A conversão local morava aqui, escrita à mão. Era a primeira de três cópias
+// da mesma correção espalhadas pelo projeto — agora todas vêm de `lib/datas`.
+const iso = paraYmd;
 
 export function janelaDeDias(dias: number): Janela {
   const fim = new Date();
