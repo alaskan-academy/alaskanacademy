@@ -35,8 +35,18 @@ export function PainelGestorView({ userId }: { userId: string }) {
   const [enviando, setEnviando] = useState(false);
   const [calendarioAberto, setCalendarioAberto] = useState(false);
 
+  /*
+    Recarregar NÃO apaga a tela.
+
+    Antes, `carregar` ligava `carregando` e o componente inteiro virava uma
+    linha de "Carregando a fila…". Ao fechar o drawer isso zerava a altura da
+    página e o navegador jogava o scroll para o topo — depois de abrir um card
+    lá embaixo, voltava-se para o começo da árvore.
+
+    O `carregando` agora só vale na PRIMEIRA carga, quando não há nada para
+    preservar.
+  */
   const carregar = useCallback(async () => {
-    setCarregando(true);
     setErro(null);
     const { data: linhas, error } = await supabase
       .from('vw_gestor_fila')
@@ -84,6 +94,12 @@ export function PainelGestorView({ userId }: { userId: string }) {
     teste, 44 são do Jabones Artesanales 360 — parado desde outubro de 2025 — e
     5 da Cosmética Natural. Misturados com os ativos, faziam a tela dizer "80
     cards na esteira" quando o que existe de verdade é um terço disso.
+
+    E esses 80 não são fila pendente: são registros do tempo do Notion, onde
+    `esteira_teste` significava o que `postado` significa hoje. Todos vieram da
+    carga de 23/08/2026 e nenhum tem uma linha de `criativo_historico` — nunca
+    passaram pelo fluxo do app. O certo seria migrá-los para `postado`; até lá,
+    a aba os tira da frente.
 
     A aba existe para eles não sumirem: continuam a um clique, com a contagem
     visível, porque some da tela não é o mesmo que deixar de existir.

@@ -61,8 +61,15 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
   const nivel: ProducaoNivel = perfil?.is_admin ? 'socio'
     : perfil?.cargo?.pode_aprovar ? 'head' : 'membro';
 
+  /*
+    Recarregar NÃO apaga a tabela.
+
+    Antes, `carregar` ligava `carregando` e a tabela virava "Carregando a
+    esteira…". Ao fechar o drawer isso encolhia a página e o navegador jogava o
+    scroll para o topo — depois de abrir um AD lá embaixo, voltava-se ao começo
+    da lista. O `carregando` agora só vale na PRIMEIRA carga.
+  */
   const carregar = useCallback(async () => {
-    setCarregando(true);
     setErro(null);
     const { data, error } = await supabase
       .from('vw_esteira_lotes')
