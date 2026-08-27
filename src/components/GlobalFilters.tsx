@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useFilters } from "@/contexts/FilterContext";
 import { subDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { CalendarIcon, ChevronDown, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -205,6 +206,7 @@ export default function GlobalFilters() {
                     mode="single"
                     selected={customStart}
                     onSelect={handleCustomStart}
+                    locale={ptBR}
                     disabled={(date) => date > new Date()}
                     className={cn("p-2 pointer-events-auto rounded-md border border-border")}
                   />
@@ -215,6 +217,7 @@ export default function GlobalFilters() {
                     mode="single"
                     selected={customEnd}
                     onSelect={handleCustomEnd}
+                    locale={ptBR}
                     disabled={(date) => date > new Date() || (customStart ? date < customStart : false)}
                     className={cn("p-2 pointer-events-auto rounded-md border border-border")}
                   />
