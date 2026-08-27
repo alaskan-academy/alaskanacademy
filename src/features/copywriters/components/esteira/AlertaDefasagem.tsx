@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { AlertTriangle, Check, HelpCircle, MinusCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Check, HelpCircle, MinusCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Defasagem } from './tipos';
 
@@ -112,17 +112,14 @@ export function AlertaDefasagem({ linhas, semVerba = [] }: {
         números acima de parecerem piores do que são.
       */}
       {semFunil.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5">
-          <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-          <div className="text-[11px] leading-relaxed text-muted-foreground">
-            <span className="text-foreground">
-              {semFunil.reduce((s, l) => s + l.lotes_sem_funil, 0)} ADs sem funil informado
-            </span>
-            {' '}ficam fora das contas acima —{' '}
-            {semFunil.map(l => `${l.projeto} (${l.lotes_sem_funil})`).join(' · ')}.
-            {' '}Preencher o campo Funil na Produção faz eles contarem.
-          </div>
-        </div>
+        <AvisoFechavel icone={HelpCircle}>
+          <span className="text-foreground">
+            {semFunil.reduce((s, l) => s + l.lotes_sem_funil, 0)} ADs sem funil informado
+          </span>
+          {' '}ficam fora das contas acima —{' '}
+          {semFunil.map(l => `${l.projeto} (${l.lotes_sem_funil})`).join(' · ')}.
+          {' '}Preencher o campo Funil na Produção faz eles contarem.
+        </AvisoFechavel>
       )}
 
       {/*
@@ -134,25 +131,54 @@ export function AlertaDefasagem({ linhas, semVerba = [] }: {
         parecer quebrado; dizer o motivo transforma a ausência em informação.
       */}
       {semVerba.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-border bg-card px-3.5 py-2.5">
-          <MinusCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-          <div className="text-[11px] leading-relaxed text-muted-foreground">
-            Fora da conta por não ter investimento nos últimos 7 dias:{' '}
-            {semVerba.map((p, i) => (
-              <span key={p.projeto}>
-                {i > 0 && ' · '}
-                <span className="text-foreground">{p.projeto}</span>
-                {p.ads > 0 && (
-                  <span className="text-muted-foreground/70">
-                    {' '}({p.ads} {p.ads === 1 ? 'AD parado' : 'ADs parados'} na esteira)
-                  </span>
-                )}
-              </span>
-            ))}
-            . Sem verba não há defasagem de criativo — é outra conversa.
-          </div>
-        </div>
+        <AvisoFechavel icone={MinusCircle}>
+          Fora da conta por não ter investimento nos últimos 7 dias:{' '}
+          {semVerba.map((p, i) => (
+            <span key={p.projeto}>
+              {i > 0 && ' · '}
+              <span className="text-foreground">{p.projeto}</span>
+              {p.ads > 0 && (
+                <span className="text-muted-foreground/70">
+                  {' '}({p.ads} {p.ads === 1 ? 'AD parado' : 'ADs parados'} na esteira)
+                </span>
+              )}
+            </span>
+          ))}
+          . Sem verba não há defasagem de criativo — é outra conversa.
+        </AvisoFechavel>
       )}
+    </div>
+  );
+}
+
+/**
+ * Um aviso que dá para fechar, e que volta ao recarregar.
+ *
+ * O estado é local de propósito — nada de `localStorage`. Estes dois avisos
+ * dizem que metade dos ADs não entra na conta e que um projeto ativo está sem
+ * verba: se o "fechar" fosse permanente, alguém fecharia uma vez e o problema
+ * sumiria da tela para sempre, exatamente como aconteceu com os 4 REVs
+ * escondidos por um `ativo=false`. Fechar aqui é "vi, sai da frente agora", não
+ * "não me avise mais".
+ */
+function AvisoFechavel({ icone: Icone, children }: {
+  icone: typeof HelpCircle;
+  children: React.ReactNode;
+}) {
+  const [aberto, setAberto] = useState(true);
+  if (!aberto) return null;
+
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-border bg-card py-2.5 pl-3.5 pr-2">
+      <Icone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+      <div className="flex-1 text-[11px] leading-relaxed text-muted-foreground">
+        {children}
+      </div>
+      <button onClick={() => setAberto(false)}
+              aria-label="Fechar aviso"
+              className="-mt-0.5 shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:bg-secondary hover:text-foreground">
+        <X className="h-3 w-3" />
+      </button>
     </div>
   );
 }
