@@ -1,20 +1,16 @@
 import { useMemo } from 'react';
-import { AlertTriangle, ArrowRight, HelpCircle } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Defasagem, rotuloDoAdHook } from './tipos';
 
 /**
- * O que falta, por projeto E POR FUNIL.
+ * O que escrever, por projeto e por funil.
  *
- * A primeira versão era uma linha corrida por funil — nome, selo, o que falta e
- * as três contagens em prosa cinza, tudo brigando pelo mesmo espaço. Ficava
- * ilegível por dois motivos: as contagens em texto não davam para comparar
- * entre linhas, e um projeto que roda TSL e VSL aparecia duas vezes seguidas,
- * lendo como duplicata em vez de dois funis.
- *
- * Agora é grade: o projeto aparece UMA vez, cada funil é uma linha, e novo /
- * iteração / variação são três colunas alinhadas. O zero fica na vertical, que
- * é como o olho acha buraco.
+ * Duas versões anteriores erraram o alvo pelo mesmo motivo: diagnosticavam em
+ * vez de mandar fazer. "falta iteração e novo" é uma lista do que não existe, e
+ * quem lê ainda precisa traduzir para trabalho. Agora cada linha é uma ordem de
+ * serviço com quantidade — "escreva 1 iteração e 1 novo" — e as contagens ficam
+ * ao lado como prova, não como a mensagem.
  *
  * Nenhum valor em dinheiro aparece. A lista É ordenada por investimento — quem
  * mais gasta cobra primeiro, e a sugestão é sempre o AD que mais recebeu verba
@@ -23,17 +19,26 @@ import { Defasagem, rotuloDoAdHook } from './tipos';
 export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
   const urgentes = useMemo(() => linhas.filter(l => l.prioridade < 5), [linhas]);
 
-  /* Um projeto vira um bloco, com uma linha por funil. A ordem entre projetos é
-     a da prioridade mais alta que cada um tem. */
+  /*
+    TODOS os funis aparecem, inclusive os que estão em dia.
+
+    Antes só os problemáticos entravam, e o Saponaria VSL sumia da tela — sem
+    dar para saber se estava bem ou se tinha sido esquecido. Ausência não diz
+    "está ok", diz "não sei"; e um painel que só mostra o que está ruim obriga
+    a lembrar de cor o que deveria estar lá.
+
+    Um projeto vira um bloco, com uma linha por funil: quem roda TSL e VSL
+    aparecia duas vezes seguidas e lia como duplicata.
+  */
   const grupos = useMemo(() => {
     const mapa = new Map<string, Defasagem[]>();
-    for (const l of urgentes) {
+    for (const l of linhas) {
       const k = l.projeto ?? '—';
       if (!mapa.has(k)) mapa.set(k, []);
       mapa.get(k)!.push(l);
     }
     return Array.from(mapa, ([projeto, funis]) => ({ projeto, funis }));
-  }, [urgentes]);
+  }, [linhas]);
 
   /* O aviso de "sem funil" é por PROJETO — repetido em cada linha viraria eco. */
   const semFunil = useMemo(() => Array.from(
@@ -48,42 +53,51 @@ export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
     );
   }
 
+  const tudoOk = urgentes.length === 0;
+
   return (
     <div className="space-y-2">
-      {urgentes.length === 0 ? (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-300/90">
-          Os {linhas.length} funis com verba têm novo, iteração e variação em estoque, e o mix está na meta.
+      <div className={cn('overflow-hidden rounded-lg border',
+        tudoOk ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
+               : 'border-amber-500/30 bg-amber-500/[0.07]')}>
+        <div className={cn('flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-3.5 py-2.5',
+          tudoOk ? 'border-emerald-500/20' : 'border-amber-500/20')}>
+          {tudoOk
+            ? <Check className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-emerald-400" />
+            : <AlertTriangle className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-amber-400" />}
+          <span className={cn('text-xs font-medium', tudoOk ? 'text-emerald-200' : 'text-amber-200')}>
+            {tudoOk ? 'Todos os funis em dia' : 'O que escrever agora'}
+          </span>
+          <span className="text-[10px] text-muted-foreground/70">
+            {urgentes.length > 0 && `${urgentes.length} de ${linhas.length} funis com verba fora do alvo · `}
+            do que mais gasta para o que menos gasta
+          </span>
         </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/[0.07]">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-amber-500/20 px-3.5 py-2.5">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-amber-400" />
-            <span className="text-xs font-medium text-amber-200">
-              {urgentes.length === 1 ? '1 funil precisa de criativo' : `${urgentes.length} funis precisam de criativo`}
-            </span>
-            <span className="text-[10px] text-muted-foreground/70">
-              TSL e VSL são contas separadas · iteração antes de novo
-            </span>
-          </div>
 
+        <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                <th className="px-3.5 py-1 text-left font-medium">Funil</th>
-                <th className="w-12 px-1 py-1 text-right font-medium" title="ADs do tipo Novo">Novo</th>
-                <th className="w-14 px-1 py-1 text-right font-medium" title="ADs do tipo Iteração">Iter.</th>
-                <th className="w-14 px-1 py-1 text-right font-medium" title="Vertical, Horizontal, Formato ou Corpo">Var.</th>
-                <th className="px-3.5 py-1 text-left font-medium">Precisa de</th>
+                <th className="whitespace-nowrap px-3.5 py-1 text-left font-medium">Projeto</th>
+                <th className="px-2 py-1 text-left font-medium">Funil</th>
+                <th className="w-11 px-1 py-1 text-right font-medium">Novo</th>
+                <th className="w-11 px-1 py-1 text-right font-medium">Iter.</th>
+                <th className="w-11 px-1 py-1 text-right font-medium">Var.</th>
+                <th className="w-full px-3 py-1 text-left font-medium">O que escrever</th>
+                <th className="whitespace-nowrap px-3.5 py-1 text-left font-medium">A partir de</th>
               </tr>
             </thead>
             <tbody>
-              {grupos.map(g => (
-                <BlocoDoProjeto key={g.projeto} projeto={g.projeto} funis={g.funis} />
-              ))}
+              {grupos.map(g => g.funis.map((l, i) => (
+                <LinhaDoFunil key={`${g.projeto}-${l.funil}`} l={l}
+                              projeto={i === 0 ? g.projeto : null}
+                              linhasDoProjeto={g.funis.length}
+                              primeiraDoGrupo={i === 0} />
+              )))}
             </tbody>
           </table>
         </div>
-      )}
+      </div>
 
       {/*
         Um lote sem funil não entra na conta de TSL nem de VSL, porque ninguém
@@ -108,86 +122,111 @@ export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
   );
 }
 
-function BlocoDoProjeto({ projeto, funis }: { projeto: string; funis: Defasagem[] }) {
+/** "a, b e c" — `join(' e ')` produzia "a e b e c". */
+function emLista(itens: string[]): string {
+  if (itens.length <= 1) return itens[0] ?? '';
+  return `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}`;
+}
+
+function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo }: {
+  l: Defasagem; projeto: string | null; linhasDoProjeto: number; primeiraDoGrupo: boolean;
+}) {
+  const total = l.ads_novo + l.ads_iteracao + l.ads_variacao;
+
+  /*
+    Quantos ADs de iteração ou variação faltam para o "novo" caber na meta.
+    Com 1 novo e meta de 20%, o funil precisa de 5 ADs no total — então com 3
+    faltam 2. Sem essa conta a linha dizia "menos novo", que é impossível: não
+    dá para desfazer um AD já escrito, só para escrever mais do outro lado.
+  */
+  const paraOMix = l.pct_novo_meta > 0
+    ? Math.max(0, Math.ceil(l.ads_novo / (l.pct_novo_meta / 100)) - total)
+    : 0;
+
+  /*
+    A ordem de serviço, em imperativo e com quantidade. A escada segue a
+    prioridade: iteração, variação, novo — iteração antes de novo, e novo por
+    último porque é só 20% do alvo.
+  */
+  const pedidos: string[] = [];
+  if (l.falta_iteracao) pedidos.push('1 iteração');
+  if (l.falta_variacao) pedidos.push('1 variação');
+  if (l.falta_novo)     pedidos.push('1 novo');
+
+  const emDia = l.prioridade === 5;
+  const critico = total === 0;
+
+  const ordem = emDia
+    ? 'Em dia'
+    : pedidos.length > 0
+      ? `Escreva ${emLista(pedidos)}`
+      : paraOMix > 0
+        ? `Escreva mais ${paraOMix} de iteração ou variação`
+        : 'Em dia';
+
+  const mostraSugestao = (l.falta_variacao || paraOMix > 0) && l.sug_ad != null;
+
   return (
-    <>
-      <tr className="border-t border-amber-500/15">
-        <td colSpan={5} className="px-3.5 pb-0.5 pt-2 text-xs font-medium text-foreground">
+    <tr className={cn(primeiraDoGrupo && 'border-t border-amber-500/15',
+      emDia && 'text-muted-foreground')}>
+      {/* O nome do projeto ocupa as linhas dos seus funis: repetido em cada uma
+          fazia dois funis do mesmo projeto lerem como duplicata. */}
+      {projeto !== null && (
+        <td rowSpan={linhasDoProjeto}
+            className="whitespace-nowrap px-3.5 py-1.5 align-top text-xs font-medium text-foreground">
           {projeto}
         </td>
-      </tr>
-      {funis.map(l => <LinhaDoFunil key={l.funil} l={l} />)}
-    </>
-  );
-}
-
-function LinhaDoFunil({ l }: { l: Defasagem }) {
-  const vazio = l.prioridade === 0;
-
-  /* A ordem das faltas segue a escada da prioridade: iteração, variação, novo.
-     Quem lê rápido lê a primeira. */
-  const faltas = [
-    l.falta_iteracao && 'iteração',
-    l.falta_variacao && 'variação',
-    l.falta_novo && 'novo',
-  ].filter(Boolean) as string[];
-
-  /* A sugestão vale para o lado da variação — e também com o mix estourado,
-     porque "novo demais" quer dizer "faça mais do outro lado". */
-  const mostrarSugestao = (l.falta_variacao || l.mix_estourado) && !vazio;
-
-  return (
-    <>
-      <tr>
-        <td className="py-0.5 pl-6 pr-2">
-          <span className="rounded bg-secondary px-1.5 py-px text-[10px] font-medium tracking-wide text-foreground">
-            {l.funil}
-          </span>
-        </td>
-        <Num n={l.ads_novo} />
-        <Num n={l.ads_iteracao} />
-        <Num n={l.ads_variacao} />
-        <td className="py-0.5 pl-3.5 pr-3.5">
-          <span className={cn('text-[11px]', vazio ? 'text-red-300' : 'text-amber-200/90')}>
-            {vazio ? 'nada em produção para este funil'
-              : faltas.length > 0 ? faltas.join(' e ')
-              : `menos novo — está em ${l.pct_novo}%, a meta é ${l.pct_novo_meta}%`}
-          </span>
-        </td>
-      </tr>
-
-      {mostrarSugestao && (
-        <tr>
-          <td />
-          <td colSpan={4} className="pb-1 pl-3.5 pr-3.5 pt-0">
-            {l.sug_ad != null ? (
-              <span className="flex flex-wrap items-baseline gap-x-1 text-[11px] text-muted-foreground">
-                <ArrowRight className="h-3 w-3 shrink-0 translate-y-0.5" />
-                <span>comece variando o</span>
-                <span className="font-medium text-foreground">{rotuloDoAdHook(l.sug_ad, l.sug_hook)}</span>
-                {l.sug_total > 1 && (
-                  <span className="text-muted-foreground/50">e outros {l.sug_total - 1} validados sem variação</span>
-                )}
-              </span>
-            ) : l.falta_variacao ? (
-              /* Só aparece onde alguém esperaria uma sugestão e não há: nenhum
-                 validado deste funil recebeu verba em 30 dias, ou os que
-                 receberam já têm pedido na fila abaixo. */
-              <span className="text-[11px] text-muted-foreground/50">
-                sem validado recente para partir — o AD terá que ser do zero
-              </span>
-            ) : null}
-          </td>
-        </tr>
       )}
-    </>
+
+      <td className="px-2 py-1.5">
+        <span className="rounded bg-secondary px-1.5 py-px text-[10px] font-medium tracking-wide text-foreground">
+          {l.funil}
+        </span>
+      </td>
+
+      {/* O zero é a informação, então é o único número que muda de cor. */}
+      <Num n={l.ads_novo} />
+      <Num n={l.ads_iteracao} />
+      <Num n={l.ads_variacao} />
+
+      <td className="px-3 py-1.5">
+        <span className={cn('flex items-baseline gap-1 text-xs font-medium',
+          emDia ? 'text-emerald-400/90' : critico ? 'text-red-300' : 'text-amber-200')}>
+          {emDia && <Check className="h-3 w-3 shrink-0 translate-y-0.5" />}
+          {ordem}
+        </span>
+        {/* O porquê da ordem do mix, que não cabe no imperativo */}
+        {pedidos.length === 0 && paraOMix > 0 && (
+          <span className="text-[10px] tabular-nums text-muted-foreground/60">
+            novo em {l.pct_novo}%, a meta é {l.pct_novo_meta}%
+          </span>
+        )}
+      </td>
+
+      {/*
+        O ponto de partida, quando existe — e só onde faz sentido: um AD novo
+        não tem "de qual partir", ele É o ponto de partida.
+      */}
+      <td className="whitespace-nowrap px-3.5 py-1.5 text-[11px]">
+        {mostraSugestao ? (
+          <span className="flex items-baseline gap-1 text-muted-foreground">
+            <ArrowRight className="h-3 w-3 shrink-0 translate-y-0.5" />
+            <span className="font-medium text-foreground">{rotuloDoAdHook(l.sug_ad!, l.sug_hook)}</span>
+            {l.sug_total > 1 && <span className="text-muted-foreground/50">(+{l.sug_total - 1})</span>}
+          </span>
+        ) : l.falta_variacao ? (
+          <span className="text-muted-foreground/40" title="Nenhum validado deste funil recebeu verba nos últimos 30 dias — o AD terá que ser do zero">sem base</span>
+        ) : (
+          <span className="text-muted-foreground/25">—</span>
+        )}
+      </td>
+    </tr>
   );
 }
 
-/** O zero é a informação, então ele é o único que muda de cor. */
 function Num({ n }: { n: number }) {
   return (
-    <td className={cn('px-1 py-0.5 text-right text-xs tabular-nums',
+    <td className={cn('px-1 py-1.5 text-right text-xs tabular-nums',
       n === 0 ? 'font-medium text-red-400' : 'text-muted-foreground')}>
       {n}
     </td>

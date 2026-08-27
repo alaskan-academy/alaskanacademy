@@ -15,17 +15,6 @@ import {
 /** As três famílias, na ordem em que a operação pensa nelas. */
 const FAMILIAS: Familia[] = ['novo', 'iteracao', 'variacao'];
 
-const FAMILIA_AJUDA: Record<string, string> = {
-  novo:     'Novo',
-  iteracao: 'Iteração',
-  variacao: 'Vertical · Horizontal · Formato · Corpo',
-};
-
-const FAMILIA_COR: Record<string, string> = {
-  novo:     'bg-primary',
-  iteracao: 'bg-emerald-500',
-  variacao: 'bg-blue-500',
-};
 
 const FAMILIA_SELO: Record<string, string> = {
   novo:     'bg-primary/15 text-primary',
@@ -53,6 +42,7 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
      "como está Saponaria E Velas juntos?" não cabia num chip só. */
   const [projetos, setProjetos] = useState<string[]>([]);
   const [familia, setFamilia] = useState<string>('todas');
+  const [soVelhos, setSoVelhos] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -92,32 +82,25 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
 
   const visiveis = useMemo(() => lotes.filter(l =>
     (projetos.length === 0 || (l.projeto != null && projetos.includes(l.projeto))) &&
-    (familia === 'todas' || l.familia === familia)
-  ), [lotes, projetos, familia]);
+    (familia === 'todas' || l.familia === familia) &&
+    (!soVelhos || (l.dias_parado ?? 0) >= DIAS_PARA_VELHO)
+  ), [lotes, projetos, familia, soVelhos]);
 
-  /* O resumo ignora o filtro de família — senão "Só novo" zeraria os outros dois
-     cartões e o mix deixaria de fazer sentido. */
+  /* A contagem do cabeçalho segue só o filtro de projeto: se seguisse o de
+     família, clicar em "Novo" mudaria o total e o número deixaria de ser "o
+     tamanho da esteira". */
   const noProjeto = useMemo(
     () => lotes.filter(l =>
       projetos.length === 0 || (l.projeto != null && projetos.includes(l.projeto))),
     [lotes, projetos]);
 
-  const resumo = useMemo(() => {
-    const conta = (f: Familia) => {
-      const ls = noProjeto.filter(l => l.familia === f);
-      return {
-        lotes: ls.length,
-        cards: ls.reduce((s, l) => s + l.cards, 0),
-        velhos: ls.filter(l => (l.dias_parado ?? 0) >= DIAS_PARA_VELHO).length,
-      };
-    };
-    return {
-      novo: conta('novo'), iteracao: conta('iteracao'), variacao: conta('variacao'),
-      naoClassificados: noProjeto.filter(l => l.familia === 'sem_tipo' || l.familia === 'outro'),
-    };
-  }, [noProjeto]);
+  const velhos = useMemo(
+    () => noProjeto.filter(l => (l.dias_parado ?? 0) >= DIAS_PARA_VELHO).length,
+    [noProjeto]);
 
-  const metaPctNovo = defasagem[0]?.pct_novo_meta ?? 20;
+  const naoClassificados = useMemo(
+    () => noProjeto.filter(l => l.familia === 'sem_tipo' || l.familia === 'outro'),
+    [noProjeto]);
 
   return (
     <div className="space-y-4">
@@ -127,15 +110,16 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
 
       <FilaPedidos onMudou={onRecarregar} />
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        {FAMILIAS.map(f => (
-          <CartaoResumo key={f} titulo={FAMILIA_LABEL[f]} ajuda={FAMILIA_AJUDA[f]}
-                        {...resumo[f as 'novo' | 'iteracao' | 'variacao']} />
-        ))}
-      </div>
+      {/*
+        Aqui havia três cartões (Novo 17 · Iteração 11 · Variação 10) e uma
+        barra de mix. Saíram porque somavam TODOS os projetos e TODOS os funis —
+        e desde que a unidade virou (projeto, funil), "17 ADs de novo no geral"
+        não responde pergunta de ninguém: o Copy nunca trabalha "no geral". O
+        mix por funil, que é o que decide, já está no quadro acima.
 
-      <BarraDoMix novo={resumo.novo.lotes} iteracao={resumo.iteracao.lotes}
-                  variacao={resumo.variacao.lotes} metaPctNovo={metaPctNovo} />
+        O que ficou no lugar é o único número agregado que gera ação: quanto do
+        estoque está velho — com o botão que filtra a tabela para eles.
+      */}
 
       {/*
         Só aparece quando há o que mostrar — um cartão permanente para dizer que
@@ -143,11 +127,11 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
         novo APARECER em vez de sumir da conta: a família sai da tabela
         `criativo_tipos_teste`, e o que não estiver lá cai aqui.
       */}
-      {resumo.naoClassificados.length > 0 && (
+      {naoClassificados.length > 0 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-200/90">
-          {resumo.naoClassificados.length} lote(s) com tipo de teste que o painel não conhece:{' '}
+          {naoClassificados.length} lote(s) com tipo de teste que o painel não conhece:{' '}
           <span className="font-medium">
-            {Array.from(new Set(resumo.naoClassificados.map(l => l.tipo_teste ?? 'vazio'))).join(', ')}
+            {Array.from(new Set(naoClassificados.map(l => l.tipo_teste ?? 'vazio'))).join(', ')}
           </span>
           . Cadastre em <code className="rounded bg-secondary px-1">criativo_tipos_teste</code> para entrar na conta.
         </div>
@@ -171,6 +155,29 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
               daquele AD já entraram; <span className="text-foreground">Parado</span> é o tempo desde a
               última data de início, não que o card esteja travado.
             </p>
+
+            {/*
+              O único número agregado que gera ação, e ele vira filtro em vez de
+              cartão: metade do "estoque" é de ADs que não andam há meses, e sem
+              poder isolá-los na tabela esse número seria só mais uma decoração.
+            */}
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[11px]">
+              <span className="tabular-nums text-muted-foreground">
+                {noProjeto.length} {noProjeto.length === 1 ? 'AD' : 'ADs'} em produção
+              </span>
+              {velhos > 0 && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <button onClick={() => setSoVelhos(v => !v)}
+                          className={cn('rounded px-1.5 py-px transition-colors',
+                            soVelhos ? 'bg-amber-500/20 text-amber-200'
+                                     : 'text-amber-300/90 underline-offset-2 hover:underline')}>
+                    {velhos} parados há mais de {DIAS_PARA_VELHO} dias
+                    {soVelhos ? ' — mostrando só eles' : ''}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/*
@@ -223,94 +230,6 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
   );
 }
 
-/**
- * O mix contra a meta de 80/20.
- *
- * A barra mostra a proporção real; o traço vertical mostra onde o "novo"
- * deveria parar. Duas leituras num objeto só, sem obrigar ninguém a fazer conta
- * de cabeça — que era o que aconteceria com três porcentagens soltas.
- */
-function BarraDoMix({ novo, iteracao, variacao, metaPctNovo }: {
-  novo: number; iteracao: number; variacao: number; metaPctNovo: number;
-}) {
-  const total = novo + iteracao + variacao;
-  if (total === 0) return null;
-
-  const pct = (n: number) => (100 * n) / total;
-  const pctNovo = Math.round(pct(novo));
-  const estourado = pctNovo > metaPctNovo;
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
-        <span className="text-xs font-medium text-foreground">Mix do estoque</span>
-        <span className="text-[10px] text-muted-foreground/60">
-          meta: {metaPctNovo}% novo · {100 - metaPctNovo}% iteração e variação
-        </span>
-      </div>
-
-      <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
-        <div className="flex h-full">
-          <div className={FAMILIA_COR.novo}     style={{ width: `${pct(novo)}%` }} />
-          <div className={FAMILIA_COR.iteracao} style={{ width: `${pct(iteracao)}%` }} />
-          <div className={FAMILIA_COR.variacao} style={{ width: `${pct(variacao)}%` }} />
-        </div>
-        {/* Onde o "novo" deveria parar */}
-        <div className="absolute inset-y-0 w-px bg-foreground/70"
-             style={{ left: `${metaPctNovo}%` }}
-             title={`Meta: ${metaPctNovo}% de novo`} />
-      </div>
-
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-        {FAMILIAS.map(f => {
-          const n = f === 'novo' ? novo : f === 'iteracao' ? iteracao : variacao;
-          return (
-            <span key={f} className="flex items-center gap-1 text-muted-foreground">
-              <span className={cn('h-2 w-2 rounded-sm', FAMILIA_COR[f])} />
-              {FAMILIA_LABEL[f]} <span className="tabular-nums text-foreground">{Math.round(pct(n))}%</span>
-            </span>
-          );
-        })}
-        {estourado && (
-          <span className="text-amber-300/90">
-            novo está {pctNovo - metaPctNovo} pontos acima da meta
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CartaoResumo({ titulo, ajuda, lotes, cards, velhos }: {
-  titulo: string; ajuda: string; lotes: number; cards: number; velhos: number;
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium text-foreground">{titulo}</span>
-        <span className="truncate text-[10px] text-muted-foreground/60" title={ajuda}>{ajuda}</span>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className={cn('text-2xl font-semibold tabular-nums',
-          lotes === 0 ? 'text-red-400' : 'text-foreground')}>
-          {lotes}
-        </span>
-        <span className="text-xs text-muted-foreground">{lotes === 1 ? 'AD' : 'ADs'}</span>
-        <span className="text-[11px] text-muted-foreground/60">· {cards} cards</span>
-      </div>
-      {velhos > 0 && (
-        /*
-          O estoque foi definido sem janela de tempo, então um lote esquecido
-          conta para sempre. Esta linha não muda a conta — só impede que ela
-          engane.
-        */
-        <p className="mt-1 text-[11px] text-amber-300/90">
-          {velhos} parado(s) há mais de {DIAS_PARA_VELHO} dias
-        </p>
-      )}
-    </div>
-  );
-}
 
 function Tabela({ lotes, agrupar }: { lotes: Lote[]; agrupar: boolean }) {
   const grupos = useMemo(() => {
@@ -402,17 +321,3 @@ function LinhaLote({ l }: { l: Lote }) {
   );
 }
 
-function Chip({ ativo, onClick, apagado, children }: {
-  ativo: boolean; onClick: () => void; apagado?: boolean; children: React.ReactNode;
-}) {
-  return (
-    <button onClick={onClick}
-            title={apagado ? 'Sem investimento nos últimos 7 dias' : undefined}
-            className={cn('rounded-full border px-2.5 py-1 text-[11px] transition-colors',
-              ativo ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-secondary hover:text-foreground',
-              !ativo && (apagado ? 'text-muted-foreground/40' : 'text-muted-foreground'))}>
-      {children}
-    </button>
-  );
-}
