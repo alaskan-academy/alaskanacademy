@@ -1,8 +1,13 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RotinaCal } from '@/features/copywriters/components/RotinaCal';
 import { CopyTrackTab } from '@/features/copywriters/components/copytrack/CopyTrackTab';
+import { EsteiraTab } from '@/features/copywriters/components/esteira/EsteiraTab';
+import { AlertaDefasagem } from '@/features/copywriters/components/esteira/AlertaDefasagem';
+import type { Defasagem } from '@/features/copywriters/components/esteira/tipos';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Shield } from 'lucide-react';
 
@@ -18,6 +23,7 @@ function AccessDenied() {
 }
 
 const ABAS = [
+  { chave: 'esteira',   label: 'Esteira' },
   { chave: 'rotina',    label: 'Rotina' },
   { chave: 'copytrack', label: 'Copy Track' },
 ];
@@ -43,7 +49,7 @@ export default function CopywritersPage() {
    */
   const [params, setParams] = useSearchParams();
   const pedida = params.get('aba');
-  const aba = ABAS.some(a => a.chave === pedida) ? pedida! : 'rotina';
+  const aba = ABAS.some(a => a.chave === pedida) ? pedida! : 'esteira';
 
   const irPara = (chave: string) => {
     const p = new URLSearchParams(params);
@@ -52,10 +58,27 @@ export default function CopywritersPage() {
     setParams(p, { replace: true });
   };
 
+  /**
+   * A defasagem é buscada AQUI, e não dentro da aba, porque ela aparece em dois
+   * lugares: a faixa compacta no topo — visível nas três abas — e o painel
+   * completo na Esteira. Um alerta que só existe atrás de uma aba não é lido.
+   * Buscar uma vez e passar para baixo evita duas chamadas para a mesma RPC.
+   */
+  const [defasagem, setDefasagem] = useState<Defasagem[]>([]);
+  const [carregandoDefasagem, setCarregandoDefasagem] = useState(true);
+
+  const carregarDefasagem = useCallback(async () => {
+    const { data, error } = await supabase.rpc('fn_esteira_defasagem');
+    if (!error) setDefasagem((data ?? []) as unknown as Defasagem[]);
+    setCarregandoDefasagem(false);
+  }, []);
+
+  useEffect(() => { if (canView) void carregarDefasagem(); }, [canView, carregarDefasagem]);
+
   return (
     /*
-      `hideFilters` porque NENHUMA das duas abas lê o filtro global — conferido
-      com um grep por `useFilters` na área inteira, que não devolve nada. Ele
+      `hideFilters` porque NENHUMA das abas lê o filtro global — conferido com
+      um grep por `useFilters` na área inteira, que não devolve nada. Ele
       aparecia oferecendo conta e período que não mudavam coisa alguma, e a
       Rotina ainda tem a própria navegação de mês logo abaixo: eram dois
       "Hoje" na mesma tela querendo dizer coisas diferentes.
@@ -66,21 +89,33 @@ export default function CopywritersPage() {
       {!canView ? (
         <AccessDenied />
       ) : (
-        <Tabs value={aba} onValueChange={irPara} className="space-y-4">
-          <TabsList className="bg-secondary border border-border flex-wrap h-auto">
-            {ABAS.map(a => (
-              <TabsTrigger key={a.chave} value={a.chave} className={tabCls}>{a.label}</TabsTrigger>
-            ))}
-          </TabsList>
+        <div className="space-y-4">
+          {/* Fora das abas de propósito: o que está faltando não pode depender
+              de a pessoa clicar na aba certa para ser visto. */}
+          {aba !== 'esteira' && !carregandoDefasagem && (
+            <AlertaDefasagem linhas={defasagem} compacto onVerTudo={() => irPara('esteira')} />
+          )}
 
-          <TabsContent value="rotina">
-            <RotinaCal />
-          </TabsContent>
+          <Tabs value={aba} onValueChange={irPara} className="space-y-4">
+            <TabsList className="bg-secondary border border-border flex-wrap h-auto">
+              {ABAS.map(a => (
+                <TabsTrigger key={a.chave} value={a.chave} className={tabCls}>{a.label}</TabsTrigger>
+              ))}
+            </TabsList>
 
-          <TabsContent value="copytrack">
-            <CopyTrackTab />
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="esteira">
+              <EsteiraTab defasagem={defasagem} carregandoDefasagem={carregandoDefasagem} />
+            </TabsContent>
+
+            <TabsContent value="rotina">
+              <RotinaCal />
+            </TabsContent>
+
+            <TabsContent value="copytrack">
+              <CopyTrackTab />
+            </TabsContent>
+          </Tabs>
+        </div>
       )}
     </DashboardLayout>
   );
