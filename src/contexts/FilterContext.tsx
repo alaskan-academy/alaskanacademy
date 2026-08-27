@@ -19,8 +19,15 @@ interface FilterContextType {
    */
   startISO: string | null;
   endISO: string | null;
-  contaId: string | null;
-  setContaId: (id: string | null) => void;
+  /**
+   * As contas escolhidas. Vazio quer dizer TODAS — e não 'nenhuma'.
+   *
+   * Era `contaId: string | null`, uma conta por vez. Quem quisesse comparar
+   * duas precisava olhar uma, anotar, trocar e olhar a outra. Lista resolve, e
+   * o vazio continua significando o que o `null` significava.
+   */
+  contaIds: string[];
+  setContaIds: (ids: string[]) => void;
 }
 
 const FilterContext = createContext<FilterContextType | null>(null);
@@ -35,7 +42,7 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
   const [datePreset, setDatePresetState] = useState<DatePreset>('today');
   const [customStart, setCustomStart] = useState<Date>(subDays(new Date(), 30));
   const [customEnd, setCustomEnd] = useState<Date>(new Date());
-  const [contaId, setContaId] = useState<string | null>(null);
+  const [contaIds, setContaIds] = useState<string[]>([]);
 
   const { start, end } = useMemo(() => {
     const now = new Date();
@@ -78,9 +85,9 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
     endDateStr,
     startISO,
     endISO,
-    contaId,
-    setContaId,
-  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, contaId, setDatePreset, setCustomRange]);
+    contaIds,
+    setContaIds,
+  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, contaIds, setDatePreset, setCustomRange]);
 
   return (
     <FilterContext.Provider value={value}>

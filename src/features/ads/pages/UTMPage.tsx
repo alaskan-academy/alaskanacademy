@@ -96,7 +96,7 @@ const displayUtmValue = (value: string, level: UTMLevel) => {
 };
 
 export default function UTMPage() {
-  const { startDateStr, endDateStr, startISO, endISO, contaId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [utmData, setUtmData] = useState<any[]>([]);
@@ -120,7 +120,7 @@ export default function UTMPage() {
 
       if (startISO) q1 = q1.gte("data_venda", startISO);
       if (endISO) q1 = q1.lte("data_venda", endISO);
-      if (contaId) q1 = q1.eq("ad_account_id", contaId);
+      if (contaIds.length) q1 = q1.in("ad_account_id", contaIds);
 
       const r1 = await q1;
       const rawVendas = r1.data || [];
@@ -180,7 +180,7 @@ export default function UTMPage() {
       setLoading(false);
     };
     load();
-  }, [contaId, startDateStr, endDateStr]);
+  }, [contaIds, startDateStr, endDateStr]);
 
   useEffect(() => {
     let rows = allUtm;

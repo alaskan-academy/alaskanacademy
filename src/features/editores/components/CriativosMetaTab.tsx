@@ -339,7 +339,7 @@ function ChipFiltro({ ativo, onClick, children }: {
 }
 
 export function CriativosMetaTab() {
-  const { startDateStr, endDateStr, contaId } = useFilters();
+  const { startDateStr, endDateStr, contaIds } = useFilters();
   const { user, perfil } = useAuth();
   /**
    * O card abre aqui, sobre a tela.
@@ -379,7 +379,7 @@ export function CriativosMetaTab() {
     if (!startDateStr || !endDateStr) return;
     setLoading(true);
     const { data, error } = await supabase.rpc('fn_criativos_meta', {
-      p_ini: startDateStr, p_fim: endDateStr, p_conta: contaId,
+      p_ini: startDateStr, p_fim: endDateStr, p_conta: contaIds,
     });
     if (error) {
       console.error('fn_criativos_meta:', error.message);
@@ -427,7 +427,7 @@ export function CriativosMetaTab() {
       }));
     }
     setLoading(false);
-  }, [startDateStr, endDateStr, contaId]);
+  }, [startDateStr, endDateStr, contaIds]);
 
   useEffect(() => { carregar(); }, [carregar]);
 

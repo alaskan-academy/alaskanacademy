@@ -13,10 +13,10 @@ export default function ClientsPage() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const { contaId } = useFilters();
+  const { contaIds } = useFilters();
 
   // Reset page when search or funnel changes
-  useEffect(() => { setPage(0); }, [search, contaId]);
+  useEffect(() => { setPage(0); }, [search, contaIds]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -24,8 +24,8 @@ export default function ClientsPage() {
       const from = page * PAGE_SIZE;
       const to   = from + PAGE_SIZE - 1;
 
-      if (contaId) {
-        const { data: vendas } = await supabase.from('vendas').select('cliente_id').eq('ad_account_id', contaId);
+      if (contaIds.length) {
+        const { data: vendas } = await supabase.from('vendas').select('cliente_id').in('ad_account_id', contaIds);
         const clienteIds = [...new Set((vendas || []).map((v: any) => v.cliente_id).filter(Boolean))];
         if (clienteIds.length === 0) { setData([]); setTotal(0); setLoading(false); return; }
         let q = supabase
@@ -53,7 +53,7 @@ export default function ClientsPage() {
       setLoading(false);
     };
     fetchData();
-  }, [page, search, contaId]);
+  }, [page, search, contaIds]);
 
   const columns = [
     { key: 'nome', label: 'Nome' },

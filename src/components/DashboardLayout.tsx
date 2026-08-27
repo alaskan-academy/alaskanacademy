@@ -30,7 +30,7 @@ export function DashboardLayout({
   hideAvisos?: boolean;
 }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
-  const { contaId } = useFilters();
+  const { contaIds } = useFilters();
 
   // Find selected funnel name for header context
   return (

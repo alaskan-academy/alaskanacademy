@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useFilters } from "@/contexts/FilterContext";
 import { subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, ChevronDown, Megaphone } from "lucide-react";
+import { CalendarIcon, Check, ChevronDown, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -30,7 +30,7 @@ const DATE_OPTIONS = [
 export default function GlobalFilters() {
   const {
     datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr,
-    contaId, setContaId,
+    contaIds, setContaIds,
   } = useFilters();
   const [dateOpen, setDateOpen] = useState(false);
   const [customMode, setCustomMode] = useState(false);
@@ -55,15 +55,28 @@ export default function GlobalFilters() {
     return () => { ativo = false; };
   }, [startDateStr, endDateStr]);
 
-  // Mudar o período pode deixar a conta escolhida sem gasto nenhum. Voltar para
-  // "Todas" é mais honesto que manter um recorte que resulta em tela vazia.
+  // Mudar o período pode deixar contas escolhidas sem gasto nenhum. Elas caem
+  // fora — manter um recorte que resulta em tela vazia é pior do que soltá-lo.
+  //
+  // Com lista, a limpeza é por conta e não tudo-ou-nada: se três estavam
+  // escolhidas e uma parou de gastar, as outras duas ficam. Antes, com uma só,
+  // qualquer perda voltava para "Todas".
   useEffect(() => {
-    if (contaId && contas.length > 0 && !contas.some(c => c.id === contaId)) {
-      setContaId(null);
-    }
-  }, [contas, contaId, setContaId]);
+    if (contaIds.length === 0 || contas.length === 0) return;
+    const sobrevivem = contaIds.filter(id => contas.some(c => c.id === id));
+    if (sobrevivem.length !== contaIds.length) setContaIds(sobrevivem);
+  }, [contas, contaIds, setContaIds]);
 
-  const contaSelecionada = contas.find(c => c.id === contaId);
+  /**
+   * O que o botão diz.
+   *
+   * Uma conta mostra o nome; várias mostram a contagem, porque cinco nomes
+   * não cabem e um nome sozinho mentiria sobre as outras quatro.
+   */
+  const rotuloDasContas =
+    contaIds.length === 0 ? 'Todas as contas'
+    : contaIds.length === 1 ? (contas.find(c => c.id === contaIds[0])?.nome ?? '1 conta')
+    : `${contaIds.length} contas`;
 
   // O tipo sai da própria lista: adicionar um preset novo lá basta, e um `key` que
   // o contexto não conheça vira erro de compilação em vez de silêncio em runtime.
@@ -110,22 +123,28 @@ export default function GlobalFilters() {
             <Button
               variant="outline"
               size="sm"
-              className={cn("h-8 gap-1.5 text-xs font-medium", contaId && "border-primary/50 text-primary")}
+              className={cn("h-8 gap-1.5 text-xs font-medium", contaIds.length > 0 && "border-primary/50 text-primary")}
             >
               <Megaphone className="h-3.5 w-3.5" />
-              <span className="max-w-[160px] truncate">
-                {contaSelecionada ? contaSelecionada.nome : "Todas as contas"}
-              </span>
+              <span className="max-w-[160px] truncate">{rotuloDasContas}</span>
               <ChevronDown className="h-3 w-3 opacity-50" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
-            <div className="flex min-w-[240px] flex-col py-1">
+            {/*
+              Era uma conta por vez. Comparar duas exigia olhar uma, anotar,
+              trocar e olhar a outra — e o número da primeira só existia na
+              memória de quem estava olhando.
+
+              O popover não fecha mais a cada escolha, porque escolher várias é
+              o ponto: fechar depois da primeira faria reabrir para cada conta.
+            */}
+            <div className="flex min-w-[260px] flex-col py-1">
               <button
-                onClick={() => { setContaId(null); setContaOpen(false); }}
+                onClick={() => setContaIds([])}
                 className={cn(
                   "px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                  contaId === null && "bg-accent font-semibold text-accent-foreground",
+                  contaIds.length === 0 && "bg-accent font-semibold text-accent-foreground",
                 )}
               >
                 Todas as contas
@@ -136,22 +155,42 @@ export default function GlobalFilters() {
                 Com gasto no período
               </p>
 
-              {contas.map(c => (
-                <button
-                  key={c.id}
-                  onClick={() => { setContaId(c.id); setContaOpen(false); }}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                    contaId === c.id && "bg-accent font-semibold text-accent-foreground",
-                  )}
-                >
-                  <span className="flex-1 truncate">{c.nome}</span>
-                  {/* O gasto ao lado do nome dá a escala sem precisar entrar na conta. */}
-                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                    {formatCurrency(c.investimento)}
-                  </span>
-                </button>
-              ))}
+              {contas.map(c => {
+                const marcada = contaIds.includes(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setContaIds(
+                      marcada ? contaIds.filter(x => x !== c.id) : [...contaIds, c.id],
+                    )}
+                    className="flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                  >
+                    <span className={cn(
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                      marcada ? 'border-primary bg-primary' : 'border-border',
+                    )}>
+                      {marcada && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                    </span>
+                    <span className="flex-1 truncate">{c.nome}</span>
+                    {/* O gasto ao lado do nome dá a escala sem precisar entrar na conta. */}
+                    <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                      {formatCurrency(c.investimento)}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {contaIds.length > 0 && (
+                <>
+                  <div className="my-1 border-t border-border" />
+                  <button
+                    onClick={() => setContaIds([])}
+                    className="px-3 py-1.5 text-center text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Limpar seleção
+                  </button>
+                </>
+              )}
             </div>
           </PopoverContent>
         </Popover>

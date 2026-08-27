@@ -482,7 +482,7 @@ function Esqueleto() {
 }
 
 export default function TendenciasPage() {
-  const { contaId, setContaId } = useFilters();
+  const { contaIds, setContaIds } = useFilters();
   const [faixa, setFaixa] = useState(FAIXA_PADRAO);
   const [dados, setDados] = useState<Tendencia[]>([]);
   const [loading, setLoading] = useState(true);
@@ -562,15 +562,16 @@ export default function TendenciasPage() {
       .sort((a, b) => b.gasto - a.gasto)
   ), [dados]);
 
-  const contaEscolhida = contas.find(c => c.id === contaId) ?? null;
-  const visiveis = contaId ? dados.filter(d => d.conta_id === contaId) : dados;
-  const cards = contaId ? contas.filter(c => c.id === contaId) : contas;
+    // Uma conta escolhida tem nome para mostrar; várias não têm um nome só.
+  const contaEscolhida = contaIds.length === 1 ? (contas.find(c => c.id === contaIds[0]) ?? null) : null;
+  const visiveis = contaIds.length ? dados.filter(d => contaIds.includes(d.conta_id)) : dados;
+  const cards = contaIds.length ? contas.filter(c => contaIds.includes(c.id)) : contas;
   const movimentos = visiveis.filter(d => d.direcao === "alta" || d.direcao === "queda");
   const gastoTotal = contas.reduce((s, c) => s + c.gasto, 0);
 
   /** A conta veio selecionada de outra tela e não gastou nesta janela. */
-  const contaForaDaJanela = !!contaId && !contaEscolhida && !loading && dados.length > 0;
-  const nomeForaDaJanela = dados.find(d => d.conta_id === contaId)?.conta;
+  const contaForaDaJanela = contaIds.length === 1 && !contaEscolhida && !loading && dados.length > 0;
+  const nomeForaDaJanela = dados.find(d => contaIds.includes(d.conta_id))?.conta;
 
   return (
     <DashboardLayout title="Tendências" hideFilters>
@@ -585,11 +586,11 @@ export default function TendenciasPage() {
             <Button
               variant="outline"
               size="sm"
-              className={cn("h-9 gap-1.5 text-xs font-medium", contaId && "border-primary/50 text-primary")}
+              className={cn("h-9 gap-1.5 text-xs font-medium", contaIds && "border-primary/50 text-primary")}
             >
               <Megaphone className="h-3.5 w-3.5" />
               <span className="max-w-[180px] truncate">
-                {contaEscolhida ? contaEscolhida.nome : contaId ? "Conta sem gasto" : "Todas as contas"}
+                {contaEscolhida ? contaEscolhida.nome : contaIds ? "Conta sem gasto" : "Todas as contas"}
               </span>
               <ChevronDown className="h-3 w-3 opacity-50" />
             </Button>
@@ -597,10 +598,10 @@ export default function TendenciasPage() {
           <PopoverContent className="w-auto p-0" align="start">
             <div className="flex min-w-[280px] flex-col py-1">
               <button
-                onClick={() => { setContaId(null); setContaAberta(false); }}
+                onClick={() => { setContaIds([]); setContaAberta(false); }}
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                  contaId === null && "bg-accent font-semibold text-accent-foreground",
+                  contaIds === null && "bg-accent font-semibold text-accent-foreground",
                 )}
               >
                 <span className="flex-1">Todas as contas</span>
@@ -619,10 +620,10 @@ export default function TendenciasPage() {
               ) : contas.map(c => (
                 <button
                   key={c.id}
-                  onClick={() => { setContaId(c.id); setContaAberta(false); }}
+                  onClick={() => { setContaIds([c.id]); setContaAberta(false); }}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                    contaId === c.id && "bg-accent font-semibold text-accent-foreground",
+                    contaIds.includes(c.id) && "bg-accent font-semibold text-accent-foreground",
                   )}
                 >
                   <span className="flex-1 truncate">{c.nome}</span>
@@ -794,7 +795,7 @@ export default function TendenciasPage() {
             </p>
           </div>
           <button
-            onClick={() => setContaId(null)}
+            onClick={() => setContaIds([])}
             className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-secondary"
           >
             Ver todas as contas
@@ -841,7 +842,7 @@ export default function TendenciasPage() {
                         {!contaEscolhida && (
                           <div className="mb-1.5 flex items-baseline gap-2">
                             <button
-                              onClick={() => setContaId(c.id)}
+                              onClick={() => setContaIds([c.id])}
                               className="text-xs font-medium text-foreground transition-colors hover:text-primary"
                               title="Ver só esta conta"
                             >

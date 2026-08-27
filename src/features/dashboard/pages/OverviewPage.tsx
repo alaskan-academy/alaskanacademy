@@ -218,7 +218,7 @@ function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: ReactNo
 }
 
 export default function OverviewPage() {
-  const { startDateStr, endDateStr, startISO, endISO, contaId } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
   const [segmento, setSegmento] = useState<Segmento>("misto");
   const [abaOp, setAbaOp] = useState<AbaOperacional>("trafego");
   const [kpis, setKpis] = useState<any>({});
@@ -248,7 +248,7 @@ export default function OverviewPage() {
     // timestamptz e comparar com data solta faria o Postgres ler em UTC, puxando as
     // 21h–23h59 do dia anterior para dentro do período.
     const ant = periodoAnt(startDateStr, endDateStr);
-    const argsBase = { p_segmento: segmento, p_conta: contaId ?? null };
+    const argsBase = { p_segmento: segmento, p_conta: contaIds ?? null };
 
     const [atual, anterior] = await Promise.all([
       supabase.rpc("fn_overview", { ...argsBase, p_inicio: startISO, p_fim: endISO }),
@@ -467,7 +467,7 @@ export default function OverviewPage() {
 
     setLastUpdate(new Date());
     setLoading(false);
-  }, [startDateStr, endDateStr, startISO, endISO, contaId, segmento]);
+  }, [startDateStr, endDateStr, startISO, endISO, contaIds, segmento]);
 
   useEffect(() => {
     fetchData();

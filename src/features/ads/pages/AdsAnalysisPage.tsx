@@ -40,7 +40,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 }
 
 export default function AdsAnalysisPage() {
-  const { startDateStr, endDateStr, contaId } = useFilters();
+  const { startDateStr, endDateStr, contaIds } = useFilters();
   const [rawData, setRawData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("compras_meta");
@@ -56,14 +56,14 @@ export default function AdsAnalysisPage() {
         .select("*")
         .eq("nivel", "ad");
       if (startDateStr && endDateStr) q = q.gte("data", startDateStr).lte("data", endDateStr);
-      if (contaId) q = q.eq("ad_account_id", contaId);
+      if (contaIds.length) q = q.in("ad_account_id", contaIds);
 
       const { data } = await q;
       setRawData(data || []);
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, contaId]);
+  }, [startDateStr, endDateStr, contaIds]);
 
   // Agregar por ad_id (pode ter múltiplos dias)
   const ads: AdRow[] = useMemo(() => {
