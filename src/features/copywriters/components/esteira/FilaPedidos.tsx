@@ -25,10 +25,12 @@ const URGENCIA_COR: Record<string, string> = {
 /**
  * A fila de pedidos de variação, como o Copy precisa ler.
  *
- * Ordenada por DINHEIRO por padrão, não pela urgência digitada: um pedido
- * "alta" num AD de R$ 10 não vale um "média" num de R$ 6.659. A urgência é o
- * desempate humano — a informação de fora que o dado não tem — e aparece como
- * selo, não como ordenação.
+ * Ordenada por INVESTIMENTO, não pela urgência digitada: um pedido "alta" num
+ * AD que quase não recebeu verba não vale um "média" no que sustenta a conta. A
+ * urgência é o desempate humano — a informação de fora que o dado não tem — e
+ * aparece como selo, não como ordenação.
+ *
+ * O valor em si não vai para a tela: ele ordena e fica quieto.
  *
  * O fechamento é manual, por decisão. Então duas coisas seguram a fila de
  * apodrecer: cada pedido mostra há quantos dias está aberto, e quando já surgiu
@@ -99,6 +101,11 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
           {abertos.length === 0 ? 'nenhum aberto'
             : abertos.length === 1 ? '1 aberto' : `${abertos.length} abertos`}
         </span>
+        {abertos.length > 1 && (
+          <span className="text-[10px] text-muted-foreground/60">
+            do que mais recebeu verba para o que menos recebeu
+          </span>
+        )}
 
         <span className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground/70">
           {fechados.length > 0 && (
@@ -158,17 +165,8 @@ function LinhaPedido({ p, onFechar }: { p: Pedido; onFechar: () => void }) {
           <span className="rounded bg-secondary px-1.5 py-px text-[10px] text-muted-foreground">{p.funil}</span>
         )}
 
-        {/* O dinheiro, que é o que ordena a fila */}
-        {p.inv_30d != null && (
-          <span className="text-[11px] tabular-nums text-emerald-400/90">
-            {formatCurrency(p.inv_30d)} em 30d
-          </span>
-        )}
-        {p.roas_30d != null && (
-          <span className="text-[11px] tabular-nums text-muted-foreground/70">ROAS {p.roas_30d}x</span>
-        )}
-
-        {/* A urgência é selo, não ordenação: é o desempate humano */}
+        {/* A urgência é selo, não ordenação: é o desempate humano. A ordem sai
+            do investimento, que a fila usa e não mostra. */}
         <span className={cn('rounded px-1.5 py-px text-[10px]', URGENCIA_COR[p.urgencia])}>
           {p.urgencia === 'alta' && <Flame className="mr-0.5 inline h-2.5 w-2.5" />}
           {URGENCIA_LABEL[p.urgencia]}

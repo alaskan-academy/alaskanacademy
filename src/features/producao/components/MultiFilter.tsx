@@ -14,9 +14,17 @@ interface Props {
   value: string[];
   onChange: (v: string[]) => void;
   width?: string;
+  /**
+   * Largura da lista aberta. Os 180px padrão cortam nomes de projeto como
+   * "Workshop Buquê de Velas" — quem usa nomes longos passa outro valor em vez
+   * de todo mundo herdar uma lista larga demais.
+   */
+  larguraDaLista?: string;
 }
 
-export function MultiFilter({ label, options, value, onChange, width = 'w-44' }: Props) {
+export function MultiFilter({
+  label, options, value, onChange, width = 'w-44', larguraDaLista = '180px',
+}: Props) {
   const triggerLabel =
     value.length === 0
       ? label
@@ -44,7 +52,7 @@ export function MultiFilter({ label, options, value, onChange, width = 'w-44' }:
           <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="p-1.5" style={{ width: '180px' }}>
+      <PopoverContent className="p-1.5" style={{ width: larguraDaLista }}>
         <div className="flex flex-col gap-0.5">
           {options.map(o => {
             const checked = value.includes(o.id);

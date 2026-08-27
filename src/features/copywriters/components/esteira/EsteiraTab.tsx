@@ -1,8 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { FASES_MAP } from '@/features/producao/components/constants';
+import { MultiFilter } from '@/features/producao/components/MultiFilter';
+import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/lib/formatters';
+
 import { AlertaDefasagem } from './AlertaDefasagem';
 import { FilaPedidos } from './FilaPedidos';
 import {
@@ -47,7 +49,9 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [projeto, setProjeto] = useState<string>('todos');
+  /* Multiselect: vazio = todos. Um array e não uma string porque a pergunta
+     "como está Saponaria E Velas juntos?" não cabia num chip só. */
+  const [projetos, setProjetos] = useState<string[]>([]);
   const [familia, setFamilia] = useState<string>('todas');
 
   const carregar = useCallback(async () => {
@@ -70,30 +74,33 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
     A tabela mostra os projetos ATIVOS; o alerta mostra só os que têm verba.
     São coisas diferentes de propósito: o alerta cobra de quem está gastando, e
     a tabela deixa ver o que existe em qualquer projeto vivo. Os projetos com
-    verba vêm primeiro na fila de chips.
+    verba vêm primeiro na lista, e os outros levam a marca.
   */
   const comVerba = useMemo(
     () => new Set(defasagem.map(d => d.projeto).filter(Boolean) as string[]),
     [defasagem]);
 
-  const projetos = useMemo(() => {
+  const opcoesDeProjeto = useMemo(() => {
     const s = new Set(lotes.map(l => l.projeto).filter(Boolean) as string[]);
-    return Array.from(s).sort((a, b) => {
-      const va = comVerba.has(a) ? 0 : 1, vb = comVerba.has(b) ? 0 : 1;
-      return va !== vb ? va - vb : a.localeCompare(b);
-    });
+    return Array.from(s)
+      .sort((a, b) => {
+        const va = comVerba.has(a) ? 0 : 1, vb = comVerba.has(b) ? 0 : 1;
+        return va !== vb ? va - vb : a.localeCompare(b);
+      })
+      .map(p => ({ id: p, nome: comVerba.has(p) ? p : `${p} · sem verba` }));
   }, [lotes, comVerba]);
 
   const visiveis = useMemo(() => lotes.filter(l =>
-    (projeto === 'todos' || l.projeto === projeto) &&
+    (projetos.length === 0 || (l.projeto != null && projetos.includes(l.projeto))) &&
     (familia === 'todas' || l.familia === familia)
-  ), [lotes, projeto, familia]);
+  ), [lotes, projetos, familia]);
 
   /* O resumo ignora o filtro de família — senão "Só novo" zeraria os outros dois
      cartões e o mix deixaria de fazer sentido. */
   const noProjeto = useMemo(
-    () => lotes.filter(l => projeto === 'todos' || l.projeto === projeto),
-    [lotes, projeto]);
+    () => lotes.filter(l =>
+      projetos.length === 0 || (l.projeto != null && projetos.includes(l.projeto))),
+    [lotes, projetos]);
 
   const resumo = useMemo(() => {
     const conta = (f: Familia) => {
@@ -112,11 +119,6 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
 
   const metaPctNovo = defasagem[0]?.pct_novo_meta ?? 20;
 
-  const investimento = useMemo(() => {
-    if (projeto === 'todos') return null;
-    return defasagem.find(d => d.projeto === projeto) ?? null;
-  }, [defasagem, projeto]);
-
   return (
     <div className="space-y-4">
       {carregandoDefasagem
@@ -133,8 +135,7 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
       </div>
 
       <BarraDoMix novo={resumo.novo.lotes} iteracao={resumo.iteracao.lotes}
-                  variacao={resumo.variacao.lotes} metaPctNovo={metaPctNovo}
-                  investimento={investimento} />
+                  variacao={resumo.variacao.lotes} metaPctNovo={metaPctNovo} />
 
       {/*
         Só aparece quando há o que mostrar — um cartão permanente para dizer que
@@ -153,51 +154,71 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
       )}
 
       {/*
-        Dois controles diferentes, dois formatos diferentes. Quando os chips de
-        família ficavam na mesma linha dos de projeto, a fila quebrava e os seis
-        liam como um grupo só — dava para "desmarcar" o projeto clicando em
-        "Só novo". O segmentado deixa claro que é outra pergunta.
+        A tabela precisava dizer o que é. Ela mostrava seis colunas sem título
+        nenhum, e "Parado" ao lado de "Aprovado" dava a entender que o card
+        estava travado — quando é só o tempo desde a última data de início.
       */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Chip ativo={projeto === 'todos'} onClick={() => setProjeto('todos')}>Todos os projetos</Chip>
-          {projetos.map(p => (
-            <Chip key={p} ativo={projeto === p} onClick={() => setProjeto(p)}
-                  apagado={!comVerba.has(p)}>
-              {p}
-            </Chip>
-          ))}
-        </div>
-        <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
-          {([['todas', 'Todas'], ...FAMILIAS.map(f => [f, FAMILIA_LABEL[f]])] as [string, string][]).map(([k, r]) => (
-            <button key={k} onClick={() => setFamilia(k)}
-                    className={cn('px-2.5 py-1 text-[11px] transition-colors',
-                      familia === k ? 'bg-primary text-primary-foreground'
-                                    : 'bg-secondary text-muted-foreground hover:text-foreground')}>
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
+      <div className="rounded-lg border border-border bg-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-3.5 py-2.5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="text-xs font-medium text-foreground">O que já está em produção</span>
+            </div>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+              Cada linha é um <span className="text-foreground">AD ainda não postado</span> — do briefing
+              à esteira de teste. <span className="text-foreground">Hooks</span> é quantos dos hooks
+              daquele AD já entraram; <span className="text-foreground">Parado</span> é o tempo desde a
+              última data de início, não que o card esteja travado.
+            </p>
+          </div>
 
-      {erro ? (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-center text-sm text-destructive-foreground">
-          Não foi possível carregar a esteira: {erro}
-          <button onClick={() => void carregar()} className="ml-2 underline underline-offset-2">tentar de novo</button>
+          {/*
+            Dois controles diferentes, dois formatos diferentes. Quando os chips
+            de família ficavam na mesma linha dos de projeto, a fila quebrava e
+            os seis liam como um grupo só — dava para "desmarcar" o projeto
+            clicando em "Só novo". Lista e segmentado deixam claro que são duas
+            perguntas.
+          */}
+          <div className="flex shrink-0 items-center gap-2">
+            <MultiFilter
+              label="Todos os projetos"
+              options={opcoesDeProjeto}
+              value={projetos}
+              onChange={setProjetos}
+              width="w-44"
+              larguraDaLista="340px"
+            />
+            <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
+              {([['todas', 'Todas'], ...FAMILIAS.map(f => [f, FAMILIA_LABEL[f]])] as [string, string][]).map(([k, r]) => (
+                <button key={k} onClick={() => setFamilia(k)}
+                        className={cn('px-2.5 py-1 text-[11px] transition-colors',
+                          familia === k ? 'bg-primary text-primary-foreground'
+                                        : 'bg-secondary text-muted-foreground hover:text-foreground')}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      ) : carregando ? (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          Carregando a esteira…
-        </div>
-      ) : visiveis.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          {lotes.length === 0
-            ? 'Nenhum criativo em produção nos projetos ativos.'
-            : 'Nenhum lote com esses filtros.'}
-        </div>
-      ) : (
-        <Tabela lotes={visiveis} agrupar={projeto === 'todos'} />
-      )}
+
+        {erro ? (
+          <div className="p-4 text-center text-sm text-destructive-foreground">
+            Não foi possível carregar a esteira: {erro}
+            <button onClick={() => void carregar()} className="ml-2 underline underline-offset-2">tentar de novo</button>
+          </div>
+        ) : carregando ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">Carregando a esteira…</div>
+        ) : visiveis.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            {lotes.length === 0
+              ? 'Nenhum criativo em produção nos projetos ativos.'
+              : 'Nenhum AD com esses filtros.'}
+          </div>
+        ) : (
+          <Tabela lotes={visiveis} agrupar={projetos.length !== 1} />
+        )}
+      </div>
     </div>
   );
 }
@@ -209,9 +230,8 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
  * deveria parar. Duas leituras num objeto só, sem obrigar ninguém a fazer conta
  * de cabeça — que era o que aconteceria com três porcentagens soltas.
  */
-function BarraDoMix({ novo, iteracao, variacao, metaPctNovo, investimento }: {
+function BarraDoMix({ novo, iteracao, variacao, metaPctNovo }: {
   novo: number; iteracao: number; variacao: number; metaPctNovo: number;
-  investimento: Defasagem | null;
 }) {
   const total = novo + iteracao + variacao;
   if (total === 0) return null;
@@ -227,11 +247,6 @@ function BarraDoMix({ novo, iteracao, variacao, metaPctNovo, investimento }: {
         <span className="text-[10px] text-muted-foreground/60">
           meta: {metaPctNovo}% novo · {100 - metaPctNovo}% iteração e variação
         </span>
-        {investimento?.inv_7d != null && (
-          <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
-            {formatCurrency(investimento.inv_7d)} investidos em 7 dias
-          </span>
-        )}
       </div>
 
       <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">

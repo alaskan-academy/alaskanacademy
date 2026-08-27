@@ -31,15 +31,23 @@ export interface Lote {
 }
 
 /**
- * Uma linha por projeto ativo COM investimento nos últimos 7 dias.
+ * Uma linha por (projeto ativo com verba, FUNIL).
  *
- * Projeto sem verba não tem defasagem de criativo — tem outra conversa. São 4
- * dos 7 ativos hoje.
+ * TSL e VSL são contas separadas: um mesmo projeto pode estar abastecido de um
+ * lado e vazio do outro, e somar os dois esconde isso — a Saponaria aparecia
+ * com "42% novo" quando o TSL estava em 33% e o VSL em 20%, ou seja, nenhum dos
+ * dois. Um lote marcado "TSL+VSL" conta nos dois; um lote sem funil não conta
+ * em nenhum, porque ninguém sabe qual ele serve.
+ *
+ * Projeto sem verba não entra — não tem defasagem de criativo, tem outra
+ * conversa. São 4 dos 7 ativos hoje.
  */
 export interface Defasagem {
   projeto_id: string;
   projeto: string | null;
   empresa: string | null;
+  funil: string;
+  /** Fica no tipo porque ORDENA a lista — mas não é exibido. */
   inv_7d: number | null;
   inv_30d: number | null;
   ads_novo: number;
@@ -61,12 +69,15 @@ export interface Defasagem {
   prioridade: number;
   sug_ad: number | null;
   sug_hook: number | null;
-  sug_funil: string | null;
   sug_validado_em: string | null;
-  /** Quanto o AD sugerido recebeu em 30 dias. A fila ordena por isto, não por data. */
+  /** Ordena a sugestão (o que mais recebeu verba), mas não é exibido. */
   sug_investido: number | null;
   sug_total: number;
-  funis_projeto: string | null;
+  /**
+   * Lotes do projeto sem funil informado — não entram na conta de nenhum funil.
+   * São 19 dos 38 hoje, e é por isso que este número precisa aparecer.
+   */
+  lotes_sem_funil: number;
 }
 
 /** Um pedido de variação, com o dinheiro do AD ao lado. */
