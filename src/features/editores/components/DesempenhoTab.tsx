@@ -1,4 +1,3 @@
-import { todasAsLinhas } from '@/lib/supabase';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
@@ -46,20 +45,6 @@ function ChipMes({ ativo, onClick, children }: { ativo: boolean; onClick: () => 
   );
 }
 
-// Mês a partir do qual usa producoes em vez de avaliacoes_criativos
-const PRODUCOES_CUTOFF = '2026-07-01';
-
-/** Só o que `SEL_PROD` pede — o resto da linha não é lido aqui. */
-interface CardPostado {
-  id: string;
-  tipo: string | null;
-  responsavel_id: string | null;
-  projeto_id: string | null;
-  data_inicio: string | null;
-  avaliacao: string | null;
-  projeto: { nome: string } | null;
-}
-
 export function DesempenhoTab() {
   const [editores, setEditores] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -80,14 +65,34 @@ export function DesempenhoTab() {
   const [mesDe, setMesDe]   = useState(currentYM(0));
   const [mesAte, setMesAte] = useState(currentYM(0));
 
+  const { startStr, endStr } = useMemo(() => ({
+    startStr: ymToDateRange(mesDe).start,
+    endStr:   ymToDateRange(mesAte).end,
+  }), [mesDe, mesAte]);
+
+  /**
+   * A agregação mudou de lado.
+   *
+   * Esta função puxava os 2.916 cards postados, disparava ~10 consultas em
+   * blocos de 300 ids para achar a data de postagem em `criativo_historico`,
+   * e só então agrupava em JavaScript — 2.916 linhas com relação embutida para
+   * produzir 13 de resultado.
+   *
+   * `fn_desempenho_editores` faz isso no banco e devolve as duas metades já
+   * unidas: `avaliacoes_criativos` até jun/2026, `producoes` depois. Some a
+   * paginação, some o `criativo_historico` em pedaços, e a RLS passa a valer
+   * sobre o número que a tela mostra em vez de sobre 2.916 linhas soltas.
+   *
+   * Conferido contra o que a tela dizia antes: agosto 143/0, junho 63/6,
+   * jun→ago 364/20 — os três iguais.
+   */
   const load = async () => {
     setLoading(true);
     setErro(null);
 
-    // Dados históricos (≤ jun/2026) + editores + projetos ativos
     const [eRes, dRes, pRes] = await Promise.all([
       supabase.from('editores').select('id, nome, usuario_id').order('nome'),
-      supabase.from('avaliacoes_criativos').select('*').order('mes_referencia', { ascending: false }),
+      supabase.rpc('fn_desempenho_editores', { p_ini: startStr, p_fim: endStr }),
       supabase.from('ofertas_editores').select('nome').eq('ativo', true).order('nome'),
     ]);
 
@@ -110,79 +115,15 @@ export function DesempenhoTab() {
     }
 
     setProjetosAtivos((pRes.data || []).map((p: any) => p.nome));
-    const editoresData = eRes.data || [];
-    const historicoItems = dRes.data || [];
-
-    // Map: perfis.id (= usuario_id) → editores.id
-    const editorByUserId: Record<string, string> = {};
-    for (const ed of editoresData) {
-      if (ed.usuario_id) editorByUserId[ed.usuario_id] = ed.id;
-    }
-
-    // Busca producoes postados para derivar meses ≥ jul/2026
-    const SEL_PROD = 'id,tipo,responsavel_id,projeto_id,data_inicio,avaliacao,projeto:ofertas_editores!projeto_id(nome)';
-    /**
-     * Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
-     * de fora — 31% — sem nada dizendo. E sem `order`, *quais* 916 sumiam
-     * mudava a cada carregamento, então os mesmos filtros davam números
-     * diferentes. Numa tela que alimenta decisão de bônus, isso é o pior
-     * defeito possível: errado e instável ao mesmo tempo.
-     */
-    const { linhas: allPosts, erro: erroPost } = await todasAsLinhas<CardPostado>((de, ate) =>
-      supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').order('id').range(de, ate));
-    if (erroPost) { setErro(erroPost); setLoading(false); return; }
-
-    // Data de postagem via criativo_historico
-    const ids = allPosts.map((p: any) => p.id);
-    const postMap: Record<string, string> = {};
-    const CHUNK = 300;
-    await Promise.all(
-      Array.from({ length: Math.ceil(ids.length / CHUNK) }, (_, i) =>
-        supabase.from('criativo_historico')
-          .select('criativo_id,criado_em')
-          .in('criativo_id', ids.slice(i * CHUNK, (i + 1) * CHUNK))
-          .eq('campo_alterado', 'fase')
-          .eq('valor_novo', 'postado')
-          .order('criado_em', { ascending: true })
-          .then(({ data }) => {
-            for (const h of data || []) {
-              if (!postMap[h.criativo_id]) postMap[h.criativo_id] = h.criado_em.slice(0, 10);
-            }
-          }),
-      ),
-    );
-
-    // Agrega producoes por (editor, mês, oferta, tipo) — apenas meses ≥ CUTOFF
-    const aggMap: Record<string, {
-      editor_id: string; mes_referencia: string; empresa: string; oferta: string; tipo: string;
-      ads_testados: number; ads_validados: number; ads_escalados: number;
-    }> = {};
-    for (const p of allPosts as any[]) {
-      const dataRef = postMap[p.id] ?? p.data_inicio ?? null;
-      if (!dataRef || dataRef < PRODUCOES_CUTOFF) continue;
-      const editorId = editorByUserId[p.responsavel_id];
-      if (!editorId) continue;
-      const mes = dataRef.slice(0, 7) + '-01';
-      const oferta = (p.projeto as any)?.nome ?? '— sem projeto —';
-      const tipo = p.tipo ?? 'criativo';
-      const key = `${editorId}::${mes}::${oferta}::${tipo}`;
-      if (!aggMap[key]) aggMap[key] = { editor_id: editorId, mes_referencia: mes, empresa: 'Alaskan Academy', oferta, tipo, ads_testados: 0, ads_validados: 0, ads_escalados: 0 };
-      aggMap[key].ads_testados++;
-      if (p.avaliacao === 'Validado') aggMap[key].ads_validados++;
-      if (p.avaliacao === 'Escalado') aggMap[key].ads_escalados++;
-    }
-    const syntheticItems = Object.values(aggMap).map(row => ({
-      ...row,
-      taxa_assertividade: row.ads_testados > 0
-        ? String(Math.round(((row.ads_validados + row.ads_escalados) / row.ads_testados) * 100))
-        : '0',
-    }));
-
-    setEditores(editoresData);
-    setItems([...historicoItems, ...syntheticItems]);
+    setEditores(eRes.data || []);
+    setItems((dRes.data as any[]) || []);
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+
+  // Recarrega quando o período muda: agora é o BANCO que recorta, então a
+  // janela faz parte da consulta e não mais de um filtro em memória.
+  useEffect(() => { load(); }, [startStr, endStr]);
+
 
   const editorMap = Object.fromEntries(editores.map(x => [x.id, x.nome]));
 
@@ -190,19 +131,13 @@ export function DesempenhoTab() {
    *  foi buscado, e zerá-lo não é limpar, é buscar outra coisa. */
   const filtrosAtivos = (filterEditores.length ? 1 : 0) + (filterOfertas.length ? 1 : 0);
 
-  const { startStr, endStr } = useMemo(() => ({
-    startStr: ymToDateRange(mesDe).start,
-    endStr:   ymToDateRange(mesAte).end,
-  }), [mesDe, mesAte]);
-
+  // O recorte por data saiu daqui: quem faz é a função no banco. Sobrou o que
+  // de fato peneira o que já veio.
   const filtered = useMemo(() => items.filter(i => {
-    if (!i.mes_referencia) return false;
-    const d = String(i.mes_referencia).slice(0, 10);
-    if (d < startStr || d > endStr) return false;
     if (filterEditores.length && !filterEditores.includes(i.editor_id)) return false;
     if (filterOfertas.length > 0 && !filterOfertas.includes(i.oferta)) return false;
     return true;
-  }), [items, startStr, endStr, filterEditores, filterOfertas]);
+  }), [items, filterEditores, filterOfertas]);
 
   /**
    * Os quatro números do topo contam ANÚNCIO, e só anúncio.

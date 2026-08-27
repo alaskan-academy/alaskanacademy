@@ -14,8 +14,8 @@ import { ChevronRight, Lock, Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
-type Cargo = { id: string; nome: string; multiplicador: number; cor: string | null; ordem: number };
-type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null; multiplicador: number | null };
+type Cargo = { id: string; nome: string; multiplicador: number; cor: string | null; ordem: number; setor_id: string | null };
+type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null; multiplicador: number | null; setor_id: string | null };
 
 export function PerfisTab() {
   const { user, perfil: authPerfil } = useAuth();
@@ -28,12 +28,27 @@ export function PerfisTab() {
 
   const load = async () => {
     setLoading(true);
-    const [c, e, rem] = await Promise.all([
+    const [c, e, rem, pf] = await Promise.all([
       supabase.from('cargos').select('*').order('ordem'),
       supabase.from('editores').select('*').not('usuario_id', 'is', null).order('nome'),
       supabase.from('editores_remuneracao').select('editor_id, multiplicador, observacoes'),
+      supabase.from('perfis').select('id, setor_id'),
     ]);
     const cgs: Cargo[] = c.data || [];
+
+    /**
+     * O setor de cada editor, que vem do PERFIL e não da linha do editor.
+     *
+     * Serve para a promoção não oferecer o cargo do setor errado: cada setor
+     * tem a sua própria escada de sete cargos, e "Pleno" existe uma vez em
+     * Copy, uma em Editor e uma em Gestor de Tráfego. A lista deduplicava por
+     * nome e mostrava um "Pleno" só — o primeiro que aparecesse —, então
+     * promover podia mover a pessoa para a escada de outro setor sem nada na
+     * tela denunciando.
+     */
+    const setorPorUsuario = new Map<string, string | null>(
+      ((pf.data ?? []) as { id: string; setor_id: string | null }[]).map(p => [p.id, p.setor_id]),
+    );
 
     /**
      * Multiplicador e observações mudaram de casa: saíram de `editores` para
@@ -57,6 +72,7 @@ export function PerfisTab() {
       ...ed,
       multiplicador: remPorEditor.get(ed.id)?.multiplicador ?? null,
       observacoes:   remPorEditor.get(ed.id)?.observacoes   ?? null,
+      setor_id:      ed.usuario_id ? (setorPorUsuario.get(ed.usuario_id) ?? null) : null,
     }));
     setCargos(cgs);
     setEditores(eds);
@@ -222,7 +238,7 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
       {/* O blob de observações saía aqui, e o "Histórico de promoções" logo
           abaixo dele — um com 3.000 caracteres de texto datado à mão, o outro
           vazio. Viraram uma coisa só. */}
-      <LinhaDoTempo editorId={editor.id} currentCargoId={editor.cargo_id} cargos={cargos}
+      <LinhaDoTempo editorId={editor.id} editorSetorId={editor.setor_id} currentCargoId={editor.cargo_id} cargos={cargos}
                     cargoMap={cargoMap} items={notas} reload={load} onChanged={onChanged}
                     podeEscrever={isAdmin} />
       <HistoricoComissoes items={avaliacoes} />
@@ -250,26 +266,29 @@ const TIPO_NOTA: Record<string, { rotulo: string; cor: string }> = {
  * `feedback` e `remuneracao` não. O banco garante isso — a promoção sem cargo
  * é recusada por CHECK, e não por confiança na tela.
  */
-function LinhaDoTempo({ editorId, currentCargoId, cargos, cargoMap, items, reload, onChanged, podeEscrever }: any) {
+function LinhaDoTempo({ editorId, editorSetorId, currentCargoId, cargos, cargoMap, items, reload, onChanged, podeEscrever }: any) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ tipo: 'feedback', cargo_id: '', data: '', texto: '' });
 
   const ehPromocao = form.tipo === 'promocao';
 
-  // Cargos únicos por nome, menos o atual.
-  //
-  // A deduplicação por NOME está aqui porque o mesmo cargo existe uma vez por
-  // setor — "Pleno" de Copy, de Editor e de Gestor de Tráfego. Isso significa
-  // que a lista mostra um "Pleno" só, e o escolhido pode ser o de outro setor.
-  // Filtrar pelo setor do editor é o certo, e depende de um dado que esta tela
-  // ainda não carrega. Fica anotado, não escondido.
-  const seen = new Set<string>();
-  const currentNome = currentCargoId ? cargoMap[currentCargoId]?.nome : null;
-  const cargosElegiveis = (cargos as Cargo[]).filter(c => {
-    if (seen.has(c.nome)) return false;
-    seen.add(c.nome);
-    return c.nome !== currentNome;
-  });
+  /**
+   * Os cargos DO SETOR do editor, menos o que ele já tem.
+   *
+   * Antes isto deduplicava por NOME, e o mesmo cargo existe uma vez por setor:
+   * "Pleno" em Copy, em Editor e em Gestor de Tráfego. A lista mostrava um
+   * "Pleno" só — o primeiro que aparecesse — e promover podia mover a pessoa
+   * para a escada de outro setor, sem nada na tela denunciando. Os dois
+   * editores de hoje estão certos; era questão de tempo.
+   *
+   * Sem setor, a lista fica vazia em vez de oferecer um cargo qualquer. É o
+   * caso do setor Especialista, que tem uma pessoa e nenhuma escada montada —
+   * e oferecer o "Pleno" de Editor a ela seria inventar uma carreira.
+   */
+  const setorDoEditor = editorSetorId ?? null;
+  const cargosElegiveis = (cargos as Cargo[]).filter(
+    c => !!setorDoEditor && c.setor_id === setorDoEditor && c.id !== currentCargoId,
+  );
 
   const podeSalvar = !!form.data && !!form.texto.trim() && (!ehPromocao || !!form.cargo_id);
 
