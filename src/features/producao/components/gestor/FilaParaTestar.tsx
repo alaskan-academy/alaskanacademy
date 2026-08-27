@@ -43,10 +43,16 @@ export function FilaParaTestar({ cards, selecionados, onToggle, onToggleVarios, 
     );
   }
 
+  /*
+    O `pb-2` do bloco do projeto: sem ele o último AD encostava na linha
+    divisória do próximo, e a lista virava um bloco contínuo. A separação mora
+    aqui, e não no padding do cabeçalho — foi empurrando o cabeçalho que o nome
+    do projeto saiu do centro da própria faixa.
+  */
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
       {arvore.map(proj => (
-        <div key={proj.chave} className="border-b border-border last:border-0">
+        <div key={proj.chave} className="border-b border-border pb-2 last:border-0">
           <Cabecalho
             nivel={0}
             aberto={!fechados.has(proj.chave)}
@@ -124,10 +130,15 @@ function Cabecalho({
   */
   return (
     <div className={cn('flex items-center gap-2 border-b border-border/40 py-1.5 pl-3 pr-4',
-      /* O nome do projeto respira: colado no último AD do projeto anterior,
-         a lista virava um bloco contínuo e não dava para ver onde um termina
-         e o outro começa. O espaço extra é em cima, que é onde falta. */
-      nivel === 0 && 'bg-secondary/40 pb-1.5 pt-3.5',
+      /*
+        Padding SIMÉTRICO: o texto fica no centro do campo.
+
+        Eu tinha resolvido a falta de ar entre projetos empurrando o cabeçalho
+        para baixo (14px em cima, 6px embaixo) — o espaço apareceu, mas o nome
+        ficou deslocado dentro da própria faixa. A separação é problema do
+        bloco, e mora no `pb-2` dele; aqui o padding só centraliza.
+      */
+      nivel === 0 && 'bg-secondary/40 py-2',
       nivel === 1 && 'bg-secondary/15 pl-[32px]',
       nivel === 2 && 'pl-[52px]')}>
       {/* Marcar o grupo marca os filhos: é como ele pensa — "manda o TSL da
