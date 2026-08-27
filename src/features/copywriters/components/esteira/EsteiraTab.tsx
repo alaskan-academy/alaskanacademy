@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { FASES_MAP, FASES_COM_COLUNA } from '@/features/producao/components/constants';
+import { FASES_MAP } from '@/features/producao/components/constants';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -103,18 +103,6 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
     [noProjeto]);
 
   /*
-    Lotes em fase que o Kanban não desenha.
-
-    `briefing` ficou meses assim: dois cards numa fase sem coluna, invisíveis na
-    Produção, e ninguém soube — só apareceram porque a Esteira filtra fase por
-    exclusão e ela estranhou o rótulo em minúscula. Uma fase que não vira coluna
-    é um card que ninguém consegue mover; isso precisa gritar em algum lugar.
-  */
-  const emFaseSemColuna = useMemo(
-    () => noProjeto.filter(l => l.fases.some(f => !FASES_COM_COLUNA.has(f))),
-    [noProjeto]);
-
-  /*
     Projetos ativos que a `fn_esteira_defasagem` não devolveu — ela só traz quem
     gastou nos últimos 7 dias. Sai daqui e não de outra consulta porque `lotes`
     já tem todos os ativos: o que falta é só a diferença entre os dois conjuntos.
@@ -169,20 +157,6 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
         </div>
       )}
 
-      {emFaseSemColuna.length > 0 && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-200/90">
-          {emFaseSemColuna.length === 1
-            ? '1 AD está numa fase que o Kanban da Produção não desenha'
-            : `${emFaseSemColuna.length} ADs estão em fases que o Kanban da Produção não desenha`}
-          {' — '}
-          <span className="font-medium">
-            {Array.from(new Set(emFaseSemColuna.flatMap(l =>
-              l.fases.filter(f => !FASES_COM_COLUNA.has(f))))).join(', ')}
-          </span>
-          . Sem coluna, ninguém consegue movê-los de lá:{' '}
-          {Array.from(new Set(emFaseSemColuna.map(l => rotuloDoAd(l.ad_num)))).join(' · ')}.
-        </div>
-      )}
 
       {/*
         A tabela precisava dizer o que é. Ela mostrava seis colunas sem título
