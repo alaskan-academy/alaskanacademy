@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 type Cargo = { id: string; nome: string; multiplicador: number; cor: string | null; ordem: number; setor_id: string | null };
-type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; observacoes: string | null; usuario_id: string | null; multiplicador: number | null; setor_id: string | null };
+type Editor = { id: string; nome: string; cargo_id: string | null; data_inicio: string | null; ativo: boolean; usuario_id: string | null; multiplicador: number | null; setor_id: string | null };
 
 export function PerfisTab() {
   const { user, perfil: authPerfil } = useAuth();
@@ -31,7 +31,7 @@ export function PerfisTab() {
     const [c, e, rem, pf] = await Promise.all([
       supabase.from('cargos').select('*').order('ordem'),
       supabase.from('editores').select('*').not('usuario_id', 'is', null).order('nome'),
-      supabase.from('editores_remuneracao').select('editor_id, multiplicador, observacoes'),
+      supabase.from('editores_remuneracao').select('editor_id, multiplicador'),
       supabase.from('perfis').select('id, setor_id'),
     ]);
     const cgs: Cargo[] = c.data || [];
@@ -64,14 +64,13 @@ export function PerfisTab() {
      * Quem não pode ver recebe `null`, e a tela já sabia desenhar isso: todo
      * lugar que mostra estes campos testa antes e cai num "—".
      */
-    type Remuneracao = { editor_id: string; multiplicador: number | null; observacoes: string | null };
+    type Remuneracao = { editor_id: string; multiplicador: number | null };
     const remPorEditor = new Map<string, Remuneracao>(
       ((rem.data ?? []) as Remuneracao[]).map(r => [r.editor_id, r]),
     );
     const eds: Editor[] = (e.data || []).map((ed: Editor) => ({
       ...ed,
       multiplicador: remPorEditor.get(ed.id)?.multiplicador ?? null,
-      observacoes:   remPorEditor.get(ed.id)?.observacoes   ?? null,
       setor_id:      ed.usuario_id ? (setorPorUsuario.get(ed.usuario_id) ?? null) : null,
     }));
     setCargos(cgs);

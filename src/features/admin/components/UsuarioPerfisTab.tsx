@@ -3,9 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Link2, Bold, Italic, Underline, X, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
 
 type Cargo = { id: string; nome: string; multiplicador: string; cor: string };
 type EditorDetalhe = {
@@ -14,146 +13,17 @@ type EditorDetalhe = {
   cargo_id: string;
   data_inicio: string;
   ativo: boolean;
-  observacoes: string;
   multiplicador: string;
 };
 
 const fmtMult = (m: string | number) => `${parseFloat(String(m)).toFixed(2)}x`;
 
-// ── Rich text editor sem dependências externas ───────────────────────────────
-
-function RichTextEditor({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (html: string) => void;
-}) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const [showLink, setShowLink] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const savedRange = useRef<Range | null>(null);
-
-  useEffect(() => {
-    if (editorRef.current) editorRef.current.innerHTML = value ?? '';
-  }, []); // only on mount — controlled by parent via value prop initial only
-
-  const saveRange = () => {
-    const sel = window.getSelection();
-    savedRange.current = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
-  };
-
-  const restoreRange = () => {
-    const sel = window.getSelection();
-    if (sel && savedRange.current) {
-      sel.removeAllRanges();
-      sel.addRange(savedRange.current);
-    }
-  };
-
-  const exec = (cmd: string) => {
-    editorRef.current?.focus();
-    document.execCommand(cmd, false);
-    onChange(editorRef.current?.innerHTML ?? '');
-  };
-
-  const openLink = () => {
-    saveRange();
-    setLinkUrl('');
-    setShowLink(true);
-  };
-
-  const applyLink = () => {
-    restoreRange();
-    editorRef.current?.focus();
-    if (linkUrl.trim()) document.execCommand('createLink', false, linkUrl.trim());
-    setShowLink(false);
-    onChange(editorRef.current?.innerHTML ?? '');
-  };
-
-  const cancelLink = () => {
-    setShowLink(false);
-  };
-
-  return (
-    <div className="border border-border rounded-md overflow-hidden text-xs">
-      {/* Toolbar */}
-      <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-border bg-secondary/30">
-        <button
-          type="button"
-          onMouseDown={e => { e.preventDefault(); exec('bold'); }}
-          className="p-1.5 rounded hover:bg-secondary transition-colors"
-          title="Negrito"
-        >
-          <Bold className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onMouseDown={e => { e.preventDefault(); exec('italic'); }}
-          className="p-1.5 rounded hover:bg-secondary transition-colors"
-          title="Itálico"
-        >
-          <Italic className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onMouseDown={e => { e.preventDefault(); exec('underline'); }}
-          className="p-1.5 rounded hover:bg-secondary transition-colors"
-          title="Sublinhado"
-        >
-          <Underline className="h-3.5 w-3.5" />
-        </button>
-        <div className="w-px h-4 bg-border mx-0.5" />
-        <button
-          type="button"
-          onMouseDown={e => { e.preventDefault(); openLink(); }}
-          className="p-1.5 rounded hover:bg-secondary transition-colors"
-          title="Inserir link"
-        >
-          <Link2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* Link input inline */}
-      {showLink && (
-        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border bg-secondary/20">
-          <input
-            autoFocus
-            type="url"
-            value={linkUrl}
-            onChange={e => setLinkUrl(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
-              if (e.key === 'Escape') cancelLink();
-            }}
-            placeholder="https://..."
-            className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-          <button type="button" onClick={applyLink} title="Aplicar" className="p-1 rounded hover:bg-primary/10 text-primary">
-            <Check className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={cancelLink} title="Cancelar" className="p-1 rounded hover:bg-secondary">
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Editable area */}
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={() => onChange(editorRef.current?.innerHTML ?? '')}
-        className={cn(
-          'min-h-[80px] max-h-[200px] overflow-y-auto p-2.5 focus:outline-none',
-          '[&_a]:text-primary [&_a]:underline',
-          'empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground',
-        )}
-        data-placeholder="Observações sobre o editor..."
-      />
-    </div>
-  );
-}
+/*
+ * O  morava aqui — 130 linhas de contentEditable com
+ * negrito, itálico e link, escritas à mão. Existia só para o campo de
+ * observações, que virou a linha do tempo em Editores › Perfis. Sem o campo,
+ * ele ficou definido e nunca usado.
+ */
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -175,9 +45,9 @@ export function UsuarioPerfisTab() {
         .select('id, nome, cargo_id, data_inicio, ativo')
         .order('nome'),
       supabase.from('cargos').select('id, nome, multiplicador, cor').order('ordem'),
-      supabase.from('editores_remuneracao').select('editor_id, multiplicador, observacoes'),
+      supabase.from('editores_remuneracao').select('editor_id, multiplicador'),
     ]);
-    type Remuneracao = { editor_id: string; multiplicador: number | null; observacoes: string | null };
+    type Remuneracao = { editor_id: string; multiplicador: number | null };
     const remPorEditor = new Map<string, Remuneracao>(
       ((rem ?? []) as Remuneracao[]).map(r => [r.editor_id, r]),
     );
@@ -190,7 +60,6 @@ export function UsuarioPerfisTab() {
           cargo_id: e.cargo_id ?? '',
           data_inicio: e.data_inicio ?? '',
           ativo: e.ativo ?? true,
-          observacoes: r?.observacoes ?? '',
           multiplicador: r?.multiplicador != null ? String(r.multiplicador) : '',
         };
       }),
@@ -231,7 +100,6 @@ export function UsuarioPerfisTab() {
       .upsert({
         editor_id: ed.id,
         multiplicador,
-        observacoes: f.observacoes ?? null,
         atualizado_em: new Date().toISOString(),
       }, { onConflict: 'editor_id' });
 
@@ -336,14 +204,16 @@ export function UsuarioPerfisTab() {
                   </div>
                 </div>
 
-                {/* Observações com rich text */}
-                <div>
-                  <Label className="text-xs mb-1.5 block">Observações</Label>
-                  <RichTextEditor
-                    value={f.observacoes ?? ed.observacoes}
-                    onChange={html => setField(ed.id, 'observacoes', html)}
-                  />
-                </div>
+                {/* O editor de observações morava aqui, e era um campo só que
+                    se reescrevia por inteiro a cada save — com as datas
+                    digitadas à mão no começo de cada parágrafo. Virou a linha
+                    do tempo em Editores › Perfis, onde cada nota tem data,
+                    tipo e não apaga a anterior. Dois lugares para escrever a
+                    mesma coisa divergiriam na primeira semana. */}
+                <p className="text-xs text-muted-foreground">
+                  Feedback, promoção e remuneração ficam na linha do tempo do
+                  editor, em <span className="text-foreground">Editores › Perfis</span>.
+                </p>
 
                 <div className="flex justify-end">
                   <Button size="sm" onClick={() => handleSave(ed)} disabled={isSaving}>

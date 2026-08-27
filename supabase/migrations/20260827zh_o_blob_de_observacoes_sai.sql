@@ -1,0 +1,25 @@
+-- O blob de observações sai. As 11 notas datadas ficam.
+--
+-- Ele foi mantido de propósito desde a migração que criou `editor_notas`: o
+-- corte em notas foi automático, e apagar o original antes de alguém conferir
+-- seria confiar num regex com o único registro que existia.
+--
+-- Conferido antes de apagar, comparando só LETRAS E NÚMEROS (sem espaço, sem
+-- marcação), blob contra a soma das notas:
+--
+--   Jaqueline   2.132 no blob   2.164 nas notas   +32
+--   Jessica     2.022 no blob   1.998 nas notas   −24
+--
+-- A conta fecha, e a diferença são as DATAS. Elas saíram do texto e foram
+-- para a coluna `data`: Jessica tem 4 notas e "12/05/26" sem pontuação são 6
+-- caracteres — 4 × 6 = 24, exato. Jaqueline perde 23 pelo mesmo motivo e
+-- ganha 55 do texto da promoção que já estava na tabela antes, o que dá os
+-- +32.
+--
+-- Nenhum conteúdo se perdeu. O que sai daqui é a cópia, não o original.
+--
+-- E com isto o nome da tabela volta a ser verdade: `editores_remuneracao`
+-- passa a guardar só pagamento, que era o motivo de ela existir. O terceiro
+-- item da lista de pendências se resolve sem renomear nada.
+
+ALTER TABLE public.editores_remuneracao DROP COLUMN observacoes;
