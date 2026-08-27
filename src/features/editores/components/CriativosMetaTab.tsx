@@ -291,13 +291,15 @@ function Valor({ v, ref_, formato, invertido, cinza, titulo }: {
   );
 }
 
-function Cabecalho({ col, rotulo, atual, dir, onSort, alinhar }: {
+function Cabecalho({ col, rotulo, atual, dir, onSort, alinhar, className }: {
   col: Coluna; rotulo: string; atual: Coluna; dir: 'asc' | 'desc';
   onSort: (c: Coluna) => void; alinhar?: 'right';
+  /** Para a coluna do nome poder grudar na esquerda junto com o cabeçalho. */
+  className?: string;
 }) {
   const ativo = atual === col;
   return (
-    <th className={cn('px-3 py-2 font-medium', alinhar === 'right' ? 'text-right' : 'text-left')}>
+    <th className={cn('px-3 py-2 font-medium', alinhar === 'right' ? 'text-right' : 'text-left', className)}>
       <button onClick={() => onSort(col)}
               className={cn('inline-flex items-center gap-1 transition-colors hover:text-foreground',
                 ativo ? 'text-foreground' : 'text-muted-foreground')}>
@@ -525,6 +527,12 @@ export function CriativosMetaTab() {
   const escondidos = useMemo(
     () => criativos.filter(a => a.investimento < INVESTIMENTO_RELEVANTE).length, [criativos]);
 
+  /** O investimento do período INTEIRO, incluindo o que o corte de R$ 50
+   *  esconde — para o resumo poder dizer "X de Y" em vez de dar o parcial
+   *  como se fosse o total. */
+  const investimentoTotal = useMemo(
+    () => criativos.reduce((s, a) => s + a.investimento, 0), [criativos]);
+
 
   const visiveis = useMemo(() => {
     let l = recorte;
@@ -705,9 +713,26 @@ export function CriativosMetaTab() {
           Agrupar por editor
         </ChipFiltro>
 
+        {/*
+          O resumo dizia "125 anúncios · R$ 95.714 · 1.851 vendas", e as três
+          palavras enganavam:
+
+          - eram 125 CRIATIVOS, agrupados de 328 anúncios. Um criativo que
+            roda em três anúncios contava um, mas a palavra dizia outra coisa;
+          - o dinheiro era PARCIAL — os criativos abaixo de R$ 50 ficam fora,
+            e eram 103 deles somando R$ 1.881. O rodapé avisa, mas quem lê o
+            topo não desce até lá;
+          - "vendas" são conversões do META, e logo abaixo a coluna ROAS usa
+            receita da PAYT. Duas escalas com o mesmo nome na mesma tela.
+
+          Agora cada número diz o que é, e o total parcial se anuncia.
+        */}
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-          {visiveis.length} anúncios · {formatCurrency(totais.investimento)} ·{' '}
-          {formatNumber(totais.vendas)} vendas
+          {plural(visiveis.length, 'criativo')} · {formatCurrency(totais.investimento)}
+          {escondidos > 0 && !verPoucoInvestimento && (
+            <span className="text-muted-foreground/60"> de {formatCurrency(investimentoTotal)}</span>
+          )}
+          {' · '}{formatNumber(totais.vendas)} conversões Meta
         </span>
       </div>
 
@@ -737,12 +762,23 @@ export function CriativosMetaTab() {
           Nenhum anúncio com esses filtros no período selecionado.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        /*
+          Nada era fixo: rolando para a direita o nome do anúncio saía da tela
+          e sobravam nove colunas de número sem dono; rolando para baixo, o
+          cabeçalho ia junto e "1,86" deixava de ser ROAS.
+
+          São até 125 linhas e nove colunas — as duas rolagens acontecem
+          sempre. O cabeçalho gruda no topo do quadro, e o nome gruda na
+          esquerda com o fundo opaco (sem ele o número passa POR BAIXO e os
+          dois se sobrepõem).
+        */
+        <div className="max-h-[70vh] overflow-auto rounded-lg border border-border bg-card">
           <table className="w-full text-sm">
-            <thead className="border-b border-border bg-secondary/30 text-xs">
+            <thead className="sticky top-0 z-20 border-b border-border bg-secondary text-xs">
               <tr>
-                <th className="w-6" />
-                <Cabecalho col="nome"         rotulo="Anúncio"   atual={col} dir={dir} onSort={ordenar} />
+                <th className="sticky left-0 z-30 w-6 bg-secondary" />
+                <Cabecalho col="nome" rotulo="Anúncio" atual={col} dir={dir} onSort={ordenar}
+                           className="sticky left-6 z-30 bg-secondary" />
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">Editor</th>
                 <Cabecalho col="investimento" rotulo="Investido" atual={col} dir={dir} onSort={ordenar} alinhar="right" />
                 <Cabecalho col="roas"         rotulo="ROAS"      atual={col} dir={dir} onSort={ordenar} alinhar="right" />
@@ -796,8 +832,8 @@ export function CriativosMetaTab() {
         <button onClick={() => setVerPoucoInvestimento(v => !v)}
                 className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground">
           {verPoucoInvestimento
-            ? `Esconder os ${escondidos} anúncios com menos de ${formatCurrency(INVESTIMENTO_RELEVANTE)} investidos`
-            : `Mostrar ${escondidos} anúncios que investiram menos de ${formatCurrency(INVESTIMENTO_RELEVANTE)}`}
+            ? `Esconder os ${plural(escondidos, 'criativo')} com menos de ${formatCurrency(INVESTIMENTO_RELEVANTE)} investidos`
+            : `Mostrar ${plural(escondidos, 'criativo')} que investiram menos de ${formatCurrency(INVESTIMENTO_RELEVANTE)}`}
         </button>
       )}
 
@@ -903,12 +939,17 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, onAbrirCard, podeTro
   return (
     <>
       <tr onClick={onToggle}
-          className={cn('cursor-pointer border-b border-border/40 hover:bg-secondary/30',
+          className={cn('group/linha cursor-pointer border-b border-border/40 hover:bg-secondary/30',
             expandido && 'bg-secondary/30')}>
-        <td className="pl-3 text-muted-foreground">
+        {/* As duas primeiras células grudam na esquerda, com fundo OPACO: sem
+            ele os números passam por baixo e se sobrepõem ao nome. O fundo
+            acompanha o estado da linha para o hover não cortar no meio. */}
+        <td className={cn('sticky left-0 z-10 pl-3 text-muted-foreground',
+                          expandido ? 'bg-[hsl(var(--secondary))]' : 'bg-card group-hover/linha:bg-[hsl(var(--secondary))]')}>
           {expandido ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </td>
-        <td className="max-w-[260px] px-3 py-2">
+        <td className={cn('sticky left-6 z-10 max-w-[260px] px-3 py-2',
+                          expandido ? 'bg-[hsl(var(--secondary))]' : 'bg-card group-hover/linha:bg-[hsl(var(--secondary))]')}>
           <div className="flex items-center gap-1.5">
             <span className="truncate text-foreground" title={a.ad_nome}>{a.ad_nome || a.ad_id}</span>
             {ehMeu && <span className="shrink-0 rounded bg-primary/15 px-1 py-0.5 text-[9px] text-primary">meu</span>}
@@ -1133,6 +1174,15 @@ interface Card {
   avaliacao: string | null; status_veiculacao: string | null;
 }
 
+/** Uma sugestão de `fn_cards_parecidos`: card postado com nome próximo. */
+interface Parecido {
+  producao_id: string;
+  nome: string;
+  editor: string | null;
+  projeto: string | null;
+  semelhanca: number;
+}
+
 /**
  * Diz qual card de Produção é este anúncio.
  *
@@ -1151,6 +1201,20 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
   const [termo, setTermo] = useState(anuncio.ad_nome ?? '');
   const [salvando, setSalvando] = useState(false);
   const [erroBusca, setErroBusca] = useState<string | null>(null);
+
+  /**
+   * Cards com nome PARECIDO, para o caso em que o nome exato não existe.
+   *
+   * A busca de cima é `ilike '%nome%'` — literal. Um anúncio chamado
+   * "AD 006 H01 V011", com um zero a mais, não encontra o card "V11" por ali,
+   * e a tela dizia só "nenhum card com esse nome". Foram nove anúncios e
+   * meses assim, com o investimento sem dono.
+   *
+   * `fn_cards_parecidos` compara por trigrama e corta em 0.55. Sugere, não
+   * liga: quem confirma é quem lê — a mesma distinção entre 'sugerido' e
+   * 'confirmado' que o resto desta tela já faz.
+   */
+  const [parecidos, setParecidos] = useState<Parecido[]>([]);
 
   const procurar = useCallback(async (t: string) => {
     setBuscando(true);
@@ -1180,6 +1244,15 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
   // refazer a cada tecla transformaria digitar num bombardeio de consultas.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { procurar(termo); }, []);
+
+  // Os parecidos vêm junto na abertura, com o nome ORIGINAL do anúncio — não
+  // com o que a pessoa digitar depois. Eles respondem "o nome está errado?",
+  // e essa pergunta é sobre o anúncio, não sobre a busca.
+  useEffect(() => {
+    if (!anuncio.ad_nome) return;
+    supabase.rpc('fn_cards_parecidos', { p_nome: anuncio.ad_nome, p_limite: 3 })
+      .then(({ data }) => setParecidos((data ?? []) as Parecido[]));
+  }, [anuncio.ad_nome]);
 
   const salvar = async (cardId: string) => {
     setSalvando(true);
@@ -1236,6 +1309,38 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90">
               Só administrador define o dono do anúncio. Você pode conferir os candidatos abaixo.
             </p>
+          )}
+
+          {/* Os parecidos vêm ANTES da busca, porque respondem a pergunta que
+              traz a pessoa aqui: o nome está errado por pouco? Depois de nove
+              anúncios perdidos por um zero, a sugestão é o caminho principal e
+              a busca é o plano B. */}
+          {parecidos.length > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+              <p className="mb-1.5 text-[11px] text-primary/90">
+                Nome parecido — pode ser um erro de digitação no nome do anúncio:
+              </p>
+              <div className="space-y-1">
+                {parecidos.map(p => (
+                  <div key={p.producao_id} className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-foreground">{p.nome}</div>
+                      <div className="truncate text-[10.5px] text-muted-foreground">
+                        {p.editor ?? 'sem editor'}
+                        {p.projeto && ` · ${p.projeto}`}
+                        {' · '}{Math.round(p.semelhanca * 100)}% parecido
+                      </div>
+                    </div>
+                    {podeEditar && (
+                      <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs"
+                              disabled={salvando} onClick={() => salvar(p.producao_id)}>
+                        É este
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           <div className="flex gap-2">
