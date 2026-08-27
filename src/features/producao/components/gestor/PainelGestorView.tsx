@@ -12,6 +12,7 @@ import { CalendarDays, Inbox, Send, X, Clock } from 'lucide-react';
 import { FilaParaTestar } from './FilaParaTestar';
 import { EsteiraPorDia } from './EsteiraPorDia';
 import { CardDaFila, DIAS_PARA_ESQUECIDO, rotuloDeDias } from './tipos';
+import { useFases, rotuloDaFase } from '../../useFases';
 
 /**
  * O painel do Gestor de Tráfego.
@@ -24,9 +25,10 @@ import { CardDaFila, DIAS_PARA_ESQUECIDO, rotuloDeDias } from './tipos';
  *
  * Duas perguntas, duas seções:
  *   1. o que está pronto para testar — árvore projeto → funil → tipo, sem data
- *   2. o que está em teste — por dia, para ler a demanda da semana
+ *   2. o que está na esteira de teste — por dia, para ler a demanda da semana
  */
 export function PainelGestorView({ userId }: { userId: string }) {
+  const { fases } = useFases();
   const [cards, setCards] = useState<CardDaFila[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -95,11 +97,9 @@ export function PainelGestorView({ userId }: { userId: string }) {
     5 da Cosmética Natural. Misturados com os ativos, faziam a tela dizer "80
     cards na esteira" quando o que existe de verdade é um terço disso.
 
-    E esses 80 não são fila pendente: são registros do tempo do Notion, onde
-    `esteira_teste` significava o que `postado` significa hoje. Todos vieram da
-    carga de 23/08/2026 e nenhum tem uma linha de `criativo_historico` — nunca
-    passaram pelo fluxo do app. O certo seria migrá-los para `postado`; até lá,
-    a aba os tira da frente.
+    (Aqueles 80 eram registros do tempo do Notion, onde `esteira_teste`
+    significava o que `postado` significa hoje; já foram migrados. O número
+    acima é o que a tela mostrava antes disso.)
 
     A aba existe para eles não sumirem: continuam a um clique, com a contagem
     visível, porque some da tela não é o mesmo que deixar de existir.
@@ -226,11 +226,21 @@ export function PainelGestorView({ userId }: { userId: string }) {
       </section>
 
       <section>
+        {/*
+          O nome sai de `producao_fases`, e não escrito aqui.
+
+          Eu tinha posto "Em teste", e a fase se chama "Esteira de Teste" — dois
+          nomes para a mesma coisa fizeram ela perguntar se a seção mostrava
+          outra coisa. Lendo o rótulo da tabela, renomear a fase renomeia a
+          seção junto, e a dúvida não volta.
+        */}
         <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
           <CalendarDays className="h-4 w-4 shrink-0 translate-y-0.5 text-muted-foreground" />
-          <h2 className="text-sm font-semibold text-foreground">Em teste, por dia</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            {rotuloDaFase(fases, 'esteira_teste')}, por dia
+          </h2>
           <span className="text-[11px] text-muted-foreground">
-            {emTeste.length} cards na esteira
+            {emTeste.length} {emTeste.length === 1 ? 'card' : 'cards'}
           </span>
         </div>
         <EsteiraPorDia cards={emTeste} onAbrirCard={abrirCard} />

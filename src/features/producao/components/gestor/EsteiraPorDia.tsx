@@ -51,8 +51,12 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
 
   if (cards.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-        Nada em esteira de teste.
+      <div className="rounded-lg border border-border bg-card px-4 py-8 text-center">
+        <p className="text-sm text-muted-foreground">Nada na esteira de teste agora.</p>
+        {/* Um vazio que não diz o caminho parece defeito. */}
+        <p className="mt-1 text-[11px] text-muted-foreground/60">
+          Marque ADs na fila acima e use “Enviar para a esteira” com a data do teste.
+        </p>
       </div>
     );
   }
