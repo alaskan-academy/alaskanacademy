@@ -41,9 +41,14 @@ ALTER DATABASE postgres SET timezone TO 'America/Sao_Paulo';
 -- banco ajustado — que é o caso que importa, porque é por onde passa tudo.
 ALTER ROLE authenticator SET timezone TO 'America/Sao_Paulo';
 
--- Depois de aplicar, conferir numa conexão NOVA (as abertas mantêm o fuso
--- antigo até reconectarem):
+-- APLICADO em 26/08/2026, 22:30. Conferido numa conexão nova:
 --
---   select current_setting('TimeZone'), current_date, now();
+--   TimeZone      America/Sao_Paulo
+--   current_date  2026-08-26   (era 2026-08-27)
+--   now()         2026-08-26 22:30:30-03
 --
--- Deve dizer America/Sao_Paulo e a data de hoje no Brasil.
+-- E o efeito no dado, medido depois: as 477 vendas no dia errado viraram 0.
+-- Os seis agendamentos do pg_cron continuaram nos mesmos horários, como
+-- previsto — o `atribuicao-horaria` rodou às 22:10 normalmente.
+--
+-- Conexões já abertas mantêm o fuso antigo até reconectarem.
