@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  rotuloDoAd, rotuloDoAdHook, rotuloDeDias, FAMILIA_LABEL,
+  rotuloDoAd, rotuloDoAdHook, rotuloDeDias, FAMILIA_LABEL, URGENCIA_LABEL,
 } from '@/features/copywriters/components/esteira/tipos';
 
 describe('rotuloDoAd', () => {
@@ -60,11 +60,28 @@ describe('rotuloDeDias', () => {
 });
 
 describe('FAMILIA_LABEL', () => {
-  it('tem rótulo para as duas famílias e para os dois casos de escape', () => {
+  it('tem rótulo para as três famílias e para os dois casos de escape', () => {
     // 'outro' e 'sem_tipo' existem para um tipo_teste desconhecido APARECER na
     // tela em vez de sumir da conta — se perderem o rótulo, some de novo.
-    for (const k of ['novo', 'variacao', 'sem_tipo', 'outro']) {
+    for (const k of ['novo', 'iteracao', 'variacao', 'sem_tipo', 'outro']) {
       expect(FAMILIA_LABEL[k]).toBeTruthy();
+    }
+  });
+
+  it('iteração é família própria, e não um apelido de novo', () => {
+    // A meta é 20% novo contra 80% iteração e variação. Com iteração dentro de
+    // "novo" não dá para medir isso — e três dos quatro projetos com verba
+    // estão no dobro da meta hoje.
+    expect(FAMILIA_LABEL.iteracao).not.toBe(FAMILIA_LABEL.novo);
+  });
+});
+
+describe('URGENCIA_LABEL', () => {
+  it('cobre os três valores que o CHECK do banco aceita', () => {
+    // `urgencia text NOT NULL CHECK (urgencia IN ('alta','media','baixa'))`.
+    // Um valor sem rótulo aqui apareceria em branco no selo da fila.
+    for (const k of ['alta', 'media', 'baixa']) {
+      expect(URGENCIA_LABEL[k]).toBeTruthy();
     }
   });
 });

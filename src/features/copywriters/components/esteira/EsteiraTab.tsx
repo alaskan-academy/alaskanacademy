@@ -2,21 +2,47 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { FASES_MAP } from '@/features/producao/components/constants';
 import { cn } from '@/lib/utils';
+import { formatCurrency } from '@/lib/formatters';
 import { AlertaDefasagem } from './AlertaDefasagem';
+import { FilaPedidos } from './FilaPedidos';
 import {
-  Defasagem, Lote, DIAS_PARA_VELHO, FAMILIA_LABEL, rotuloDoAd, rotuloDeDias,
+  Defasagem, Lote, Familia, DIAS_PARA_VELHO, FAMILIA_LABEL,
+  rotuloDoAd, rotuloDeDias,
 } from './tipos';
 
+/** As três famílias, na ordem em que a operação pensa nelas. */
+const FAMILIAS: Familia[] = ['novo', 'iteracao', 'variacao'];
+
+const FAMILIA_AJUDA: Record<string, string> = {
+  novo:     'Novo',
+  iteracao: 'Iteração',
+  variacao: 'Vertical · Horizontal · Formato · Corpo',
+};
+
+const FAMILIA_COR: Record<string, string> = {
+  novo:     'bg-primary',
+  iteracao: 'bg-emerald-500',
+  variacao: 'bg-blue-500',
+};
+
+const FAMILIA_SELO: Record<string, string> = {
+  novo:     'bg-primary/15 text-primary',
+  iteracao: 'bg-emerald-500/15 text-emerald-400',
+  variacao: 'bg-blue-500/15 text-blue-400',
+};
+
 /**
- * Quanto o Copy tem de estoque, por projeto, separado entre novo e variação.
+ * Quanto o Copy tem de estoque, por projeto, separado entre novo, iteração e
+ * variação.
  *
  * Somente leitura, de propósito. Editar card continua na Produção — dois
  * caminhos de escrita sobre `producoes` divergiriam, e é literalmente a
- * primeira armadilha do CLAUDE.md. Cada lote leva ao card lá.
+ * primeira armadilha do CLAUDE.md.
  */
-export function EsteiraTab({ defasagem, carregandoDefasagem }: {
+export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
   defasagem: Defasagem[];
   carregandoDefasagem: boolean;
+  onRecarregar?: () => void;
 }) {
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -40,28 +66,56 @@ export function EsteiraTab({ defasagem, carregandoDefasagem }: {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
+  /*
+    A tabela mostra os projetos ATIVOS; o alerta mostra só os que têm verba.
+    São coisas diferentes de propósito: o alerta cobra de quem está gastando, e
+    a tabela deixa ver o que existe em qualquer projeto vivo. Os projetos com
+    verba vêm primeiro na fila de chips.
+  */
+  const comVerba = useMemo(
+    () => new Set(defasagem.map(d => d.projeto).filter(Boolean) as string[]),
+    [defasagem]);
+
   const projetos = useMemo(() => {
     const s = new Set(lotes.map(l => l.projeto).filter(Boolean) as string[]);
-    return Array.from(s).sort();
-  }, [lotes]);
+    return Array.from(s).sort((a, b) => {
+      const va = comVerba.has(a) ? 0 : 1, vb = comVerba.has(b) ? 0 : 1;
+      return va !== vb ? va - vb : a.localeCompare(b);
+    });
+  }, [lotes, comVerba]);
 
   const visiveis = useMemo(() => lotes.filter(l =>
     (projeto === 'todos' || l.projeto === projeto) &&
     (familia === 'todas' || l.familia === familia)
   ), [lotes, projeto, familia]);
 
+  /* O resumo ignora o filtro de família — senão "Só novo" zeraria os outros dois
+     cartões e o mix deixaria de fazer sentido. */
+  const noProjeto = useMemo(
+    () => lotes.filter(l => projeto === 'todos' || l.projeto === projeto),
+    [lotes, projeto]);
+
   const resumo = useMemo(() => {
-    const conta = (f: string) => {
-      const ls = visiveis.filter(l => l.familia === f);
+    const conta = (f: Familia) => {
+      const ls = noProjeto.filter(l => l.familia === f);
       return {
         lotes: ls.length,
         cards: ls.reduce((s, l) => s + l.cards, 0),
         velhos: ls.filter(l => (l.dias_parado ?? 0) >= DIAS_PARA_VELHO).length,
       };
     };
-    const naoClassificados = visiveis.filter(l => l.familia === 'sem_tipo' || l.familia === 'outro');
-    return { novo: conta('novo'), variacao: conta('variacao'), naoClassificados };
-  }, [visiveis]);
+    return {
+      novo: conta('novo'), iteracao: conta('iteracao'), variacao: conta('variacao'),
+      naoClassificados: noProjeto.filter(l => l.familia === 'sem_tipo' || l.familia === 'outro'),
+    };
+  }, [noProjeto]);
+
+  const metaPctNovo = defasagem[0]?.pct_novo_meta ?? 20;
+
+  const investimento = useMemo(() => {
+    if (projeto === 'todos') return null;
+    return defasagem.find(d => d.projeto === projeto) ?? null;
+  }, [defasagem, projeto]);
 
   return (
     <div className="space-y-4">
@@ -69,16 +123,24 @@ export function EsteiraTab({ defasagem, carregandoDefasagem }: {
         ? <div className="h-16 animate-pulse rounded-lg border border-border bg-card" />
         : <AlertaDefasagem linhas={defasagem} />}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <CartaoResumo titulo="Novo" ajuda="Novo · Iteração" {...resumo.novo} />
-        <CartaoResumo titulo="Variação" ajuda="Vertical · Horizontal · Formato · Corpo" {...resumo.variacao} />
+      <FilaPedidos onMudou={onRecarregar} />
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {FAMILIAS.map(f => (
+          <CartaoResumo key={f} titulo={FAMILIA_LABEL[f]} ajuda={FAMILIA_AJUDA[f]}
+                        {...resumo[f as 'novo' | 'iteracao' | 'variacao']} />
+        ))}
       </div>
+
+      <BarraDoMix novo={resumo.novo.lotes} iteracao={resumo.iteracao.lotes}
+                  variacao={resumo.variacao.lotes} metaPctNovo={metaPctNovo}
+                  investimento={investimento} />
 
       {/*
         Só aparece quando há o que mostrar — um cartão permanente para dizer que
-        não há nada gasta um terço da largura com silêncio. Ele existe para um
-        `tipo_teste` novo APARECER em vez de sumir da conta: a família sai da
-        tabela `criativo_tipos_teste`, e o que não estiver lá cai aqui.
+        não há nada gasta espaço com silêncio. Ele existe para um `tipo_teste`
+        novo APARECER em vez de sumir da conta: a família sai da tabela
+        `criativo_tipos_teste`, e o que não estiver lá cai aqui.
       */}
       {resumo.naoClassificados.length > 0 && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-200/90">
@@ -100,11 +162,14 @@ export function EsteiraTab({ defasagem, carregandoDefasagem }: {
         <div className="flex flex-wrap items-center gap-1.5">
           <Chip ativo={projeto === 'todos'} onClick={() => setProjeto('todos')}>Todos os projetos</Chip>
           {projetos.map(p => (
-            <Chip key={p} ativo={projeto === p} onClick={() => setProjeto(p)}>{p}</Chip>
+            <Chip key={p} ativo={projeto === p} onClick={() => setProjeto(p)}
+                  apagado={!comVerba.has(p)}>
+              {p}
+            </Chip>
           ))}
         </div>
         <div className="flex shrink-0 overflow-hidden rounded-md border border-border">
-          {([['todas', 'Ambos'], ['novo', 'Novo'], ['variacao', 'Variação']] as const).map(([k, r]) => (
+          {([['todas', 'Todas'], ...FAMILIAS.map(f => [f, FAMILIA_LABEL[f]])] as [string, string][]).map(([k, r]) => (
             <button key={k} onClick={() => setFamilia(k)}
                     className={cn('px-2.5 py-1 text-[11px] transition-colors',
                       familia === k ? 'bg-primary text-primary-foreground'
@@ -137,6 +202,70 @@ export function EsteiraTab({ defasagem, carregandoDefasagem }: {
   );
 }
 
+/**
+ * O mix contra a meta de 80/20.
+ *
+ * A barra mostra a proporção real; o traço vertical mostra onde o "novo"
+ * deveria parar. Duas leituras num objeto só, sem obrigar ninguém a fazer conta
+ * de cabeça — que era o que aconteceria com três porcentagens soltas.
+ */
+function BarraDoMix({ novo, iteracao, variacao, metaPctNovo, investimento }: {
+  novo: number; iteracao: number; variacao: number; metaPctNovo: number;
+  investimento: Defasagem | null;
+}) {
+  const total = novo + iteracao + variacao;
+  if (total === 0) return null;
+
+  const pct = (n: number) => (100 * n) / total;
+  const pctNovo = Math.round(pct(novo));
+  const estourado = pctNovo > metaPctNovo;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+        <span className="text-xs font-medium text-foreground">Mix do estoque</span>
+        <span className="text-[10px] text-muted-foreground/60">
+          meta: {metaPctNovo}% novo · {100 - metaPctNovo}% iteração e variação
+        </span>
+        {investimento?.inv_7d != null && (
+          <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
+            {formatCurrency(investimento.inv_7d)} investidos em 7 dias
+          </span>
+        )}
+      </div>
+
+      <div className="relative h-3 w-full overflow-hidden rounded-full bg-secondary">
+        <div className="flex h-full">
+          <div className={FAMILIA_COR.novo}     style={{ width: `${pct(novo)}%` }} />
+          <div className={FAMILIA_COR.iteracao} style={{ width: `${pct(iteracao)}%` }} />
+          <div className={FAMILIA_COR.variacao} style={{ width: `${pct(variacao)}%` }} />
+        </div>
+        {/* Onde o "novo" deveria parar */}
+        <div className="absolute inset-y-0 w-px bg-foreground/70"
+             style={{ left: `${metaPctNovo}%` }}
+             title={`Meta: ${metaPctNovo}% de novo`} />
+      </div>
+
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+        {FAMILIAS.map(f => {
+          const n = f === 'novo' ? novo : f === 'iteracao' ? iteracao : variacao;
+          return (
+            <span key={f} className="flex items-center gap-1 text-muted-foreground">
+              <span className={cn('h-2 w-2 rounded-sm', FAMILIA_COR[f])} />
+              {FAMILIA_LABEL[f]} <span className="tabular-nums text-foreground">{Math.round(pct(n))}%</span>
+            </span>
+          );
+        })}
+        {estourado && (
+          <span className="text-amber-300/90">
+            novo está {pctNovo - metaPctNovo} pontos acima da meta
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CartaoResumo({ titulo, ajuda, lotes, cards, velhos }: {
   titulo: string; ajuda: string; lotes: number; cards: number; velhos: number;
 }) {
@@ -144,7 +273,7 @@ function CartaoResumo({ titulo, ajuda, lotes, cards, velhos }: {
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="text-xs font-medium text-foreground">{titulo}</span>
-        <span className="text-[10px] text-muted-foreground/60">{ajuda}</span>
+        <span className="truncate text-[10px] text-muted-foreground/60" title={ajuda}>{ajuda}</span>
       </div>
       <div className="flex items-baseline gap-2">
         <span className={cn('text-2xl font-semibold tabular-nums',
@@ -224,9 +353,7 @@ function LinhaLote({ l }: { l: Lote }) {
       <td className="px-3 py-1.5 font-medium tabular-nums text-foreground">{rotuloDoAd(l.ad_num)}</td>
       <td className="px-3 py-1.5">
         <span className={cn('rounded px-1.5 py-px text-[10px]',
-          l.familia === 'novo'     ? 'bg-primary/15 text-primary'
-        : l.familia === 'variacao' ? 'bg-blue-500/15 text-blue-400'
-        :                            'bg-amber-500/15 text-amber-400')}>
+          FAMILIA_SELO[l.familia] ?? 'bg-amber-500/15 text-amber-400')}>
           {l.tipo_teste ?? FAMILIA_LABEL[l.familia] ?? '—'}
         </span>
       </td>
@@ -260,14 +387,16 @@ function LinhaLote({ l }: { l: Lote }) {
   );
 }
 
-function Chip({ ativo, onClick, children }: {
-  ativo: boolean; onClick: () => void; children: React.ReactNode;
+function Chip({ ativo, onClick, apagado, children }: {
+  ativo: boolean; onClick: () => void; apagado?: boolean; children: React.ReactNode;
 }) {
   return (
     <button onClick={onClick}
+            title={apagado ? 'Sem investimento nos últimos 7 dias' : undefined}
             className={cn('rounded-full border px-2.5 py-1 text-[11px] transition-colors',
               ativo ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-secondary text-muted-foreground hover:text-foreground')}>
+                    : 'border-border bg-secondary hover:text-foreground',
+              !ativo && (apagado ? 'text-muted-foreground/40' : 'text-muted-foreground'))}>
       {children}
     </button>
   );

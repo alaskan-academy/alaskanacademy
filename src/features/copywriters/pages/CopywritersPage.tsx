@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RotinaCal } from '@/features/copywriters/components/RotinaCal';
 import { CopyTrackTab } from '@/features/copywriters/components/copytrack/CopyTrackTab';
 import { EsteiraTab } from '@/features/copywriters/components/esteira/EsteiraTab';
-import { AlertaDefasagem } from '@/features/copywriters/components/esteira/AlertaDefasagem';
 import type { Defasagem } from '@/features/copywriters/components/esteira/tipos';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -59,10 +58,12 @@ export default function CopywritersPage() {
   };
 
   /**
-   * A defasagem é buscada AQUI, e não dentro da aba, porque ela aparece em dois
-   * lugares: a faixa compacta no topo — visível nas três abas — e o painel
-   * completo na Esteira. Um alerta que só existe atrás de uma aba não é lido.
-   * Buscar uma vez e passar para baixo evita duas chamadas para a mesma RPC.
+   * A defasagem é buscada aqui e passada para a Esteira.
+   *
+   * Ela já apareceu como faixa no topo das três abas, e saiu: o aviso é de
+   * quem trabalha a esteira, e repetido na Rotina e no Copy Track virava
+   * mobília — o tipo de aviso que se aprende a não ver. Fica só onde se age
+   * sobre ele.
    */
   const [defasagem, setDefasagem] = useState<Defasagem[]>([]);
   const [carregandoDefasagem, setCarregandoDefasagem] = useState(true);
@@ -89,33 +90,26 @@ export default function CopywritersPage() {
       {!canView ? (
         <AccessDenied />
       ) : (
-        <div className="space-y-4">
-          {/* Fora das abas de propósito: o que está faltando não pode depender
-              de a pessoa clicar na aba certa para ser visto. */}
-          {aba !== 'esteira' && !carregandoDefasagem && (
-            <AlertaDefasagem linhas={defasagem} compacto onVerTudo={() => irPara('esteira')} />
-          )}
+        <Tabs value={aba} onValueChange={irPara} className="space-y-4">
+          <TabsList className="bg-secondary border border-border flex-wrap h-auto">
+            {ABAS.map(a => (
+              <TabsTrigger key={a.chave} value={a.chave} className={tabCls}>{a.label}</TabsTrigger>
+            ))}
+          </TabsList>
 
-          <Tabs value={aba} onValueChange={irPara} className="space-y-4">
-            <TabsList className="bg-secondary border border-border flex-wrap h-auto">
-              {ABAS.map(a => (
-                <TabsTrigger key={a.chave} value={a.chave} className={tabCls}>{a.label}</TabsTrigger>
-              ))}
-            </TabsList>
+          <TabsContent value="esteira">
+            <EsteiraTab defasagem={defasagem} carregandoDefasagem={carregandoDefasagem}
+                        onRecarregar={() => void carregarDefasagem()} />
+          </TabsContent>
 
-            <TabsContent value="esteira">
-              <EsteiraTab defasagem={defasagem} carregandoDefasagem={carregandoDefasagem} />
-            </TabsContent>
+          <TabsContent value="rotina">
+            <RotinaCal />
+          </TabsContent>
 
-            <TabsContent value="rotina">
-              <RotinaCal />
-            </TabsContent>
-
-            <TabsContent value="copytrack">
-              <CopyTrackTab />
-            </TabsContent>
-          </Tabs>
-        </div>
+          <TabsContent value="copytrack">
+            <CopyTrackTab />
+          </TabsContent>
+        </Tabs>
       )}
     </DashboardLayout>
   );

@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
-  Pencil, Save, X, ExternalLink,
+  Pencil, Save, X, ExternalLink, GitBranch,
   Clock, MessageSquare, CornerDownLeft, Send, Maximize2, Minimize2, Copy, Trash2,
 } from 'lucide-react';
 import { supabase, linhas, linha } from '@/lib/supabase';
@@ -28,6 +28,7 @@ import {
 } from './constants';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { TipoBadge } from './CriativoCard';
+import { PedidoVariacaoModal } from './PedidoVariacaoModal';
 import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
 import type { Criativo, HistoricoEntry, Comentario, ProducaoNivel, Funil, Perfil, CriativoTipo } from './types';
 
@@ -75,6 +76,18 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [gestores, setGestores]                   = useState<{ id: string; nome: string }[]>([]);
   const [especialistas, setEspecialistas]         = useState<{ id: string; nome: string }[]>([]);
   // comentários
+  /**
+   * Pedir variação a partir da avaliação.
+   *
+   * `podePedir` sai da MESMA função que a RLS aplica (`fn_pode_pedir_variacao`:
+   * Gestor de Tráfego ou admin), e não de uma cópia da regra aqui — quando a
+   * tela e o banco escrevem a mesma condição em dois lugares, um dos dois
+   * envelhece. Esta linha só evita oferecer um botão que a API recusaria.
+   */
+  const [podePedir, setPodePedir]           = useState(false);
+  const [pedidoAberto, setPedidoAberto]     = useState(false);
+  const [temPedido, setTemPedido]           = useState(false);
+
   const [novoComentario, setNovoComentario] = useState('');
   const [postando, setPostando]             = useState(false);
   const [respondendoId, setRespondendoId]   = useState<string | null>(null);
@@ -172,6 +185,19 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     setChanges({});
     setShowCloseWarning(false);
   }, [load, loadComentarios]); // nivel is intentionally excluded — it doesn't change independently
+
+  const loadPedido = useCallback(async () => {
+    if (!criativoId) { setTemPedido(false); return; }
+    const [pode, pedido] = await Promise.all([
+      supabase.rpc('fn_pode_pedir_variacao'),
+      supabase.from('pedidos_variacao').select('id')
+        .eq('producao_id', criativoId).eq('status', 'aberto').maybeSingle(),
+    ]);
+    setPodePedir(pode.data === true);
+    setTemPedido(!!pedido.data);
+  }, [criativoId]);
+
+  useEffect(() => { void loadPedido(); }, [loadPedido]);
 
   const ch     = (k: string, v: string | null | string[]) => setChanges(prev => ({ ...prev, [k]: v }));
   const val    = (k: string): string => {
@@ -802,7 +828,44 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               )}
             </Field>
           </div>
+
+          {/*
+            O pedido de variação nasce AQUI, colado na avaliação, porque é o
+            mesmo momento: quem acabou de olhar o desempenho e decidir se o
+            criativo prestou é quem sabe se vale insistir nele. Um segundo lugar
+            para registrar essa decisão seria a primeira armadilha do CLAUDE.md.
+          */}
+          {podePedir && (
+            <div className="mt-3 flex items-center gap-2 border-t border-border/60 pt-3">
+              {temPedido ? (
+                <p className="text-[11px] text-emerald-400/90">
+                  Já existe um pedido de variação aberto para este criativo, na esteira do Copy.
+                </p>
+              ) : (
+                <>
+                  <Button size="sm" variant="outline" className="h-7 text-xs"
+                          onClick={() => setPedidoAberto(true)}>
+                    <GitBranch className="mr-1.5 h-3 w-3" />
+                    Pedir variação
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground/60">
+                    entra na esteira do Copy com o histórico de verba deste anúncio
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
+      )}
+
+      {pedidoAberto && criativo && (
+        <PedidoVariacaoModal
+          open
+          producaoId={criativo.id}
+          nome={criativo.nome}
+          onClose={() => setPedidoAberto(false)}
+          onSalvo={() => void loadPedido()}
+        />
       )}
 
       {/* Notas */}

@@ -1,12 +1,14 @@
 /**
  * O que a Esteira lê do banco.
  *
- * A regra de "o que é novo e o que é variação" NÃO mora aqui: mora na tabela
+ * A regra de "o que é novo, iteração e variação" NÃO mora aqui: mora na tabela
  * `criativo_tipos_teste` e na view `vw_esteira_lotes`. Se ela fosse escrita
  * também em TypeScript, em três meses discordaria da Produção — é a primeira
  * armadilha do CLAUDE.md, dois lugares dizendo a mesma coisa até divergirem.
  * Aqui só há tipos e rótulos.
  */
+
+export type Familia = 'novo' | 'iteracao' | 'variacao' | 'sem_tipo' | 'outro';
 
 /** Um lote: (projeto, número do AD, tipo_teste). Ver a migração para o porquê. */
 export interface Lote {
@@ -15,7 +17,7 @@ export interface Lote {
   projeto_ativo: boolean;
   ad_num: number;
   tipo_teste: string | null;
-  familia: 'novo' | 'variacao' | 'sem_tipo' | 'outro';
+  familia: Familia;
   funil: string | null;
   cards: number;
   hooks: number;
@@ -28,40 +30,86 @@ export interface Lote {
   dias_parado: number | null;
 }
 
-/** Uma linha por projeto ativo, de `fn_esteira_defasagem()`. */
+/**
+ * Uma linha por projeto ativo COM investimento nos últimos 7 dias.
+ *
+ * Projeto sem verba não tem defasagem de criativo — tem outra conversa. São 4
+ * dos 7 ativos hoje.
+ */
 export interface Defasagem {
   projeto_id: string;
   projeto: string | null;
   empresa: string | null;
+  inv_7d: number | null;
+  inv_30d: number | null;
   ads_novo: number;
-  cards_novo: number;
-  novo_dias: number | null;
+  ads_iteracao: number;
   ads_variacao: number;
+  cards_novo: number;
+  cards_iteracao: number;
   cards_variacao: number;
+  novo_dias: number | null;
+  iteracao_dias: number | null;
   variacao_dias: number | null;
   falta_novo: boolean;
+  falta_iteracao: boolean;
   falta_variacao: boolean;
-  /** 0 = falta tudo · 1 = falta um lado · 2 = ok */
+  pct_novo: number;
+  pct_novo_meta: number;
+  mix_estourado: boolean;
+  /** 0 vazio · 1 falta iteração · 2 falta variação · 3 mix estourado · 4 falta novo · 5 ok */
   prioridade: number;
   sug_ad: number | null;
   sug_hook: number | null;
   sug_funil: string | null;
   sug_validado_em: string | null;
+  /** Quanto o AD sugerido recebeu em 30 dias. A fila ordena por isto, não por data. */
+  sug_investido: number | null;
   sug_total: number;
-  /**
-   * O TSL/VSL do projeto, para o alerta de "falta novo" dizer para qual funil
-   * escrever. Sai de `funil_video`, que é a única fonte que existe: `funis.metodo`
-   * diria isso melhor, mas `producoes.funil_id` e `funil_ids` estão vazios em
-   * 131 de 131 cards da esteira.
-   */
   funis_projeto: string | null;
+}
+
+/** Um pedido de variação, com o dinheiro do AD ao lado. */
+export interface Pedido {
+  id: string;
+  producao_id: string;
+  status: 'aberto' | 'atendido' | 'descartado';
+  urgencia: 'alta' | 'media' | 'baixa';
+  por_que: string;
+  o_que_melhorar: string | null;
+  tipo_sugerido: string | null;
+  criado_em: string;
+  atendido_em: string | null;
+  nota_fechamento: string | null;
+  dias_aberto: number;
+  criativo: string;
+  ad_num: number | null;
+  hook: number | null;
+  funil: string | null;
+  avaliacao: string | null;
+  projeto_id: string | null;
+  projeto: string | null;
+  projeto_ativo: boolean;
+  solicitado_por_nome: string | null;
+  atendido_por_nome: string | null;
+  card_que_atendeu: string | null;
+  inv_30d: number | null;
+  roas_30d: number | null;
+  ultimo_dia_com_gasto: string | null;
+  /** Surgiu variação deste (AD, hook) depois do pedido. A fila sugere fechar. */
+  ja_tem_variacao: boolean;
 }
 
 export const FAMILIA_LABEL: Record<string, string> = {
   novo:     'Novo',
+  iteracao: 'Iteração',
   variacao: 'Variação',
   sem_tipo: 'Sem tipo de teste',
   outro:    'Tipo não mapeado',
+};
+
+export const URGENCIA_LABEL: Record<string, string> = {
+  alta: 'Alta', media: 'Média', baixa: 'Baixa',
 };
 
 /** `AD 045`, com o zero à esquerda que a operação usa nos nomes. */
