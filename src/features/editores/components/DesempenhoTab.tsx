@@ -1,3 +1,4 @@
+import { todasAsLinhas } from '@/lib/supabase';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -34,6 +35,17 @@ function currentYM(offset = 0): string {
 // Mês a partir do qual usa producoes em vez de avaliacoes_criativos
 const PRODUCOES_CUTOFF = '2026-07-01';
 
+/** Só o que `SEL_PROD` pede — o resto da linha não é lido aqui. */
+interface CardPostado {
+  id: string;
+  tipo: string | null;
+  responsavel_id: string | null;
+  projeto_id: string | null;
+  data_inicio: string | null;
+  avaliacao: string | null;
+  projeto: { nome: string } | null;
+}
+
 export function DesempenhoTab() {
   const [editores, setEditores] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
@@ -66,11 +78,15 @@ export function DesempenhoTab() {
 
     // Busca producoes postados para derivar meses ≥ jul/2026
     const SEL_PROD = 'id,tipo,responsavel_id,projeto_id,data_inicio,avaliacao,projeto:ofertas_editores!projeto_id(nome)';
-    const [pg1, pg2] = await Promise.all([
-      supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').range(0, 999),
-      supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').range(1000, 1999),
-    ]);
-    const allPosts = [...(pg1.data || []), ...(pg2.data || [])];
+    /**
+     * Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
+     * de fora — 31% — sem nada dizendo. E sem `order`, *quais* 916 sumiam
+     * mudava a cada carregamento, então os mesmos filtros davam números
+     * diferentes. Numa tela que alimenta decisão de bônus, isso é o pior
+     * defeito possível: errado e instável ao mesmo tempo.
+     */
+    const { linhas: allPosts } = await todasAsLinhas<CardPostado>((de, ate) =>
+      supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').order('id').range(de, ate));
 
     // Data de postagem via criativo_historico
     const ids = allPosts.map((p: any) => p.id);

@@ -39,3 +39,39 @@ export function linhas<T>(data: unknown): T[] {
 export function linha<T>(data: unknown): T | null {
   return (data ?? null) as T | null;
 }
+
+/** O teto do PostgREST por requisição. Não é escolha nossa. */
+const PAGINA = 1000;
+
+/**
+ * Todas as linhas, e não as duas primeiras páginas.
+ *
+ * Três telas buscavam `producoes` com duas chamadas fixas — `range(0, 999)` e
+ * `range(1000, 1999)` — e paravam aí. Havia 2.916 cards postados: **916
+ * ficavam de fora**, 31% do total, sem nada na tela dizendo que a conta estava
+ * incompleta. E como duas delas nem ordenavam, *quais* 916 sumiam mudava a
+ * cada carregamento — os mesmos filtros davam números diferentes.
+ *
+ * Aqui o laço para quando a página vem incompleta, que é a única coisa que
+ * prova que acabou. `maximo` existe para uma tabela que cresça demais não
+ * travar a aba; quem chama recebe `truncado` e pode dizer isso na tela, em vez
+ * de cortar calado.
+ *
+ * Recebe uma FUNÇÃO que monta a consulta, e não a consulta pronta: um
+ * `PostgrestFilterBuilder` só pode ser executado uma vez, então reaproveitá-lo
+ * entre páginas devolveria a primeira de novo.
+ */
+export async function todasAsLinhas<T>(
+  montar: (de: number, ate: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  maximo = 20000,
+): Promise<{ linhas: T[]; truncado: boolean; erro: string | null }> {
+  const acc: T[] = [];
+  for (let de = 0; de < maximo; de += PAGINA) {
+    const { data, error } = await montar(de, de + PAGINA - 1);
+    if (error) return { linhas: acc, truncado: false, erro: error.message };
+    const pagina = (data ?? []) as T[];
+    acc.push(...pagina);
+    if (pagina.length < PAGINA) return { linhas: acc, truncado: false, erro: null };
+  }
+  return { linhas: acc, truncado: true, erro: null };
+}

@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Link2, AlertCircle, ChevronDown, ChevronRight, Search, ArrowUp, ArrowDown, ExternalLink } from 'lucide-react';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import type { ProducaoNivel } from '@/features/producao/components/types';
+import { MultiFilter } from '@/features/producao/components/MultiFilter';
+import GlobalFilters from '@/components/GlobalFilters';
 import { cn } from '@/lib/utils';
 
 /**
@@ -306,6 +308,36 @@ function Cabecalho({ col, rotulo, atual, dir, onSort, alinhar }: {
   );
 }
 
+/**
+ * Um alternável que parece alternável mesmo desligado.
+ *
+ * Os dois botões da barra eram `<button>` com borda comum: desligados, liam-se
+ * como "clique para fazer algo", e só depois de clicados se revelavam um
+ * estado. `aria-pressed` conta isso para o leitor de tela, e a altura e a
+ * borda são as mesmas do `MultiFilter` ao lado — o realce quando ativo também.
+ */
+function ChipFiltro({ ativo, onClick, children }: {
+  ativo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={ativo}
+      className={cn(
+        'h-8 rounded-md border px-3 text-xs font-normal transition-colors',
+        ativo
+          ? 'border-primary/60 bg-primary/10 text-primary'
+          : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function CriativosMetaTab() {
   const { startDateStr, endDateStr, contaId } = useFilters();
   const { user, perfil } = useAuth();
@@ -333,7 +365,7 @@ export function CriativosMetaTab() {
 
   const [busca, setBusca] = useState('');
   const [soMeus, setSoMeus] = useState(false);
-  const [editorFiltro, setEditorFiltro] = useState('todos');
+  const [editoresFiltro, setEditoresFiltro] = useState<string[]>([]);
   const [soPendentes, setSoPendentes] = useState(false);
   const [verPoucoInvestimento, setVerPoucoInvestimento] = useState(false);
   const [agrupar, setAgrupar] = useState(false);
@@ -411,6 +443,22 @@ export function CriativosMetaTab() {
   }, [dados]);
 
 
+  /**
+   * Quantos filtros estão de pé — só os que peneiram a lista.
+   *
+   * Conta nem período entram: eles definem O QUE foi buscado, e zerá-los não
+   * é "limpar", é buscar outra coisa. Um "limpar" que mudasse o período
+   * apagaria o recorte que a pessoa escolheu de propósito.
+   */
+  const filtrosAtivos =
+    (busca ? 1 : 0) + (soMeus ? 1 : 0) + (editoresFiltro.length ? 1 : 0);
+
+  const limparFiltros = () => {
+    setBusca('');
+    setSoMeus(false);
+    setEditoresFiltro([]);
+  };
+
   const ordenar = (c: Coluna) => {
     if (c === col) setDir(d => (d === 'desc' ? 'asc' : 'desc'));
     else { setCol(c); setDir(c === 'nome' ? 'asc' : 'desc'); }
@@ -436,7 +484,7 @@ export function CriativosMetaTab() {
     let l: Criativo[] = criativos;
     if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
     if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
-    if (editorFiltro !== 'todos') l = l.filter(a => a.editor_id === editorFiltro);
+    if (editoresFiltro.length) l = l.filter(a => a.editor_id && editoresFiltro.includes(a.editor_id));
     if (busca.trim()) {
       const b = busca.trim().toLowerCase();
       l = l.filter(a => a.ad_nome?.toLowerCase().includes(b)
@@ -444,7 +492,7 @@ export function CriativosMetaTab() {
                      || a.conta?.toLowerCase().includes(b));
     }
     return l;
-  }, [criativos, verPoucoInvestimento, soMeus, user, editorFiltro, busca]);
+  }, [criativos, verPoucoInvestimento, soMeus, user, editoresFiltro, busca]);
 
   const pendentes = useMemo(() => {
     const g: Record<string, Criativo[]> = {};
@@ -597,34 +645,65 @@ export function CriativosMetaTab() {
         </p>
       )}
 
+      {/*
+        A barra misturava três coisas com três aparências.
+
+        Havia um `<select>` cru do navegador — seta do sistema, fonte do
+        sistema, foco do sistema — ao lado de componentes do projeto; dois
+        botões que só se revelavam alternáveis depois de clicados; e o resumo
+        empurrado por `ml-auto` para uma terceira linha sozinho. Nada dizia
+        quais controles pertenciam ao mesmo grupo.
+
+        Agora são três grupos declarados, separados por um traço fino:
+
+          ESCOPO    conta e período — mudam a consulta no banco
+          FILTRO    busca, editor e "meus" — peneiram o que já veio
+          VISÃO     agrupar não filtra nada, só muda o desenho
+
+        O resumo fica na mesma linha, à direita, como leitura e não controle.
+      */}
       <div className="flex flex-wrap items-center gap-2">
+        <GlobalFilters />
+
+        <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden />
+
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input value={busca} onChange={e => setBusca(e.target.value)}
-                 placeholder="Buscar anúncio, editor ou conta" className="h-8 w-60 pl-8 text-xs" />
+                 placeholder="Buscar anúncio, editor ou conta" className="h-8 w-56 pl-8 text-xs" />
         </div>
 
+        {/* Era um `<select>` nativo, o único da tela. Vira o mesmo MultiFilter
+            da Produção — mesma altura, mesma borda, mesmo realce quando ativo
+            — e de quebra passa a aceitar mais de um editor, que antes exigia
+            olhar um por vez. */}
+        <MultiFilter
+          label="Editor"
+          options={editores.map(([id, nome]) => ({ id, nome }))}
+          value={editoresFiltro}
+          onChange={setEditoresFiltro}
+          width="w-40"
+        />
+
         {user && (
-          <button onClick={() => setSoMeus(v => !v)}
-                  className={cn('rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-                    soMeus ? 'border-primary/50 bg-primary/10 text-primary'
-                           : 'border-border text-muted-foreground hover:bg-secondary')}>
+          <ChipFiltro ativo={soMeus} onClick={() => setSoMeus(v => !v)}>
             Meus anúncios
-          </button>
+          </ChipFiltro>
         )}
 
-        <select value={editorFiltro} onChange={e => setEditorFiltro(e.target.value)}
-                className="h-8 rounded-md border border-border bg-background px-2 text-xs">
-          <option value="todos">Todos os editores</option>
-          {editores.map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
-        </select>
+        {filtrosAtivos > 0 && (
+          <Button size="sm" variant="ghost"
+                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={limparFiltros}>
+            Limpar {filtrosAtivos}
+          </Button>
+        )}
 
-        <button onClick={() => setAgrupar(v => !v)}
-                className={cn('rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-                  agrupar ? 'border-primary/50 bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-secondary')}>
+        <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden />
+
+        <ChipFiltro ativo={agrupar} onClick={() => setAgrupar(v => !v)}>
           Agrupar por editor
-        </button>
+        </ChipFiltro>
 
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {visiveis.length} anúncios · {formatCurrency(totais.investimento)} ·{' '}

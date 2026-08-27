@@ -1,3 +1,4 @@
+import { todasAsLinhas } from '@/lib/supabase';
 import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { CalendarIcon } from 'lucide-react';
@@ -192,10 +193,11 @@ export function DesempenhoAdsView() {
 
     const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
 
-    // Pagina em 2 requests paralelos — Supabase limita a 1000 linhas por request
-    const [pg1, pg2, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
-      supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(0, 999),
-      supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(1000, 1999),
+    // Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
+    // fora de todos os gráficos e de todas as taxas desta tela.
+    const [postados, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
+      todasAsLinhas<PostadoRow>((de, ate) =>
+        supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(de, ate)),
       supabase.from('perfis')
         .select('id,nome,is_admin,cargo_id,setor_id,cargo:cargos(id,nome),setor:setores(id,nome),ativo')
         .eq('ativo', true).order('nome'),
@@ -209,7 +211,7 @@ export function DesempenhoAdsView() {
     setFunis(fs as Funil[]);
     if (opF?.length) setOpFormato(opF.map(d => d.valor as string));
 
-    const crs = [...(pg1.data ?? []), ...(pg2.data ?? [])];
+    const crs = postados.linhas;
     if (!crs.length) { setRows([]); setLoading(false); return; }
 
     // Historico em chunks de 300 IDs para evitar URL muito longa

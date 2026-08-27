@@ -1,3 +1,4 @@
+import { todasAsLinhas } from '@/lib/supabase';
 import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, Search, CalendarIcon } from 'lucide-react';
@@ -154,12 +155,9 @@ export function AvaliacaoView({ userId }: Props) {
       return q;
     };
 
-    // Pagina em 2 requests paralelos — Supabase limita a 1000 linhas por request
-    const [{ data: pg1 }, { data: pg2 }] = await Promise.all([
-      mkQuery().range(0, 999),
-      mkQuery().range(1000, 1999),
-    ]);
-    const crs = [...(pg1 ?? []), ...(pg2 ?? [])];
+    // Eram duas páginas fixas de mil. Com 2.916 cards postados, 916 nunca
+    // chegavam a esta tela — e é a tela onde se decide o que foi validado.
+    const { linhas: crs } = await todasAsLinhas<CriativoPostado>((de, ate) => mkQuery().range(de, ate));
     if (!crs.length) { setCriativos([]); setLoading(false); return; }
 
     // Historico em chunks de 300 IDs para evitar URL muito longa
