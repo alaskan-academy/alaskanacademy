@@ -4,6 +4,7 @@ import type { ProducaoNivel } from './types';
 import { CalendarioView } from './CalendarioView';
 import { HojeView } from './HojeView';
 import { useFases, campoDonoDoSetor, fasesDoSetor } from '../useFases';
+import { PainelGestorView } from './gestor/PainelGestorView';
 
 interface SetorInfo {
   id: string;
@@ -35,6 +36,25 @@ export function MeuPainelView({ nivel, setorId, userId, setor }: Props) {
 
   if (!carregou) {
     return <p className="text-sm text-muted-foreground py-8 text-center">Carregando…</p>;
+  }
+
+  /*
+    O Gestor de Tráfego tem um painel próprio.
+
+    O genérico — "Hoje" mais calendário pessoal, filtrados por `gestor_id = eu`
+    — não servia para ele: só 1 dos 69 cards em `esteira_teste` tem `gestor_id`
+    preenchido, então a tela ficava vazia; e a fila de aprovados, que é o
+    trabalho dele, nem entrava, porque `aprovado` estava sem setor dono.
+
+    Para saber quantos ADs tinha de cada projeto e funil, ele arrastava os
+    aprovados para datas diferentes no calendário e lia os "bloquinhos" — o que
+    reescrevia o prazo combinado com o editor e se desmanchava em duas semanas.
+
+    A comparação é pelo NOME do setor, e não pelo id, porque o id muda entre
+    ambientes; `producao_fases` já liga por id, e é de lá que vem a fase.
+  */
+  if (setor?.nome === 'Gestor de Tráfego') {
+    return <PainelGestorView userId={userId} />;
   }
 
   return (
