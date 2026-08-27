@@ -56,7 +56,7 @@ function expandRecorrencia(card: RotinaCard, rangeStart: string, rangeEnd: strin
   );
   const instances: RotinaCard[] = [];
   const recFim = card.recorrencia_fim ?? rangeEnd;
-  let cur = new Date(card.data_inicio + 'T00:00:00');
+  const cur = new Date(card.data_inicio + 'T00:00:00');
   cur.setDate(cur.getDate() + 1);
   while (toYMD(cur) <= recFim && toYMD(cur) <= rangeEnd) {
     let include = false;

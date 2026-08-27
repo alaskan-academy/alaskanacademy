@@ -154,8 +154,12 @@ export function AdSwipeTab() {
           />
         </div>
 
+        {/* w-40 cortava "Todos os formatos" em "Todos os...": o rotulo do
+            seletor virava reticencias e a pessoa precisava abrir para saber o
+            que estava filtrando. Os dois vao para w-44 juntos — larguras
+            diferentes lado a lado leem como desalinho. */}
         <Select value={filterNiche} onValueChange={handleFilterChange(setFilterNiche)}>
-          <SelectTrigger className="h-9 text-sm w-40">
+          <SelectTrigger className="h-9 text-sm w-44">
             <SelectValue placeholder="Nicho" />
           </SelectTrigger>
           <SelectContent>
@@ -166,7 +170,7 @@ export function AdSwipeTab() {
         </Select>
 
         <Select value={filterFormat} onValueChange={handleFilterChange(setFilterFormat)}>
-          <SelectTrigger className="h-9 text-sm w-40">
+          <SelectTrigger className="h-9 text-sm w-44">
             <SelectValue placeholder="Formato" />
           </SelectTrigger>
           <SelectContent>

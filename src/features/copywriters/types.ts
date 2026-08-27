@@ -7,7 +7,6 @@ export type CopyOffer = {
   ad_library_url: string | null;
   page_url: string | null;
   notes: string | null;
-  is_archived: boolean | null;
   status: string | null;
 };
 
