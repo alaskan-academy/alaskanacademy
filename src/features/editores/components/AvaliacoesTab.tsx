@@ -34,7 +34,6 @@ export function AvaliacoesTab() {
 
   // editor vinculado ao usuário logado e seu cargo
   const [meuEditorId, setMeuEditorId]   = useState<string | null>(null);
-  const [cargoDoUsuario, setCargoDoUsuario] = useState<string>('');
 
   const [editores, setEditores] = useState<any[]>([]);
   const [cargos, setCargos] = useState<any[]>([]);
@@ -82,14 +81,14 @@ export function AvaliacoesTab() {
     const opts = o.data || [];
     setCriterios((c.data || []).map((cr: any) => ({ ...cr, opcoes: opts.filter((x: any) => x.criterio_id === cr.id) })));
 
-    // identifica editor + cargo do usuário logado
+    // identifica o editor do usuário logado
+    //
+    // O cargo era lido aqui e normalizado sem acento para comparar com
+    // 'head'/'lider'. Saiu junto com a comparação por nome: o cargo já vem
+    // pronto no `perfil` do AuthContext, com a flag `pode_aprovar`, e buscá-lo
+    // de novo era uma segunda fonte para o mesmo fato.
     const meuEditor = eds.find((ed: any) => ed.usuario_id === user?.id) ?? null;
     setMeuEditorId(meuEditor?.id ?? null);
-    if (meuEditor?.cargo_id) {
-      const cargo = cgs.find((cg: any) => cg.id === meuEditor.cargo_id);
-      const nome = String(cargo?.nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-      setCargoDoUsuario(nome);
-    }
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -99,7 +98,23 @@ export function AvaliacoesTab() {
   // Apenas IDs de editores vinculados (usuario_id IS NOT NULL) — exclui desvinculados como Lucas
   const validEditorIds = new Set(editores.map(e => e.id));
 
-  const canSeeAll = isAdmin || cargoDoUsuario.includes('head') || cargoDoUsuario.includes('lider');
+  /**
+   * A MESMA regra que a RLS aplica no banco, lendo o mesmo campo.
+   *
+   * Antes isto comparava o NOME do cargo com 'head' e 'lider', enquanto
+   * Produção e Criativos Meta liam a flag `pode_aprovar` — duas definições
+   * para um conceito só, e já divergindo: "Gerente Criativo" tem
+   * `pode_aprovar = true` e não casa com nenhum dos dois nomes. Hoje ninguém
+   * tem esse cargo, então não mudava nada; no dia em que tivesse, a pessoa
+   * aprovaria criativo numa tela e não veria avaliação na outra.
+   *
+   * A flag ganha porque é explícita. Comparar nome quebra em silêncio quando
+   * alguém renomear um cargo — e renomear parece inofensivo.
+   *
+   * A peneira continua aqui além do banco: a RLS é quem garante, esta linha é
+   * quem evita pedir o que não pode vir.
+   */
+  const canSeeAll = isAdmin || (authPerfil?.cargo?.pode_aprovar ?? false);
   const canEditRow = (a: any) => {
     if (isAdmin) return true;
     if (!canSeeAll) return false;
