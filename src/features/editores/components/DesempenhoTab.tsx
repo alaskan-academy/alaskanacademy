@@ -2,8 +2,8 @@ import { todasAsLinhas } from '@/lib/supabase';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { SeletorDeMeses } from '@/components/SeletorDeMeses';
+import { cn } from '@/lib/utils';
 
 
 
@@ -13,8 +13,6 @@ import { formatNumber, formatPercent } from '@/lib/formatters';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, Legend,
 } from 'recharts';
-
-type MonthPreset = 'this' | 'last' | 'custom';
 
 const TIPO_LABEL: Record<string, string> = { criativo: 'Criativo', vsl: 'VSL', aula: 'Aula' };
 
@@ -31,6 +29,21 @@ function currentYM(offset = 0): string {
   d.setDate(1);
   d.setMonth(d.getMonth() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Atalho para o que mais se pede. Escreve no MESMO par que a grade escreve,
+ *  então nunca há um preset dizendo uma coisa e um par dizendo outra. */
+function ChipMes({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={ativo}
+            className={cn(
+              'h-8 rounded-md border px-3 text-xs transition-colors',
+              ativo ? 'border-primary/60 bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-secondary hover:text-foreground',
+            )}>
+      {children}
+    </button>
+  );
 }
 
 // Mês a partir do qual usa producoes em vez de avaliacoes_criativos
@@ -55,9 +68,17 @@ export function DesempenhoTab() {
   const [erro, setErro] = useState<string | null>(null);
   const [filterEditores, setFilterEditores] = useState<string[]>([]);
   const [filterOfertas, setFilterOfertas] = useState<string[]>([]);
-  const [monthPreset, setMonthPreset] = useState<MonthPreset>('this');
-  const [customStart, setCustomStart] = useState(currentYM(-2));
-  const [customEnd, setCustomEnd] = useState(currentYM(0));
+  /**
+   * O período é DOIS valores, e não três.
+   *
+   * Antes eram `monthPreset` mais `customStart`/`customEnd`: o preset dizia
+   * qual par valia, e os dois campos guardavam um par que só era usado quando
+   * o preset era 'custom'. Dois estados para um conceito — a armadilha que
+   * este projeto já pagou cinco vezes. Agora o par É o período, e os atalhos
+   * só escrevem nele.
+   */
+  const [mesDe, setMesDe]   = useState(currentYM(0));
+  const [mesAte, setMesAte] = useState(currentYM(0));
 
   const load = async () => {
     setLoading(true);
@@ -169,19 +190,10 @@ export function DesempenhoTab() {
    *  foi buscado, e zerá-lo não é limpar, é buscar outra coisa. */
   const filtrosAtivos = (filterEditores.length ? 1 : 0) + (filterOfertas.length ? 1 : 0);
 
-  const { startStr, endStr } = useMemo(() => {
-    if (monthPreset === 'this') {
-      const r = ymToDateRange(currentYM(0));
-      return { startStr: r.start, endStr: r.end };
-    }
-    if (monthPreset === 'last') {
-      const r = ymToDateRange(currentYM(-1));
-      return { startStr: r.start, endStr: r.end };
-    }
-    const s = ymToDateRange(customStart).start;
-    const e = ymToDateRange(customEnd).end;
-    return { startStr: s, endStr: e };
-  }, [monthPreset, customStart, customEnd]);
+  const { startStr, endStr } = useMemo(() => ({
+    startStr: ymToDateRange(mesDe).start,
+    endStr:   ymToDateRange(mesAte).end,
+  }), [mesDe, mesAte]);
 
   const filtered = useMemo(() => items.filter(i => {
     if (!i.mes_referencia) return false;
@@ -192,13 +204,30 @@ export function DesempenhoTab() {
     return true;
   }), [items, startStr, endStr, filterEditores, filterOfertas]);
 
+  /**
+   * Os quatro números do topo contam ANÚNCIO, e só anúncio.
+   *
+   * Somavam tudo: o cartão dizia "Total ADs testados 75" e os 75 eram 73
+   * criativos mais 2 VSLs. Pior no "Validados": o único validado do período
+   * era uma VSL, então o número que se lê como "anúncio que deu certo" era
+   * inteiramente de outra coisa. A taxa herdava o erro nos dois lados.
+   *
+   * Anúncio e VSL não se comparam. Uma VSL é uma peça longa, testada aos
+   * poucos e validada por outro critério; misturar as duas num denominador só
+   * faz a taxa de validação de anúncio subir ou descer por motivo que não tem
+   * a ver com anúncio.
+   *
+   * VSL e aula continuam na tabela de baixo, cada uma na sua linha.
+   */
   const totals = useMemo(() => {
-    const t = filtered.reduce((acc, i) => {
-      acc.testados  += Number(i.ads_testados  || 0);
-      acc.validados += Number(i.ads_validados || 0);
-      acc.escalados += Number(i.ads_escalados || 0);
-      return acc;
-    }, { testados: 0, validados: 0, escalados: 0 });
+    const t = filtered
+      .filter(i => (i.tipo || 'criativo') === 'criativo')
+      .reduce((acc, i) => {
+        acc.testados  += Number(i.ads_testados  || 0);
+        acc.validados += Number(i.ads_validados || 0);
+        acc.escalados += Number(i.ads_escalados || 0);
+        return acc;
+      }, { testados: 0, validados: 0, escalados: 0 });
     return { ...t, taxa: t.testados > 0 ? ((t.validados + t.escalados) / t.testados) * 100 : 0 };
   }, [filtered]);
 
@@ -288,24 +317,23 @@ export function DesempenhoTab() {
         que se explica é ruído que ocupa altura.
       */}
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={monthPreset} onValueChange={(v: MonthPreset) => setMonthPreset(v)}>
-          <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="this">Este mês</SelectItem>
-            <SelectItem value="last">Mês passado</SelectItem>
-            <SelectItem value="custom">Personalizado</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Eram um seletor de preset e dois `<input type="month">`: para ver
+            junho a agosto, três controles e duas caixas de texto que não
+            mostram que os meses são vizinhos. Agora é uma grade de doze — o
+            ano inteiro de uma vez, com começo, fim e o que ficou de fora
+            visíveis juntos. Os presets viraram atalhos ao lado, porque "este
+            mês" continua sendo o que mais se pede. */}
+        <SeletorDeMeses de={mesDe} ate={mesAte}
+                        onChange={(a, b) => { setMesDe(a); setMesAte(b); }} />
 
-        {monthPreset === 'custom' && (
-          <>
-            <Input type="month" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                   className="h-8 w-36 text-xs" aria-label="De" />
-            <span className="text-xs text-muted-foreground">até</span>
-            <Input type="month" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                   className="h-8 w-36 text-xs" aria-label="Até" />
-          </>
-        )}
+        <ChipMes ativo={mesDe === currentYM(0) && mesAte === currentYM(0)}
+                 onClick={() => { setMesDe(currentYM(0)); setMesAte(currentYM(0)); }}>
+          Este mês
+        </ChipMes>
+        <ChipMes ativo={mesDe === currentYM(-1) && mesAte === currentYM(-1)}
+                 onClick={() => { setMesDe(currentYM(-1)); setMesAte(currentYM(-1)); }}>
+          Mês passado
+        </ChipMes>
 
         <span className="mx-0.5 hidden h-5 w-px bg-border sm:block" aria-hidden />
 
@@ -339,15 +367,15 @@ export function DesempenhoTab() {
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-xs text-muted-foreground uppercase">Total ADs testados</p>
+          <p className="text-xs text-muted-foreground uppercase">Anúncios testados</p>
           <p className="text-2xl font-semibold mt-1">{formatNumber(totals.testados)}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-xs text-muted-foreground uppercase">Validados</p>
+          <p className="text-xs text-muted-foreground uppercase">Anúncios validados</p>
           <p className="text-2xl font-semibold mt-1">{formatNumber(totals.validados)}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-xs text-muted-foreground uppercase">Escalados</p>
+          <p className="text-xs text-muted-foreground uppercase">Anúncios escalados</p>
           <p className="text-2xl font-semibold mt-1">{formatNumber(totals.escalados)}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
@@ -360,7 +388,7 @@ export function DesempenhoTab() {
       {/* Por tipo */}
       {porTipo.length > 0 && (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border"><h4 className="text-sm font-medium">Por tipo de criativo</h4></div>
+          <div className="px-4 py-3 border-b border-border"><h4 className="text-sm font-medium">Por tipo de peça</h4></div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-border text-xs text-muted-foreground uppercase">
