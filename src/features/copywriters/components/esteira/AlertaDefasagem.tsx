@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { AlertTriangle, ArrowRight, Check, HelpCircle } from 'lucide-react';
+import { AlertTriangle, Check, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Defasagem, rotuloDoAdHook } from './tipos';
+import { Defasagem } from './tipos';
 
 /**
  * O que escrever, por projeto e por funil.
@@ -13,8 +13,11 @@ import { Defasagem, rotuloDoAdHook } from './tipos';
  * ao lado como prova, não como a mensagem.
  *
  * Nenhum valor em dinheiro aparece. A lista É ordenada por investimento — quem
- * mais gasta cobra primeiro, e a sugestão é sempre o AD que mais recebeu verba
- * — mas o número não vai para a tela.
+ * mais gasta cobra primeiro — mas o número não vai para a tela.
+ *
+ * A coluna "A partir de", que sugeria qual validado variar, saiu a pedido dela.
+ * A função ainda calcula a sugestão (`sug_ad` e companhia continuam vindo da
+ * `fn_esteira_defasagem`) — só não é mostrada aqui.
  */
 export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
   const urgentes = useMemo(() => linhas.filter(l => l.prioridade < 5), [linhas]);
@@ -84,7 +87,6 @@ export function AlertaDefasagem({ linhas }: { linhas: Defasagem[] }) {
                 <th className="w-11 px-1 py-1 text-right font-medium">Iter.</th>
                 <th className="w-11 px-1 py-1 text-right font-medium">Var.</th>
                 <th className="w-full px-3 py-1 text-left font-medium">O que escrever</th>
-                <th className="whitespace-nowrap px-3.5 py-1 text-left font-medium">A partir de</th>
               </tr>
             </thead>
             <tbody>
@@ -164,8 +166,6 @@ function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo }: {
         ? `Escreva mais ${paraOMix} de iteração ou variação`
         : 'Em dia';
 
-  const mostraSugestao = (l.falta_variacao || paraOMix > 0) && l.sug_ad != null;
-
   return (
     <tr className={cn(primeiraDoGrupo && 'border-t border-amber-500/15',
       emDia && 'text-muted-foreground')}>
@@ -203,23 +203,6 @@ function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo }: {
         )}
       </td>
 
-      {/*
-        O ponto de partida, quando existe — e só onde faz sentido: um AD novo
-        não tem "de qual partir", ele É o ponto de partida.
-      */}
-      <td className="whitespace-nowrap px-3.5 py-1.5 text-[11px]">
-        {mostraSugestao ? (
-          <span className="flex items-baseline gap-1 text-muted-foreground">
-            <ArrowRight className="h-3 w-3 shrink-0 translate-y-0.5" />
-            <span className="font-medium text-foreground">{rotuloDoAdHook(l.sug_ad!, l.sug_hook)}</span>
-            {l.sug_total > 1 && <span className="text-muted-foreground/50">(+{l.sug_total - 1})</span>}
-          </span>
-        ) : l.falta_variacao ? (
-          <span className="text-muted-foreground/40" title="Nenhum validado deste funil recebeu verba nos últimos 30 dias — o AD terá que ser do zero">sem base</span>
-        ) : (
-          <span className="text-muted-foreground/25">—</span>
-        )}
-      </td>
     </tr>
   );
 }
