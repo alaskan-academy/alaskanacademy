@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizarHtml } from '@/features/processos/sanitizar';
+import { sanitizarHtml } from '@/lib/sanitizar';
 
 /**
  * O sanitizador do bloco de HTML dos Processos.

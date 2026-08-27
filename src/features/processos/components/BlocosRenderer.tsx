@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { sanitizarHtml } from '../sanitizar';
+import { sanitizarHtml } from '@/lib/sanitizar';
 import { cn } from '@/lib/utils';
 
 /**

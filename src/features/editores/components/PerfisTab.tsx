@@ -1,3 +1,4 @@
+import { sanitizarHtml } from '@/lib/sanitizar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -173,7 +174,7 @@ function ObservacoesExpandable({ html }: { html: string }) {
           'text-sm text-foreground/80 [&_a]:text-primary [&_a]:underline overflow-hidden transition-all',
           !expanded && 'line-clamp-4',
         )}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: sanitizarHtml(html) }}
       />
       {(clamped || expanded) && (
         <button

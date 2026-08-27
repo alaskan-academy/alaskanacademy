@@ -1,3 +1,4 @@
+import { sanitizarHtml } from '@/lib/sanitizar';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -220,7 +221,7 @@ function NotesPopup({ html, anchorEl }: { html: string; anchorEl: HTMLElement })
     <div
       style={{ position: 'fixed', top, left, zIndex: 9999, width: 280 }}
       className="notes-tooltip bg-popover border border-border rounded-md shadow-xl p-3 text-xs max-h-52 overflow-y-auto pointer-events-none"
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizarHtml(html) }}
     />,
     document.body,
   );

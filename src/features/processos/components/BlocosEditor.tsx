@@ -8,7 +8,7 @@ import {
   Type, ImageIcon, Video, Code2, Trash2, ChevronUp, ChevronDown, Plus, Eye,
 } from 'lucide-react';
 import { Bloco, TipoBloco } from './BlocosRenderer';
-import { sanitizarHtml } from '../sanitizar';
+import { sanitizarHtml } from '@/lib/sanitizar';
 
 /**
  * Montar o processo em blocos, na ordem que a autora quiser.
