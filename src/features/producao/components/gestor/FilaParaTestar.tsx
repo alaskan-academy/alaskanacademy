@@ -124,7 +124,10 @@ function Cabecalho({
   */
   return (
     <div className={cn('flex items-center gap-2 border-b border-border/40 py-1.5 pl-3 pr-4',
-      nivel === 0 && 'bg-secondary/40',
+      /* O nome do projeto respira: colado no último AD do projeto anterior,
+         a lista virava um bloco contínuo e não dava para ver onde um termina
+         e o outro começa. O espaço extra é em cima, que é onde falta. */
+      nivel === 0 && 'bg-secondary/40 pb-1.5 pt-3.5',
       nivel === 1 && 'bg-secondary/15 pl-[32px]',
       nivel === 2 && 'pl-[52px]')}>
       {/* Marcar o grupo marca os filhos: é como ele pensa — "manda o TSL da
