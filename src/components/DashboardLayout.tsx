@@ -37,8 +37,17 @@ export function DashboardLayout({
     <div className="min-h-screen bg-background">
       <AppSidebar />
       <div className={`${isMobile ? 'pl-0' : collapsed ? 'pl-16' : 'pl-56'} transition-all duration-300`}>
-        <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border px-4 md:px-6 py-3 md:py-4">
-          <div className="flex items-center justify-between gap-3">
+        {/*
+          `h-14` e não `py-4`: a altura precisa ser a MESMA do cabeçalho da
+          sidebar, senão as duas linhas de baixo não se encontram e o topo da
+          tela fica com um degrau. Com padding, a altura vinha do conteúdo — o
+          botão "Buscar" — e dava 66,4px contra os 56px da sidebar.
+
+          Se um dia entrar aqui um controle mais alto que 56px, é aqui e no
+          cabeçalho da sidebar que a altura muda, junto.
+        */}
+        <header className="sticky top-0 z-40 flex h-14 items-center bg-background/80 backdrop-blur-xl border-b border-border px-4 md:px-6">
+          <div className="flex w-full items-center justify-between gap-3">
             {/* `min-w-0` para o `truncate` do h1 valer: sem ele o flex deixa o
                 título crescer além do espaço e empurra a busca e os filtros
                 para fora da tela — o que acontecia com título longo de artigo. */}

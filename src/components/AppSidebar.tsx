@@ -265,7 +265,11 @@ export function AppSidebar() {
           "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-transform duration-300 w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}>
-          <div className="flex items-center justify-between px-4 h-14 border-b border-sidebar-border">
+          {/* `border-border` e nao `border-sidebar-border`: esta linha ENCOSTA na do
+              cabecalho principal, e os dois tons (36,36,36 contra 41,41,41)
+              faziam um degrau visivel no meio do topo da tela. As outras linhas
+              da sidebar continuam com o tom dela. */}
+          <div className="flex items-center justify-between px-4 h-14 border-b border-border">
             <div className="flex items-center gap-2">
               <Mountain className="h-5 w-5 text-primary shrink-0" />
               <span className="text-foreground font-semibold text-lg tracking-tight">Alaskan</span>
@@ -297,7 +301,7 @@ export function AppSidebar() {
         "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-300",
         collapsed ? "w-16" : "w-56"
       )}>
-        <div className="flex items-center gap-2 px-4 h-14 border-b border-sidebar-border">
+        <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
           <Mountain className="h-5 w-5 text-primary shrink-0" />
           {!collapsed && <span className="text-foreground font-semibold text-lg tracking-tight">Alaskan</span>}
         </div>
