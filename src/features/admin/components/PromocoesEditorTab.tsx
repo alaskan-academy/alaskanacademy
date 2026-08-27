@@ -13,9 +13,9 @@ import { cn } from '@/lib/utils';
 
 type Editor = { id: string; nome: string; cargo_id: string | null; ativo: boolean };
 type Cargo  = { id: string; nome: string; cor: string | null };
-type Promo  = { id: string; editor_id: string; cargo_id: string; data: string; observacao: string | null };
+type Promo  = { id: string; editor_id: string; cargo_id: string; data: string; texto: string | null };
 
-const blank = () => ({ cargo_id: '', data: '', observacao: '' });
+const blank = () => ({ cargo_id: '', data: '', texto: '' });
 
 export function PromocoesEditorTab() {
   const confirm = useConfirm();
@@ -48,7 +48,7 @@ export function PromocoesEditorTab() {
   const loadPromos = async (editorId: string) => {
     setLoadingPromos(true);
     const { data } = await supabase
-      .from('editor_promocoes')
+      .from('editor_notas')
       .select('*')
       .eq('editor_id', editorId)
       .order('data', { ascending: false });
@@ -65,8 +65,8 @@ export function PromocoesEditorTab() {
   const handleSave = async () => {
     if (!form.cargo_id || !form.data || !selected) return;
     setSaving(true);
-    const { error } = await supabase.from('editor_promocoes').insert({
-      editor_id: selected.id, cargo_id: form.cargo_id, data: form.data, observacao: form.observacao || null,
+    const { error } = await supabase.from('editor_notas').insert({
+      editor_id: selected.id, cargo_id: form.cargo_id, data: form.data, texto: form.texto || null, tipo: 'promocao',
     });
     if (error) { toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' }); setSaving(false); return; }
     // Atualiza cargo atual do editor
@@ -79,7 +79,7 @@ export function PromocoesEditorTab() {
   /* ── Excluir promoção ── */
   const handleDelete = async (p: Promo) => {
     if (!(await confirm({ title: 'Excluir esta promoção?', description: 'Esta ação não pode ser desfeita.' }))) return;
-    const { error } = await supabase.from('editor_promocoes').delete().eq('id', p.id);
+    const { error } = await supabase.from('editor_notas').delete().eq('id', p.id);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     toast({ title: 'Promoção removida' });
     loadPromos(selected!.id);
@@ -171,7 +171,7 @@ export function PromocoesEditorTab() {
                           </span>
                         ) : '—'}
                       </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{p.observacao || '—'}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{p.texto || '—'}</td>
                       <td className="px-4 py-2.5 text-right">
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleDelete(p)}>
                           <Trash2 className="h-3.5 w-3.5 text-destructive/60 hover:text-destructive" />
@@ -208,9 +208,9 @@ export function PromocoesEditorTab() {
             </div>
             <div>
               <Label className="text-xs">Observação</Label>
-              <Textarea className="mt-1 text-xs min-h-[72px]" value={form.observacao}
+              <Textarea className="mt-1 text-xs min-h-[72px]" value={form.texto}
                 placeholder="Opcional"
-                onChange={e => setForm({ ...form, observacao: e.target.value })} />
+                onChange={e => setForm({ ...form, texto: e.target.value })} />
             </div>
           </div>
           <DialogFooter>

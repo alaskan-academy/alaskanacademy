@@ -51,6 +51,7 @@ export function DesempenhoTab() {
   const [items, setItems] = useState<any[]>([]);
   const [projetosAtivos, setProjetosAtivos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [filterEditor, setFilterEditor] = useState('all');
   const [filterOfertas, setFilterOfertas] = useState<string[]>([]);
   const [monthPreset, setMonthPreset] = useState<MonthPreset>('this');
@@ -59,6 +60,7 @@ export function DesempenhoTab() {
 
   const load = async () => {
     setLoading(true);
+    setErro(null);
 
     // Dados históricos (≤ jun/2026) + editores + projetos ativos
     const [eRes, dRes, pRes] = await Promise.all([
@@ -66,6 +68,25 @@ export function DesempenhoTab() {
       supabase.from('avaliacoes_criativos').select('*').order('mes_referencia', { ascending: false }),
       supabase.from('ofertas_editores').select('nome').eq('ativo', true).order('nome'),
     ]);
+
+    /**
+     * Esta tela não tratava erro NENHUM: nem `error`, nem `catch`.
+     *
+     * Rede caída, RLS negando, timeout — qualquer um deles deixava os gráficos
+     * vazios, e vazio aqui se lê como "esse mês não teve criativo". É a tela
+     * que alimenta decisão de bônus, então a leitura errada não custa uma
+     * recarga: custa um bônus calculado sobre zero.
+     *
+     * O mesmo defeito que o calendário da Produção tinha, e pelo mesmo motivo
+     * — `|| []` em cada resposta transforma falha em lista vazia, calada.
+     */
+    const falha = eRes.error ?? dRes.error ?? pRes.error;
+    if (falha) {
+      setErro(falha.message);
+      setLoading(false);
+      return;
+    }
+
     setProjetosAtivos((pRes.data || []).map((p: any) => p.nome));
     const editoresData = eRes.data || [];
     const historicoItems = dRes.data || [];
@@ -85,8 +106,9 @@ export function DesempenhoTab() {
      * diferentes. Numa tela que alimenta decisão de bônus, isso é o pior
      * defeito possível: errado e instável ao mesmo tempo.
      */
-    const { linhas: allPosts } = await todasAsLinhas<CardPostado>((de, ate) =>
+    const { linhas: allPosts, erro: erroPost } = await todasAsLinhas<CardPostado>((de, ate) =>
       supabase.from('producoes').select(SEL_PROD).eq('fase', 'postado').order('id').range(de, ate));
+    if (erroPost) { setErro(erroPost); setLoading(false); return; }
 
     // Data de postagem via criativo_historico
     const ids = allPosts.map((p: any) => p.id);
@@ -234,6 +256,17 @@ export function DesempenhoTab() {
       .map(v => ({ ...v, taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0 }))
       .sort((a, b) => a.mes.localeCompare(b.mes));
   }, [filtered]);
+
+  // Falha não vira gráfico vazio: a tela diz o que houve e oferece a saída.
+  if (erro) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+        <p className="text-sm text-muted-foreground">Não consegui carregar o desempenho.</p>
+        <p className="max-w-md text-xs text-muted-foreground/70">{erro}</p>
+        <Button size="sm" variant="outline" className="text-xs" onClick={load}>Tentar de novo</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

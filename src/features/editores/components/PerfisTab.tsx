@@ -157,64 +157,30 @@ export function PerfisTab() {
   );
 }
 
-function ObservacoesExpandable({ html }: { html: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const [clamped, setClamped] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (ref.current) setClamped(ref.current.scrollHeight > ref.current.clientHeight + 2);
-  }, [html]);
-
-  return (
-    <div className="mt-3">
-      <div
-        ref={ref}
-        className={cn(
-          'text-sm text-foreground/80 [&_a]:text-primary [&_a]:underline overflow-hidden transition-all',
-          !expanded && 'line-clamp-4',
-        )}
-        dangerouslySetInnerHTML={{ __html: sanitizarHtml(html) }}
-      />
-      {(clamped || expanded) && (
-        <button
-          onClick={() => setExpanded(v => !v)}
-          className="text-xs text-primary hover:underline mt-1"
-        >
-          {expanded ? 'Ver menos' : 'Ver mais'}
-        </button>
-      )}
-    </div>
-  );
-}
-
 
 function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
   editor: Editor; cargos: Cargo[]; cargoMap: Record<string, Cargo>;
   onChanged: () => void; isAdmin: boolean;
 }) {
-  const [promocoes, setPromocoes] = useState<any[]>([]);
+  const [notas, setNotas] = useState<any[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<any[]>([]);
 
   const load = async () => {
     const [p, a] = await Promise.all([
-      supabase.from('editor_promocoes').select('*').eq('editor_id', editor.id).order('data', { ascending: false }),
+      supabase.from('editor_notas').select('*').eq('editor_id', editor.id).order('data', { ascending: false }),
       supabase.from('avaliacoes_mensais').select('*').eq('editor_id', editor.id).order('mes_referencia', { ascending: false }),
     ]);
-    setPromocoes(p.data || []); setAvaliacoes(a.data || []);
+    setNotas(p.data || []); setAvaliacoes(a.data || []);
   };
   useEffect(() => { load(); }, [editor.id]);
 
   const cargoAtual = editor.cargo_id ? cargoMap[editor.cargo_id] : null;
 
-  const addPromocao = async () => {
-    const cargo_id = prompt('ID do cargo (ou cancele e use o formulário abaixo)');
-    if (!cargo_id) return;
-    const data = prompt('Data (YYYY-MM-DD)');
-    if (!data) return;
-    await supabase.from('editor_promocoes').insert({ editor_id: editor.id, cargo_id, data });
-    load();
-  };
+  /*
+   * `addPromocao` morava aqui e pedia o UUID do cargo por `prompt()` do
+   * navegador — "ID do cargo (ou cancele e use o formulário abaixo)". Nada
+   * chamava. Saiu: o formulário que o próprio texto mandava usar é o certo.
+   */
 
   return (
     <div className="space-y-4">
@@ -249,23 +215,54 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
             <div className="text-xs text-muted-foreground mt-2">
               Início: {editor.data_inicio || '—'} · {editor.ativo ? 'Ativo' : 'Inativo'}
             </div>
-            {editor.observacoes && <ObservacoesExpandable html={editor.observacoes} />}
           </div>
         </div>
       </div>
 
-      <HistoricoPromocoes editorId={editor.id} currentCargoId={editor.cargo_id} cargos={cargos} cargoMap={cargoMap} items={promocoes} reload={load} onChanged={onChanged} isAdmin={isAdmin} />
+      {/* O blob de observações saía aqui, e o "Histórico de promoções" logo
+          abaixo dele — um com 3.000 caracteres de texto datado à mão, o outro
+          vazio. Viraram uma coisa só. */}
+      <LinhaDoTempo editorId={editor.id} currentCargoId={editor.cargo_id} cargos={cargos}
+                    cargoMap={cargoMap} items={notas} reload={load} onChanged={onChanged}
+                    podeEscrever={isAdmin} />
       <HistoricoComissoes items={avaliacoes} />
       <HistoricoFolgas items={avaliacoes} />
     </div>
   );
 }
 
-function HistoricoPromocoes({ editorId, currentCargoId, cargos, cargoMap, items, reload, onChanged, isAdmin }: any) {
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ cargo_id: '', data: '', observacao: '' });
+const TIPO_NOTA: Record<string, { rotulo: string; cor: string }> = {
+  promocao:    { rotulo: 'Promoção',   cor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' },
+  feedback:    { rotulo: 'Feedback',   cor: 'bg-blue-500/10 text-blue-400 border-blue-500/25' },
+  remuneracao: { rotulo: 'Remuneração', cor: 'bg-amber-500/10 text-amber-400 border-amber-500/25' },
+};
 
-  // Cargos únicos por nome (DB tem duplicatas); exclui somente o cargo atual
+/**
+ * A carreira do editor em ordem, num lugar só.
+ *
+ * Antes eram duas coisas separadas na mesma tela: um blob de observações com
+ * 3.000 caracteres — datas digitadas à mão no começo de cada parágrafo, texto
+ * reescrito por inteiro a cada save — e, logo abaixo, um "Histórico de
+ * promoções" que dizia "Sem registros". A tabela de eventos datados existia e
+ * estava vazia enquanto a informação era digitada no campo ao lado.
+ *
+ * O tipo é o que faltava para as duas caberem juntas: `promocao` leva cargo,
+ * `feedback` e `remuneracao` não. O banco garante isso — a promoção sem cargo
+ * é recusada por CHECK, e não por confiança na tela.
+ */
+function LinhaDoTempo({ editorId, currentCargoId, cargos, cargoMap, items, reload, onChanged, podeEscrever }: any) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ tipo: 'feedback', cargo_id: '', data: '', texto: '' });
+
+  const ehPromocao = form.tipo === 'promocao';
+
+  // Cargos únicos por nome, menos o atual.
+  //
+  // A deduplicação por NOME está aqui porque o mesmo cargo existe uma vez por
+  // setor — "Pleno" de Copy, de Editor e de Gestor de Tráfego. Isso significa
+  // que a lista mostra um "Pleno" só, e o escolhido pode ser o de outro setor.
+  // Filtrar pelo setor do editor é o certo, e depende de um dado que esta tela
+  // ainda não carrega. Fica anotado, não escondido.
   const seen = new Set<string>();
   const currentNome = currentCargoId ? cargoMap[currentCargoId]?.nome : null;
   const cargosElegiveis = (cargos as Cargo[]).filter(c => {
@@ -274,52 +271,106 @@ function HistoricoPromocoes({ editorId, currentCargoId, cargos, cargoMap, items,
     return c.nome !== currentNome;
   });
 
+  const podeSalvar = !!form.data && !!form.texto.trim() && (!ehPromocao || !!form.cargo_id);
+
   const save = async () => {
-    if (!form.cargo_id || !form.data) return;
-    const { error } = await supabase.from('editor_promocoes').insert({ editor_id: editorId, ...form });
+    if (!podeSalvar) return;
+    const { error } = await supabase.from('editor_notas').insert({
+      editor_id: editorId,
+      tipo: form.tipo,
+      data: form.data,
+      texto: form.texto.trim(),
+      cargo_id: ehPromocao ? form.cargo_id : null,
+    });
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    await supabase.from('editores').update({ cargo_id: form.cargo_id }).eq('id', editorId);
-    setOpen(false); setForm({ cargo_id: '', data: '', observacao: '' });
-    reload();      // recarrega histórico de promoções
-    onChanged?.(); // recarrega lista de editores no pai → atualiza badge de cargo
+
+    // Promoção move o cargo do editor; os outros dois tipos não mexem nele.
+    if (ehPromocao) {
+      await supabase.from('editores').update({ cargo_id: form.cargo_id }).eq('id', editorId);
+      onChanged?.();
+    }
+    setOpen(false);
+    setForm({ tipo: 'feedback', cargo_id: '', data: '', texto: '' });
+    reload();
   };
+
   return (
-    <Section title="Histórico de promoções" onAdd={isAdmin ? () => setOpen(true) : undefined}>
+    <Section title="Linha do tempo" onAdd={podeEscrever ? () => setOpen(true) : undefined}>
       {items.length === 0 ? <Empty /> : (
-        <table className="w-full text-sm">
-          <thead><tr className="text-xs text-muted-foreground border-b border-border">
-            <th className="text-left py-2 px-3">Data</th><th className="text-left py-2 px-3">Cargo</th><th className="text-left py-2 px-3">Observação</th>
-          </tr></thead>
-          <tbody>
-            {items.map((p: any) => (
-              <tr key={p.id} className="border-b border-border/50">
-                <td className="py-2 px-3">{p.data}</td>
-                <td className="py-2 px-3">{cargoMap[p.cargo_id]?.nome || '—'}</td>
-                <td className="py-2 px-3 text-muted-foreground">{p.observacao || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="divide-y divide-border/50">
+          {items.map((n: any) => {
+            const t = TIPO_NOTA[n.tipo] ?? { rotulo: n.tipo, cor: 'bg-muted text-muted-foreground border-border' };
+            return (
+              <div key={n.id} className="flex gap-3 px-3 py-3">
+                <div className="w-20 shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {n.data ? new Date(n.data + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', t.cor)}>
+                      {t.rotulo}
+                    </span>
+                    {n.cargo_id && cargoMap[n.cargo_id] && (
+                      <span className="text-xs text-muted-foreground">{cargoMap[n.cargo_id].nome}</span>
+                    )}
+                  </div>
+                  {n.texto
+                    ? <p className="whitespace-pre-line text-sm text-foreground/85">{n.texto}</p>
+                    : <p className="text-sm text-muted-foreground">—</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Nova promoção</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Nova nota</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Cargo</Label>
-              <Select value={form.cargo_id} onValueChange={v => setForm({ ...form, cargo_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <div>
+              <Label>Tipo</Label>
+              <Select value={form.tipo} onValueChange={v => setForm({ ...form, tipo: v, cargo_id: '' })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {cargosElegiveis.length === 0
-                    ? <SelectItem value="__none__" disabled>Nenhum cargo disponível para promoção</SelectItem>
-                    : cargosElegiveis.map((c: Cargo) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)
-                  }
+                  <SelectItem value="feedback">Feedback</SelectItem>
+                  <SelectItem value="promocao">Promoção</SelectItem>
+                  <SelectItem value="remuneracao">Remuneração</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div><Label>Data</Label><Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></div>
-            <div><Label>Observação</Label><Textarea value={form.observacao} onChange={e => setForm({ ...form, observacao: e.target.value })} /></div>
+
+            {/* O cargo só existe quando é promoção — pedir sempre seria pedir
+                um dado que não se aplica, e o banco recusaria de todo jeito. */}
+            {ehPromocao && (
+              <div>
+                <Label>Novo cargo</Label>
+                <Select value={form.cargo_id} onValueChange={v => setForm({ ...form, cargo_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {cargosElegiveis.length === 0
+                      ? <SelectItem value="__none__" disabled>Nenhum cargo disponível</SelectItem>
+                      : cargosElegiveis.map((c: Cargo) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label>Data</Label>
+              <Input type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} />
+            </div>
+            <div>
+              <Label>Nota</Label>
+              <Textarea rows={5} value={form.texto}
+                        onChange={e => setForm({ ...form, texto: e.target.value })}
+                        placeholder="O que ficou combinado" />
+            </div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={save} disabled={!form.cargo_id || form.cargo_id === '__none__'}>Salvar</Button></DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={save} disabled={!podeSalvar}>Salvar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Section>
