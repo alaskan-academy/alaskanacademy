@@ -191,6 +191,21 @@ function LinhaDoAd({ ad, selecionados, onToggle, onToggleVarios, onAbrirCard }: 
           {rotuloDoAd(ad.ad_num)}
         </button>
 
+        {/*
+          O tipo exato, e não só a família do cabeçalho.
+
+          O mesmo número aparece duas vezes quando o AD tem duas entregas — o
+          AD 013 do Workshop está na fila como Vertical E como Horizontal, as
+          duas sob o cabeçalho "Variação". Sem isto eram duas linhas idênticas,
+          e mandar a errada para teste era questão de tempo.
+        */}
+        {ad.tipo_teste && (
+          <span className="w-[62px] shrink-0 truncate text-[10px] text-muted-foreground/70"
+                title={ad.tipo_teste}>
+            {ad.tipo_teste}
+          </span>
+        )}
+
         {/* `2 de 5` importa: mandar meio AD para teste é decisão, não descuido */}
         <button onClick={() => setAberto(a => !a)}
                 className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
