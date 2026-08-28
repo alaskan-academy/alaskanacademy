@@ -50,6 +50,7 @@ type Teste = {
   responsavel_id: string | null;
   responsavel_nome?: string;
   criado_por: string | null;
+  criado_por_nome?: string;
   criado_em: string;
   fonte: string | null;
   fonte_id: string | null;
@@ -228,6 +229,7 @@ export function RadarContent() {
       ...t,
       area:             areaMap[t.area_id] ?? null,
       responsavel_nome: perfilMap[t.responsavel_id] ?? null,
+      criado_por_nome:  perfilMap[t.criado_por] ?? null,
       projetos_nomes:   (t.projeto_ids || []).map((id: string) => projetoMap[id]).filter(Boolean),
     }));
     setTestes(loaded);
@@ -483,6 +485,23 @@ export function RadarContent() {
     aqui. Os campos que pertencem ao Funis continuam travados no formulario,
     com o cadeado.
   */
+  /*
+    Quem aparece no rodapé do card.
+
+    Mostrava só o responsável — um campo que se preenche à mão e que 38 dos 44
+    espelhos do Funis não têm. O card ficava sem autor nenhum, mesmo quando o
+    banco sabia quem criou o teste.
+
+    Responsável primeiro, porque é quem toca; quem criou entra como segunda
+    linha de defesa, e diz "criado por" para não se passar por responsável.
+    Onde nem um nem outro existem — 11 dos 52 testes, porque a origem no Funis
+    também não tem criador — continua vazio, que é a verdade.
+  */
+  const autorDe = (t: Teste): { nome: string; rotulo: string } | null =>
+    t.responsavel_nome ? { nome: t.responsavel_nome, rotulo: '' }
+    : t.criado_por_nome ? { nome: t.criado_por_nome, rotulo: 'criado por ' }
+    : null;
+
   const podeEditar = (t: Teste) =>
     isAdmin
     || t.criado_por === user?.id
@@ -676,11 +695,14 @@ export function RadarContent() {
                   <Calendar className="h-3 w-3" />
                   {fmtDate(t.data_inicio) || '—'}
                 </span>
-                {t.responsavel_nome && (
-                  <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                    <User className="h-3 w-3" />{t.responsavel_nome}
-                  </span>
-                )}
+                {(() => {
+                  const autor = autorDe(t);
+                  return autor && (
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <User className="h-3 w-3" />{autor.rotulo}{autor.nome}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           ))}
@@ -726,9 +748,14 @@ export function RadarContent() {
                   {detalhe.data_fim && (
                     <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Fim: {fmtDate(detalhe.data_fim)}</span>
                   )}
-                  {detalhe.responsavel_nome && (
-                    <span className="flex items-center gap-1"><User className="h-3 w-3" /> {detalhe.responsavel_nome}</span>
-                  )}
+                  {(() => {
+                    const autor = autorDe(detalhe);
+                    return autor && (
+                      <span className="flex items-center gap-1">
+                        <User className="h-3 w-3" /> {autor.rotulo}{autor.nome}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {detalhe.hipotese && (
