@@ -19,10 +19,18 @@ interface Notificacao {
 
 interface Props {
   userId: string;
-  collapsed: boolean;
+  /*
+    O `collapsed` saiu junto com o rodapé da sidebar.
+
+    Ele existia só para decidir de que lado o painel abria: no rodapé, o sino
+    ficava embaixo e o painel tinha que subir (`side="top"`), e recolhida a
+    barra ele tinha que sair pela direita. No cabeçalho a resposta é sempre a
+    mesma — abre para baixo, alinhado à direita — e a prop deixou de ter para
+    que existir.
+  */
 }
 
-export function NotificacoesPopover({ userId, collapsed }: Props) {
+export function NotificacoesPopover({ userId }: Props) {
   const navigate = useNavigate();
   const [open, setOpen]                     = useState(false);
   const [notificacoes, setNotificacoes]     = useState<Notificacao[]>([]);
@@ -122,8 +130,8 @@ export function NotificacoesPopover({ userId, collapsed }: Props) {
       </PopoverTrigger>
 
       <PopoverContent
-        side={collapsed ? 'right' : 'top'}
-        align={collapsed ? 'start' : 'end'}
+        side="bottom"
+        align="end"
         className="w-80 p-0"
         sideOffset={8}
       >

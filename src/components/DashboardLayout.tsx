@@ -1,8 +1,11 @@
 import { ReactNode, useEffect } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
+import { NotificacoesPopover } from '@/components/NotificacoesPopover';
+import { ContaMenu } from '@/components/ContaMenu';
 import { IngestStatusBanner } from '@/components/IngestStatusBanner';
 import { useSidebarState } from '@/contexts/SidebarContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Menu, Search } from 'lucide-react';
 
 export function DashboardLayout({
@@ -47,6 +50,7 @@ export function DashboardLayout({
   hideAvisos?: boolean;
 }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
+  const { user } = useAuth();
 
   /*
     O nome da tela na aba do navegador.
@@ -112,6 +116,22 @@ export function DashboardLayout({
                 <span>Buscar</span>
                 <kbd className="ml-1 text-[10px] bg-muted px-1 py-0.5 rounded font-mono">Ctrl+K</kbd>
               </button>
+              {/*
+                Sino e conta moram aqui, e não no rodapé da sidebar.
+
+                A sidebar responde "onde eu vou"; estes dois não são lugares
+                para ir, são coisas que valem em qualquer tela — e o cabeçalho é
+                o único elemento presente em todas elas. No rodapé eles dividiam
+                uma coluna de ícones com o botão de recolher a barra: três
+                classes de ação diferentes desenhadas igual, sendo que uma delas
+                encerrava a sessão num clique.
+
+                No celular vale igual: o cabeçalho continua na tela quando a
+                sidebar está fechada atrás do ☰, e antes o sino ficava escondido
+                lá dentro.
+              */}
+              {user && <NotificacoesPopover userId={user.id} />}
+              <ContaMenu />
             </div>
           </div>
         </header>

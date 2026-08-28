@@ -1,7 +1,7 @@
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, ShoppingCart,
-  Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
+  Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -10,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
-import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
 /**
  * O menu, agrupado pelo MOTIVO de abrir cada tela.
@@ -119,9 +118,8 @@ const WEBHOOK_BASE = 'https://prtkfwwqpcziexgipoqk.supabase.co/functions/v1/payt
 
 export function AppSidebar() {
   const { collapsed, toggle, mobileOpen, setMobileOpen, isMobile } = useSidebarState();
-  const { user, canAccess, perfil, signOut } = useAuth();
+  const { canAccess, perfil } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
 
   /**
    * O que cada pessoa alcança. O GRUPO é o mesmo para todo mundo.
@@ -138,14 +136,14 @@ export function AppSidebar() {
     .map(g => ({ ...g, itens: g.itens.filter(podeVer) }))
     .filter(g => g.itens.length > 0);
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
   /*
-    O estado `geralAberto` e o componente `DashboardItem` saíram junto com o
-    grupo "Geral": não há mais nada para abrir e fechar.
+    Esta barra é só navegação.
+
+    Saíram daqui, em duas passadas: o item "Geral" que abria e fechava (era o
+    seletor de dashboard, e sobrou uma opção só), e o rodapé com nome, sino e
+    sair — que agora vivem no cabeçalho, onde valem para qualquer tela. O que
+    ficou de controle é o recolher, lá em cima ao lado da marca, porque ele é
+    propriedade da BARRA e não da pessoa.
   */
 
   const showLabels = isMobile || !collapsed;
@@ -220,17 +218,10 @@ export function AppSidebar() {
               <X className="h-5 w-5" />
             </button>
           </div>
+          {/* Sem rodapé: nome, sino e sair moram no cabeçalho, que continua na
+              tela quando esta gaveta está fechada. O bloco era escrito duas
+              vezes neste arquivo, uma aqui e outra na versão de computador. */}
           <SidebarInner onNav={() => setMobileOpen(false)} />
-          <div className="border-t border-sidebar-border flex items-center gap-2 px-4 py-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">{perfil?.nome}</p>
-              {perfil?.is_admin && <p className="text-[10px] text-muted-foreground">Admin</p>}
-            </div>
-            {user && <NotificacoesPopover userId={user.id} collapsed={false} />}
-            <button onClick={handleSignOut} title="Sair" className="text-muted-foreground hover:text-foreground p-1 rounded">
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
         </aside>
       </>
     );
@@ -243,39 +234,45 @@ export function AppSidebar() {
         "fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-300",
         collapsed ? "w-16" : "w-56"
       )}>
-        <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
-          <Mountain className="h-5 w-5 text-primary shrink-0" />
-          {!collapsed && <span className="text-foreground font-semibold text-lg tracking-tight">Alaskan</span>}
-        </div>
-        <SidebarInner />
-        {/* Usuário + logout */}
+        {/*
+          O recolher subiu para cá, ao lado da marca.
+
+          Ele é propriedade da BARRA, não da pessoa — e lá embaixo dividia uma
+          coluna de ícones com o sino e o sair, três ações de naturezas
+          diferentes desenhadas igual. Recolhida, a barra mostrava três glifos
+          quase idênticos empilhados; agora mostra um.
+        */}
         <div className={cn(
-          "border-t border-sidebar-border flex items-center gap-2 px-3 py-2",
-          collapsed ? "justify-center flex-col" : "",
+          "flex items-center h-14 border-b border-border",
+          collapsed ? "justify-center px-2" : "gap-2 px-4",
         )}>
+          <Mountain className="h-5 w-5 text-primary shrink-0" />
           {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">{perfil?.nome}</p>
-              {perfil?.is_admin && <p className="text-[10px] text-muted-foreground">Admin</p>}
-            </div>
+            <>
+              <span className="flex-1 truncate text-lg font-semibold tracking-tight text-foreground">Alaskan</span>
+              <button
+                onClick={toggle}
+                title="Recolher a barra"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </>
           )}
-          {user && (
-            <NotificacoesPopover userId={user.id} collapsed={collapsed} />
-          )}
-          <button
-            onClick={handleSignOut}
-            title="Sair"
-            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
         </div>
-        <button
-          onClick={toggle}
-          className="flex items-center justify-center h-10 border-t border-sidebar-border text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
+        {/* Recolhida, o próprio ícone da marca não cabe junto com o botão:
+            a expansão vira uma faixa própria logo abaixo, que é o único
+            controle da coluna. */}
+        {collapsed && (
+          <button
+            onClick={toggle}
+            title="Expandir a barra"
+            className="flex h-8 items-center justify-center border-b border-sidebar-border text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
+        <SidebarInner />
       </aside>
     </>
   );
