@@ -8,6 +8,7 @@ import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GeradorUtmTab } from "../components/GeradorUtmTab";
 import { cn } from "@/lib/utils";
+import type { LinhaUtmAgregada } from "@/features/ads/utm";
 
 const LEVELS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_placement"] as const;
 type UTMLevel = (typeof LEVELS)[number];
@@ -111,22 +112,33 @@ export default function UTMPage() {
       setLoading(true);
       
 
-      let q1 = supabase
-        .from("vendas")
-        .select("utm_source,utm_medium,utm_campaign,utm_content,utm_term,produto,status,valor_total,valor_oferta_principal,data_venda,pedido_id,is_upsell")
-        .not("pedido_id", "like", "TEST%")
-        .not("pedido_id", "like", "LC-%")
-        .neq("is_upsell", true);
+      /*
+        A soma vem do banco; a limpeza continua aqui.
 
-      if (startISO) q1 = q1.gte("data_venda", startISO);
-      if (endISO) q1 = q1.lte("data_venda", endISO);
-      if (contaIds.length) q1 = q1.in("ad_account_id", contaIds);
+        A tela pedia as linhas cruas de `vendas` e agrupava no JavaScript.
+        Agosto tem 2.462 vendas no recorte dela e o PostgREST corta em 1.000
+        sem avisar — então a análise que existe para dizer de ONDE vem a venda
+        respondia sobre 40% delas, sem sinal de erro.
 
-      const r1 = await q1;
-      const rawVendas = r1.data || [];
+        `fn_utm_agregado` para nas tuplas CRUAS de UTM: 2.462 vendas viram 406
+        linhas. A limpeza (`cleanUtmValue`) fica onde sempre esteve, com as
+        regras que ela tem — "FBjLj6a8…" vira "meta ads", placement vira rótulo
+        legível. Reescrever isso em SQL seria duas versões da mesma regra
+        esperando divergir.
+
+        Funciona porque limpar é função pura do valor cru: duas tuplas que
+        limpam para a mesma chave são somadas aqui embaixo, e soma de soma dá a
+        mesma soma.
+      */
+      const { data: agregado, error } = await supabase.rpc("fn_utm_agregado", {
+        p_inicio: startISO || null,
+        p_fim: endISO || null,
+        p_contas: contaIds,
+      });
+      if (error) console.error("fn_utm_agregado:", error.message);
 
       const utmMap: Record<string, any> = {};
-      rawVendas.forEach((v: any) => {
+      ((agregado as LinhaUtmAgregada[]) ?? []).forEach((v) => {
         const utmSource = cleanUtmValue(v.utm_source, "utm_source");
         const utmMedium = cleanUtmValue(v.utm_medium, "utm_medium");
         const utmCampaign = cleanUtmValue(v.utm_campaign, "utm_campaign");
@@ -149,14 +161,10 @@ export default function UTMPage() {
             faturamento: 0,
           };
         }
-        if (v.status === "aprovada") {
-          utmMap[key].vendas_aprovadas += 1;
-          utmMap[key].faturamento += Number(v.valor_oferta_principal || 0);
-        } else if (v.status === "pendente") {
-          utmMap[key].vendas_pendentes += 1;
-        } else if (v.status === "cancelada" || v.status === "expirada") {
-          utmMap[key].vendas_canceladas += 1;
-        }
+        utmMap[key].vendas_aprovadas  += Number(v.vendas_aprovadas || 0);
+        utmMap[key].vendas_pendentes  += Number(v.vendas_pendentes || 0);
+        utmMap[key].vendas_canceladas += Number(v.vendas_canceladas || 0);
+        utmMap[key].faturamento       += Number(v.faturamento || 0);
       });
 
       const utmRows = Object.values(utmMap).map((r: any) => {

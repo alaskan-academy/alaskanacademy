@@ -1,9 +1,14 @@
 -- ── O alerta que faltava: veio de anuncio, mas de qual? ───────────────────
 --
--- Em 01/07/2026 o checkout "Saponaria Brasil - Desconto de Aula" parou de
--- receber UTM. Junho fechou com 0% das vendas da conta Saponaria sem UTM;
--- julho fechou com 99,7%. Sao R$ 36.928,99 em julho e R$ 51.580,61 em agosto
--- que entraram sem dizer de que anuncio vieram.
+-- O checkout "Saponaria Brasil - Desconto de Aula" recebe venda sem dizer de
+-- que anuncio ela veio. Sao R$ 36.928,99 em julho e R$ 51.580,61 em agosto.
+--
+-- CORRECAO, escrita depois de olhar de novo: eu concluiu aqui que o problema
+-- "comecou em 01/07", porque foi quando as vendas da conta Saponaria passaram
+-- a aparecer sem UTM. Estava errado, e o erro veio de recortar por CONTA. Por
+-- checkout, ele nunca mandou rastreio -- desde 20/05, quando nasceu. O que
+-- mudou em julho foi a atribuicao de conta, nao o rastreio. O numero completo
+-- e o sensor certo estao em `20260828o_alerta_diz_qual_checkout_esta_cego`.
 --
 -- Existia um alerta para isso -- `receita_sem_rastreio` -- e ele NAO disparou
 -- uma vez sequer em oito semanas. Ele mede
