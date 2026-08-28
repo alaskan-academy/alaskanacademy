@@ -30,7 +30,7 @@ const fnError = async (error: unknown, data: Record<string, string> | null): Pro
   return null;
 };
 
-export function AcessosTab() {
+export function PermissoesTab() {
   const confirm = useConfirm();
   const [usuarios, setUsuarios]   = useState<Usuario[]>([]);
   const [arquivados, setArquivados] = useState<Usuario[]>([]);
@@ -302,7 +302,7 @@ export function AcessosTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">Gerencie acessos, cargos e permissões de páginas.</p>
+        <p className="text-xs text-muted-foreground">Quem é de qual setor e cargo, e quais páginas cada pessoa enxerga.</p>
         <Button onClick={() => { setOpen(true); setNewPerms(defaultPerms()); }}>
           <Plus className="h-4 w-4 mr-1" /> Novo usuário
         </Button>

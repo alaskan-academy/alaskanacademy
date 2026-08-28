@@ -22,7 +22,9 @@ import {
 type Acesso = {
   id: string;
   ferramenta: string;
-  setor: string;
+  /* Para que serve a ferramenta. Não confundir com `setores`, que é o time
+     das pessoas — a palavra queria dizer as duas coisas e não dava. */
+  categoria: string;
   url: string | null;
   login: string | null;
   senha: string | null;
@@ -34,39 +36,40 @@ type Acesso = {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const SETORES_DEFAULT = [
+/* Só o ponto de partida de um banco vazio: a lista de verdade vem do banco. */
+const CATEGORIAS_DEFAULT = [
   'Administrativo', 'Automação', 'Área de Membros', 'Banco de Dados',
   'Construtor IA', 'Cursos e Formações', 'Edição', 'Pesquisa',
 ];
 
 /*
-  A cor do setor sai do NOME, e não de uma lista escrita aqui.
+  A cor da categoria sai do NOME, e não de uma lista escrita aqui.
 
-  A lista tinha os oito setores que existiam quando ela foi escrita. Como dá
-  para criar setor pelo painel de gerenciar, o nono nascia cinza — a terceira
-  armadilha do CLAUDE.md, silenciosa: ninguém percebe que faltou, só acha que
-  aquele setor é sem graça.
+  A lista tinha as oito categorias que existiam quando ela foi escrita. Como dá
+  para criar categoria pelo painel de gerenciar, a nona nascia cinza — a
+  terceira armadilha do CLAUDE.md, silenciosa: ninguém percebe que faltou, só
+  acha que aquela categoria é sem graça.
 
   A soma dos códigos das letras escolhe uma das oito cores. É estável (o mesmo
   nome dá sempre a mesma cor) e não precisa de manutenção.
 */
-const CORES_SETOR = [
+const CORES_CATEGORIA = [
   'bg-blue-400', 'bg-emerald-400', 'bg-yellow-400', 'bg-purple-400',
   'bg-orange-400', 'bg-pink-400', 'bg-red-400', 'bg-slate-400',
 ];
 
-function corDoSetor(nome: string): string {
+function corDaCategoria(nome: string): string {
   let soma = 0;
   for (let i = 0; i < nome.length; i++) soma += nome.charCodeAt(i);
-  return CORES_SETOR[soma % CORES_SETOR.length];
+  return CORES_CATEGORIA[soma % CORES_CATEGORIA.length];
 }
 
-const CONF_KEY = 'setores_acessos';
+const CONF_KEY = 'categorias_acessos';
 
-const sortSetores = (arr: string[]) => [...arr].sort((a, b) => a.localeCompare(b, 'pt'));
+const ordenar = (arr: string[]) => [...arr].sort((a, b) => a.localeCompare(b, 'pt'));
 
-const blankForm = (setor = '') => ({
-  ferramenta: '', setor, url: '', login: '',
+const blankForm = (categoria = '') => ({
+  ferramenta: '', categoria, url: '', login: '',
   senha: '', status: 'ativo' as 'ativo' | 'inativo', notas: '',
 });
 
@@ -169,14 +172,14 @@ function AcessoRow({ a, isAdmin, onEdit, onDelete }: {
   );
 }
 
-// ─── SetorSection ─────────────────────────────────────────────────────────────
+// ─── CategoriaSection ─────────────────────────────────────────────────────────────
 
-function SetorSection({ setor, itens, isAdmin, onEdit, onDelete }: {
-  setor: string; itens: Acesso[]; isAdmin: boolean;
+function CategoriaSection({ categoria, itens, isAdmin, onEdit, onDelete }: {
+  categoria: string; itens: Acesso[]; isAdmin: boolean;
   onEdit: (a: Acesso) => void; onDelete: (a: Acesso) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const dot = corDoSetor(setor);
+  const dot = corDaCategoria(categoria);
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden mb-3">
@@ -185,7 +188,7 @@ function SetorSection({ setor, itens, isAdmin, onEdit, onDelete }: {
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
       >
         <div className={cn('w-2.5 h-2.5 rounded-full shrink-0', dot)} />
-        <span className="font-semibold text-sm flex-1">{setor}</span>
+        <span className="font-semibold text-sm flex-1">{categoria}</span>
         <span className="text-xs text-muted-foreground mr-2">
           {itens.length} ferramenta{itens.length !== 1 ? 's' : ''}
         </span>
@@ -219,16 +222,16 @@ function SetorSection({ setor, itens, isAdmin, onEdit, onDelete }: {
   );
 }
 
-// ─── SetoresPanel (inline dentro do dialog) ───────────────────────────────────
+// ─── CategoriasPanel (inline dentro do dialog) ───────────────────────────────────
 
-function SetoresPanel({ setores, acessos, onClose, onSave }: {
-  setores: string[];
+function CategoriasPanel({ categorias, acessos, onClose, onSave }: {
+  categorias: string[];
   acessos: Acesso[];
   onClose: () => void;
   onSave: (updated: string[]) => Promise<void>;
 }) {
   const confirm = useConfirm();
-  const [list, setList]         = useState<string[]>(setores);
+  const [list, setList]         = useState<string[]>(categorias);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editVal, setEditVal]   = useState('');
   const [newNome, setNewNome]   = useState('');
@@ -239,7 +242,7 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
     if (editingIdx !== null) editRef.current?.focus();
   }, [editingIdx]);
 
-  const usageCount = (nome: string) => acessos.filter(a => a.setor === nome).length;
+  const usageCount = (nome: string) => acessos.filter(a => a.categoria === nome).length;
 
   const startEdit = (i: number) => {
     setEditingIdx(i);
@@ -250,15 +253,15 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
     const trimmed = editVal.trim();
     if (!trimmed || trimmed === list[i]) { setEditingIdx(null); return; }
     if (list.some((s, j) => j !== i && s.toLowerCase() === trimmed.toLowerCase())) {
-      toast({ title: 'Já existe um setor com esse nome', variant: 'destructive' });
+      toast({ title: 'Já existe uma categoria com esse nome', variant: 'destructive' });
       return;
     }
     const oldName = list[i];
-    const updated = sortSetores(list.map((s, j) => j === i ? trimmed : s));
+    const updated = ordenar(list.map((s, j) => j === i ? trimmed : s));
     setSaving(true);
     // Bulk-update acessos that use the old name
     if (usageCount(oldName) > 0) {
-      const { error } = await supabase.from('acessos').update({ setor: trimmed }).eq('setor', oldName);
+      const { error } = await supabase.from('acessos').update({ categoria: trimmed }).eq('categoria', oldName);
       if (error) {
         toast({ title: 'Erro ao renomear', description: error.message, variant: 'destructive' });
         setSaving(false);
@@ -276,8 +279,8 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
     const count = usageCount(nome);
     if (count > 0) {
       const ok = await confirm({
-        title: `Excluir setor "${nome}"?`,
-        description: `${count} ferramenta${count !== 1 ? 's' : ''} usa${count === 1 ? '' : 'm'} este setor. Elas ficarão sem setor definido.`,
+        title: `Excluir categoria "${nome}"?`,
+        description: `${count} ferramenta${count !== 1 ? 's' : ''} usa${count === 1 ? '' : 'm'} esta categoria. Elas ficarão sem categoria definida.`,
       });
       if (!ok) return;
     }
@@ -292,10 +295,10 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
     const trimmed = newNome.trim();
     if (!trimmed) return;
     if (list.some(s => s.toLowerCase() === trimmed.toLowerCase())) {
-      toast({ title: 'Setor já existe', variant: 'destructive' });
+      toast({ title: 'Categoria já existe', variant: 'destructive' });
       return;
     }
-    const updated = sortSetores([...list, trimmed]);
+    const updated = ordenar([...list, trimmed]);
     setSaving(true);
     await onSave(updated);
     setList(updated);
@@ -307,7 +310,7 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
     <div className="flex flex-col gap-0">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold">Gerenciar setores</span>
+        <span className="text-sm font-semibold">Gerenciar categorias</span>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-0.5 rounded transition-colors">
           <X className="h-4 w-4" />
         </button>
@@ -365,13 +368,13 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
         ))}
       </div>
 
-      {/* Novo setor */}
+      {/* Nova categoria */}
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
         <Input
           value={newNome}
           onChange={e => setNewNome(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && add()}
-          placeholder="Novo setor..."
+          placeholder="Nova categoria..."
           className="h-7 text-xs flex-1"
           disabled={saving}
         />
@@ -393,38 +396,55 @@ export default function AcessosPage() {
   const [acessos, setAcessos]           = useState<Acesso[]>([]);
   const [loading, setLoading]           = useState(true);
   const [search, setSearch]             = useState('');
-  const [setorFilter, setSetorFilter]   = useState('todos');
+  const [filtroCategoria, setFiltroCategoria] = useState('todos');
   const [showInativos, setShowInativos] = useState(false);
 
   const [open, setOpen]             = useState(false);
   const [editingId, setEditingId]   = useState<string | null>(null);
   const [form, setForm]             = useState(blankForm());
   const [saving, setSaving]         = useState(false);
-  const [showSetores, setShowSetores] = useState(false);
+  const [gerenciando, setGerenciando] = useState(false);
 
-  // Setores dinâmicos
-  const [setores, setSetores] = useState<string[]>(SETORES_DEFAULT);
+  // Categorias, vindas do banco
+  const [categorias, setCategorias] = useState<string[]>(CATEGORIAS_DEFAULT);
 
-  // ── Carrega setores de configuracoes ──
-  const loadSetores = async () => {
-    // A tabela usa `chave`/`valor`; pedindo `key`/`value` o Postgres devolvia 400 e
-    // a lista de setores caia silenciosamente no default.
+  /*
+    A lista de categorias mora em `configuracoes_texto`, e não em `configuracoes`.
+
+    Morava na segunda, e ali `valor` é NUMERIC — a tabela de parâmetros fiscais,
+    onde vivem alíquota e custo fixo. Gravar um JSON de texto num campo numérico
+    falha, e o erro era engolido: a tela mostrava a categoria nova como se
+    tivesse salvado, e no F5 ela sumia. A chave nunca existiu no banco.
+
+    `configuracoes_texto` é chave/valor de texto e já existia ao lado.
+  */
+  const carregarCategorias = async () => {
     const { data } = await supabase
-      .from('configuracoes')
+      .from('configuracoes_texto')
       .select('valor')
       .eq('chave', CONF_KEY)
       .maybeSingle();
-    if (data?.valor) {
-      try { setSetores(sortSetores(JSON.parse(data.valor))); } catch { /* usa default */ }
+    if (!data?.valor) return;
+    try {
+      const lista = JSON.parse(data.valor);
+      if (Array.isArray(lista) && lista.length) setCategorias(ordenar(lista));
+    } catch {
+      /* Valor corrompido: fica o default, que é melhor que uma lista vazia. */
     }
   };
 
-  const saveSetores = async (updated: string[]) => {
-    await supabase.from('configuracoes').upsert(
+  const salvarCategorias = async (updated: string[]) => {
+    const { error } = await supabase.from('configuracoes_texto').upsert(
       { chave: CONF_KEY, valor: JSON.stringify(updated) },
       { onConflict: 'chave' },
     );
-    setSetores(updated);
+    /* Falar quando falha: era o silêncio aqui que escondia o bug do campo
+       numérico por todo esse tempo. */
+    if (error) {
+      toast({ title: 'Não foi possível salvar as categorias', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setCategorias(updated);
   };
 
   // ── Carrega acessos ──
@@ -438,7 +458,7 @@ export default function AcessosPage() {
       .from('acessos')
       .select('*')
       .is('deletado_em', null)
-      .order('setor')
+      .order('categoria')
       .order('ferramenta');
     if (error) toast({ title: 'Erro ao carregar', description: error.message, variant: 'destructive' });
     setAcessos(data || []);
@@ -446,14 +466,16 @@ export default function AcessosPage() {
     primeiraCarga.current = false;
   };
 
-  useEffect(() => { loadSetores(); load(); }, []);
+  useEffect(() => { carregarCategorias(); load(); }, []);
 
-  const setoresList = useMemo(() => [...new Set(acessos.map(a => a.setor))].sort(), [acessos]);
+  /* O filtro mostra o que EXISTE nos dados; o formulário mostra o que é
+     permitido escolher. São perguntas diferentes, por isso duas listas. */
+  const categoriasEmUso = useMemo(() => [...new Set(acessos.map(a => a.categoria))].sort(), [acessos]);
 
   const filtered = useMemo(() => {
     let list = acessos;
     if (!showInativos) list = list.filter(a => a.status === 'ativo');
-    if (setorFilter !== 'todos') list = list.filter(a => a.setor === setorFilter);
+    if (filtroCategoria !== 'todos') list = list.filter(a => a.categoria === filtroCategoria);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(a =>
@@ -463,31 +485,31 @@ export default function AcessosPage() {
       );
     }
     return list;
-  }, [acessos, showInativos, setorFilter, search]);
+  }, [acessos, showInativos, filtroCategoria, search]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Acesso[]>();
     for (const a of filtered) {
-      if (!map.has(a.setor)) map.set(a.setor, []);
-      map.get(a.setor)!.push(a);
+      if (!map.has(a.categoria)) map.set(a.categoria, []);
+      map.get(a.categoria)!.push(a);
     }
     return [...map.entries()];
   }, [filtered]);
 
   const openNew = () => {
     setEditingId(null);
-    setForm(blankForm(setores[0] || ''));
-    setShowSetores(false);
+    setForm(blankForm(categorias[0] || ''));
+    setGerenciando(false);
     setOpen(true);
   };
   const openEdit = (a: Acesso) => {
     setEditingId(a.id);
     setForm({
-      ferramenta: a.ferramenta, setor: a.setor,
+      ferramenta: a.ferramenta, categoria: a.categoria,
       url: a.url || '', login: a.login || '',
       senha: a.senha || '', status: a.status, notas: a.notas || '',
     });
-    setShowSetores(false);
+    setGerenciando(false);
     setOpen(true);
   };
 
@@ -497,7 +519,7 @@ export default function AcessosPage() {
     setSaving(true);
     const payload = {
       ferramenta:    form.ferramenta.trim(),
-      setor:         form.setor,
+      categoria:     form.categoria,
       url:           form.url.trim()   || null,
       login:         form.login.trim() || null,
       senha:         form.senha.trim() || null,
@@ -541,7 +563,7 @@ export default function AcessosPage() {
     /*
       `hideFilters` porque esta tela nao le `useFilters`: conta de anuncio e
       periodo nao tem o que fazer numa lista de ferramentas, e a barra oferecia
-      dois controles que nao mudavam nada. A busca e o filtro de setor que
+      dois controles que nao mudavam nada. A busca e o filtro de categoria que
       valem estao logo abaixo.
     */
     <DashboardLayout title="Acessos" hideFilters hideTitle>
@@ -557,13 +579,13 @@ export default function AcessosPage() {
           />
         </div>
 
-        <Select value={setorFilter} onValueChange={setSetorFilter}>
+        <Select value={filtroCategoria} onValueChange={setFiltroCategoria}>
           <SelectTrigger className="w-48 h-8 text-sm">
-            <SelectValue placeholder="Todos os setores" />
+            <SelectValue placeholder="Todas as categorias" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todos">Todos os setores</SelectItem>
-            {setoresList.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+            <SelectItem value="todos">Todas as categorias</SelectItem>
+            {categoriasEmUso.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -592,10 +614,10 @@ export default function AcessosPage() {
       ) : grouped.length === 0 ? (
         <div className="text-center py-16 text-sm text-muted-foreground">Nenhuma ferramenta encontrada.</div>
       ) : (
-        grouped.map(([setor, itens]) => (
-          <SetorSection
-            key={setor}
-            setor={setor}
+        grouped.map(([categoria, itens]) => (
+          <CategoriaSection
+            key={categoria}
+            categoria={categoria}
             itens={itens}
             isAdmin={isAdmin}
             onEdit={openEdit}
@@ -605,23 +627,23 @@ export default function AcessosPage() {
       )}
 
       {/* Dialog CRUD */}
-      <Dialog open={open} onOpenChange={v => { if (!v) { setOpen(false); setShowSetores(false); } }}>
+      <Dialog open={open} onOpenChange={v => { if (!v) { setOpen(false); setGerenciando(false); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Editar ferramenta' : 'Nova ferramenta'}</DialogTitle>
           </DialogHeader>
 
-          {showSetores ? (
-            // ── Painel de setores ──
-            <SetoresPanel
-              setores={setores}
+          {gerenciando ? (
+            // ── Painel de categorias ──
+            <CategoriasPanel
+              categorias={categorias}
               acessos={acessos}
-              onClose={() => setShowSetores(false)}
+              onClose={() => setGerenciando(false)}
               onSave={async (updated) => {
-                await saveSetores(updated);
-                // Se o setor atual do form não existe mais, corrige
-                if (!updated.includes(form.setor) && updated.length > 0) {
-                  setForm(f => ({ ...f, setor: updated[0] }));
+                await salvarCategorias(updated);
+                // Se a categoria escolhida no formulário não existe mais, corrige
+                if (!updated.includes(form.categoria) && updated.length > 0) {
+                  setForm(f => ({ ...f, categoria: updated[0] }));
                 }
               }}
             />
@@ -639,11 +661,11 @@ export default function AcessosPage() {
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <Label>Setor</Label>
+                    <Label>Categoria</Label>
                     {isAdmin && (
                       <button
                         type="button"
-                        onClick={() => setShowSetores(true)}
+                        onClick={() => setGerenciando(true)}
                         className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                       >
                         <Settings2 className="h-3 w-3" />
@@ -651,10 +673,10 @@ export default function AcessosPage() {
                       </button>
                     )}
                   </div>
-                  <Select value={form.setor} onValueChange={v => setForm({ ...form, setor: v })}>
+                  <Select value={form.categoria} onValueChange={v => setForm({ ...form, categoria: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {setores.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {categorias.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -707,7 +729,7 @@ export default function AcessosPage() {
             </div>
           )}
 
-          {!showSetores && (
+          {!gerenciando && (
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button onClick={save} disabled={saving}>
