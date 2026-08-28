@@ -13,7 +13,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Check, Inbox, Flame, X } from 'lucide-react';
+import { Check, Inbox, Flame, X, FileText, ExternalLink } from 'lucide-react';
+import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
+import type { ProducaoNivel } from '@/features/producao/components/types';
+import { formatNumber } from '@/lib/formatters';
 import { Pedido, rotuloDoAdHook, rotuloDeDias, URGENCIA_LABEL } from './tipos';
 
 const URGENCIA_COR: Record<string, string> = {
@@ -37,12 +40,22 @@ const URGENCIA_COR: Record<string, string> = {
  * uma variação daquele AD depois do pedido, a linha avisa. Avisa, não fecha.
  */
 export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
-  const { user } = useAuth();
+  const { user, perfil } = useAuth();
+  /* O mesmo calculo que a Esteira ja faz para o drawer dela: a permissao
+     dentro do card e por cargo, e escrever "copy" aqui inventaria um nivel que
+     o tipo nao conhece. */
+  const nivel: ProducaoNivel = perfil?.is_admin ? 'socio'
+    : perfil?.cargo?.pode_aprovar ? 'head' : 'membro';
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [verFechados, setVerFechados] = useState(false);
-  const [fechando, setFechando] = useState<Pedido | null>(null);
+  const [fechando, setFechando]   = useState<Pedido | null>(null);
+  /* O pedido inteiro, e o card do AD que motivou o pedido. Os dois abrem
+     SOBRE a Esteira: sair da tela para conferir e ter que voltar é o que fazia
+     a fila ser lida de olho. */
+  const [vendoPedido, setVendoPedido] = useState<Pedido | null>(null);
+  const [adAberto, setAdAberto]       = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -130,10 +143,16 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
       ) : (
         <div className="divide-y divide-border/40">
           {abertos.map(p => (
-            <LinhaPedido key={p.id} p={p} onFechar={() => setFechando(p)} />
+            <LinhaPedido key={p.id} p={p}
+                         onFechar={() => setFechando(p)}
+                         onVerPedido={() => setVendoPedido(p)}
+                         onAbrirAd={() => setAdAberto(p.producao_id)} />
           ))}
           {verFechados && fechados.map(p => (
-            <LinhaPedido key={p.id} p={p} onFechar={() => setFechando(p)} />
+            <LinhaPedido key={p.id} p={p}
+                         onFechar={() => setFechando(p)}
+                         onVerPedido={() => setVendoPedido(p)}
+                         onAbrirAd={() => setAdAberto(p.producao_id)} />
           ))}
         </div>
       )}
@@ -146,11 +165,128 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
           onSalvo={() => { setFechando(null); void carregar(); onMudou?.(); }}
         />
       )}
+
+      {vendoPedido && (
+        <ModalPedido pedido={vendoPedido}
+                     onClose={() => setVendoPedido(null)}
+                     onAbrirAd={() => { setAdAberto(vendoPedido.producao_id); setVendoPedido(null); }} />
+      )}
+
+      {/*
+        O card do AD original, montado aqui.
+
+        `funis` e `perfis` vazios pelo mesmo motivo que na Esteira e em
+        Criativos Meta: fora da Produção não há de onde tirá-los, e o drawer só
+        os usa no seletor de funil e nas menções. O Copy abre para LER o que foi
+        feito, não para reatribuir.
+      */}
+      {adAberto && (
+        <CriativoDrawer
+          criativoId={adAberto}
+          onClose={() => setAdAberto(null)}
+          onUpdate={() => void carregar()}
+          nivel={nivel}
+          userId={user?.id ?? ''}
+          funis={[]}
+          perfis={[]}
+        />
+      )}
     </div>
   );
 }
 
-function LinhaPedido({ p, onFechar }: { p: Pedido; onFechar: () => void }) {
+/**
+ * A solicitação inteira, como ela foi escrita.
+ *
+ * A fila mostra o resumo; aqui está tudo que quem pediu digitou — o porquê, o
+ * que melhorar, a urgência e o tipo sugerido — mais o contexto que o pedido
+ * carrega sozinho: verba, ROAS e avaliação do AD.
+ *
+ * Existe porque o Copy precisa das duas leituras em momentos diferentes:
+ * varrendo a fila ele escolhe QUAL pegar; sentado para escrever, ele precisa do
+ * texto inteiro sem a fila em volta.
+ */
+function ModalPedido({ pedido, onClose, onAbrirAd }: {
+  pedido: Pedido; onClose: () => void; onAbrirAd: () => void;
+}) {
+  const p = pedido;
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-base">
+            Variação pedida para {p.ad_num != null ? rotuloDoAdHook(p.ad_num, p.hook) : p.criativo}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 text-sm">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-muted-foreground">{p.projeto ?? '—'}</span>
+            {p.funil && (
+              <span className="rounded bg-secondary px-1.5 py-px text-[10px] text-muted-foreground">{p.funil}</span>
+            )}
+            <span className={cn('rounded px-1.5 py-px text-[10px]', URGENCIA_COR[p.urgencia])}>
+              {URGENCIA_LABEL[p.urgencia]}
+            </span>
+            {p.tipo_sugerido && (
+              <span className="rounded bg-blue-500/15 px-1.5 py-px text-[10px] text-blue-400">
+                sugerido: {p.tipo_sugerido}
+              </span>
+            )}
+          </div>
+
+          {/* O contexto do AD: é o que separa "varie este" de "varie aquele". */}
+          <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
+            <Numero rotulo="Verba 30d" valor={p.inv_30d != null ? formatCurrency(p.inv_30d) : '—'} />
+            <Numero rotulo="ROAS 30d"  valor={p.roas_30d != null ? `${formatNumber(p.roas_30d)}x` : '—'} />
+            <Numero rotulo="Avaliação" valor={p.avaliacao ?? '—'} />
+          </div>
+
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Por que vale a pena variar</p>
+            <p className="mt-1 whitespace-pre-wrap leading-relaxed text-foreground">{p.por_que}</p>
+          </div>
+
+          {p.o_que_melhorar && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">O que melhorar</p>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed text-foreground">{p.o_que_melhorar}</p>
+            </div>
+          )}
+
+          <p className="text-[11px] text-muted-foreground/70">
+            {p.solicitado_por_nome ? `Pedido por ${p.solicitado_por_nome}` : 'Pedido'}
+            {' · '}{p.status === 'aberto' ? `aberto ${rotuloDeDias(p.dias_aberto)}` : p.status}
+            {p.ultimo_dia_com_gasto && ` · último dia com verba em ${new Date(p.ultimo_dia_com_gasto + 'T00:00:00').toLocaleDateString('pt-BR')}`}
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onAbrirAd}>
+            <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir o AD original
+          </Button>
+          <Button size="sm" onClick={onClose}>Fechar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Numero({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div className="bg-card px-2.5 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{rotulo}</p>
+      <p className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">{valor}</p>
+    </div>
+  );
+}
+
+function LinhaPedido({ p, onFechar, onVerPedido, onAbrirAd }: {
+  p: Pedido;
+  onFechar: () => void;
+  onVerPedido: () => void;
+  onAbrirAd: () => void;
+}) {
   const aberto = p.status === 'aberto';
 
   return (
@@ -192,16 +328,76 @@ function LinhaPedido({ p, onFechar }: { p: Pedido; onFechar: () => void }) {
         </span>
       </div>
 
-      <p className="mt-1 text-[11px] leading-relaxed text-foreground/80">{p.por_que}</p>
-      {p.o_que_melhorar && (
-        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-          <span className="text-muted-foreground/60">melhorar: </span>{p.o_que_melhorar}
-        </p>
-      )}
+      {/*
+        Na fila, o motivo aparece RESUMIDO — uma linha.
 
-      <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-muted-foreground/50">
-        {p.solicitado_por_nome && <span>pedido por {p.solicitado_por_nome}</span>}
-        {p.atendido_por_nome && <span>· fechado por {p.atendido_por_nome}</span>}
+        Ele vinha inteiro, e com dois parágrafos por pedido a fila virava um
+        muro de texto em que todos os pedidos tinham o mesmo peso visual. Quem
+        varre a fila decide por AD, verba e urgência; o texto é o que se lê
+        DEPOIS de escolher qual pegar. Por isso ele vira resumo aqui e
+        solicitação inteira no "Ver pedido".
+      */}
+      <p className="mt-1 truncate text-[11px] leading-relaxed text-foreground/80" title={p.por_que}>
+        {p.por_que}
+      </p>
+
+      {/*
+        Os números que decidem, que a fila usava só para ordenar e não mostrava.
+
+        "O valor em si não vai para a tela: ele ordena e fica quieto" era a
+        regra antiga, e ela escondia justamente o que faz o Copy entender por
+        que aquele pedido está no topo. Verba e ROAS são o briefing curto:
+        variar um AD de R$ 3 mil com ROAS 1,8 é outra tarefa que variar um de
+        R$ 80 que nunca girou.
+      */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+        {p.inv_30d != null && p.inv_30d > 0 && (
+          <span className="tabular-nums text-muted-foreground">
+            <span className="text-muted-foreground/60">verba 30d </span>
+            <span className="text-foreground">{formatCurrency(p.inv_30d)}</span>
+          </span>
+        )}
+        {p.roas_30d != null && (
+          <span className="tabular-nums text-muted-foreground">
+            <span className="text-muted-foreground/60">ROAS </span>
+            <span className="text-foreground">{formatNumber(p.roas_30d)}x</span>
+          </span>
+        )}
+        {p.avaliacao && (
+          <span className="text-muted-foreground">
+            <span className="text-muted-foreground/60">avaliação </span>
+            <span className="text-foreground">{p.avaliacao}</span>
+          </span>
+        )}
+        {p.solicitado_por_nome && (
+          <span className="text-muted-foreground/50">pedido por {p.solicitado_por_nome}</span>
+        )}
+        {p.atendido_por_nome && (
+          <span className="text-muted-foreground/50">· fechado por {p.atendido_por_nome}</span>
+        )}
+
+        {/*
+          As duas portas de saída, lado a lado: o que foi PEDIDO e o AD que
+          motivou o pedido. As duas abrem sobre a tela — sair da Esteira para
+          ver o AD e ter que voltar é o que fazia a fila ser lida de olho, sem
+          conferir nada.
+        */}
+        <span className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onVerPedido}
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            <FileText className="h-2.5 w-2.5" /> Ver pedido
+          </button>
+          <button
+            type="button"
+            onClick={onAbrirAd}
+            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            <ExternalLink className="h-2.5 w-2.5" /> Abrir AD
+          </button>
+        </span>
       </div>
 
       {/*

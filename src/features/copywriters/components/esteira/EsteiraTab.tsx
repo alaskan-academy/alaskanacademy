@@ -147,12 +147,49 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
   }, [lotes, comVerba]);
 
   return (
-    <div className="space-y-4">
-      {carregandoDefasagem
-        ? <div className="h-16 animate-pulse rounded-lg border border-border bg-card" />
-        : <AlertaDefasagem linhas={defasagem} semVerba={semVerba} />}
+    <div className="space-y-5">
+      {/*
+        A tela não dizia o que era.
 
-      <FilaPedidos onMudou={onRecarregar} />
+        Ela abria direto num quadro, e os três blocos seguintes tinham o mesmo
+        cartão, a mesma borda e o mesmo título de 12px com ícone — três coisas
+        de naturezas diferentes desenhadas igual, que é o que faz "tudo parecer
+        a mesma coisa".
+
+        Agora a página se apresenta e os blocos ganham peso conforme o que
+        pedem de quem lê:
+
+          O QUE FALTA    o quadro de defasagem — diagnóstico, o alarme
+          PARA FAZER     os pedidos de variação — a fila de trabalho
+          JÁ EM PRODUÇÃO o estoque — consulta, sem ação
+      */}
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Esteira de criativos</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          O que falta produzir, o que foi pedido e o que já está em produção.
+        </p>
+      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          O que falta
+        </h3>
+        {carregandoDefasagem
+          ? <div className="h-16 animate-pulse rounded-lg border border-border bg-card" />
+          : <AlertaDefasagem linhas={defasagem} semVerba={semVerba} />}
+      </section>
+
+      {/*
+        A fila é a única parte desta tela que pede AÇÃO — e estava com o mesmo
+        peso do inventário logo abaixo. Ganha um cabeçalho próprio e uma borda
+        de destaque no bloco: quem abre a Esteira para trabalhar vem para cá.
+      */}
+      <section className="space-y-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-primary/80">
+          Para fazer
+        </h3>
+        <FilaPedidos onMudou={onRecarregar} />
+      </section>
 
       {/*
         Aqui havia três cartões (Novo 17 · Iteração 11 · Variação 10) e uma
@@ -187,6 +224,10 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
         nenhum, e "Parado" ao lado de "Aprovado" dava a entender que o card
         estava travado — quando é só o tempo desde a última data de início.
       */}
+      <section className="space-y-2">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+        Já em produção
+      </h3>
       <div className="rounded-lg border border-border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-3.5 py-2.5">
           <div className="min-w-0">
@@ -279,6 +320,7 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
           <Tabela lotes={visiveis} agrupar={projetos.length !== 1} onAbrir={setCardAberto} />
         )}
       </div>
+      </section>
 
       {/* Ao fechar, recarrega: o drawer permite mudar fase e tipo de teste, e
           sem isto o lote continuaria na tabela como se nada tivesse mudado. */}
