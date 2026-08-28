@@ -125,6 +125,21 @@ export const URGENCIA_LABEL: Record<string, string> = {
   alta: 'Alta', media: 'Média', baixa: 'Baixa',
 };
 
+/**
+ * O peso que ORDENA a fila — maior primeiro.
+ *
+ * Mora ao lado do rótulo de propósito: são a mesma lista vista de dois ângulos,
+ * e separá-las é como uma urgência nova ganha nome na tela e some da ordenação.
+ *
+ * `urgenciaPeso` devolve 0 para o que não está no mapa, então uma urgência que
+ * o banco ganhe depois cai no fim da fila em vez de sumir dela.
+ */
+const URGENCIA_PESO: Record<string, number> = { alta: 3, media: 2, baixa: 1 };
+
+export function urgenciaPeso(u: string): number {
+  return URGENCIA_PESO[u] ?? 0;
+}
+
 /** `AD 045`, com o zero à esquerda que a operação usa nos nomes. */
 export function rotuloDoAd(n: number): string {
   return `AD ${String(n).padStart(3, '0')}`;

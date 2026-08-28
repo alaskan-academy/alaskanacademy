@@ -18,7 +18,7 @@ import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import type { ProducaoNivel } from '@/features/producao/components/types';
 import { formatNumber } from '@/lib/formatters';
 import { aoClicarSemArrastar } from '@/lib/clique';
-import { Pedido, rotuloDoAdHook, rotuloDeDias, URGENCIA_LABEL } from './tipos';
+import { Pedido, rotuloDoAdHook, rotuloDeDias, URGENCIA_LABEL, urgenciaPeso } from './tipos';
 
 const URGENCIA_COR: Record<string, string> = {
   alta:  'bg-red-500/15 text-red-400',
@@ -29,12 +29,15 @@ const URGENCIA_COR: Record<string, string> = {
 /**
  * A fila de pedidos de variação, como o Copy precisa ler.
  *
- * Ordenada por INVESTIMENTO, não pela urgência digitada: um pedido "alta" num
- * AD que quase não recebeu verba não vale um "média" no que sustenta a conta. A
- * urgência é o desempate humano — a informação de fora que o dado não tem — e
- * aparece como selo, não como ordenação.
+ * Ordenada por URGÊNCIA, com a verba desempatando dentro de cada faixa: alta
+ * antes de média, e entre duas altas ganha a que tem mais dinheiro em cima.
  *
- * O valor em si não vai para a tela: ele ordena e fica quieto.
+ * A versão anterior ordenava só por verba, com o argumento de que um "alta" num
+ * AD que quase não gastou não vale um "média" no que sustenta a conta. O
+ * argumento continua valendo, e é por isso que a verba não saiu da conta — ela
+ * só deixou de mandar sozinha. Quem marca "alta" sabe de algo que o gasto dos
+ * últimos 30 dias não conta: criativo saturado, promessa que não pode mais ir
+ * ao ar, concorrente copiando.
  *
  * O fechamento é manual, por decisão. Então duas coisas seguram a fila de
  * apodrecer: cada pedido mostra há quantos dias está aberto, e quando já surgiu
@@ -74,15 +77,31 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const abertos  = useMemo(() => pedidos.filter(p => p.status === 'aberto'), [pedidos]);
+  /*
+    A ordem da fila: URGÊNCIA primeiro, verba como desempate.
+
+    Ela era só por verba, e o comentário deste arquivo defendia isso — "um
+    pedido alta num AD que quase não recebeu verba não vale um média no que
+    sustenta a conta". O argumento continua de pé, e é por isso que a verba não
+    saiu: ela decide DENTRO de cada urgência. O que mudou foi quem manda: quem
+    marcou "alta" sabe de algo que o gasto dos últimos 30 dias não conta —
+    criativo saturado, promessa que não pode mais ir ao ar, concorrente copiando.
+
+    A ordenação é aqui e não no `.order()` do Postgres porque 'alta', 'media' e
+    'baixa' em ordem alfabética dariam alta, baixa, média — a urgência do meio
+    no fim da fila.
+  */
+  const abertos = useMemo(() => pedidos
+    .filter(p => p.status === 'aberto')
+    .sort((a, b) => urgenciaPeso(b.urgencia) - urgenciaPeso(a.urgencia)
+                 || (b.inv_30d ?? 0) - (a.inv_30d ?? 0)), [pedidos]);
   const fechados = useMemo(() => pedidos.filter(p => p.status !== 'aberto'), [pedidos]);
 
   /*
     Quanta verba está esperando variação.
 
-    Um pedido sozinho não diz se a fila é urgente; a soma diz. É o mesmo número
-    que ordena a fila, agregado — e é o argumento para o Copy pegar a fila hoje
-    em vez de amanhã.
+    Um pedido sozinho não diz se a fila é urgente; a soma diz. É o argumento
+    para o Copy pegar a fila hoje em vez de amanhã.
   */
   const verbaNaFila = useMemo(
     () => abertos.reduce((s, p) => s + (p.inv_30d ?? 0), 0), [abertos]);
@@ -90,9 +109,9 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
   /*
     A fila mostra os primeiros e guarda o resto atrás de um clique.
 
-    Ela é ordenada por verba, então o começo é sempre o que importa; despejar
-    quarenta pedidos de uma vez transforma a Esteira num rolo em que o pedido de
-    R$ 3 mil e o de R$ 12 têm exatamente o mesmo peso na tela.
+    Ela é ordenada por urgência e verba, então o começo é sempre o que importa;
+    despejar quarenta pedidos de uma vez transforma a Esteira num rolo em que o
+    "alta" de R$ 3 mil e o "baixa" de R$ 12 têm o mesmo peso na tela.
   */
   const LIMITE = 6;
   const visiveis = verTodos ? abertos : abertos.slice(0, LIMITE);
@@ -150,6 +169,13 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
         {verbaNaFila > 0 && (
           <span className="text-[11px] tabular-nums text-muted-foreground">
             {formatCurrency(verbaNaFila)} de verba esperando variação
+          </span>
+        )}
+        {/* Com treze pedidos na tela, dizer a ordem evita procurar um critério
+            que não está escrito em lugar nenhum. */}
+        {abertos.length > 1 && (
+          <span className="text-[11px] text-muted-foreground/60">
+            da mais urgente para a menos
           </span>
         )}
 
@@ -410,8 +436,8 @@ function LinhaPedido({ p, onVerPedido, onAbrirAd }: {
             <span className="rounded bg-secondary px-1.5 py-px text-[10px] text-muted-foreground">{p.funil}</span>
           )}
 
-          {/* A urgência é selo, não ordenação: é o desempate humano. A ordem sai
-              do investimento, que agora aparece na coluna da direita. */}
+          {/* A urgência manda na ordem; a verba, na coluna à direita, desempata
+              dentro de cada faixa. */}
           <span className={cn('rounded px-1.5 py-px text-[10px]', URGENCIA_COR[p.urgencia])}>
             {p.urgencia === 'alta' && <Flame className="mr-0.5 inline h-2.5 w-2.5" />}
             {URGENCIA_LABEL[p.urgencia]}
