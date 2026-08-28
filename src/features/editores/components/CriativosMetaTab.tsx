@@ -216,23 +216,36 @@ const AVALIACAO_COR: Record<string, string> = {
 type Coluna = 'nome' | 'investimento' | 'roas' | 'cpa' | 'cpm' | 'cpc' | 'hook' | 'ctr';
 
 /**
- * Esta tela usa a **conversão do Meta**, não a venda da Payt.
+ * Esta tela usa a **venda registrada na Payt**, não a conversão do Meta.
  *
- * A régua da Payt depende da UTM chegar no checkout, e ela some justamente onde mais
- * importa: a conta "Saponaria" tem 736 vendas no mês com apenas 9 identificadas por
- * anúncio. Um editor comparando criativos ali veria zeros que não são desempenho, são
- * ausência de dado.
+ * Era o contrário, e por um motivo que valia na época: a régua da Payt depende da UTM
+ * chegar no checkout, e ela estava cega justamente na conta maior — 736 vendas no mês
+ * com 9 identificadas por anúncio. Um editor comparando criativos ali veria zeros que
+ * não eram desempenho, eram ausência de dado.
  *
- * O Meta credita a si a conversão sem depender de UTM, então cobre todos os anúncios da
- * mesma forma — que é o que um ranking exige. Em compensação ele conta a mais, porque
- * credita janela de visualização. Serve para **comparar anúncios entre si**, e não como
- * faturamento: o caixa continua sendo o Resumo, que usa a Payt.
+ * Medido de novo em agosto/2026, depois do conserto de rastreio de 21/08:
+ *
+ *   quatro contas   100% das vendas com anúncio identificado
+ *   uma conta        22,3%  (708 vendas, 158 com anúncio)
+ *   sem conta         1,1%  (276 vendas)
+ *
+ * Melhorou de 1,2% para 22,3% na conta problemática, e as outras estão inteiras. Não é
+ * perfeito, e por isso a tela mostra a cobertura de atribuição de cada conta
+ * (`conta_pct_atribuido`) em vez de deixar o editor achar que zero é desempenho.
+ *
+ * A troca foi pedida, e a razão é boa: o Meta conta a mais — credita janela de
+ * visualização e deduplica mal. No "AD 002 H01 V01" de agosto ele reivindica 14 vendas
+ * e R$ 1.573,81 contra 12 vendas e R$ 1.307,05 registradas. Ranquear editor por número
+ * inflado premia quem teve mais impressão, não quem vendeu.
+ *
+ * As duas leituras continuam vindo da função; o que mudou é qual delas manda aqui. A
+ * do Meta segue visível na tela de Meta Ads, ao lado da da Payt.
  */
-const vendasDe  = (a: Anuncio) => a.vendas_meta;
-const roasDe = (a: Anuncio) => (a.investimento > 0 ? a.receita_meta / a.investimento : null);
-const cpaDe  = (a: Anuncio) => (a.vendas_meta > 0 ? a.investimento / a.vendas_meta : null);
-const refRoas = (a: Anuncio) => a.conta_roas_meta;
-const refCpa  = (a: Anuncio) => a.conta_cpa_meta;
+const vendasDe  = (a: Anuncio) => a.vendas;
+const roasDe = (a: Anuncio) => (a.investimento > 0 ? a.receita / a.investimento : null);
+const cpaDe  = (a: Anuncio) => (a.vendas > 0 ? a.investimento / a.vendas : null);
+const refRoas = (a: Anuncio) => a.conta_roas;
+const refCpa  = (a: Anuncio) => a.conta_cpa;
 /**
  * CPM e CPC são preço de entrega, não desempenho de criativo — mas é neles que se vê
  * o leilão: CPM subindo com o mesmo criativo é público saturando, e CPC alto com CTR
@@ -643,13 +656,23 @@ export function CriativosMetaTab() {
         </div>
       )}
 
-      {/* O aviso de que isto não é caixa fica, curto: sem ele alguém soma estes
-          números como faturamento. O resto do parágrafo repetia o subtítulo. */}
+      {/*
+        O aviso mudou de assunto junto com a fonte.
+
+        Antes ele avisava que o número era do Meta e vinha inflado. Agora a
+        tela conta a venda REGISTRADA, e o risco virou o oposto: anúncio de
+        conta mal rastreada aparece com menos venda do que teve. Por isso o que
+        se avisa agora é a cobertura da atribuição — e só quando ela é baixa,
+        porque aviso que aparece sempre deixa de ser lido.
+      */}
       {!loading && (
         <p className="text-[11px] text-muted-foreground">
-          Vendas são conversões do <span className="text-foreground">Meta</span>
-          {inflacaoMeta && inflacaoMeta > 1.05 ? `, cerca de ${inflacaoMeta.toFixed(1)}× o que a Payt registra` : ''}
-          {' '}— comparam anúncios entre si, não são faturamento.
+          Vendas são as <span className="text-foreground">registradas na Payt</span>, casadas pelo
+          id do anúncio
+          {inflacaoMeta && inflacaoMeta > 1.05
+            ? ` — o Meta reivindica cerca de ${inflacaoMeta.toFixed(1)}× isso`
+            : ''}
+          .
         </p>
       )}
 
@@ -722,8 +745,9 @@ export function CriativosMetaTab() {
           - o dinheiro era PARCIAL — os criativos abaixo de R$ 50 ficam fora,
             e eram 103 deles somando R$ 1.881. O rodapé avisa, mas quem lê o
             topo não desce até lá;
-          - "vendas" são conversões do META, e logo abaixo a coluna ROAS usa
-            receita da PAYT. Duas escalas com o mesmo nome na mesma tela.
+          - "vendas" eram conversões do META enquanto a coluna ROAS usava
+            receita da PAYT: duas escalas com o mesmo nome na mesma tela. Hoje
+            as duas são da Payt, e o nome diz isso.
 
           Agora cada número diz o que é, e o total parcial se anuncia.
         */}
@@ -732,7 +756,7 @@ export function CriativosMetaTab() {
           {escondidos > 0 && !verPoucoInvestimento && (
             <span className="text-muted-foreground/60"> de {formatCurrency(investimentoTotal)}</span>
           )}
-          {' · '}{formatNumber(totais.vendas)} conversões Meta
+          {' · '}{formatNumber(totais.vendas)} vendas registradas
         </span>
       </div>
 
@@ -1299,7 +1323,11 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
             <div className="text-sm font-medium text-foreground">{anuncio.ad_nome}</div>
             <div className="text-[11px] text-muted-foreground">
               {anuncio.conta} · {formatCurrency(anuncio.investimento)} investidos ·{' '}
-              {anuncio.vendas_meta} conversões
+              {/* A venda registrada, como no resto da tela. O número do Meta
+                  continua ao lado, entre parênteses, porque a diferença entre
+                  os dois é o que diz se a atribuição desta conta é confiável. */}
+              {anuncio.vendas} venda{anuncio.vendas === 1 ? '' : 's'}
+              {anuncio.vendas_meta !== anuncio.vendas && ` (Meta conta ${anuncio.vendas_meta})`}
               {anuncio.candidatos > 1 &&
                 ` · ${anuncio.candidatos} editores têm card com este nome; o escolhido foi o mais próximo da estreia`}
             </div>

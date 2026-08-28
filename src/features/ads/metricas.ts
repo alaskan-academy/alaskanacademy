@@ -32,6 +32,19 @@ export interface LinhaMetricaMeta {
   video_plays: number;
   video_3s: number;
   video_75pct: number;
+  /**
+   * A venda REGISTRADA na Payt, casada por `ad_id_meta` — ao lado da que o
+   * Meta reivindica.
+   *
+   * Receita é `coalesce(valor_sem_juros, valor_total)`, aprovadas, sem upsell:
+   * a mesma definição da tela de Criativos, porque as duas respondem "o que
+   * ESTE anúncio vendeu". Difere da tela de Vendas, que soma `valor_total`,
+   * e difere com motivo: lá a pergunta é quanto a empresa faturou, e o juro do
+   * parcelamento é faturamento; aqui é quanto o anúncio trouxe, e o juro não é
+   * mérito dele.
+   */
+  vendas_payt: number;
+  receita_payt: number;
 }
 
 /**
@@ -74,4 +87,12 @@ export interface LinhaCalculada extends Partial<LinhaMetricaMeta> {
   taxa_conexao: number;
   custo_por_vis_pagina: number;
   taxa_vendas_vis_pagina: number;
+
+  /* A leitura pela venda registrada, ao lado da reivindicada pelo Meta. */
+  vendas_payt: number;
+  receita_payt: number;
+  resultado_payt: number;
+  margem_payt: number;
+  roas_payt: number;
+  cpa_payt: number;
 }

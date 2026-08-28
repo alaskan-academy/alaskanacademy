@@ -13,16 +13,36 @@ import { Input } from "@/components/ui/input";
 
 type Nivel = "campanha" | "adset" | "ad";
 
-// Todas as colunas pedidas
+/*
+  As colunas, com a leitura do Meta e a da Payt lado a lado.
+
+  A ordem agrupa por FONTE, e não por métrica: os quatro números do Meta
+  juntos, depois os quatro da Payt. Intercalar ("vendas Meta, vendas Payt,
+  receita Meta, receita Payt") pareceria uma comparação célula a célula, quando
+  o que se lê é um bloco contra o outro.
+
+  E a diferença entre os dois blocos é o ponto. No "AD 002 H01 V01" de agosto:
+  o Meta reivindica 14 vendas e R$ 1.573,81; a Payt registrou 12 e R$ 1.307,05.
+  Não são dois ROAS do mesmo anúncio — é um anúncio cuja atribuição está
+  inflada, e isso só aparece com os dois na mesma linha.
+*/
 const COLS = [
   { key: "nome", label: "Nome", fixed: true },
   { key: "investimento", label: "Gastos", money: true },
+
   { key: "faturamento_atribuido", label: "Faturamento (Meta)", money: true },
-  { key: "resultado", label: "Retorno", money: true },
-  { key: "margem", label: "Margem %", pct: true },
-  { key: "roas", label: "ROAS", suffix: "x" },
+  { key: "resultado", label: "Retorno (Meta)", money: true },
+  { key: "margem", label: "Margem % (Meta)", pct: true },
+  { key: "roas", label: "ROAS (Meta)", suffix: "x" },
   { key: "compras_meta", label: "Vendas (Meta)", num: true },
-  { key: "cpa", label: "CPA", money: true },
+  { key: "cpa", label: "CPA (Meta)", money: true },
+
+  { key: "receita_payt", label: "Faturamento (Payt)", money: true },
+  { key: "resultado_payt", label: "Retorno (Payt)", money: true },
+  { key: "margem_payt", label: "Margem % (Payt)", pct: true },
+  { key: "roas_payt", label: "ROAS (Payt)", suffix: "x" },
+  { key: "vendas_payt", label: "Vendas (Payt)", num: true },
+  { key: "cpa_payt", label: "CPA (Payt)", money: true },
   { key: "taxa_video_3s", label: "V3s/Imp %", pct: true },
   { key: "taxa_video_75pct", label: "V75%/Inic %", pct: true },
   { key: "taxa_compras_video75", label: "Comp/V75% %", pct: true },
@@ -37,7 +57,12 @@ const COLS = [
   { key: "custo_por_vis_pagina", label: "Custo/VisPag", money: true },
   { key: "taxa_vendas_vis_pagina", label: "Vend/VisPag %", pct: true },
   { key: "visualizacoes_pagina", label: "Vis. Pág.", num: true },
-  { key: "cliques", label: "Cliques", num: true },
+  // Os dois cliques, com nome que diz qual é qual. O do link é o que alimenta
+  // CTR e CPC; o total fica porque ele é o engajamento do criativo, e a
+  // distância entre os dois diz quanto do público parou para curtir em vez de
+  // ir para a página.
+  { key: "cliques_link", label: "Cliques (link)", num: true },
+  { key: "cliques", label: "Cliques (total)", num: true },
   { key: "impressoes", label: "Impressões", num: true },
 ];
 
@@ -51,6 +76,7 @@ function contagens(linha: Partial<LinhaCalculada>) {
   return {
     impressoes: Number(linha.impressoes || 0),
     cliques: Number(linha.cliques || 0),
+    cliques_link: Number(linha.cliques_link || 0),
     investimento: Number(linha.investimento || 0),
     compras_meta: Number(linha.compras_meta || 0),
     faturamento_atribuido: Number(linha.faturamento_atribuido || 0),
@@ -59,6 +85,8 @@ function contagens(linha: Partial<LinhaCalculada>) {
     video_plays: Number(linha.video_plays || 0),
     video_3s: Number(linha.video_3s || 0),
     video_75pct: Number(linha.video_75pct || 0),
+    vendas_payt: Number(linha.vendas_payt || 0),
+    receita_payt: Number(linha.receita_payt || 0),
   };
 }
 
@@ -84,18 +112,46 @@ function comRazoes(linha: Partial<LinhaCalculada> & { nome: string | null }): Li
     margem: fat > 0 ? (luc / fat) * 100 : 0,
     roas: inv > 0 ? fat / inv : 0,
     cpa: r.compras_meta > 0 ? inv / r.compras_meta : 0,
-    ctr: r.impressoes > 0 ? (r.cliques / r.impressoes) * 100 : 0,
+    /*
+      CTR e CPC pelo clique no LINK, e não pelo clique total.
+
+      O Meta devolve os dois: `clicks` conta curtida, comentário, ver perfil e
+      expandir texto; `inline_link_clicks` conta quem foi para a página. No
+      "AD 002 H01 V01" de agosto isso é 567 contra 416 — CTR 3,54% contra
+      2,60%, CPC R$ 1,53 contra R$ 2,09.
+
+      O total inflava o CTR em 36% e barateava o CPC em 27%, e é o CPC que
+      decide se o anúncio está caro. As telas de Criativos e de Análises já
+      usavam o clique no link: o dashboard tinha dois CTRs com o mesmo nome.
+    */
+    ctr: r.impressoes > 0 ? (r.cliques_link / r.impressoes) * 100 : 0,
     cpm: r.impressoes > 0 ? (inv / r.impressoes) * 1000 : 0,
-    cpc: r.cliques > 0 ? inv / r.cliques : 0,
+    cpc: r.cliques_link > 0 ? inv / r.cliques_link : 0,
     taxa_video_3s: r.impressoes > 0 ? (r.video_3s / r.impressoes) * 100 : 0,
     taxa_video_75pct: r.video_plays > 0 ? (r.video_75pct / r.video_plays) * 100 : 0,
     taxa_compras_video75: r.video_75pct > 0 ? (r.compras_meta / r.video_75pct) * 100 : 0,
     taxa_ic: r.visualizacoes_pagina > 0 ? (r.initiate_checkout / r.visualizacoes_pagina) * 100 : 0,
     custo_por_ic: r.initiate_checkout > 0 ? inv / r.initiate_checkout : 0,
     taxa_conv_checkout: r.initiate_checkout > 0 ? (r.compras_meta / r.initiate_checkout) * 100 : 0,
-    taxa_conexao: r.cliques > 0 ? (r.visualizacoes_pagina / r.cliques) * 100 : 0,
+    // Conexão é visita de página sobre clique no LINK: quantos dos que
+    // clicaram para ir chegaram. Clique em curtida nunca ia chegar.
+    taxa_conexao: r.cliques_link > 0 ? (r.visualizacoes_pagina / r.cliques_link) * 100 : 0,
     custo_por_vis_pagina: r.visualizacoes_pagina > 0 ? inv / r.visualizacoes_pagina : 0,
     taxa_vendas_vis_pagina: r.visualizacoes_pagina > 0 ? (r.compras_meta / r.visualizacoes_pagina) * 100 : 0,
+
+    /*
+      As mesmas contas, com a venda REGISTRADA no lugar da reivindicada.
+
+      Elas existem separadas em vez de um botão que troca a fonte porque a
+      pergunta que essas colunas respondem é justamente a DIFERENÇA: um anúncio
+      com ROAS 1,81 pelo Meta e 1,51 pela Payt não é um anúncio com dois ROAS,
+      é um anúncio cuja atribuição está inflada em 20% -- e isso só se vê com
+      os dois na mesma linha.
+    */
+    resultado_payt: r.receita_payt - inv,
+    margem_payt: r.receita_payt > 0 ? ((r.receita_payt - inv) / r.receita_payt) * 100 : 0,
+    roas_payt: inv > 0 ? r.receita_payt / inv : 0,
+    cpa_payt: r.vendas_payt > 0 ? inv / r.vendas_payt : 0,
   };
 }
 
@@ -542,9 +598,18 @@ export default function MetaAdsPage() {
           <p className="text-xs text-muted-foreground mb-2">
             Marque campanhas para filtrar conjuntos e anúncios nas abas seguintes.
             <span className="block mt-1">
-              Faturamento e vendas são a atribuição do Meta, não a venda registrada na Payt.
-              Retorno = faturamento atribuído − gasto; não desconta taxa, Simples nem imposto de
-              mídia — o lucro da empresa está no Resumo.
+              As colunas <b>(Meta)</b> são o que o pixel reivindica; as <b>(Payt)</b> são a venda
+              registrada, casada pelo id do anúncio. O Meta costuma contar a mais, porque credita
+              janela de visualização — a diferença entre as duas é a inflação da atribuição.
+            </span>
+            <span className="block mt-1">
+              Retorno = faturamento − gasto nos dois casos; não desconta taxa, Simples nem imposto
+              de mídia — o lucro da empresa está no Resumo. A receita da Payt é sem juros de
+              parcelamento, que não são mérito do anúncio.
+            </span>
+            <span className="block mt-1">
+              CTR e CPC contam clique no <b>link</b>, como o Gerenciador — a coluna "Cliques
+              (total)" inclui curtida, comentário e ver perfil.
             </span>
           </p>
           <div className="bg-card border border-border rounded-lg overflow-hidden">
