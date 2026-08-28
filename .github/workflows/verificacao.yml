@@ -1,0 +1,64 @@
+# O que olha pelo projeto entre um commit e o próximo.
+#
+# Até aqui nada impedia um deploy quebrado: `tsc`, `eslint` e os testes só
+# rodavam quando alguém lembrava. Quase tudo que apareceu na revisão de
+# 27/08/2026 foi achado por vigilância manual — e vigilância manual não escala.
+#
+# São quatro passos, do mais barato ao mais caro, para o erro aparecer cedo:
+#
+#   tipos     `tsc` no projeto do app (o `tsc` sem `-p` não confere arquivo nenhum)
+#   testes    os 132 do vitest
+#   lint      catraca: pode descer, não pode subir (ver scripts/lint-catraca.mjs)
+#   build     o build de produção de verdade, que pega o que o resto não pega
+#
+# Cada um roda mesmo que o anterior falhe (`if: always()`), porque saber que
+# três coisas quebraram de uma vez vale mais do que descobrir uma por vez.
+
+name: Verificação
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Para poder rodar na mão pela aba Actions, sem esperar um commit.
+  workflow_dispatch:
+
+# Um push novo cancela a verificação do anterior: o que importa é o topo do ramo.
+concurrency:
+  group: verificacao-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tipos, testes, lint e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Sem `--frozen-lockfile`: um lock levemente fora de sincronia derrubaria
+      # a verificação inteira por um motivo que não é o que ela existe para
+      # pegar. O que trava a versão de verdade é o build do deploy.
+      - name: Instalar dependências
+        run: bun install
+
+      - name: Tipos
+        if: always()
+        run: bunx tsc -p tsconfig.app.json --noEmit
+
+      - name: Testes
+        if: always()
+        run: bun run test
+
+      - name: Lint (catraca)
+        if: always()
+        run: bun run lint:catraca
+
+      - name: Build de produção
+        if: always()
+        run: bun run build

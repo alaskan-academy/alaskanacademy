@@ -163,18 +163,41 @@ function toast({ ...props }: Toast) {
   };
 }
 
+/**
+ * O aviso que chegou antes de alguém estar ouvindo.
+ *
+ * `toast()` escreve em `memoryState` e avisa a lista de `listeners`. Só que o
+ * `Toaster` lê `memoryState` UMA vez, no primeiro render, e só entra na lista
+ * depois, no efeito. Tudo que for despachado nessa fresta é perdido: fica em
+ * `memoryState`, não avisa ninguém, e o `Toaster` segue mostrando o retrato
+ * vazio que pegou ao nascer — até o próximo toast, que nunca vem porque quem
+ * ia avisar já avisou.
+ *
+ * Isso alcança qualquer tela que avise algo AO MONTAR. Medido: um toast
+ * disparado no primeiro efeito depois de carregar a página não aparece; o
+ * mesmo toast atrasado em 1,5s aparece. Um "não encontrei esse registro" ao
+ * abrir um link fica mudo, e o que a pessoa vê é uma tela que não fez nada.
+ *
+ * Duas linhas resolvem:
+ *
+ *  · `setState(memoryState)` ao se inscrever — puxa o que chegou na fresta.
+ *  · a dependência vira `[]` — a inscrição é uma por montagem, não uma por
+ *    mudança de estado. Com `[state]`, cada toast desinscrevia e reinscrevia o
+ *    mesmo ouvinte, trabalho que não fazia nada e escondia a intenção.
+ */
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState);
 
   React.useEffect(() => {
     listeners.push(setState);
+    setState(memoryState);
     return () => {
       const index = listeners.indexOf(setState);
       if (index > -1) {
         listeners.splice(index, 1);
       }
     };
-  }, [state]);
+  }, []);
 
   return {
     ...state,

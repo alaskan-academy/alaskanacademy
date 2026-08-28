@@ -224,18 +224,19 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
     const t = testes.find(x => x.id === pedido);
     if (!t) {
       /*
-        Não achou: limpa o endereço e deixa a pessoa no quadro.
+        Não achou: avisa e limpa o endereço, deixando a pessoa no quadro.
 
-        Aqui NÃO cabe um toast, e isso foi medido: um toast disparado no
-        primeiro efeito depois de carregar a página não aparece — o mesmo toast
-        atrasado em 1,5s aparece. O `Toaster` lê `memoryState` ao montar e só
-        se inscreve depois, então perde o que foi despachado antes. Vale para o
-        app inteiro, não só para aqui.
+        Este aviso já esteve mudo. Um toast disparado no primeiro efeito depois
+        de carregar a página não aparecia — efeito de filho roda antes de efeito
+        de pai, e o `Toaster` ainda não tinha se inscrito. Consertado no
+        `use-toast`, com teste que falha na versão antiga.
 
-        De todo jeito, com o espelho seguindo `arquivado` e `pipeline_status`,
-        o link do Radar só aponta para teste que está no quadro. Sobrar aqui
-        significa endereço velho ou digitado na mão.
+        Chegar aqui significa endereço velho ou digitado na mão: o espelho segue
+        `arquivado` e `pipeline_status`, então o link do Radar só aponta para
+        teste que está no quadro.
       */
+      toast({ title: 'Teste não encontrado no quadro',
+              description: 'Ele pode ter sido arquivado ou excluído no Funis.' });
       const p = new URLSearchParams(params);
       p.delete('teste');
       setParams(p, { replace: true });
