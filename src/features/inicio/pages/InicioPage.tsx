@@ -55,7 +55,6 @@ export default function InicioPage() {
   const ehAdmin = !!perfil?.is_admin;
   const hoje = toYMD(new Date());
 
-  const [vista, setVista]   = useState<'semana' | 'mes'>('semana');
   const [ancora, setAncora] = useState(() => new Date());
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [perfis, setPerfis] = useState<Perfil[]>([]);
@@ -67,18 +66,15 @@ export default function InicioPage() {
   const [formAberto, setFormAberto] = useState(false);
   const [dataSugerida, setDataSugerida] = useState<string | null>(null);
 
-  // Janela consultada: a semana ou o mês na tela, com folga dos dois lados para
-  // a grade do mês, que começa em dias do mês anterior.
+  /*
+    A janela consultada: o mês na tela, com uma semana de folga dos dois lados,
+    porque a grade começa em dias do mês anterior e termina no seguinte.
+  */
   const [ini, fim] = useMemo(() => {
-    if (vista === 'semana') {
-      const seg = segundaDa(ancora);
-      const dom = new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + 6);
-      return [toYMD(seg), toYMD(dom)];
-    }
     const a = new Date(ancora.getFullYear(), ancora.getMonth(), 1 - 7);
     const b = new Date(ancora.getFullYear(), ancora.getMonth() + 1, 7);
     return [toYMD(a), toYMD(b)];
-  }, [vista, ancora]);
+  }, [ancora]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -171,19 +167,10 @@ export default function InicioPage() {
       });
   }, [itens, nomes]);
 
-  const mover = (passo: number) => {
-    setAncora(a => vista === 'semana'
-      ? new Date(a.getFullYear(), a.getMonth(), a.getDate() + passo * 7)
-      : new Date(a.getFullYear(), a.getMonth() + passo, 1));
-  };
+  const mover = (passo: number) =>
+    setAncora(a => new Date(a.getFullYear(), a.getMonth() + passo, 1));
 
-  const faixa = vista === 'semana'
-    ? (() => {
-        const s = segundaDa(ancora);
-        const d = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
-        return `${s.getDate()} – ${d.getDate()} ${MESES[d.getMonth()].slice(0, 3)}`;
-      })()
-    : `${MESES[ancora.getMonth()]} ${ancora.getFullYear()}`;
+  const faixa = `${MESES[ancora.getMonth()]} ${ancora.getFullYear()}`;
 
   const excluir = async (item: ItemAgenda) => {
     const ev = item.evento;
@@ -235,7 +222,7 @@ export default function InicioPage() {
         {fora.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-teal-400/25 bg-teal-400/[0.06] px-4 py-2.5 text-sm">
             <span className="font-mono text-[10px] uppercase tracking-wider text-teal-300/80">
-              {vista === 'semana' ? 'fora nesta semana' : 'fora neste mês'}
+              fora neste mês
             </span>
             {fora.map((f, i) => (
               <button
@@ -261,7 +248,7 @@ export default function InicioPage() {
               <button
                 type="button"
                 onClick={() => mover(-1)}
-                aria-label={vista === 'semana' ? 'Semana anterior' : 'Mês anterior'}
+                aria-label="Mês anterior"
                 className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted-foreground hover:text-foreground"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -270,28 +257,24 @@ export default function InicioPage() {
               <button
                 type="button"
                 onClick={() => mover(1)}
-                aria-label={vista === 'semana' ? 'Próxima semana' : 'Próximo mês'}
+                aria-label="Próximo mês"
                 className="grid h-7 w-7 place-items-center rounded-md border border-border text-muted-foreground hover:text-foreground"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
 
-              <div className="ml-1.5 flex gap-0.5 rounded-lg bg-muted p-0.5">
-                {(['semana', 'mes'] as const).map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => { setVista(v); setAncora(new Date()); }}
-                    aria-pressed={vista === v}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                      vista === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {v === 'semana' ? 'Semana' : 'Mês'}
-                  </button>
-                ))}
-              </div>
+              {/*
+                O seletor Semana/Mês saiu: a agenda é o mês, e só. O que ele
+                tinha de útil era voltar para hoje ao trocar de vista — isso
+                virou um botão que diz o que faz.
+              */}
+              <button
+                type="button"
+                onClick={() => setAncora(new Date())}
+                className="ml-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                Hoje
+              </button>
             </div>
           </header>
 
@@ -301,12 +284,11 @@ export default function InicioPage() {
             </div>
           ) : (
             <Agenda
-              vista={vista}
               ancora={ancora}
               itens={itens}
               hoje={hoje}
               onAbrir={setAberto}
-              onNovoNoDia={vista === 'semana' ? abrirNovo : undefined}
+              onNovoNoDia={abrirNovo}
             />
           )}
 

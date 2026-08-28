@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { toYMD, segundaDa } from '@/lib/recorrencia';
+import { toYMD } from '@/lib/recorrencia';
 import { COR_TIPO, type ItemAgenda } from '../types';
-
-const DIA_CURTO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
 /** As 42 células do mês, começando na segunda — como o mockup e como o RotinaCalendar. */
 function gradeDoMes(ano: number, mes: number): Date[] {
@@ -21,16 +19,19 @@ function agrupar(itens: ItemAgenda[]): Record<string, ItemAgenda[]> {
 }
 
 /**
- * A agenda em semana ou mês.
+ * A agenda do mês.
  *
- * Semana é o padrão de propósito: com 6 pessoas o grid mensal fica quase vazio
- * e comunica "isto aqui está morto". E não há régua de horas — duas ou três
- * reuniões por semana não justificam uma faixa das 8h às 20h com 90% de vazio.
+ * Havia também uma vista de semana, e ela era o padrão: com 6 pessoas o mês
+ * ficava quase vazio e comunicava "isto aqui está morto". Com os feriados do
+ * país dentro, o mês deixou de ser vazio — e é ele que responde a pergunta que
+ * se faz aqui, que é "quando dá para contar com a equipe".
+ *
+ * Não há régua de horas: duas ou três reuniões por semana não justificam uma
+ * faixa das 8h às 20h com 90% de vazio.
  */
 export function Agenda({
-  vista, ancora, itens, hoje, onAbrir, onNovoNoDia,
+  ancora, itens, hoje, onAbrir, onNovoNoDia,
 }: {
-  vista: 'semana' | 'mes';
   ancora: Date;
   itens: ItemAgenda[];
   hoje: string;
@@ -39,78 +40,6 @@ export function Agenda({
 }) {
   const porDia = useMemo(() => agrupar(itens), [itens]);
 
-  if (vista === 'semana') {
-    const seg = segundaDa(ancora);
-    const dias = Array.from({ length: 7 }, (_, i) =>
-      new Date(seg.getFullYear(), seg.getMonth(), seg.getDate() + i));
-
-    return (
-      <div className="overflow-x-auto">
-        <div className="grid min-w-[780px] grid-cols-7 gap-2">
-          {dias.map(d => {
-            const ymd = toYMD(d);
-            const lista = porDia[ymd] ?? [];
-            const ehHoje = ymd === hoje;
-            const fds = d.getDay() === 0 || d.getDay() === 6;
-
-            return (
-              <div key={ymd} className="flex flex-col gap-1.5">
-                <div className={cn(
-                  'flex items-baseline gap-1.5 border-b px-0.5 pb-1.5',
-                  ehHoje ? 'border-primary' : 'border-border',
-                )}>
-                  <span className={cn(
-                    'font-mono text-[10px] uppercase tracking-wider',
-                    ehHoje ? 'text-primary' : 'text-muted-foreground',
-                  )}>{DIA_CURTO[d.getDay()]}</span>
-                  <span className={cn(
-                    'text-sm font-semibold tabular-nums',
-                    ehHoje ? 'text-primary' : fds ? 'text-muted-foreground' : 'text-foreground',
-                  )}>{d.getDate()}</span>
-                </div>
-
-                {lista.length === 0 && (
-                  onNovoNoDia ? (
-                    <button
-                      type="button"
-                      onClick={() => onNovoNoDia(ymd)}
-                      className="rounded px-0.5 py-1.5 text-left font-mono text-[11px] text-muted-foreground/40 hover:text-muted-foreground"
-                    >
-                      {fds ? '—' : '+ livre'}
-                    </button>
-                  ) : (
-                    <span className="px-0.5 py-1.5 font-mono text-[11px] text-muted-foreground/40">
-                      {fds ? '—' : 'livre'}
-                    </span>
-                  )
-                )}
-
-                {lista.map(item => (
-                  <button
-                    key={item.chave}
-                    type="button"
-                    onClick={() => onAbrir(item)}
-                    className={cn(
-                      'w-full rounded border-l-2 bg-muted/60 px-2 py-1.5 text-left text-xs leading-snug',
-                      'hover:bg-muted',
-                      COR_TIPO[item.tipo]?.barra ?? 'border-l-primary',
-                    )}
-                  >
-                    {item.hora && (
-                      <span className="block font-mono text-[10px] text-muted-foreground">{item.hora}</span>
-                    )}
-                    <span className="block text-foreground">{item.titulo}</span>
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  // ---------------- mês ----------------
   const celulas = gradeDoMes(ancora.getFullYear(), ancora.getMonth());
 
   return (
@@ -145,7 +74,17 @@ export function Agenda({
                   ehHoje ? 'text-primary' : 'text-muted-foreground',
                 )}>{d.getDate()}</span>
 
-                {lista.slice(0, 2).map(item => (
+                {lista.length === 0 && noMes && onNovoNoDia && (
+                  <button
+                    type="button"
+                    onClick={() => onNovoNoDia(ymd)}
+                    className="flex-1 rounded px-1 text-left font-mono text-[10px] text-transparent hover:bg-muted hover:text-muted-foreground"
+                  >
+                    + novo
+                  </button>
+                )}
+
+                {lista.slice(0, 3).map(item => (
                   <button
                     key={item.chave}
                     type="button"
@@ -157,9 +96,9 @@ export function Agenda({
                   </button>
                 ))}
 
-                {lista.length > 2 && (
+                {lista.length > 3 && (
                   <span className="px-1 font-mono text-[10px] text-muted-foreground">
-                    +{lista.length - 2}
+                    +{lista.length - 3}
                   </span>
                 )}
               </div>

@@ -185,11 +185,6 @@ export function SaudeSistema() {
               <li className="text-xs text-muted-foreground">Nenhuma fonte monitorada.</li>
             )}
           </ul>
-          {/* A Conta Simples não está aqui — e foi justamente ela que ficou 52
-              execuções falhando sem ninguém ver. Fica registrado até entrar. */}
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            A Conta Simples ainda não é monitorada como fonte; só o agendamento dela aparece ao lado.
-          </p>
         </div>
 
         <div>
