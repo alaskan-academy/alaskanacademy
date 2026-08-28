@@ -1,0 +1,17 @@
+-- ── Saem as 45 notificacoes de um tipo aposentado ─────────────────────────
+--
+-- `criativo_aprovado` foi criado em 29/07 e parou em 17/08, quando o fluxo
+-- trocou aprovacao por "devolvido para alteracao". Desde entao nenhum codigo
+-- escreve esse tipo: sao 45 linhas de um vocabulario que a aplicacao nao fala
+-- mais, para 2 pessoas, todas as 45 ja lidas.
+--
+-- Conferido antes de apagar, porque aviso apagado nao volta: os 42 cards que
+-- elas apontam continuam existindo, e os 42 tem a mudanca de fase registrada
+-- em `criativo_historico`. Ou seja, o QUE aconteceu fica; some so o registro
+-- de que alguem foi avisado -- e esse ja tinha cumprido a funcao, porque todas
+-- constam como lidas.
+--
+-- Sem tabela de backup de proposito. Ja ha copias de seguranca de outras
+-- limpezas esperando conferencia, e mais uma tabela para guardar 45 avisos
+-- lidos de um tipo morto seria trocar lixo por lixo.
+DELETE FROM public.notificacoes WHERE tipo = 'criativo_aprovado';
