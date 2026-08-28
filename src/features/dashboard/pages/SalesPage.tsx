@@ -31,7 +31,25 @@ const statusStyles: Record<string, string> = {
   chargeback: "bg-destructive/20 text-destructive border-destructive/30",
 };
 
-const COLORS = ["hsl(239,84%,67%)", "hsl(160,60%,45%)", "hsl(38,92%,50%)", "hsl(0,72%,51%)", "hsl(280,65%,60%)"];
+/*
+  As fatias da pizza saem das séries do tema, e não de hex escritos aqui.
+
+  Eram cinco cores soltas — roxo, verde, âmbar, vermelho, roxo-claro — sem
+  relação com a identidade e com um problema de leitura: o VERMELHO. Num
+  painel onde vermelho significa prejuízo e chargeback, uma fatia vermelha
+  se lê como "esse produto deu errado" quando ela só quer dizer "o quarto
+  produto".
+
+  As séries de `--chart-*` são o azul da marca, o cinza da marca, o marinho
+  clareado, um teal e o âmbar do pico — vermelho fica de fora de propósito.
+*/
+const COLORS = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
 
 /*
   O balão do gráfico.
@@ -41,18 +59,21 @@ const COLORS = ["hsl(239,84%,67%)", "hsl(160,60%,45%)", "hsl(38,92%,50%)", "hsl(
   balão de fundo quase preto, isso deixava o número em roxo-escuro sobre preto,
   praticamente ilegível.
 
-  Cores fixas e não tokens porque o balão é desenhado com estilo inline pelo
-  recharts, fora do alcance das classes do Tailwind.
+  O balão é desenhado com estilo INLINE pelo recharts, fora do alcance das
+  classes do Tailwind — mas variável CSS funciona em estilo inline, porque ela
+  é resolvida pelo próprio navegador. Então aqui vão os tokens do tema, e não
+  hex escritos à mão: trocar a cor de fundo do sistema passa a alcançar os
+  balões também.
 */
 const chartTooltip = {
   contentStyle: {
-    backgroundColor: "hsl(0,0%,10%)",
-    border: "1px solid hsl(0,0%,16%)",
+    backgroundColor: "hsl(var(--popover))",
+    border: "1px solid hsl(var(--border))",
     borderRadius: "8px",
-    color: "#fff",
+    color: "hsl(var(--popover-foreground))",
   },
-  labelStyle: { color: "#aaa" },
-  itemStyle: { color: "#fff" },
+  labelStyle: { color: "hsl(var(--muted-foreground))" },
+  itemStyle: { color: "hsl(var(--popover-foreground))" },
 };
 
 const paymentLabels: Record<string, string> = {
@@ -732,7 +753,7 @@ export default function SalesPage() {
             )}
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={linhasQuando}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="rotulo" stroke="#555" tick={{ fontSize: 10 }} />
                 <YAxis
                   stroke="#555"
@@ -747,7 +768,7 @@ export default function SalesPage() {
                   {linhasQuando.map((r, i) => (
                     <Cell
                       key={i}
-                      fill={pico && r.rotulo === pico.rotulo ? "hsl(38,92%,50%)" : "hsl(239,84%,67%)"}
+                      fill={pico && r.rotulo === pico.rotulo ? "hsl(var(--chart-5))" : "hsl(var(--chart-1))"}
                     />
                   ))}
                 </Bar>

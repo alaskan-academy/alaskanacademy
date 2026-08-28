@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, ShoppingCart,
-  Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
+  Settings, ChevronLeft, ChevronRight, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { MarcaAlaskan } from '@/components/MarcaAlaskan';
 
 /**
  * O menu, agrupado pelo MOTIVO de abrir cada tela.
@@ -210,9 +211,12 @@ export function AppSidebar() {
               faziam um degrau visivel no meio do topo da tela. As outras linhas
               da sidebar continuam com o tom dela. */}
           <div className="flex items-center justify-between px-4 h-14 border-b border-border">
+            {/* O símbolo "ak" do manual, e o nome na fonte da marca. Era um
+                ícone de montanha do lucide — desenho de biblioteca, sem
+                relação nenhuma com a identidade. */}
             <div className="flex items-center gap-2">
-              <Mountain className="h-5 w-5 text-primary shrink-0" />
-              <span className="text-foreground font-semibold text-lg tracking-tight">Alaskan</span>
+              <MarcaAlaskan className="h-5 w-5 text-marca" />
+              <span className="font-display text-lg font-light tracking-[0.02em] text-foreground">alaskan</span>
             </div>
             <button onClick={() => setMobileOpen(false)} className="text-muted-foreground hover:text-foreground">
               <X className="h-5 w-5" />
@@ -246,10 +250,12 @@ export function AppSidebar() {
           "flex items-center h-14 border-b border-border",
           collapsed ? "justify-center px-2" : "gap-2 px-4",
         )}>
-          <Mountain className="h-5 w-5 text-primary shrink-0" />
+          {/* O vermelho é da MARCA e só dela: azul é o que se clica, vermelho
+              é o que se perde. O símbolo é a exceção — logo não é estado. */}
+          <MarcaAlaskan className="h-5 w-5 text-marca" />
           {!collapsed && (
             <>
-              <span className="flex-1 truncate text-lg font-semibold tracking-tight text-foreground">Alaskan</span>
+              <span className="flex-1 truncate font-display text-lg font-light tracking-[0.02em] text-foreground">alaskan</span>
               <button
                 onClick={toggle}
                 title="Recolher a barra"

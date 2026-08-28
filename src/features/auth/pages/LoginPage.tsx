@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mountain } from 'lucide-react';
+import { MarcaAlaskan } from '@/components/MarcaAlaskan';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,9 +32,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center gap-2 justify-center mb-8">
-          <Mountain className="h-7 w-7 text-primary" />
-          <span className="text-2xl font-semibold text-foreground tracking-tight">Alaskan</span>
+        <div className="mb-8 flex items-center justify-center gap-2.5">
+          <MarcaAlaskan className="h-8 w-8 text-marca" />
+          <span className="font-display text-2xl font-light tracking-[0.02em] text-foreground">alaskan</span>
         </div>
 
         <div className="bg-card border border-border rounded-xl p-8 shadow-sm">

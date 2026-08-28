@@ -16,8 +16,15 @@ export default {
     extend: {
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
+        // Poppins e a fonte do manual da marca. Fica na assinatura e nos
+        // titulos -- corpo de texto e tabela continuam em Inter, que aguenta
+        // 11px e alinha digito.
+        display: ["Poppins", "Inter", "system-ui", "sans-serif"],
       },
       colors: {
+        // A cor do simbolo "ak". Separada de propósito das cores de estado:
+        // marca nao e status, e vermelho aqui ja significa perda.
+        marca: "hsl(var(--marca))",
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

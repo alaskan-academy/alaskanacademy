@@ -1,62 +1,140 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/*
+  Inter para a interface, Poppins para a marca.
+
+  O manual da Alaskan usa Caviar Dreams no nome e Poppins Thin no descritivo.
+  Caviar Dreams não existe no Google Fonts, e não vale carregar um arquivo de
+  fonte inteiro por uma palavra — Poppins em peso leve, com as letras
+  espaçadas, chega perto do desenho e já é da própria identidade.
+
+  E Poppins fica SÓ na marca e nos títulos. Ela é geométrica e larga: num
+  painel cheio de tabela e número em 11px ela perde legibilidade e os dígitos
+  desalinham. O manual especifica Poppins para a assinatura, não para corpo de
+  texto — aplicar em tudo seria obedecer a letra e trair a intenção.
+*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@200;300;400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+  ─── A identidade da Alaskan, traduzida para tela escura ──────────────────
+
+  O manual tem quatro cores, todas pensadas para impresso:
+
+    #BD1218  vermelho   Pantone P 49-8 C    hsl(358 83% 41%)
+    #004283  azul       Pantone P 105-8 C   hsl(210 100% 26%)
+    #19255A  marinho    Pantone P 103-16 C  hsl(228 57% 23%)
+    #BEB9B0  cinza      Pantone P 13-16 C   hsl(36 14% 72%)
+
+  COMO ELAS VIRAM UM TEMA, E POR QUE NÃO É SÓ TROCAR O ROXO POR VERMELHO
+
+  O vermelho é a cor mais forte da marca — e é justamente por isso que ele NÃO
+  pode virar a cor de interface. Neste painel o vermelho já significa uma
+  coisa: prejuízo, chargeback, venda não aprovada, sair da conta. Se o item
+  ativo do menu, a aba selecionada e a barra de pico ficassem vermelhos, o
+  número negativo perderia o único sinal que tem.
+
+  Então a divisão é: **vermelho é a MARCA, azul é o que se clica.**
+
+    --marca      o símbolo "ak", só ele
+    --primary    o azul da marca, para tudo que é interativo
+    --destructive o vermelho da marca, para o que é perda
+
+  Marca e destrutivo caem na mesma família de vermelho de propósito: são o
+  mesmo pigmento, e é isso que faz o vermelho da tela parecer da casa em vez
+  de um alerta genérico.
+
+  A LUMINOSIDADE MUDA, O MATIZ NÃO
+
+  #004283 tem 26% de luminosidade — em papel branco é forte, sobre um fundo de
+  5% ele quase desaparece (contraste 2,4:1, abaixo de qualquer mínimo). O que
+  se levanta é a luminosidade; matiz (210) e saturação (100%) continuam sendo
+  os do Pantone. Mesma coisa no vermelho, que sobe de 41% para 52% para poder
+  ser lido como TEXTO sobre preto, e não só como preenchimento.
+
+  O FUNDO NÃO É CINZA, É MARINHO QUASE PRETO
+
+  Era "0 0% 6%" — cinza neutro, de tema padrão. Agora todos os fundos e bordas
+  carregam o matiz 228 do marinho em saturação baixa. Continua escuro (o fundo
+  ficou até um ponto mais escuro que antes), mas é um escuro que pertence à
+  marca em vez de um cinza que serviria a qualquer produto.
+
+  E o texto é branco QUENTE, do #BEB9B0: matiz 36 com pouca saturação. Cinza
+  puro ao lado de um azul frio deixa a tela com aparência de chapa de metal.
+*/
 @layer base {
   :root {
-    --background: 0 0% 6%;
-    --foreground: 0 0% 95%;
+    /* O símbolo. Não usar em mais nada — a marca não é uma cor de estado. */
+    --marca: 358 83% 45%;
 
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 95%;
+    --background: 228 24% 5%;
+    --foreground: 36 14% 92%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 95%;
+    --card: 228 20% 9%;
+    --card-foreground: 36 14% 92%;
 
-    --primary: 239 84% 67%;
+    --popover: 228 20% 9%;
+    --popover-foreground: 36 14% 92%;
+
+    /* #004283 com a luminosidade levantada para viver sobre preto. */
+    --primary: 210 100% 42%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 228 15% 15%;
+    --secondary-foreground: 36 10% 86%;
 
-    --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 55%;
+    --muted: 228 15% 15%;
+    --muted-foreground: 36 8% 60%;
 
-    --accent: 239 84% 67%;
+    --accent: 210 100% 42%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 51%;
+    /* Família do #BD1218, clareada o bastante para servir de texto. */
+    --destructive: 358 75% 52%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 16%;
-    --input: 0 0% 16%;
-    --ring: 239 84% 67%;
+    --border: 228 14% 18%;
+    --input: 228 14% 18%;
+    --ring: 210 100% 42%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 7%;
-    --sidebar-foreground: 0 0% 65%;
-    --sidebar-primary: 239 84% 67%;
+    /* A barra é o marinho mais presente da tela: ela emoldura o conteúdo. */
+    --sidebar-background: 228 28% 7%;
+    --sidebar-foreground: 36 8% 66%;
+    --sidebar-primary: 210 100% 42%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 0 0% 14%;
-    --sidebar-ring: 239 84% 67%;
+    --sidebar-accent: 228 18% 14%;
+    --sidebar-accent-foreground: 36 14% 92%;
+    --sidebar-border: 228 16% 16%;
+    --sidebar-ring: 210 100% 42%;
 
-    --success: 142 71% 45%;
+    /*
+      Verde e âmbar não vêm da marca porque não podem vir: "deu certo" e
+      "atenção" são convenções que o olho já traz de fora, e trocá-las por
+      azul e cinza custaria a leitura instantânea de toda a tela.
+    */
+    --success: 152 62% 42%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --warning: 38 92% 52%;
     --warning-foreground: 0 0% 0%;
-    --info: 217 91% 60%;
-    --info-foreground: 0 0% 100%;
+    --info: 199 89% 58%;
+    --info-foreground: 0 0% 0%;
 
-    --chart-1: 239 84% 67%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 0 72% 51%;
-    --chart-5: 280 65% 60%;
+    /*
+      As séries dos gráficos: azul da marca, cinza da marca, marinho
+      clareado, um teal que se afasta sem invadir o verde de sucesso, e o
+      âmbar que já marcava o pico.
+
+      Vermelho fica FORA da paleta de série, de propósito: dentro de um
+      gráfico ele seria lido como queda, e não como "a terceira categoria".
+    */
+    --chart-1: 210 100% 50%;
+    --chart-2: 36 16% 68%;
+    --chart-3: 228 62% 62%;
+    --chart-4: 186 64% 45%;
+    --chart-5: 38 92% 55%;
   }
 }
 
@@ -74,15 +152,17 @@
   width: 6px;
   height: 6px;
 }
+/* A rolagem também sai do cinza neutro: sobre o fundo marinho, um trilho
+   cinza puro aparece como uma faixa de outra cor no canto da tela. */
 ::-webkit-scrollbar-track {
-  background: hsl(0 0% 8%);
+  background: hsl(228 22% 8%);
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(0 0% 20%);
+  background: hsl(228 14% 22%);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(0 0% 30%);
+  background: hsl(228 14% 32%);
 }
 
 /* Date input calendar icon visible on dark background */
