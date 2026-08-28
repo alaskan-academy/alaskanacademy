@@ -30,19 +30,19 @@ const COLS = [
   { key: "nome", label: "Nome", fixed: true },
   { key: "investimento", label: "Gastos", money: true },
 
-  { key: "faturamento_atribuido", label: "Faturamento (Meta)", money: true },
-  { key: "resultado", label: "Retorno (Meta)", money: true },
-  { key: "margem", label: "Margem % (Meta)", pct: true },
-  { key: "roas", label: "ROAS (Meta)", suffix: "x" },
-  { key: "compras_meta", label: "Vendas (Meta)", num: true },
-  { key: "cpa", label: "CPA (Meta)", money: true },
+  { key: "faturamento_atribuido", label: "Faturamento (Meta)", money: true, fonte: "meta" },
+  { key: "resultado", label: "Retorno (Meta)", money: true, fonte: "meta" },
+  { key: "margem", label: "Margem % (Meta)", pct: true, fonte: "meta" },
+  { key: "roas", label: "ROAS (Meta)", suffix: "x", fonte: "meta" },
+  { key: "compras_meta", label: "Vendas (Meta)", num: true, fonte: "meta" },
+  { key: "cpa", label: "CPA (Meta)", money: true, fonte: "meta" },
 
-  { key: "receita_payt", label: "Faturamento (Payt)", money: true },
-  { key: "resultado_payt", label: "Retorno (Payt)", money: true },
-  { key: "margem_payt", label: "Margem % (Payt)", pct: true },
-  { key: "roas_payt", label: "ROAS (Payt)", suffix: "x" },
-  { key: "vendas_payt", label: "Vendas (Payt)", num: true },
-  { key: "cpa_payt", label: "CPA (Payt)", money: true },
+  { key: "receita_payt", label: "Faturamento (Payt)", money: true, fonte: "payt" },
+  { key: "resultado_payt", label: "Retorno (Payt)", money: true, fonte: "payt" },
+  { key: "margem_payt", label: "Margem % (Payt)", pct: true, fonte: "payt" },
+  { key: "roas_payt", label: "ROAS (Payt)", suffix: "x", fonte: "payt" },
+  { key: "vendas_payt", label: "Vendas (Payt)", num: true, fonte: "payt" },
+  { key: "cpa_payt", label: "CPA (Payt)", money: true, fonte: "payt" },
   { key: "taxa_video_3s", label: "V3s/Imp %", pct: true },
   { key: "taxa_video_75pct", label: "V75%/Inic %", pct: true },
   { key: "taxa_compras_video75", label: "Comp/V75% %", pct: true },
@@ -164,6 +164,22 @@ function totalDe(rows: LinhaCalculada[]): LinhaCalculada {
   }, {} as Record<string, number>);
   return comRazoes({ ...soma, nome: 'Total' });
 }
+
+/*
+  A tinta que separa os dois blocos.
+
+  Doze colunas seguidas com "(Meta)" e "(Payt)" no rótulo são doze leituras de
+  texto para descobrir onde um bloco acaba e o outro começa. A faixa de fundo
+  resolve isso antes da leitura — e é por isso que ela é de AGRUPAMENTO, não de
+  estado: em 7% de opacidade não diz "bom" nem "ruim", diz "de onde veio".
+
+  As cores saem de tokens (`--fonte-meta`, `--fonte-payt`) e não de hex aqui
+  dentro, que é a regra da IDV na CLAUDE.md.
+*/
+const TINTA: Record<string, string> = {
+  meta: "bg-[hsl(var(--fonte-meta)/0.07)]",
+  payt: "bg-[hsl(var(--fonte-payt)/0.07)]",
+};
 
 /** "3 campanhas", "1 conjunto" — o que o total está somando. */
 function rotuloNivel(nivel: Nivel, n: number) {
@@ -375,6 +391,7 @@ export default function MetaAdsPage() {
                   className={cn(
                     "px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase whitespace-nowrap",
                     !c.fixed && "cursor-pointer hover:text-foreground select-none",
+                    c.fonte && TINTA[c.fonte],
                     sortCol === c.key && "text-primary",
                     // O nome acompanha a rolagem lateral: são 24 colunas, e sem
                     // ele a linha vira uma fileira de números sem dono.
@@ -405,14 +422,20 @@ export default function MetaAdsPage() {
                     key={c.key}
                     className={cn(
                       "px-3 py-2 whitespace-nowrap",
+                      c.fonte && TINTA[c.fonte],
                       c.key === "nome" && cn(
                         "text-foreground font-medium max-w-48 truncate",
                         COL_FIXA, "border-r border-border", showCheck ? "left-8" : "left-0",
                       ),
-                      c.key === "roas" && roasColor(Number(r.roas)),
-                      c.key === "margem" && margemColor(Number(r.margem)),
-                      c.key === "resultado" && (Number(r.resultado) >= 0 ? "text-green-400" : "text-red-400"),
-                      !["nome", "roas", "margem", "resultado"].includes(c.key) && "text-foreground",
+                      // As duas leituras de ROAS e margem ganham a mesma
+                      // semaforo: 1,8x pelo Meta e 1,5x pela Payt precisam ser
+                      // lidos na mesma escala para a diferenca saltar.
+                      (c.key === "roas" || c.key === "roas_payt") && roasColor(Number(r[c.key as keyof typeof r])),
+                      (c.key === "margem" || c.key === "margem_payt") && margemColor(Number(r[c.key as keyof typeof r])),
+                      (c.key === "resultado" || c.key === "resultado_payt") &&
+                        (Number(r[c.key as keyof typeof r]) >= 0 ? "text-success" : "text-destructive"),
+                      !["nome", "roas", "roas_payt", "margem", "margem_payt", "resultado", "resultado_payt"]
+                        .includes(c.key) && "text-foreground",
                     )}
                   >
                     {c.key === "nome" ? (
@@ -505,6 +528,7 @@ export default function MetaAdsPage() {
                     key={c.key}
                     className={cn(
                       "px-3 py-3 whitespace-nowrap text-foreground",
+                      c.fonte && TINTA[c.fonte],
                       c.key === "nome" &&
                         cn(COL_FIXA, "border-r border-border bg-secondary", showCheck ? "left-8" : "left-0"),
                     )}

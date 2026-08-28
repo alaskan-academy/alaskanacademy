@@ -130,6 +130,20 @@
       Vermelho fica FORA da paleta de série, de propósito: dentro de um
       gráfico ele seria lido como queda, e não como "a terceira categoria".
     */
+    /*
+      As duas fontes de venda da tabela de Meta Ads.
+
+      Tinta de AGRUPAMENTO, nao de estado: entram com alpha muito baixo, so
+      para o olho separar o bloco do que o Meta reivindica do bloco do que a
+      Payt registrou. Por isso ficam fora das cores semanticas -- nada aqui
+      significa "bom" ou "ruim", significa "de onde veio o numero".
+
+      O azul e o da marca; o laranja e vizinho do ambar de atencao, mas em 7%
+      de opacidade ele le como faixa de fundo, e nao como alerta.
+    */
+    --fonte-meta: 210 100% 50%;
+    --fonte-payt: 25 90% 55%;
+
     --chart-1: 210 100% 50%;
     --chart-2: 36 16% 68%;
     --chart-3: 228 62% 62%;
