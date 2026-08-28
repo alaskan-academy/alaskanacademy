@@ -6,9 +6,10 @@ import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConciliacaoMeta } from "@/features/ads/components/ConciliacaoMeta";
-import type { LinhaMetricaMeta } from "@/features/ads/metricas";
+import type { LinhaCalculada, LinhaMetricaMeta } from "@/features/ads/metricas";
 import { FunilDaLinha } from "@/features/ads/components/FunilDaLinha";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
 type Nivel = "campanha" | "adset" | "ad";
 
@@ -40,7 +41,82 @@ const COLS = [
   { key: "impressoes", label: "Impressões", num: true },
 ];
 
-function fmtCell(row: any, col: (typeof COLS)[number]) {
+/*
+  As contagens cruas de uma linha, com o que não é número zerado.
+
+  Só isto se SOMA. Tudo o mais na tabela é razão, e razão não se soma: CPM de
+  cinco campanhas somado não é o CPM das cinco juntas.
+*/
+function contagens(linha: Partial<LinhaCalculada>) {
+  return {
+    impressoes: Number(linha.impressoes || 0),
+    cliques: Number(linha.cliques || 0),
+    investimento: Number(linha.investimento || 0),
+    compras_meta: Number(linha.compras_meta || 0),
+    faturamento_atribuido: Number(linha.faturamento_atribuido || 0),
+    initiate_checkout: Number(linha.initiate_checkout || 0),
+    visualizacoes_pagina: Number(linha.visualizacoes_pagina || 0),
+    video_plays: Number(linha.video_plays || 0),
+    video_3s: Number(linha.video_3s || 0),
+    video_75pct: Number(linha.video_75pct || 0),
+  };
+}
+
+/*
+  As razões, calculadas a partir das contagens.
+
+  Esta função existe para ter UMA cópia da fórmula servindo a dois lugares: a
+  linha de cada campanha e a linha de TOTAL do rodapé. Se o total repetisse as
+  contas, seria a primeira armadilha da CLAUDE.md — duas versões da mesma
+  regra, esperando divergir na primeira que alguém ajustar.
+
+  E é o que garante que o rodapé mostre o CPM do conjunto todo, e não a soma
+  dos CPMs; o mesmo cuidado que a tela de Vendas e a de UTM já tomam.
+*/
+function comRazoes(linha: Partial<LinhaCalculada> & { nome: string | null }): LinhaCalculada {
+  const r = { ...linha, ...contagens(linha) };
+  const inv = r.investimento;
+  const fat = r.faturamento_atribuido;
+  const luc = fat - inv;
+  return {
+    ...r,
+    resultado: luc,
+    margem: fat > 0 ? (luc / fat) * 100 : 0,
+    roas: inv > 0 ? fat / inv : 0,
+    cpa: r.compras_meta > 0 ? inv / r.compras_meta : 0,
+    ctr: r.impressoes > 0 ? (r.cliques / r.impressoes) * 100 : 0,
+    cpm: r.impressoes > 0 ? (inv / r.impressoes) * 1000 : 0,
+    cpc: r.cliques > 0 ? inv / r.cliques : 0,
+    taxa_video_3s: r.impressoes > 0 ? (r.video_3s / r.impressoes) * 100 : 0,
+    taxa_video_75pct: r.video_plays > 0 ? (r.video_75pct / r.video_plays) * 100 : 0,
+    taxa_compras_video75: r.video_75pct > 0 ? (r.compras_meta / r.video_75pct) * 100 : 0,
+    taxa_ic: r.visualizacoes_pagina > 0 ? (r.initiate_checkout / r.visualizacoes_pagina) * 100 : 0,
+    custo_por_ic: r.initiate_checkout > 0 ? inv / r.initiate_checkout : 0,
+    taxa_conv_checkout: r.initiate_checkout > 0 ? (r.compras_meta / r.initiate_checkout) * 100 : 0,
+    taxa_conexao: r.cliques > 0 ? (r.visualizacoes_pagina / r.cliques) * 100 : 0,
+    custo_por_vis_pagina: r.visualizacoes_pagina > 0 ? inv / r.visualizacoes_pagina : 0,
+    taxa_vendas_vis_pagina: r.visualizacoes_pagina > 0 ? (r.compras_meta / r.visualizacoes_pagina) * 100 : 0,
+  };
+}
+
+/** Soma as contagens das linhas e refaz as razões sobre o total. */
+function totalDe(rows: LinhaCalculada[]): LinhaCalculada {
+  const soma = rows.reduce((acc, linha) => {
+    const c = contagens(linha);
+    (Object.keys(c) as (keyof typeof c)[]).forEach(k => { acc[k] = (acc[k] ?? 0) + c[k]; });
+    return acc;
+  }, {} as Record<string, number>);
+  return comRazoes({ ...soma, nome: 'Total' });
+}
+
+/** "3 campanhas", "1 conjunto" — o que o total está somando. */
+function rotuloNivel(nivel: Nivel, n: number) {
+  if (nivel === 'campanha') return n === 1 ? 'campanha' : 'campanhas';
+  if (nivel === 'adset') return n === 1 ? 'conjunto' : 'conjuntos';
+  return n === 1 ? 'anúncio' : 'anúncios';
+}
+
+function fmtCell(row: LinhaCalculada, col: (typeof COLS)[number]) {
   const v = Number(row[col.key] ?? 0);
   // `formatCurrency`, e nao `R$ ${v.toFixed(2)}`: a tabela mostrava
   // "R$ 43915.63" com ponto decimal e sem separador de milhar, enquanto o
@@ -92,6 +168,21 @@ export default function MetaAdsPage() {
     que é para isso que ela existe.
   */
   const [funilAberto, setFunilAberto] = useState<string | null>(null);
+
+  /*
+    A aba passa a ser controlada, e a busca é uma só.
+
+    Ela vale para o nível ABERTO — procurar campanha na aba de campanhas,
+    conjunto na de conjuntos, anúncio na de anúncios. Três caixas, uma por
+    aba, seriam três estados para a mesma intenção, e a pessoa acabaria
+    digitando na de cima e olhando a de baixo.
+
+    Trocar de aba limpa a busca: o termo que acha uma campanha quase nunca
+    acha um anúncio, e uma tabela vazia sem motivo visível é pior do que
+    recomeçar a digitar.
+  */
+  const [aba, setAba] = useState<'campanhas' | 'conjuntos' | 'anuncios'>('campanhas');
+  const [busca, setBusca] = useState('');
 
   /*
     A soma acontece no banco, e não aqui.
@@ -152,46 +243,10 @@ export default function MetaAdsPage() {
     });
 
     return filtered
-      .map((linha: any) => {
-        const r = {
-          ...linha,
-          impressoes: Number(linha.impressoes || 0),
-          cliques: Number(linha.cliques || 0),
-          investimento: Number(linha.investimento || 0),
-          compras_meta: Number(linha.compras_meta || 0),
-          faturamento_atribuido: Number(linha.faturamento_atribuido || 0),
-          initiate_checkout: Number(linha.initiate_checkout || 0),
-          visualizacoes_pagina: Number(linha.visualizacoes_pagina || 0),
-          video_plays: Number(linha.video_plays || 0),
-          video_3s: Number(linha.video_3s || 0),
-          video_75pct: Number(linha.video_75pct || 0),
-        };
-        const inv = r.investimento;
-        const fat = r.faturamento_atribuido;
-        const luc = fat - inv;
-        return {
-          ...r,
-          resultado: luc,
-          margem: fat > 0 ? (luc / fat) * 100 : 0,
-          roas: inv > 0 ? fat / inv : 0,
-          cpa: r.compras_meta > 0 ? inv / r.compras_meta : 0,
-          ctr: r.impressoes > 0 ? (r.cliques / r.impressoes) * 100 : 0,
-          cpm: r.impressoes > 0 ? (inv / r.impressoes) * 1000 : 0,
-          cpc: r.cliques > 0 ? inv / r.cliques : 0,
-          taxa_video_3s: r.impressoes > 0 ? (r.video_3s / r.impressoes) * 100 : 0,
-          taxa_video_75pct: r.video_plays > 0 ? (r.video_75pct / r.video_plays) * 100 : 0,
-          taxa_compras_video75: r.video_75pct > 0 ? (r.compras_meta / r.video_75pct) * 100 : 0,
-          taxa_ic: r.visualizacoes_pagina > 0 ? (r.initiate_checkout / r.visualizacoes_pagina) * 100 : 0,
-          custo_por_ic: r.initiate_checkout > 0 ? inv / r.initiate_checkout : 0,
-          taxa_conv_checkout: r.initiate_checkout > 0 ? (r.compras_meta / r.initiate_checkout) * 100 : 0,
-          taxa_conexao: r.cliques > 0 ? (r.visualizacoes_pagina / r.cliques) * 100 : 0,
-          custo_por_vis_pagina: r.visualizacoes_pagina > 0 ? inv / r.visualizacoes_pagina : 0,
-          taxa_vendas_vis_pagina: r.visualizacoes_pagina > 0 ? (r.compras_meta / r.visualizacoes_pagina) * 100 : 0,
-        };
-      })
-      .sort((a: any, b: any) => {
-        const va = Number(a[sortCol]) || 0;
-        const vb = Number(b[sortCol]) || 0;
+      .map(comRazoes)
+      .sort((a, b) => {
+        const va = Number(a[sortCol as keyof LinhaCalculada]) || 0;
+        const vb = Number(b[sortCol as keyof LinhaCalculada]) || 0;
         return sortDir === "desc" ? vb - va : va - vb;
       });
   };
@@ -217,12 +272,28 @@ export default function MetaAdsPage() {
       return n;
     });
 
-  const campRows = aggregate("campanha");
-  const adsetRows = aggregate("adset", selectedCamp.size > 0 ? selectedCamp : undefined);
-  const adRows = aggregate("ad", selectedAdset.size > 0 ? selectedAdset : undefined);
+  /*
+    A busca filtra por nome, sem acento e sem caso.
+
+    `normalizar` e não `toLowerCase` puro: "Saponária" e "saponaria" são a
+    mesma campanha para quem procura, e exigir o acento certo num campo de
+    busca é o tipo de exigência que faz a pessoa concluir que não achou.
+  */
+  const normalizar = (s: string) =>
+    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  const filtrarPorNome = (rows: LinhaCalculada[]) => {
+    const termo = normalizar(busca.trim());
+    if (!termo) return rows;
+    return rows.filter(r => normalizar(String(r.nome ?? '')).includes(termo));
+  };
+
+  const campRows = filtrarPorNome(aggregate("campanha"));
+  const adsetRows = filtrarPorNome(aggregate("adset", selectedCamp.size > 0 ? selectedCamp : undefined));
+  const adRows = filtrarPorNome(aggregate("ad", selectedAdset.size > 0 ? selectedAdset : undefined));
 
   const renderTable = (
-    rows: any[],
+    rows: LinhaCalculada[],
     nivel: Nivel,
     showCheck?: boolean,
     onCheck?: (id: string) => void,
@@ -346,19 +417,64 @@ export default function MetaAdsPage() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={COLS.length + (showCheck ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground">
-                  {showCheck && checked?.size === 0 ? "Selecione campanhas na aba anterior para filtrar" : "Sem dados"}
+                  {showCheck && checked?.size === 0
+                    ? "Selecione campanhas na aba anterior para filtrar"
+                    : busca.trim()
+                      ? `Nada com "${busca.trim()}" neste período.`
+                      : "Sem dados"}
                 </td>
               </tr>
             )}
           </tbody>
+
+          {/*
+            O total do que está na tela.
+
+            Em `tfoot` e não como última linha do `tbody`: assim ele não entra
+            na ordenação nem some quando alguém ordena por outra coluna.
+
+            As razões do rodapé são refeitas sobre os totais por `comRazoes`, a
+            MESMA função que calcula as das linhas — somar as margens das sete
+            campanhas daria um número sem significado nenhum.
+
+            Ele acompanha a busca de propósito: filtrou por "TESTE", o total é
+            dos TESTE. É o que responde "quanto gastei nisso que estou olhando".
+          */}
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-border bg-secondary/60 font-semibold">
+                {showCheck && <th className={cn("px-3 py-3 w-8", COL_FIXA, "left-0", "bg-secondary")} />}
+                {COLS.map((c) => (
+                  <td
+                    key={c.key}
+                    className={cn(
+                      "px-3 py-3 whitespace-nowrap text-foreground",
+                      c.key === "nome" &&
+                        cn(COL_FIXA, "border-r border-border bg-secondary", showCheck ? "left-8" : "left-0"),
+                    )}
+                  >
+                    {c.key === "nome"
+                      ? `Total · ${rows.length} ${rotuloNivel(nivel, rows.length)}`
+                      : fmtCell(totalDe(rows), c)}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     );
 
   return (
     <DashboardLayout title="Meta Ads" hideTitle>
-      <Tabs defaultValue="campanhas">
-        <TabsList className="bg-secondary border border-border mb-4">
+      <Tabs
+        value={aba}
+        onValueChange={(v) => { setAba(v as typeof aba); setBusca(''); }}
+      >
+        {/* A busca fica na MESMA linha das abas: ela pertence ao nivel aberto,
+            e separada delas pareceria um filtro global. */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <TabsList className="bg-secondary border border-border">
           <TabsTrigger
             value="campanhas"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
@@ -378,6 +494,21 @@ export default function MetaAdsPage() {
             Anúncios
           </TabsTrigger>
         </TabsList>
+
+        <div className="relative w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder={
+              aba === 'campanhas' ? 'Buscar campanha...'
+                : aba === 'conjuntos' ? 'Buscar conjunto...'
+                  : 'Buscar anúncio...'
+            }
+            className="h-9 pl-8 text-sm"
+          />
+        </div>
+        </div>
 
         <TabsContent value="campanhas">
           {selectedCamp.size > 0 && (
