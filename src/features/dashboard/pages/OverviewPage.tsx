@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import GlobalFilters from "@/components/GlobalFilters";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
@@ -20,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
-import { Area, AreaChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { inicioDiaBRT, fimDiaBRT } from "@/lib/periodo";
 import {
   calcularResultado,
@@ -310,7 +311,31 @@ export default function OverviewPage() {
     // nunca comprou, e a margem dele saía menor do que é.
     const eBackend = segmento === "backend";
     const investimento = eBackend ? 0 : num(fiscal.investimento_meta);
-    const impMeta = eBackend ? 0 : num(fiscal.imposto_meta) * share;
+
+    /*
+      O imposto do Meta sai do GASTO que está sendo mostrado, e não do rateio
+      pela receita.
+
+      O comentário acima já dizia a regra certa — "o imposto do Meta incide
+      sobre o gasto, não sobre a receita" — mas ela só era aplicada para zerar o
+      back-end. Nos outros dois recortes o investimento vinha inteiro e o
+      imposto vinha rateado pela participação no faturamento, que são bases
+      diferentes.
+
+      O que isso custava, medido: com a conta "Saponaria" escolhida em agosto, a
+      tela cobrava R$ 4.687,18 de imposto sobre um gasto de R$ 43.915,63 que
+      gera R$ 5.489,45. R$ 802,27 de lucro a mais do que existe. A distorção
+      aparece sempre que a conta pesa mais no gasto do que na receita — e a
+      "Saponaria Brasil - VSL" é o caso extremo: 0,0% da receita e 0,8% do
+      gasto, ou seja, imposto praticamente zero sobre R$ 829,53 queimados.
+      O mesmo valia para o segmento Tráfego, que levava o investimento inteiro
+      e só uma fração do imposto dele.
+
+      Uma linha só resolve os três casos, inclusive o back-end: gasto zero dá
+      imposto zero sozinho. E a conta bate com a da propria view — em agosto,
+      R$ 102.150,97 x 12,5% = R$ 12.768,87 contra os R$ 12.768,90 que ela soma.
+    */
+    const impMeta = investimento * (num(fiscal.meta_pct) / 100);
     const simplesPct = num(fiscal.simples_pct);
     const metaPct = num(fiscal.meta_pct);
     const custoMensal = num(fiscal.custo_fixo_mensal);
@@ -439,17 +464,27 @@ export default function OverviewPage() {
     // O dia já vem calculado em BRT pelo banco: a Payt entrega `paid_at` em horário
     // de Brasília e ~5% das vendas caem entre 21h e 23h59, que em UTC seriam
     // contadas no dia seguinte.
-    const dias = d.por_dia ?? [];
-    const investimentoDia = investimento > 0 && dias.length > 0 ? investimento / dias.length : 0;
-    const margemSobreBruto = fatBruto > 0 ? lucro / fatBruto : 0;
+    /*
+      Saiu a linha verde de "Lucro estimado", e saiu o investimento por dia.
+
+      Nenhum dos dois era medido. O lucro do dia era o faturamento do dia vezes
+      a margem do PERÍODO INTEIRO — ou seja, a mesma curva do faturamento
+      multiplicada por uma constante. Ela não podia mostrar um dia no vermelho,
+      nem um dia de gasto alto: era o faturamento outra vez, em verde, e o
+      gráfico não tinha legenda dizendo o contrário. O investimento por dia
+      tinha o mesmo problema — o total do período dividido pelos dias COM venda
+      — e ainda por cima era calculado e nunca desenhado.
+
+      Um lucro por dia de verdade existe e dá para fazer: `metricas_meta` tem o
+      gasto por dia e por conta. Enquanto não for essa conta, é melhor não ter
+      a linha do que ter uma que parece medida e não é.
+    */
     setSerieDiaria(
-      dias.map((x: any) => ({
+      (d.por_dia ?? []).map((x: any) => ({
         dia: x.dia,
         faturamento: num(x.faturamento),
         vendas: num(x.vendas),
         rotulo: format(parseISO(x.dia), "dd/MM"),
-        investimento: investimentoDia,
-        lucro: num(x.faturamento) * margemSobreBruto,
       })),
     );
 
@@ -512,13 +547,29 @@ export default function OverviewPage() {
   const abaAtiva = abasDisponiveis.some(a => a.key === abaOp) ? abaOp : abasDisponiveis[0].key;
 
   return (
-    <DashboardLayout title="Visão Geral" hideTitle>
+    /*
+      `hideFilters`: conta e período saem da barra fixa e descem para dentro da
+      página, na mesma linha do segmento e do Atualizar.
+
+      Eles estavam longe do que governam. Lá em cima, "Todas as contas" e "Hoje"
+      ficavam grudados na busca e no nome da tela — controles de navegação —,
+      enquanto o segmento (Tráfego / Back-end / Misto), que recorta exatamente a
+      mesma leitura, ficava aqui embaixo. Eram três filtros da mesma resposta
+      espalhados por dois lugares, e quem olhava um número errado tinha que
+      lembrar de conferir dois cantos da tela.
+
+      A regra que vem junto, e que já custou caro aqui: `hideFilters` só pode
+      ser usado por tela que NÃO lê `useFilters`, ou por tela que oferece o
+      controle no corpo. Esconder o seletor deixando o filtro ativo cria o pior
+      caso — a página filtra por algo que ninguém vê.
+    */
+    <DashboardLayout title="Visão Geral" hideTitle hideFilters>
       {/* Cobra a conferência contra a Payt. Fica no topo do Resumo porque é aqui que
           os números que ela confere são lidos. */}
       <LembreteConferencia />
 
-      {/* ── Origem do tráfego + atualizar ───────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      {/* ── O que a leitura recorta: segmento, conta, período ───────────── */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1">
           {SEGMENTOS.map(s => (
             <button
@@ -536,14 +587,18 @@ export default function OverviewPage() {
             </button>
           ))}
         </div>
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-secondary border border-border rounded-lg hover:border-primary/50 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
-          {loading ? "Atualizando..." : lastUpdate ? `Atualizado ${format(lastUpdate, "HH:mm")}` : "Atualizar"}
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <GlobalFilters />
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="flex h-8 items-center gap-2 rounded-md border border-border bg-secondary px-3 text-xs font-medium transition-colors hover:border-primary/50 disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+            {loading ? "Atualizando..." : lastUpdate ? `Atualizado ${format(lastUpdate, "HH:mm")}` : "Atualizar"}
+          </button>
+        </div>
       </div>
 
       {segmento !== "misto" && (
@@ -699,10 +754,7 @@ export default function OverviewPage() {
                         fontSize: 12,
                       }}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
-                      formatter={(v: number, nome: string) => [
-                        formatCurrency(v),
-                        nome === "lucro" ? "Lucro estimado" : "Faturamento",
-                      ]}
+                      formatter={(v: number) => [formatCurrency(v), "Faturamento"]}
                     />
                     <Area
                       type="monotone"
@@ -711,7 +763,6 @@ export default function OverviewPage() {
                       strokeWidth={2}
                       fill="url(#gradFaturamento)"
                     />
-                    <Line type="monotone" dataKey="lucro" stroke="hsl(var(--success))" strokeWidth={1.5} dot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
