@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
@@ -202,6 +203,59 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
   const [verTodosConcluidos, setVerTodosConcluidos] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [expandidas, setExpandidas] = useState<Set<PipelineStatus>>(new Set());
+
+  /*
+    `?teste=<id>` abre o card direto.
+
+    É por aqui que o Radar traz alguém para cá: lá o teste de funil é só um
+    espelho, e "edite lá" sem um caminho é um recado que obriga a pessoa a
+    procurar o card num quadro de 44.
+
+    `jaAbriu` existe porque `testes` muda de identidade a cada recarga da
+    página: sem ele, salvar reabriria o modal que acabou de fechar, para sempre.
+  */
+  const [params, setParams] = useSearchParams();
+  const pedido = params.get('teste');
+  const jaAbriu = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!pedido || jaAbriu.current === pedido) return;
+    jaAbriu.current = pedido;
+    const t = testes.find(x => x.id === pedido);
+    if (!t) {
+      /*
+        Não achou: limpa o endereço e deixa a pessoa no quadro.
+
+        Aqui NÃO cabe um toast, e isso foi medido: um toast disparado no
+        primeiro efeito depois de carregar a página não aparece — o mesmo toast
+        atrasado em 1,5s aparece. O `Toaster` lê `memoryState` ao montar e só
+        se inscreve depois, então perde o que foi despachado antes. Vale para o
+        app inteiro, não só para aqui.
+
+        De todo jeito, com o espelho seguindo `arquivado` e `pipeline_status`,
+        o link do Radar só aponta para teste que está no quadro. Sobrar aqui
+        significa endereço velho ou digitado na mão.
+      */
+      const p = new URLSearchParams(params);
+      p.delete('teste');
+      setParams(p, { replace: true });
+      return;
+    }
+    setEditTeste(t);
+    setModalKey(k => k + 1);
+    setModalOpen(true);
+  }, [pedido, testes, params, setParams]);
+
+  /* Fechar limpa o `?teste=`, senão a aba reabre o modal ao ser revisitada. */
+  function fecharModal() {
+    setModalOpen(false);
+    if (params.get('teste')) {
+      const p = new URLSearchParams(params);
+      p.delete('teste');
+      setParams(p, { replace: true });
+      jaAbriu.current = null;
+    }
+  }
 
   const funisDisponiveis = filtroProjetos.length === 0
     ? funis
@@ -633,8 +687,8 @@ export function TestesTab({ testes, funis, projetos, perfis, onReload }: Props) 
       <TesteModal
         key={modalKey}
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onSaved={() => { setModalOpen(false); onReload(); }}
+        onClose={fecharModal}
+        onSaved={() => { fecharModal(); onReload(); }}
         teste={editTeste}
         funis={funis}
         projetos={projetos}

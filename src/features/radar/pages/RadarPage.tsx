@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,7 +16,7 @@ import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
   FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle,
-  Sheet, Loader2, BookMarked, Settings2, Layers, Lock,
+  Sheet, Loader2, BookMarked, Settings2, Layers, Lock, ArrowUpRight,
 } from 'lucide-react';
 import { AreasSection } from '../components/RadarConfigTab';
 import { CATEGORIA_LABEL } from '../categorias';
@@ -782,10 +783,28 @@ export function RadarContent() {
                 <DialogTitle className="text-base leading-snug text-left">{detalhe.titulo}</DialogTitle>
               </DialogHeader>
 
+              {/*
+                O aviso mandava editar "lá" e não dizia onde.
+
+                Achar o card num quadro de 44 é trabalho suficiente para a
+                pessoa desistir e deixar o teste como está — que é exatamente
+                como 4 deles ficaram meses parados em "rodando". O link leva
+                direto ao card, com o modal já aberto.
+              */}
               {detalhe.fonte === 'funis' && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md px-3 py-2">
                   <Lock className="h-3 w-3 shrink-0" />
-                  Sincronizado via módulo Funis — edite o teste lá para alterar título, hipótese, datas e resultado.
+                  <span className="min-w-0">
+                    Sincronizado via módulo Funis — título, hipótese, datas e resultado se alteram lá.
+                  </span>
+                  {detalhe.fonte_id && (
+                    <Link
+                      to={`/funis-gestao?aba=testes&teste=${detalhe.fonte_id}`}
+                      className="ml-auto inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-2 py-1 font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                    >
+                      Abrir no Funis <ArrowUpRight className="h-3 w-3" />
+                    </Link>
+                  )}
                 </div>
               )}
 

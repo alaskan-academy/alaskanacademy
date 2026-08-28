@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -32,7 +33,24 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 export default function FunisPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('mapa');
+  /*
+    A aba vive na URL, e não num `useState`.
+
+    Vivia em estado local, e por isso não havia como mandar alguém para uma aba
+    específica — o Radar precisa disso para abrir o teste de funil que ele
+    espelha, e um F5 no meio do trabalho voltava para o Mapa.
+  */
+  const [params, setParams] = useSearchParams();
+  const pedida = params.get('aba');
+  const activeTab = (TABS.some(t => t.key === pedida) ? pedida : 'mapa') as Tab;
+
+  const setActiveTab = (key: Tab) => {
+    const p = new URLSearchParams(params);
+    p.set('aba', key);
+    // `replace`: trocar de aba não é navegação para o botão Voltar.
+    setParams(p, { replace: true });
+  };
+
   const [state, setState] = useState<State>({
     funis: [], projetos: [], funilSubofertas: [],
     dominios: [], testes: [], perfis: [], loading: true,
