@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, TrendingUp, ShoppingCart, Link2, Users,
+  LayoutDashboard, TrendingUp, ShoppingCart, Link2,
   FlaskConical, GraduationCap, BarChart3, Wallet, KeyRound, Film, Settings,
 } from 'lucide-react';
 import {
@@ -18,7 +18,6 @@ const PAGES = [
   { path: '/meta-ads',      label: 'Meta Ads',      icon: TrendingUp      },
   { path: '/vendas',        label: 'Vendas',        icon: ShoppingCart    },
   { path: '/utm',           label: 'Análise UTM',   icon: Link2           },
-  { path: '/clientes',      label: 'Clientes',      icon: Users           },
   { path: '/laboratorio',   label: 'Laboratório',   icon: FlaskConical    },
   { path: '/processos',     label: 'Processos',     icon: GraduationCap   },
   { path: '/editores',      label: 'Editores',      icon: BarChart3       },

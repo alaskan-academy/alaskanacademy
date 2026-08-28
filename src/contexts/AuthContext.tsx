@@ -16,7 +16,6 @@ export const PAGINAS = [
   // analise -- o prefixo so criava colisao com o modulo de Analises.
   { key: 'utm',           path: '/utm',           label: 'UTM' },
   { key: 'tendencias',    path: '/tendencias',    label: 'Tendências' },
-  { key: 'clientes',      path: '/clientes',      label: 'Clientes' },
   { key: 'editores',      path: '/editores',      label: 'Editores' },
   { key: 'configuracoes', path: '/configuracoes', label: 'Configurações' },
   { key: 'laboratorio',   path: '/laboratorio',   label: 'Laboratório' },

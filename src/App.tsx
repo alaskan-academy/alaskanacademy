@@ -21,7 +21,6 @@ const MetaAdsPage              = lazy(() => import("./features/ads/pages/MetaAds
 const TendenciasPage           = lazy(() => import("./features/dashboard/pages/TendenciasPage"));
 const SalesPage                = lazy(() => import("./features/dashboard/pages/SalesPage"));
 const UTMPage                  = lazy(() => import("./features/ads/pages/UTMPage"));
-const ClientsPage              = lazy(() => import("./features/dashboard/pages/ClientsPage"));
 const EditorsPage              = lazy(() => import("./features/editores/pages/EditorsPage"));
 const SettingsPage             = lazy(() => import("./features/admin/pages/SettingsPage"));
 const AdminPage                = lazy(() => import("./features/admin/pages/AdminPage"));
@@ -102,7 +101,11 @@ const App = () => (
                     <Route path="/vendas" element={<ProtectedRoute pageKey="vendas"><SalesPage /></ProtectedRoute>} />
                     <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
                     <Route path="/tendencias" element={<ProtectedRoute pageKey="tendencias"><TendenciasPage /></ProtectedRoute>} />
-                    <Route path="/clientes" element={<ProtectedRoute pageKey="clientes"><ClientsPage /></ProtectedRoute>} />
+                    {/* /clientes foi removida: a listagem por pessoa saiu do menu.
+                        O redirecionamento existe porque o caminho circulou em
+                        links salvos e no histórico do navegador — sem ele, quem
+                        tivesse a aba fixada cairia num branco sem explicação. */}
+                    <Route path="/clientes" element={<Navigate to="/vendas" replace />} />
                     <Route path="/editores" element={<ProtectedRoute pageKey="editores"><EditorsPage /></ProtectedRoute>} />
                     <Route path="/laboratorio" element={<ProtectedRoute pageKey="laboratorio"><LaboratorioPage /></ProtectedRoute>} />
                     <Route path="/processos" element={<ProtectedRoute pageKey="processos"><ProcessosPage /></ProtectedRoute>} />

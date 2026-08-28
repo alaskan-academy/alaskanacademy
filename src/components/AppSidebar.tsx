@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, ShoppingCart,
-  Users, Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
+  Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -18,7 +18,6 @@ const ALL_SUB_PAGES = [
   { path: '/vendas',   label: 'Vendas',      icon: ShoppingCart,    key: 'vendas' },
   { path: '/utm',      label: 'UTM'         , icon: Link2,           key: 'utm' },
   { path: '/tendencias', label: 'Tendências', icon: Activity,        key: 'tendencias' },
-  { path: '/clientes', label: 'Clientes',    icon: Users,           key: 'clientes' },
 ];
 
 /**
