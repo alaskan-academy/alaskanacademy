@@ -26,6 +26,15 @@ export function AdSwipeTab() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  /*
+    Interno, externo ou os dois.
+
+    É o primeiro corte do swipe: "o que já é nosso" e "o que é de fora" são
+    duas bibliotecas com usos diferentes — uma se consulta para reaproveitar o
+    que funcionou, a outra para roubar ideia de quem não é a gente. Estavam
+    misturadas numa lista só, e a única pista era o "AD xxx" no título.
+  */
+  const [filterSource, setFilterSource] = useState<'todos' | 'interno' | 'externo'>('todos');
   const [filterNiche, setFilterNiche] = useState('todos');
   const [filterFormat, setFilterFormat] = useState('todos');
   const [filterValidated, setFilterValidated] = useState(false);
@@ -87,6 +96,7 @@ export function AdSwipeTab() {
     return ads.filter(a => {
       if (filterFavorite && !a.is_favorite) return false;
       if (filterValidated && !a.is_validated) return false;
+      if (filterSource !== 'todos' && a.source !== filterSource) return false;
       if (filterNiche !== 'todos' && a.niche !== filterNiche) return false;
       if (filterFormat !== 'todos' && a.format !== filterFormat) return false;
       if (debouncedSearch) {
@@ -100,7 +110,15 @@ export function AdSwipeTab() {
       }
       return true;
     });
-  }, [ads, debouncedSearch, filterNiche, filterFormat, filterValidated, filterFavorite]);
+  }, [ads, debouncedSearch, filterSource, filterNiche, filterFormat, filterValidated, filterFavorite]);
+
+  // O número ao lado de cada opção evita abrir "Externos" para achar a lista
+  // vazia — e mostra de cara o desequilíbrio entre as duas bibliotecas.
+  const porOrigem = useMemo(() => ({
+    todos: ads.length,
+    interno: ads.filter(a => a.source === 'interno').length,
+    externo: ads.filter(a => a.source === 'externo').length,
+  }), [ads]);
 
   const visible = filtered.slice(0, page * PAGE_SIZE);
   const hasMore = visible.length < filtered.length;
@@ -152,6 +170,30 @@ export function AdSwipeTab() {
             onChange={e => handleSearchChange(e.target.value)}
             className="pl-8 h-9 text-sm"
           />
+        </div>
+
+        {/* A origem vem antes de nicho e formato: ela divide a biblioteca em
+            duas, e os outros filtros recortam dentro da metade escolhida. */}
+        <div className="flex items-center gap-1 rounded-lg bg-secondary p-1">
+          {([
+            { valor: 'todos',   rotulo: 'Todos' },
+            { valor: 'interno', rotulo: 'Internos' },
+            { valor: 'externo', rotulo: 'Externos' },
+          ] as const).map((o) => (
+            <button
+              key={o.valor}
+              onClick={() => { setFilterSource(o.valor); setPage(1); }}
+              className={cn(
+                'rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                filterSource === o.valor
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {o.rotulo}
+              <span className="ml-1.5 opacity-60">{porOrigem[o.valor]}</span>
+            </button>
+          ))}
         </div>
 
         {/* w-40 cortava "Todos os formatos" em "Todos os...": o rotulo do
@@ -229,6 +271,19 @@ export function AdSwipeTab() {
                         <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">
                           {ad.ad_code}
                         </span>
+                      )}
+                      {/*
+                        Só o externo ganha etiqueta.
+
+                        Interno é 30 dos 35: marcar os dois lados repetiria a
+                        mesma palavra na quase totalidade das linhas, que foi o
+                        que tirou a coluna "Tipo" da tela de Vendas. Etiqueta
+                        que quase nunca muda não informa — informa a exceção.
+                      */}
+                      {ad.source === 'externo' && (
+                        <Badge className="border-0 bg-amber-100 px-1.5 py-0 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                          Externo
+                        </Badge>
                       )}
                       {ad.format && (
                         <Badge className={cn('text-[10px] font-medium border-0 px-1.5 py-0', fmtCls)}>

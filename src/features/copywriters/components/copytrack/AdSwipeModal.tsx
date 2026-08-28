@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { CopyAdSwipe } from '@/features/copywriters/types';
 import { Star } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const FORMATS = ['VSL', 'UGC', 'Imagem', 'Depoimento', 'Carrossel', 'Texto'];
 
@@ -31,6 +32,19 @@ export function AdSwipeModal({ open, onClose, onSaved, ad }: Props) {
   const [angle, setAngle]           = useState(ad?.angle ?? '');
   const [hookType, setHookType]     = useState(ad?.hook_type ?? '');
   const [notes, setNotes]           = useState(ad?.notes ?? '');
+  /*
+    Interno ou externo, escolhido à mão.
+
+    O padrão é 'interno' porque é o uso majoritário hoje (30 dos 35), e porque
+    ad externo se cadastra olhando para o anúncio do outro — momento em que
+    trocar o botão é parte de prestar atenção nele.
+
+    NÃO adivinho pelo "AD xxx" do título. Essa regra rodou uma vez, na
+    migration que classificou os 35 existentes, e ficou lá: mantê-la viva aqui
+    criaria uma segunda fonte para a mesma resposta, esperando divergir no
+    primeiro ad que fuja do padrão de nome.
+  */
+  const [source, setSource] = useState<'interno' | 'externo'>(ad?.source ?? 'interno');
   const [isValidated, setIsValidated] = useState(ad?.is_validated ?? false);
   const [isFavorite, setIsFavorite]   = useState(ad?.is_favorite ?? false);
 
@@ -52,6 +66,7 @@ export function AdSwipeModal({ open, onClose, onSaved, ad }: Props) {
       angle:        angle.trim() || null,
       hook_type:    hookType.trim() || null,
       notes:        notes.trim() || null,
+      source,
       is_validated: isValidated,
       is_favorite:  isFavorite,
     };
@@ -81,6 +96,34 @@ export function AdSwipeModal({ open, onClose, onSaved, ad }: Props) {
         </DialogHeader>
 
         <div className="space-y-4 py-1">
+          {/*
+            A origem vem primeiro porque muda o sentido de tudo abaixo: num ad
+            interno, "headline" é o que escrevemos; num externo, é o que o
+            outro escreveu e estamos guardando.
+          */}
+          <div>
+            <Label>Origem</Label>
+            <div className="mt-1 flex w-fit items-center gap-1 rounded-lg bg-secondary p-1">
+              {(['interno', 'externo'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setSource(v)}
+                  className={cn(
+                    // Sem `capitalize`: os rótulos ja vem escritos, e a classe virava
+                    // "Externo (De Terceiro)".
+                    'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                    source === v
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {v === 'interno' ? 'Interno (nosso)' : 'Externo (de terceiro)'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Código do ad</Label>

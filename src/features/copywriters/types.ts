@@ -39,7 +39,15 @@ export type CopyAdSwipe = {
   updated_at: string;
   title: string | null;
   niche: string | null;
-  source: string | null;
+  /**
+   * De onde veio o ad: `'interno'` (criativo nosso) ou `'externo'` (anúncio de
+   * terceiro guardado como referência).
+   *
+   * O banco tem `NOT NULL` e um CHECK com esses dois valores, então aqui não
+   * é opcional: a união fecha o conjunto e um valor novo no SQL vira erro de
+   * compilação, não coluna em branco na tela.
+   */
+  source: 'interno' | 'externo';
   body: string | null;
   headline: string | null;
   cta: string | null;
