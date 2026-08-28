@@ -1,7 +1,7 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, ShoppingCart,
-  Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, Loader2, Globe, ChevronDown, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
+  Settings, ChevronLeft, ChevronRight, Mountain, Link2, BarChart3, X, LogOut, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -12,34 +12,46 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 
-const ALL_SUB_PAGES = [
-  { path: '/resumo',   label: 'Resumo',      icon: LayoutDashboard, key: 'overview' },
-  { path: '/meta-ads', label: 'Meta Ads',    icon: TrendingUp,      key: 'meta-ads' },
-  { path: '/vendas',   label: 'Vendas',      icon: ShoppingCart,    key: 'vendas' },
-  { path: '/utm',      label: 'UTM'         , icon: Link2,           key: 'utm' },
-  { path: '/tendencias', label: 'Tendências', icon: Activity,        key: 'tendencias' },
-];
-
 /**
  * O menu, agrupado pelo MOTIVO de abrir cada tela.
  *
- * Eram doze entradas numa lista chapada, sem separação nenhuma, e a leitura era
- * "informação perdida e jogada" — com razão: Produção, Financeiro e
- * Configurações são coisas de naturezas completamente diferentes, e nada na
- * barra dizia isso.
+ * POR QUE "GERAL" DEIXOU DE EXISTIR
  *
- * O critério é o motivo de abrir, e não o que a tela tem dentro. Financeiro tem
- * revisão diária dentro, mas quem clica ali está atrás de dinheiro, não de
- * tarefa. E o mapa é o mesmo para todo mundo: o que muda por pessoa é o que ela
- * alcança, não onde as coisas ficam.
+ * Resumo, Meta Ads, Vendas, UTM e Tendências moravam dentro de um item
+ * "Geral" que abria e fechava. Ele não era uma área: era o SELETOR DE
+ * DASHBOARD — o lugar onde se escolhia entre "Geral" e cada funil. Os funis
+ * saíram da barra faz tempo (o recorte por conta virou filtro no cabeçalho,
+ * junto do período), e o seletor ficou com uma opção só: um nível de
+ * profundidade a mais para escolher entre uma coisa.
  *
- * ESTRUTURA existe porque cadastro não é nem trabalho do dia nem leitura de
- * número: são as três telas que definem COMO as coisas são, abertas de vez em
- * quando. Empurradas para dentro de "Operação" recriariam a bagunça em escala
- * menor, e no rodapé saem do caminho sem sumir.
+ * A própria CLAUDE.md diz que a sidebar é chapada e que sub-item aninhado é
+ * exceção reservada ao seletor de dashboard. Sem o seletor, a exceção perdeu o
+ * motivo — e as cinco telas sobem para o mesmo nível de todas as outras.
+ *
+ * OS GRUPOS SÃO PERGUNTAS, NÃO TIPOS DE CONTEÚDO
+ *
+ * O grupo "Dados" juntava coisas que ninguém junta na cabeça: quanto sobrou no
+ * mês (Financeiro) e qual anúncio está caro (Meta Ads) são a mesma categoria
+ * só para quem classifica por "é número". Quem abre está atrás de uma resposta
+ * diferente em cada caso, então o grupo passa a ser a pergunta:
+ *
+ *   RESULTADO   quanto entrou e quanto sobrou
+ *   AQUISIÇÃO   de onde vêm as vendas e o que a mídia está fazendo
+ *   OPERAÇÃO    o trabalho do dia
+ *   ESTRUTURA   como as coisas são definidas — cadastro, acesso, parâmetro
+ *
+ * Dentro de cada grupo a ordem vai do geral para o específico: em Resultado,
+ * Resumo (o total) antes de Vendas (venda a venda) antes de Financeiro (a
+ * empresa inteira, além das vendas). Em Aquisição, Meta Ads (o que se paga)
+ * antes de UTM (de onde chegou) antes de Criativos e Análises, que são a
+ * decisão em cima disso.
  *
  * O Início fica fora de qualquer grupo, sozinho no topo: é a porta de entrada
  * de todo mundo, e porta de entrada não pertence a categoria nenhuma.
+ *
+ * O mapa é o mesmo para todo mundo: o que muda por pessoa é o que ela alcança,
+ * não onde as coisas ficam. Já tentei mover item de grupo conforme o perfil e
+ * ela cortou, com razão — um menu igual para todos é mais fácil de explicar.
  */
 const GRUPOS = [
   {
@@ -49,28 +61,39 @@ const GRUPOS = [
     ],
   },
   {
+    titulo: 'Resultado',
+    itens: [
+      { path: '/resumo',     label: 'Resumo',     icon: LayoutDashboard, key: 'overview',   adminOnly: false, sectorOnly: null },
+      { path: '/vendas',     label: 'Vendas',     icon: ShoppingCart,    key: 'vendas',     adminOnly: false, sectorOnly: null },
+      { path: '/financeiro', label: 'Financeiro', icon: Wallet,          key: 'financeiro', adminOnly: false, sectorOnly: null },
+    ],
+  },
+  {
+    titulo: 'Aquisição',
+    itens: [
+      { path: '/meta-ads',   label: 'Meta Ads',   icon: TrendingUp,   key: 'meta-ads',   adminOnly: false, sectorOnly: null },
+      // "UTM" e não "Análise UTM": ela vive no grupo de aquisição, onde tudo é
+      // análise — o prefixo só criava colisão com o módulo de Análises.
+      { path: '/utm',        label: 'UTM',        icon: Link2,        key: 'utm',        adminOnly: false, sectorOnly: null },
+      { path: '/tendencias', label: 'Tendências', icon: Activity,     key: 'tendencias', adminOnly: false, sectorOnly: null },
+      // Dado sobre a operação, e só sócio alcança: Desempenho e Por Projeto são
+      // leitura, e a Avaliação que escreve é o julgamento de quem já veio ler.
+      { path: '/criativos',  label: 'Criativos',  icon: Clapperboard, key: 'criativos',  adminOnly: true,  sectorOnly: null },
+      { path: '/analises',   label: 'Análises',   icon: LineChart,    key: 'analises',   adminOnly: true,  sectorOnly: null },
+    ],
+  },
+  {
     titulo: 'Operação',
     itens: [
-      { path: '/processos',   label: 'Processos',   icon: GraduationCap, key: 'processos',   adminOnly: false, sectorOnly: null },
       { path: '/producao',    label: 'Produção',    icon: Film,          key: 'producao',    adminOnly: false, sectorOnly: null },
       // Operação para todo mundo, e não um grupo por perfil. A sócia abre para
       // avaliar criativo e conferir NF; o editor abre para ver a performance
       // dele e lançar a NF dele. Os motivos são diferentes, mas os dois têm
-      // tarefa dentro — e um menu igual para todos é mais fácil de explicar do
-      // que um item que muda de lugar conforme quem olha.
+      // tarefa dentro.
       { path: '/editores',    label: 'Editores',    icon: BarChart3,     key: 'editores',    adminOnly: false, sectorOnly: null },
       { path: '/copywriters', label: 'Copywriters', icon: PenLine,       key: 'copywriters', adminOnly: false, sectorOnly: 'Copy' },
       { path: '/laboratorio', label: 'Laboratório', icon: FlaskConical,  key: 'laboratorio', adminOnly: false, sectorOnly: null },
-    ],
-  },
-  {
-    titulo: 'Dados',
-    itens: [
-      { path: '/analises',   label: 'Análises',   icon: LineChart,    key: 'analises',   adminOnly: true,  sectorOnly: null },
-      // Dado sobre a operação, e só sócio alcança: Desempenho e Por Projeto são
-      // leitura, e a Avaliação que escreve é o julgamento de quem já veio ler.
-      { path: '/criativos',  label: 'Criativos',  icon: Clapperboard, key: 'criativos',  adminOnly: true,  sectorOnly: null },
-      { path: '/financeiro', label: 'Financeiro', icon: Wallet,    key: 'financeiro', adminOnly: false, sectorOnly: null },
+      { path: '/processos',   label: 'Processos',   icon: GraduationCap, key: 'processos',   adminOnly: false, sectorOnly: null },
     ],
   },
   {
@@ -82,6 +105,7 @@ const GRUPOS = [
     ],
   },
 ];
+
 
 const prodColors: Record<string, string> = {
   velas: 'bg-orange-500/20 text-orange-400',
@@ -99,17 +123,8 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const subPages = ALL_SUB_PAGES.filter(p => canAccess(p.key));
-
   /**
    * O que cada pessoa alcança. O GRUPO é o mesmo para todo mundo.
-   *
-   * Cheguei a fazer o item mudar de grupo conforme o perfil — Editores em
-   * Operação para a sócia e em Dados para o editor, já que os dois abrem por
-   * motivos diferentes. Ela cortou, e com razão: os dois têm tarefa lá dentro
-   * (ela confere as notas fiscais, ele lança a dele), e um menu igual para
-   * todos é mais fácil de explicar do que um item que muda de lugar conforme
-   * quem olha.
    *
    * A permissão continua por pessoa; o mapa, não.
    */
@@ -119,8 +134,6 @@ export function AppSidebar() {
     return canAccess(p.key);
   };
 
-  // Grupo que ficou sem nenhum item permitido some inteiro, cabeçalho junto:
-  // um título de seção com nada embaixo é pior que a seção não existir.
   const grupos = GRUPOS
     .map(g => ({ ...g, itens: g.itens.filter(podeVer) }))
     .filter(g => g.itens.length > 0);
@@ -130,75 +143,18 @@ export function AppSidebar() {
     navigate('/login');
   };
 
-  /**
-   * A sidebar tem um dashboard só.
-   *
-   * Antes ela listava a tabela `funis` — 22 linhas todas inativas, então na prática
-   * só "Geral" aparecia. O recorte por conta de anúncio virou filtro no cabeçalho,
-   * junto do período, porque é lá que ele pertence: é um recorte da visão, não uma
-   * visão diferente. E o filtro só oferece conta que gastou no período escolhido,
-   * em vez de despejar as quinze.
-   */
-  const [geralAberto, setGeralAberto] = useState(true);
-
+  /*
+    O estado `geralAberto` e o componente `DashboardItem` saíram junto com o
+    grupo "Geral": não há mais nada para abrir e fechar.
+  */
 
   const showLabels = isMobile || !collapsed;
 
-  const DashboardItem = ({ label, icon, onNav }: {
-    label: string; icon?: React.ReactNode; onNav?: () => void;
-  }) => {
-    const isExpanded = geralAberto;
-
-    return (
-      <div>
-        <button
-          onClick={() => setGeralAberto(v => !v)}
-          className={cn(
-            "flex items-center gap-2.5 w-full rounded-md text-sm transition-colors",
-            showLabels ? "px-3 py-2" : "justify-center py-2 px-1",
-            "bg-primary/15 text-primary font-medium",
-          )}
-        >
-          {icon}
-          {showLabels && (
-            <>
-              <span className="truncate flex-1 text-left">{label}</span>
-              <ChevronDown className={cn("h-3 w-3 shrink-0 transition-transform", isExpanded ? "rotate-180" : "")} />
-            </>
-          )}
-        </button>
-
-        {/* Sub-páginas — só quando aberto e com rótulos visíveis */}
-        {isExpanded && showLabels && (
-          <div className="ml-4 mt-0.5 space-y-0.5 border-l border-sidebar-border pl-2">
-            {subPages.map((sp) => {
-              const isActive = location.pathname === sp.path;
-              return (
-                <NavLink
-                  key={sp.path}
-                  to={sp.path}
-                  onClick={onNav}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md text-xs font-medium transition-colors px-2 py-1.5",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
-                  )}
-                >
-                  <sp.icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{sp.label}</span>
-                </NavLink>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const SidebarInner = ({ onNav }: { onNav?: () => void }) => (
     <>
-      {/* Os grupos, na ordem em que o dia acontece: fazer, ler, configurar.
+      {/* Os grupos, na ordem em que a pergunta aparece: o que deu, de onde
+          veio, o que fazer hoje, e como as coisas são definidas.
           `flex-1` aqui é o que empurra o rodapé para o fim da barra, e a
           rolagem vive nele porque agora é este bloco que pode passar da tela. */}
       <div className={cn("flex-1 overflow-y-auto py-2", showLabels ? "px-3" : "px-2")}>
@@ -235,19 +191,7 @@ export function AppSidebar() {
               );
             })}
 
-            {/* O seletor de funil mora DENTRO de Dados, e não num grupo
-                "Dashboards" à parte: as sete sub-páginas são dados por funil,
-                exatamente como Análises e Financeiro são dados. Separá-las
-                sugeria que fossem outra coisa.
 
-                Some inteiro para quem não alcança nenhuma sub-página — na
-                prática só sócio e admin. Antes aparecia para os outros como um
-                bloco que abria e não tinha nada dentro. */}
-            {grupo.titulo === 'Dados' && subPages.length > 0 && (
-              <div className="mt-0.5">
-                <DashboardItem label="Geral" icon={<Globe className="h-4 w-4 shrink-0" />} onNav={onNav} />
-              </div>
-            )}
           </div>
         ))}
       </div>
