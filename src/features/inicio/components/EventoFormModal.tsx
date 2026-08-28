@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Check, Loader2, X } from 'lucide-react';
+import { Check, ChevronRight, Loader2, X } from 'lucide-react';
 import { toYMD } from '@/lib/recorrencia';
 import type { Evento, TipoEvento } from '../types';
 
@@ -59,6 +59,7 @@ export function EventoFormModal({
   const [recDias, setRecDias] = useState<number[]>(evento?.recorrencia_dias_semana ?? []);
   const [recFim, setRecFim]   = useState(evento?.recorrencia_fim ?? '');
   const [puladas, setPuladas] = useState<string[]>(evento?.recorrencia_puladas ?? []);
+  const [verPuladas, setVerPuladas] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   const ehReuniao = tipo === 'reuniao';
@@ -307,19 +308,31 @@ export function EventoFormModal({
 
           {/* ---- recorrência ---- */}
           <div className="rounded-lg border border-border p-3">
-            <Label className="text-xs">Se repete</Label>
-            <div className="mt-1.5 grid grid-cols-2 gap-3">
-              <Select value={recTipo} onValueChange={setRecTipo}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Não se repete</SelectItem>
-                  <SelectItem value="diario">Todo dia</SelectItem>
-                  <SelectItem value="semanal">Toda semana</SelectItem>
-                  <SelectItem value="mensal">Todo mês</SelectItem>
-                </SelectContent>
-              </Select>
+            {/*
+              Um rótulo por campo, e não um só em cima dos dois.
+
+              Com "Se repete" solto no alto, a coluna da esquerda começava na
+              primeira linha e a da direita uma linha abaixo, empurrada pelo
+              próprio rótulo — os dois campos ficavam em alturas diferentes.
+              Rotulando cada um, as duas colunas têm a mesma estrutura e se
+              alinham sozinhas.
+            */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Se repete</Label>
+                <Select value={recTipo} onValueChange={setRecTipo}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Não se repete</SelectItem>
+                    <SelectItem value="diario">Todo dia</SelectItem>
+                    <SelectItem value="semanal">Toda semana</SelectItem>
+                    <SelectItem value="mensal">Todo mês</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/*
-                O campo não dizia o que era.
+                O campo da data não dizia o que era.
 
                 Ele é o FIM da série — a data de começo é a do evento, lá em
                 cima. Como `type="date"` não mostra `placeholder`, o campo
@@ -328,7 +341,7 @@ export function EventoFormModal({
               */}
               {recTipo !== 'none' && (
                 <div>
-                  <Label className="text-[11px] text-muted-foreground">Repete até</Label>
+                  <Label className="text-xs">Repete até</Label>
                   <Input
                     type="date"
                     className="mt-1"
@@ -371,23 +384,40 @@ export function EventoFormModal({
             {/*
               Os dias pulados moram aqui porque não há outro lugar: pulado, o
               dia some da agenda, e não haveria por onde trazê-lo de volta.
+
+              Ficam fechados. Uma reunião semanal que roda o ano inteiro junta
+              feriado, férias e semana cancelada — daqui a um ano são dezenas de
+              chips, e a lista aberta empurraria o resto do formulário para
+              fora da tela por uma informação que quase nunca se mexe. Fechado,
+              a contagem já responde "tem dia pulado?", que é a pergunta comum;
+              quem precisa desfazer abre.
             */}
             {puladas.length > 0 && (
               <div className="mt-2.5">
-                <Label className="text-[11px] text-muted-foreground">Dias pulados</Label>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {[...puladas].sort().map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setPuladas(l => l.filter(x => x !== d))}
-                      title="Trazer este dia de volta"
-                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/40 hover:text-foreground"
-                    >
-                      {formatarDia(d)} <X className="h-3 w-3" />
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setVerPuladas(v => !v)}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronRight className={cn('h-3 w-3 transition-transform', verPuladas && 'rotate-90')} />
+                  {puladas.length === 1 ? '1 dia pulado' : `${puladas.length} dias pulados`}
+                </button>
+
+                {verPuladas && (
+                  <div className="mt-1.5 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                    {[...puladas].sort().map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setPuladas(l => l.filter(x => x !== d))}
+                        title="Trazer este dia de volta"
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/40 hover:text-foreground"
+                      >
+                        {formatarDia(d)} <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
