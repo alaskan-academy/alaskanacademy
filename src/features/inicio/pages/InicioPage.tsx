@@ -120,6 +120,7 @@ export default function InicioPage() {
           inicio: ev.data,
           recorrencia_tipo: ev.recorrencia_tipo,
           recorrencia_dias_semana: ev.recorrencia_dias_semana,
+          recorrencia_puladas: ev.recorrencia_puladas,
           recorrencia_fim: ev.recorrencia_fim,
         },
         ini, fim,
@@ -171,6 +172,41 @@ export default function InicioPage() {
     setAncora(a => new Date(a.getFullYear(), a.getMonth() + passo, 1));
 
   const faixa = `${MESES[ancora.getMonth()]} ${ancora.getFullYear()}`;
+
+  /*
+    Pular um dia de uma série.
+
+    Escreve a data em `recorrencia_puladas` e recarrega. Não apaga nada: a
+    série continua, e o dia volta tirando a data pela edição do evento.
+  */
+  const pular = async (item: ItemAgenda) => {
+    const ev = item.evento;
+    if (!ev) return;
+    if (!(await confirm({
+      title: 'Pular este dia?',
+      description: 'A série continua. Este dia sai da agenda e pode voltar pela edição do evento.',
+      /* Sem isto o botão diz "Excluir", que é o padrão do hook — e um diálogo
+         que pergunta "pular?" com um botão "excluir" faz qualquer um hesitar. */
+      confirmText: 'Pular este dia',
+    }))) return;
+
+    const { data, error } = await supabase
+      .from('eventos')
+      .update({ recorrencia_puladas: [...(ev.recorrencia_puladas ?? []), item.data] })
+      .eq('id', ev.id)
+      .select('id');
+
+    if (error) {
+      toast({ title: 'Não pulou', description: error.message, variant: 'destructive' });
+      return;
+    }
+    if (!data?.length) {
+      toast({ title: 'Sem permissão para mexer neste evento', variant: 'destructive' });
+      return;
+    }
+    setAberto(null);
+    carregar();
+  };
 
   const excluir = async (item: ItemAgenda) => {
     const ev = item.evento;
@@ -354,6 +390,7 @@ export default function InicioPage() {
         onFechar={() => setAberto(null)}
         onEditar={item => { setEditando(item.evento ?? null); setDataSugerida(null); setFormAberto(true); setAberto(null); }}
         onExcluir={excluir}
+        onPular={pular}
       />
 
       {formAberto && (

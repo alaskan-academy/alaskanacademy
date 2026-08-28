@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { Check, Loader2, X } from 'lucide-react';
 import { toYMD } from '@/lib/recorrencia';
 import type { Evento, TipoEvento } from '../types';
+
+const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 const DIAS = [
   { n: 1, r: 'seg' }, { n: 2, r: 'ter' }, { n: 3, r: 'qua' },
@@ -56,10 +58,17 @@ export function EventoFormModal({
   const [recTipo, setRecTipo] = useState(evento?.recorrencia_tipo ?? 'none');
   const [recDias, setRecDias] = useState<number[]>(evento?.recorrencia_dias_semana ?? []);
   const [recFim, setRecFim]   = useState(evento?.recorrencia_fim ?? '');
+  const [puladas, setPuladas] = useState<string[]>(evento?.recorrencia_puladas ?? []);
   const [salvando, setSalvando] = useState(false);
 
   const ehReuniao = tipo === 'reuniao';
   const ehFolga   = tipo === 'folga';
+
+  /** `2026-09-07` vira `7 de set` — a data crua não se lê de relance. */
+  const formatarDia = (ymd: string) => {
+    const d = new Date(ymd + 'T00:00:00');
+    return `${d.getDate()} de ${MES_CURTO[d.getMonth()]}`;
+  };
 
   const alternar = (lista: string[], id: string) =>
     lista.includes(id) ? lista.filter(x => x !== id) : [...lista, id];
@@ -89,6 +98,8 @@ export function EventoFormModal({
       recorrencia_tipo: recTipo === 'none' ? null : recTipo,
       recorrencia_dias_semana: recTipo === 'semanal' ? recDias : null,
       recorrencia_fim: recTipo === 'none' ? null : (recFim || null),
+      /* Sem recorrência não há o que pular: a lista some junto com a série. */
+      recorrencia_puladas: recTipo === 'none' ? [] : puladas,
       criado_por: userId,
     };
 
@@ -190,24 +201,67 @@ export function EventoFormModal({
                 </p>
               </div>
 
+              {/*
+                Lista com marcação, e não bolinhas soltas.
+
+                Como chips, marcado e desmarcado eram a mesma forma com um tom
+                de fundo de diferença — para saber quem estava na reunião era
+                preciso comparar cor com cor. Um quadradinho marcado responde de
+                relance, e o "todos / ninguém" evita seis cliques para o caso
+                mais comum, que é a reunião com a equipe inteira.
+              */}
               <div>
-                <Label className="text-xs">Quem participa</Label>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {perfis.map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setParticipantes(l => alternar(l, p.id))}
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                        participantes.includes(p.id)
-                          ? 'border-primary bg-primary/15 text-foreground'
-                          : 'border-border text-muted-foreground hover:text-foreground',
-                      )}
-                    >
-                      {p.nome}
-                    </button>
-                  ))}
+                <div className="flex items-baseline justify-between">
+                  <Label className="text-xs">Quem participa</Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    {participantes.length === 0
+                      ? 'ninguém marcado'
+                      : `${participantes.length} de ${perfis.length}`}
+                    {perfis.length > 0 && (
+                      <>
+                        {' · '}
+                        <button
+                          type="button"
+                          onClick={() => setParticipantes(
+                            participantes.length === perfis.length ? [] : perfis.map(x => x.id),
+                          )}
+                          className="text-primary underline-offset-2 hover:underline"
+                        >
+                          {participantes.length === perfis.length ? 'ninguém' : 'todos'}
+                        </button>
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                <div className="mt-1.5 max-h-44 overflow-y-auto rounded-lg border border-border">
+                  {perfis.map((p, i) => {
+                    const marcado = participantes.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setParticipantes(l => alternar(l, p.id))}
+                        aria-pressed={marcado}
+                        className={cn(
+                          'flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors',
+                          i > 0 && 'border-t border-border/50',
+                          marcado ? 'bg-primary/10 text-foreground' : 'text-muted-foreground hover:bg-muted/50',
+                        )}
+                      >
+                        <span className={cn(
+                          'grid h-4 w-4 shrink-0 place-items-center rounded border',
+                          marcado ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
+                        )}>
+                          {marcado && <Check className="h-3 w-3" />}
+                        </span>
+                        {p.nome}
+                      </button>
+                    );
+                  })}
+                  {perfis.length === 0 && (
+                    <p className="px-3 py-3 text-xs text-muted-foreground">Ninguém cadastrado ainda.</p>
+                  )}
                 </div>
               </div>
 
@@ -264,13 +318,25 @@ export function EventoFormModal({
                   <SelectItem value="mensal">Todo mês</SelectItem>
                 </SelectContent>
               </Select>
+              {/*
+                O campo não dizia o que era.
+
+                Ele é o FIM da série — a data de começo é a do evento, lá em
+                cima. Como `type="date"` não mostra `placeholder`, o campo
+                aparecia como "dd/mm/aaaa" puro ao lado de "Todo dia", e não
+                havia como saber se aquilo era começar ou parar.
+              */}
               {recTipo !== 'none' && (
-                <Input
-                  type="date"
-                  value={recFim}
-                  onChange={e => setRecFim(e.target.value)}
-                  placeholder="até quando"
-                />
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">Repete até</Label>
+                  <Input
+                    type="date"
+                    className="mt-1"
+                    value={recFim}
+                    min={data || undefined}
+                    onChange={e => setRecFim(e.target.value)}
+                  />
+                </div>
               )}
             </div>
 
@@ -296,9 +362,33 @@ export function EventoFormModal({
 
             {recTipo !== 'none' && (
               <p className="mt-2 text-[11px] text-muted-foreground">
-                Ainda não dá para pular uma ocorrência específica — se a reunião de uma semana não
-                acontecer, ela continua aparecendo.
+                Começa em {data ? formatarDia(data) : 'na data acima'}
+                {recFim ? ` e para em ${formatarDia(recFim)}` : ' e não tem fim marcado'}.
+                Para pular um dia solto, abra aquele dia na agenda.
               </p>
+            )}
+
+            {/*
+              Os dias pulados moram aqui porque não há outro lugar: pulado, o
+              dia some da agenda, e não haveria por onde trazê-lo de volta.
+            */}
+            {puladas.length > 0 && (
+              <div className="mt-2.5">
+                <Label className="text-[11px] text-muted-foreground">Dias pulados</Label>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {[...puladas].sort().map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setPuladas(l => l.filter(x => x !== d))}
+                      title="Trazer este dia de volta"
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-destructive/40 hover:text-foreground"
+                    >
+                      {formatarDia(d)} <X className="h-3 w-3" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 

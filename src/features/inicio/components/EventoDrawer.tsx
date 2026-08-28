@@ -2,7 +2,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { MarkdownRenderer } from '@/features/processos/components/MarkdownRenderer';
 import { cn } from '@/lib/utils';
-import { Video, PlayCircle, Link2, Pencil, Trash2 } from 'lucide-react';
+import { Video, PlayCircle, Link2, Pencil, Trash2, CalendarOff } from 'lucide-react';
 import { ROTULO_TIPO, horaCurta, type ItemAgenda } from '../types';
 
 const DIA_LONGO = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
@@ -26,7 +26,7 @@ function quando(data: string, hIni: string | null, hFim: string | null): string 
  * sozinha na data, sem ninguém marcar nada como encerrado.
  */
 export function EventoDrawer({
-  item, nomes, podeEditar, onFechar, onEditar, onExcluir,
+  item, nomes, podeEditar, onFechar, onEditar, onExcluir, onPular,
 }: {
   item: ItemAgenda | null;
   nomes: Record<string, string>;
@@ -34,6 +34,8 @@ export function EventoDrawer({
   onFechar: () => void;
   onEditar: (item: ItemAgenda) => void;
   onExcluir: (item: ItemAgenda) => void;
+  /** Marca ESTE dia como "não acontece", sem mexer no resto da série. */
+  onPular?: (item: ItemAgenda) => void;
 }) {
   if (!item) return null;
 
@@ -153,12 +155,24 @@ export function EventoDrawer({
             </>
           )}
 
-          {/* ---- editar e excluir: só quem pode ---- */}
+          {/* ---- editar, pular e excluir: só quem pode ---- */}
           {ev && podeEditar && (
-            <div className="flex gap-2 border-t border-border pt-4">
+            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
               <Button variant="outline" size="sm" onClick={() => onEditar(item)}>
                 <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar
               </Button>
+
+              {/*
+                Pular só aparece em evento que se repete, e é aqui que ele faz
+                sentido: você está olhando o dia 12, e é o dia 12 que não vai
+                acontecer. Excluir apagaria a série inteira — que era a única
+                saída antes, e por isso ninguém usava.
+              */}
+              {ev.recorrencia_tipo && onPular && (
+                <Button variant="outline" size="sm" onClick={() => onPular(item)}>
+                  <CalendarOff className="mr-1.5 h-3.5 w-3.5" /> Pular este dia
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"

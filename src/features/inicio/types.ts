@@ -18,6 +18,8 @@ export interface Evento {
   recorrencia_tipo: string | null;
   recorrencia_dias_semana: number[] | null;
   recorrencia_fim: string | null;
+  /** Datas em que a série não acontece — pular não é excluir. */
+  recorrencia_puladas: string[];
   criado_por: string | null;
 }
 

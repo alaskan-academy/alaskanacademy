@@ -19,6 +19,8 @@ export interface RegraRecorrencia {
   /** 0 = domingo, como `Date.getDay()`. */
   recorrencia_dias_semana: number[] | null;
   recorrencia_fim: string | null;
+  /** Datas em que esta série não acontece. Pular não é excluir. */
+  recorrencia_puladas?: string[] | null;
 }
 
 /** Segunda-feira da semana em que `d` cai. */
@@ -58,7 +60,11 @@ export function ocorrencias(
   const incluirBase = opcoes.incluirBase !== false;
   const datas: string[] = [];
 
-  if (incluirBase && regra.inicio >= ini && regra.inicio <= fim) {
+  /* As datas que alguém marcou como "não acontece". A própria data de início
+     pode ser pulada — feriado bem no primeiro dia da série. */
+  const puladas = new Set(regra.recorrencia_puladas ?? []);
+
+  if (incluirBase && regra.inicio >= ini && regra.inicio <= fim && !puladas.has(regra.inicio)) {
     datas.push(regra.inicio);
   }
 
@@ -86,7 +92,7 @@ export function ocorrencias(
     else if (tipo === 'semanal') cai = dias.includes(cur.getDay());
     else if (tipo === 'mensal') cai = cur.getDate() === base.getDate();
 
-    if (cai && ymd >= ini) datas.push(ymd);
+    if (cai && ymd >= ini && !puladas.has(ymd)) datas.push(ymd);
   }
 
   return datas;
