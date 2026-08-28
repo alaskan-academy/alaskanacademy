@@ -7,6 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConciliacaoMeta } from "@/features/ads/components/ConciliacaoMeta";
 import type { LinhaMetricaMeta } from "@/features/ads/metricas";
+import { FunilDaLinha } from "@/features/ads/components/FunilDaLinha";
+import { ChevronRight } from "lucide-react";
 
 type Nivel = "campanha" | "adset" | "ad";
 
@@ -81,6 +83,15 @@ export default function MetaAdsPage() {
   // Checkboxes: IDs selecionados por nível pai (para filtrar filhos)
   const [selectedCamp, setSelectedCamp] = useState<Set<string>>(new Set());
   const [selectedAdset, setSelectedAdset] = useState<Set<string>>(new Set());
+  /*
+    Qual linha está com o funil aberto.
+
+    Uma de cada vez, e não um conjunto: o funil é uma leitura de foco — "por
+    onde some a gente desta campanha" —, e três abertos ao mesmo tempo viram
+    rolagem em vez de comparação. Quem quer comparar tem a tabela inteira,
+    que é para isso que ela existe.
+  */
+  const [funilAberto, setFunilAberto] = useState<string | null>(null);
 
   /*
     A soma acontece no banco, e não aqui.
@@ -250,7 +261,7 @@ export default function MetaAdsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {rows.flatMap((r, i) => [
               <tr key={i} className="group border-b border-border/50 hover:bg-secondary/50">
                 {showCheck && onCheck && (
                   <td className={cn("px-3 py-2", COL_FIXA, "left-0")}>
@@ -277,11 +288,61 @@ export default function MetaAdsPage() {
                       !["nome", "roas", "margem", "resultado"].includes(c.key) && "text-foreground",
                     )}
                   >
-                    {c.key === "nome" ? <span title={r.nome}>{r.nome}</span> : fmtCell(r, c)}
+                    {c.key === "nome" ? (
+                      /*
+                        O funil abre na própria linha.
+
+                        Ele vinha de uma página inteira que, tirando este
+                        desenho, repetia as colunas daqui. Um funil não precisa
+                        de tela: precisa da linha a que se refere — e aqui não
+                        há o passo de escolher a campanha de novo, do outro
+                        lado do menu.
+                      */
+                      <button
+                        type="button"
+                        onClick={() => setFunilAberto(a => (a === r.nivel_id ? null : r.nivel_id))}
+                        title={r.nome ?? undefined}
+                        className="flex w-full items-center gap-1 text-left hover:text-primary"
+                      >
+                        <ChevronRight
+                          className={cn(
+                            "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+                            funilAberto === r.nivel_id && "rotate-90 text-primary",
+                          )}
+                        />
+                        <span className="truncate">{r.nome}</span>
+                      </button>
+                    ) : (
+                      fmtCell(r, c)
+                    )}
                   </td>
                 ))}
-              </tr>
-            ))}
+              </tr>,
+              funilAberto === r.nivel_id && (
+                <tr key={`${i}-funil`} className="border-b border-border/50 bg-muted/20">
+                  {/*
+                    O funil fica preso à esquerda, como o nome.
+
+                    A célula ocupa a largura da tabela inteira — 2.437px — e
+                    sem isto as barras e os números iam parar fora da tela
+                    assim que alguém rolasse de lado. `max-w` para o desenho
+                    não esticar até o fim numa tela larga: barra de dois metros
+                    não compara melhor que barra de meio.
+                  */}
+                  <td colSpan={COLS.length + (showCheck ? 1 : 0)} className="p-0">
+                    <div className="sticky left-0 max-w-[34rem]">
+                    <FunilDaLinha
+                      impressoes={Number(r.impressoes || 0)}
+                      cliques={Number(r.cliques || 0)}
+                      visualizacoes_pagina={Number(r.visualizacoes_pagina || 0)}
+                      initiate_checkout={Number(r.initiate_checkout || 0)}
+                      compras_meta={Number(r.compras_meta || 0)}
+                    />
+                    </div>
+                  </td>
+                </tr>
+              ),
+            ])}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={COLS.length + (showCheck ? 1 : 0)} className="px-4 py-8 text-center text-muted-foreground">

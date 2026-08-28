@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, TrendingUp, Filter, ShoppingCart, Link2, Users,
+  LayoutDashboard, TrendingUp, ShoppingCart, Link2, Users,
   FlaskConical, GraduationCap, BarChart3, Wallet, KeyRound, Film, Settings,
 } from 'lucide-react';
 import {
@@ -16,7 +16,6 @@ import { FASES_MAP } from '@/features/producao/components/constants';
 const PAGES = [
   { path: '/',              label: 'Resumo',        icon: LayoutDashboard },
   { path: '/meta-ads',      label: 'Meta Ads',      icon: TrendingUp      },
-  { path: '/funil',         label: 'Funil',         icon: Filter          },
   { path: '/vendas',        label: 'Vendas',        icon: ShoppingCart    },
   { path: '/utm',           label: 'Análise UTM',   icon: Link2           },
   { path: '/clientes',      label: 'Clientes',      icon: Users           },

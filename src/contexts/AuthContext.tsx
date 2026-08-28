@@ -11,7 +11,6 @@ export const PAGINAS = [
   { key: 'inicio',        path: '/',              label: 'Início' },
   { key: 'overview',      path: '/resumo',        label: 'Resumo' },
   { key: 'meta-ads',      path: '/meta-ads',      label: 'Meta Ads' },
-  { key: 'funil',         path: '/funil',         label: 'Funil' },
   { key: 'vendas',        path: '/vendas',        label: 'Vendas' },
   // 'UTM' e nao 'Analise UTM': ela vive no grupo de dashboards, onde tudo e
   // analise -- o prefixo so criava colisao com o modulo de Analises.

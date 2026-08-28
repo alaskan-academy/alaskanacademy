@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/contexts/SidebarContext";
@@ -19,7 +19,6 @@ const InicioPage               = lazy(() => import("./features/inicio/pages/Inic
 const OverviewPage             = lazy(() => import("./features/dashboard/pages/OverviewPage"));
 const MetaAdsPage              = lazy(() => import("./features/ads/pages/MetaAdsPage"));
 const TendenciasPage           = lazy(() => import("./features/dashboard/pages/TendenciasPage"));
-const FunnelPage               = lazy(() => import("./features/dashboard/pages/FunnelPage"));
 const SalesPage                = lazy(() => import("./features/dashboard/pages/SalesPage"));
 const UTMPage                  = lazy(() => import("./features/ads/pages/UTMPage"));
 const ClientsPage              = lazy(() => import("./features/dashboard/pages/ClientsPage"));
@@ -81,7 +80,25 @@ const App = () => (
                     <Route path="/" element={<ProtectedRoute pageKey="inicio"><InicioPage /></ProtectedRoute>} />
                     <Route path="/resumo" element={<ProtectedRoute pageKey="overview"><OverviewPage /></ProtectedRoute>} />
                     <Route path="/meta-ads" element={<ProtectedRoute pageKey="meta-ads"><MetaAdsPage /></ProtectedRoute>} />
-                    <Route path="/funil" element={<ProtectedRoute pageKey="funil"><FunnelPage /></ProtectedRoute>} />
+                    {/*
+                      A página Funil saiu, e o endereço dela leva ao Meta Ads.
+
+                      Ela tinha 15 colunas por campanha e as 15 já existiam no
+                      Meta Ads, com mais companhia. O que era só dela — o
+                      desenho do funil — virou uma linha que abre embaixo da
+                      campanha, lá.
+
+                      O que ela tinha de próprio de verdade, casar venda real
+                      com campanha pelo `utm_campaign`, não funcionava: em
+                      agosto, 724 vendas (R$ 71.742,57, 40% do faturamento)
+                      chegaram sem `utm_campaign`, e a "ESCALA VSL - 03/07/26"
+                      aparecia com R$ 0,00 enquanto o Meta reivindicava
+                      R$ 17.125,94 para ela.
+
+                      Redirecionar em vez de deixar cair no 404: o endereço
+                      está em favorito e em link colado por aí.
+                    */}
+                    <Route path="/funil" element={<Navigate to="/meta-ads" replace />} />
                     <Route path="/vendas" element={<ProtectedRoute pageKey="vendas"><SalesPage /></ProtectedRoute>} />
                     <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
                     <Route path="/tendencias" element={<ProtectedRoute pageKey="tendencias"><TendenciasPage /></ProtectedRoute>} />
