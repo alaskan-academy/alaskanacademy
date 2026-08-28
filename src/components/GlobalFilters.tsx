@@ -4,6 +4,7 @@ import { subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Check, ChevronDown, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { daYMD } from "@/lib/recorrencia";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -86,22 +87,44 @@ export default function GlobalFilters() {
     setDateOpen(false);
   };
 
+  /*
+    O personalizado fechava no PRIMEIRO clique.
+
+    Abrir "Personalizado" preenchia início E fim com o período que já estava
+    valendo. Com o fim já preenchido, o primeiro clique no calendário de início
+    satisfazia `d && customEnd && d <= customEnd` e aplicava na hora:
+    escolher 05/08 fechava a janela com "05/08 – 27/08", onde o 27/08 não foi
+    escolhido por ninguém — era o resto do período anterior.
+
+    E havia o avesso: escolher um início DEPOIS do fim antigo não satisfazia a
+    condição e não fazia nada. Clique sem efeito e sem explicação, que é o que
+    faz a pessoa concluir que o botão está quebrado.
+
+    Agora a ordem é explícita: o início só marca o início, e é o fim que aplica
+    e fecha. Abrir o personalizado limpa o fim justamente para que o primeiro
+    clique não caia numa regra já satisfeita.
+  */
+  const abrirPersonalizado = () => {
+    setCustomMode(true);
+    // `daYMD` e não `new Date(str)`: 'yyyy-MM-dd' puro é lido como UTC e
+    // volta um dia no Brasil — o calendário acendia o dia anterior ao do rótulo.
+    setCustomStart(startDateStr ? daYMD(startDateStr) : subDays(new Date(), 6));
+    setCustomEnd(undefined);
+  };
+
   const handleCustomStart = (d: Date | undefined) => {
+    if (!d) return;
     setCustomStart(d);
-    if (d && customEnd && d <= customEnd) {
-      setCustomRange(d, customEnd);
-      setDateOpen(false);
-      setCustomMode(false);
-    }
+    // Um fim anterior ao novo início deixaria o intervalo invertido.
+    setCustomEnd(prev => (prev && prev < d ? undefined : prev));
   };
 
   const handleCustomEnd = (d: Date | undefined) => {
+    if (!d || !customStart || d < customStart) return;
     setCustomEnd(d);
-    if (customStart && d && customStart <= d) {
-      setCustomRange(customStart, d);
-      setDateOpen(false);
-      setCustomMode(false);
-    }
+    setCustomRange(customStart, d);
+    setDateOpen(false);
+    setCustomMode(false);
   };
 
   const dateLabelMap: Record<string, string> = Object.fromEntries(
@@ -221,11 +244,7 @@ export default function GlobalFilters() {
               ))}
               <div className="border-t border-border my-1" />
               <button
-                onClick={() => {
-                  setCustomMode(true);
-                  setCustomStart(startDateStr ? new Date(startDateStr) : subDays(new Date(), 6));
-                  setCustomEnd(endDateStr ? new Date(endDateStr) : new Date());
-                }}
+                onClick={abrirPersonalizado}
                 className={cn(
                   "px-3 py-2 text-left text-sm hover:bg-accent transition-colors flex items-center gap-2",
                   datePreset === "custom" && "bg-accent font-semibold text-accent-foreground"
@@ -237,10 +256,22 @@ export default function GlobalFilters() {
             </div>
           ) : (
             <div className="p-3 space-y-3">
-              <p className="text-xs font-semibold text-foreground">Selecione o período</p>
+              {/* A instrução diz em que passo a pessoa está: dois calendários
+                  iguais, um sobre o outro, não dizem de quem é a vez. */}
+              <p className="text-xs font-semibold text-foreground">
+                {customEnd ? 'Período selecionado' : customStart ? 'Agora escolha o fim' : 'Escolha o início'}
+              </p>
               <div className="space-y-2">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Início</p>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Início
+                    {customStart && (
+                      <span className="ml-1.5 text-foreground">
+                        {String(customStart.getDate()).padStart(2, '0')}/
+                        {String(customStart.getMonth() + 1).padStart(2, '0')}
+                      </span>
+                    )}
+                  </p>
                   <Calendar
                     mode="single"
                     selected={customStart}
