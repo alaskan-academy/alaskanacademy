@@ -170,10 +170,22 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
         </p>
       </div>
 
-      <section className="space-y-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-          O que falta
-        </h3>
+      {/*
+        Os rótulos de seção saíram.
+
+        Cada bloco já se apresenta no próprio cabeçalho, e a etiqueta de 11px
+        em maiúscula por cima repetia o nome com outras palavras — três pares
+        de títulos empilhados, todos do mesmo tamanho e da mesma cor, que é
+        exatamente o que fazia "tudo parecer a mesma coisa".
+
+        A diferença entre os três agora está no peso de cada cabeçalho, e ele
+        diz o que o bloco pede de quem lê:
+
+          defasagem  alarme     — o que falta produzir
+          pedidos    ação       — cabeçalho em cor de clique, o único com selo
+          estoque    consulta   — cabeçalho miúdo e cinza
+      */}
+      <section>
         {carregandoDefasagem
           ? <div className="h-16 animate-pulse rounded-lg border border-border bg-card" />
           : <AlertaDefasagem linhas={defasagem} semVerba={semVerba} />}
@@ -184,10 +196,7 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
         peso do inventário logo abaixo. Ganha um cabeçalho próprio e uma borda
         de destaque no bloco: quem abre a Esteira para trabalhar vem para cá.
       */}
-      <section className="space-y-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-primary/80">
-          Para fazer
-        </h3>
+      <section>
         <FilaPedidos onMudou={onRecarregar} />
       </section>
 
@@ -224,10 +233,7 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
         nenhum, e "Parado" ao lado de "Aprovado" dava a entender que o card
         estava travado — quando é só o tempo desde a última data de início.
       */}
-      <section className="space-y-2">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-        Já em produção
-      </h3>
+      <section>
       <div className="rounded-lg border border-border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-3.5 py-2.5">
           <div className="min-w-0">

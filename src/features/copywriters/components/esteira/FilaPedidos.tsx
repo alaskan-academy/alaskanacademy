@@ -13,10 +13,11 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Check, Inbox, Flame, X, FileText, ExternalLink } from 'lucide-react';
+import { Check, Inbox, Flame, X, ExternalLink, ChevronRight, Sparkles } from 'lucide-react';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import type { ProducaoNivel } from '@/features/producao/components/types';
 import { formatNumber } from '@/lib/formatters';
+import { aoClicarSemArrastar } from '@/lib/clique';
 import { Pedido, rotuloDoAdHook, rotuloDeDias, URGENCIA_LABEL } from './tipos';
 
 const URGENCIA_COR: Record<string, string> = {
@@ -56,6 +57,7 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
      a fila ser lida de olho. */
   const [vendoPedido, setVendoPedido] = useState<Pedido | null>(null);
   const [adAberto, setAdAberto]       = useState<string | null>(null);
+  const [verTodos, setVerTodos]       = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -74,6 +76,28 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
 
   const abertos  = useMemo(() => pedidos.filter(p => p.status === 'aberto'), [pedidos]);
   const fechados = useMemo(() => pedidos.filter(p => p.status !== 'aberto'), [pedidos]);
+
+  /*
+    Quanta verba está esperando variação.
+
+    Um pedido sozinho não diz se a fila é urgente; a soma diz. É o mesmo número
+    que ordena a fila, agregado — e é o argumento para o Copy pegar a fila hoje
+    em vez de amanhã.
+  */
+  const verbaNaFila = useMemo(
+    () => abertos.reduce((s, p) => s + (p.inv_30d ?? 0), 0), [abertos]);
+
+  /*
+    A fila mostra os primeiros e guarda o resto atrás de um clique.
+
+    Ela é ordenada por verba, então o começo é sempre o que importa; despejar
+    quarenta pedidos de uma vez transforma a Esteira num rolo em que o pedido de
+    R$ 3 mil e o de R$ 12 têm exatamente o mesmo peso na tela.
+  */
+  const LIMITE = 6;
+  const visiveis = verTodos ? abertos : abertos.slice(0, LIMITE);
+  const ocultos  = abertos.length - visiveis.length;
+  const verbaOculta = abertos.slice(visiveis.length).reduce((s, p) => s + (p.inv_30d ?? 0), 0);
 
   /*
     A coluna de resultado, que a segunda armadilha do CLAUDE.md exige: sem ela
@@ -105,18 +129,27 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
 
   return (
     <div className="rounded-lg border border-border bg-card">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3.5 py-2.5">
-        <Inbox className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="text-xs font-medium text-foreground">
+      {/*
+        O cabeçalho carrega o destaque do bloco inteiro.
+
+        A fila é a única parte da Esteira que pede AÇÃO — o resto é diagnóstico
+        e consulta. Ela tinha o mesmo cabeçalho de 12px cinza dos outros dois, e
+        por isso "tudo parecia a mesma coisa": nada na tela dizia por onde
+        começar.
+      */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/5 px-3.5 py-3">
+        <Inbox className="h-4 w-4 shrink-0 text-primary" />
+        <span className="text-sm font-semibold text-foreground">
           Pedidos de variação
         </span>
-        <span className="text-[11px] text-muted-foreground">
-          {abertos.length === 0 ? 'nenhum aberto'
-            : abertos.length === 1 ? '1 aberto' : `${abertos.length} abertos`}
-        </span>
-        {abertos.length > 1 && (
-          <span className="text-[10px] text-muted-foreground/60">
-            do que mais recebeu verba para o que menos recebeu
+        {abertos.length > 0 && (
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            {abertos.length === 1 ? '1 aberto' : `${abertos.length} abertos`}
+          </span>
+        )}
+        {verbaNaFila > 0 && (
+          <span className="text-[11px] tabular-nums text-muted-foreground">
+            {formatCurrency(verbaNaFila)} de verba esperando variação
           </span>
         )}
 
@@ -142,15 +175,34 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
         </p>
       ) : (
         <div className="divide-y divide-border/40">
-          {abertos.map(p => (
+          {visiveis.map(p => (
             <LinhaPedido key={p.id} p={p}
-                         onFechar={() => setFechando(p)}
                          onVerPedido={() => setVendoPedido(p)}
                          onAbrirAd={() => setAdAberto(p.producao_id)} />
           ))}
+
+          {ocultos > 0 && (
+            <button
+              type="button"
+              onClick={() => setVerTodos(true)}
+              className="w-full px-3.5 py-2.5 text-center text-xs text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+            >
+              ver os outros {ocultos} {ocultos === 1 ? 'pedido' : 'pedidos'}
+              {verbaOculta > 0 && ` · ${formatCurrency(verbaOculta)} de verba`}
+            </button>
+          )}
+          {verTodos && abertos.length > LIMITE && (
+            <button
+              type="button"
+              onClick={() => setVerTodos(false)}
+              className="w-full px-3.5 py-2.5 text-center text-xs text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+            >
+              ver menos
+            </button>
+          )}
+
           {verFechados && fechados.map(p => (
             <LinhaPedido key={p.id} p={p}
-                         onFechar={() => setFechando(p)}
                          onVerPedido={() => setVendoPedido(p)}
                          onAbrirAd={() => setAdAberto(p.producao_id)} />
           ))}
@@ -169,7 +221,8 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
       {vendoPedido && (
         <ModalPedido pedido={vendoPedido}
                      onClose={() => setVendoPedido(null)}
-                     onAbrirAd={() => { setAdAberto(vendoPedido.producao_id); setVendoPedido(null); }} />
+                     onAbrirAd={() => { setAdAberto(vendoPedido.producao_id); setVendoPedido(null); }}
+                     onFechar={() => { setFechando(vendoPedido); setVendoPedido(null); }} />
       )}
 
       {/*
@@ -206,8 +259,8 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
  * varrendo a fila ele escolhe QUAL pegar; sentado para escrever, ele precisa do
  * texto inteiro sem a fila em volta.
  */
-function ModalPedido({ pedido, onClose, onAbrirAd }: {
-  pedido: Pedido; onClose: () => void; onAbrirAd: () => void;
+function ModalPedido({ pedido, onClose, onAbrirAd, onFechar }: {
+  pedido: Pedido; onClose: () => void; onAbrirAd: () => void; onFechar: () => void;
 }) {
   const p = pedido;
   return (
@@ -254,6 +307,12 @@ function ModalPedido({ pedido, onClose, onAbrirAd }: {
             </div>
           )}
 
+          {p.status === 'aberto' && p.ja_tem_variacao && (
+            <p className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[11px] text-emerald-300/90">
+              Já existe uma variação deste AD criada depois do pedido — talvez ele já esteja atendido.
+            </p>
+          )}
+
           <p className="text-[11px] text-muted-foreground/70">
             {p.solicitado_por_nome ? `Pedido por ${p.solicitado_por_nome}` : 'Pedido'}
             {' · '}{p.status === 'aberto' ? `aberto ${rotuloDeDias(p.dias_aberto)}` : p.status}
@@ -261,11 +320,24 @@ function ModalPedido({ pedido, onClose, onAbrirAd }: {
           </p>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onAbrirAd}>
+        {/*
+          As ações grandes vivem aqui, não na linha da fila.
+
+          Na linha elas eram dois botões de 10px que se perdiam no meio dos
+          números — pequenos demais para acertar e discretos demais para achar.
+          E multiplicados por vinte pedidos seriam quarenta botões numa tela em
+          que nenhum deles é a ação principal.
+        */}
+        <DialogFooter className="gap-2 sm:gap-2">
+          {p.status === 'aberto' && (
+            <Button variant="ghost" size="sm" className="mr-auto" onClick={onFechar}>
+              <Check className="mr-1.5 h-3.5 w-3.5" /> Fechar pedido
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={onClose}>Voltar</Button>
+          <Button size="sm" onClick={onAbrirAd}>
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Abrir o AD original
           </Button>
-          <Button size="sm" onClick={onClose}>Fechar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -281,134 +353,121 @@ function Numero({ rotulo, valor }: { rotulo: string; valor: string }) {
   );
 }
 
-function LinhaPedido({ p, onFechar, onVerPedido, onAbrirAd }: {
+/**
+ * Um pedido na fila: duas linhas, e a linha inteira é o botão.
+ *
+ * Ela tinha três linhas de texto de 10px e dois botões minúsculos no rodapé —
+ * tudo com o mesmo peso, nada dizendo onde clicar. Agora:
+ *
+ *   · o nome do AD e os números crescem, o resto encolhe — hierarquia de
+ *     tamanho é o que faz uma lista ser varrida em vez de lida;
+ *   · verba e ROAS ficam numa coluna à direita, alinhados entre as linhas,
+ *     porque número em coluna se compara e número no meio da frase não;
+ *   · clicar em qualquer lugar abre o pedido inteiro, e clicar no nome do AD
+ *     abre o card de produção. Dois alvos grandes em vez de dois botões de
+ *     10px.
+ *
+ * O clique passa por `aoClicarSemArrastar` para que selecionar e copiar o
+ * texto do pedido continue possível — o mesmo defeito que Vendas, UTM e
+ * Financeiro tinham.
+ */
+function LinhaPedido({ p, onVerPedido, onAbrirAd }: {
   p: Pedido;
-  onFechar: () => void;
   onVerPedido: () => void;
   onAbrirAd: () => void;
 }) {
   const aberto = p.status === 'aberto';
 
   return (
-    <div className={cn('px-3.5 py-2.5', !aberto && 'opacity-60')}>
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-xs font-medium tabular-nums text-foreground">
-          {p.ad_num != null ? rotuloDoAdHook(p.ad_num, p.hook) : p.criativo}
-        </span>
-        <span className="text-[11px] text-muted-foreground">{p.projeto ?? '—'}</span>
-
-        {p.funil && (
-          <span className="rounded bg-secondary px-1.5 py-px text-[10px] text-muted-foreground">{p.funil}</span>
-        )}
-
-        {/* A urgência é selo, não ordenação: é o desempate humano. A ordem sai
-            do investimento, que a fila usa e não mostra. */}
-        <span className={cn('rounded px-1.5 py-px text-[10px]', URGENCIA_COR[p.urgencia])}>
-          {p.urgencia === 'alta' && <Flame className="mr-0.5 inline h-2.5 w-2.5" />}
-          {URGENCIA_LABEL[p.urgencia]}
-        </span>
-
-        {p.tipo_sugerido && (
-          <span className="rounded bg-blue-500/15 px-1.5 py-px text-[10px] text-blue-400">
-            sugerido: {p.tipo_sugerido}
-          </span>
-        )}
-
-        <span className="ml-auto flex items-center gap-2 text-[10px] text-muted-foreground/60">
-          {aberto ? `aberto ${rotuloDeDias(p.dias_aberto)}` : (
-            p.status === 'atendido'
-              ? `atendido${p.card_que_atendeu ? ` por ${p.card_que_atendeu}` : ''}`
-              : 'descartado'
-          )}
-          {aberto && (
-            <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={onFechar}>
-              Fechar
-            </Button>
-          )}
-        </span>
-      </div>
-
-      {/*
-        Na fila, o motivo aparece RESUMIDO — uma linha.
-
-        Ele vinha inteiro, e com dois parágrafos por pedido a fila virava um
-        muro de texto em que todos os pedidos tinham o mesmo peso visual. Quem
-        varre a fila decide por AD, verba e urgência; o texto é o que se lê
-        DEPOIS de escolher qual pegar. Por isso ele vira resumo aqui e
-        solicitação inteira no "Ver pedido".
-      */}
-      <p className="mt-1 truncate text-[11px] leading-relaxed text-foreground/80" title={p.por_que}>
-        {p.por_que}
-      </p>
-
-      {/*
-        Os números que decidem, que a fila usava só para ordenar e não mostrava.
-
-        "O valor em si não vai para a tela: ele ordena e fica quieto" era a
-        regra antiga, e ela escondia justamente o que faz o Copy entender por
-        que aquele pedido está no topo. Verba e ROAS são o briefing curto:
-        variar um AD de R$ 3 mil com ROAS 1,8 é outra tarefa que variar um de
-        R$ 80 que nunca girou.
-      */}
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
-        {p.inv_30d != null && p.inv_30d > 0 && (
-          <span className="tabular-nums text-muted-foreground">
-            <span className="text-muted-foreground/60">verba 30d </span>
-            <span className="text-foreground">{formatCurrency(p.inv_30d)}</span>
-          </span>
-        )}
-        {p.roas_30d != null && (
-          <span className="tabular-nums text-muted-foreground">
-            <span className="text-muted-foreground/60">ROAS </span>
-            <span className="text-foreground">{formatNumber(p.roas_30d)}x</span>
-          </span>
-        )}
-        {p.avaliacao && (
-          <span className="text-muted-foreground">
-            <span className="text-muted-foreground/60">avaliação </span>
-            <span className="text-foreground">{p.avaliacao}</span>
-          </span>
-        )}
-        {p.solicitado_por_nome && (
-          <span className="text-muted-foreground/50">pedido por {p.solicitado_por_nome}</span>
-        )}
-        {p.atendido_por_nome && (
-          <span className="text-muted-foreground/50">· fechado por {p.atendido_por_nome}</span>
-        )}
-
-        {/*
-          As duas portas de saída, lado a lado: o que foi PEDIDO e o AD que
-          motivou o pedido. As duas abrem sobre a tela — sair da Esteira para
-          ver o AD e ter que voltar é o que fazia a fila ser lida de olho, sem
-          conferir nada.
-        */}
-        <span className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onVerPedido}
-            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-          >
-            <FileText className="h-2.5 w-2.5" /> Ver pedido
-          </button>
-          <button
-            type="button"
-            onClick={onAbrirAd}
-            className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-          >
-            <ExternalLink className="h-2.5 w-2.5" /> Abrir AD
-          </button>
-        </span>
-      </div>
-
-      {/*
-        O fechamento é manual, então este aviso é o que impede a fila de virar
-        ficção: já apareceu uma variação deste AD depois do pedido.
-      */}
-      {aberto && p.ja_tem_variacao && (
-        <p className="mt-1.5 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-300/90">
-          Já existe uma variação deste AD criada depois do pedido — talvez ele já esteja atendido.
-        </p>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={aoClicarSemArrastar(onVerPedido)}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onVerPedido(); }
+      }}
+      title="Ver o pedido inteiro"
+      className={cn(
+        'group flex w-full cursor-pointer items-center gap-3 px-3.5 py-3 text-left transition-colors',
+        'hover:bg-secondary/50 focus-visible:bg-secondary/50 focus-visible:outline-none',
+        !aberto && 'opacity-60',
       )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {/* O nome do AD é a porta do card de produção. */}
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onAbrirAd(); }}
+            title="Abrir o card do AD original"
+            className="text-sm font-semibold tabular-nums text-foreground underline-offset-2 transition-colors hover:text-primary hover:underline"
+          >
+            {p.ad_num != null ? rotuloDoAdHook(p.ad_num, p.hook) : p.criativo}
+          </button>
+          <span className="truncate text-xs text-muted-foreground">{p.projeto ?? '—'}</span>
+
+          {p.funil && (
+            <span className="rounded bg-secondary px-1.5 py-px text-[10px] text-muted-foreground">{p.funil}</span>
+          )}
+
+          {/* A urgência é selo, não ordenação: é o desempate humano. A ordem sai
+              do investimento, que agora aparece na coluna da direita. */}
+          <span className={cn('rounded px-1.5 py-px text-[10px]', URGENCIA_COR[p.urgencia])}>
+            {p.urgencia === 'alta' && <Flame className="mr-0.5 inline h-2.5 w-2.5" />}
+            {URGENCIA_LABEL[p.urgencia]}
+          </span>
+
+          {p.tipo_sugerido && (
+            <span className="rounded bg-blue-500/15 px-1.5 py-px text-[10px] text-blue-400">
+              {p.tipo_sugerido}
+            </span>
+          )}
+
+          {/*
+            O fechamento é manual, então este selo é o que impede a fila de
+            virar ficção: já apareceu uma variação deste AD depois do pedido.
+            Era uma tarja de largura inteira que roubava uma linha de cada
+            pedido; vira selo aqui e frase inteira dentro do pedido.
+          */}
+          {aberto && p.ja_tem_variacao && (
+            <span className="rounded bg-emerald-500/15 px-1.5 py-px text-[10px] text-emerald-400">
+              <Sparkles className="mr-0.5 inline h-2.5 w-2.5" />já tem variação
+            </span>
+          )}
+
+          {!aberto && (
+            <span className="text-[10px] text-muted-foreground/60">
+              {p.status === 'atendido'
+                ? `atendido${p.card_que_atendeu ? ` por ${p.card_que_atendeu}` : ''}`
+                : 'descartado'}
+            </span>
+          )}
+        </div>
+
+        <p className="mt-1 truncate text-xs leading-relaxed text-muted-foreground" title={p.por_que}>
+          {p.por_que}
+        </p>
+      </div>
+
+      {/*
+        Os números que decidem, numa coluna de largura fixa.
+
+        A fila usava a verba só para ORDENAR e não a mostrava — "o valor em si
+        não vai para a tela" era a regra antiga, e ela escondia justamente o que
+        explica por que aquele pedido está no topo. Variar um AD de R$ 3 mil com
+        ROAS 1,8 é outra tarefa que variar um de R$ 80 que nunca girou.
+      */}
+      <div className="w-28 shrink-0 text-right">
+        <p className="text-sm font-semibold tabular-nums text-foreground">
+          {p.inv_30d != null && p.inv_30d > 0 ? formatCurrency(p.inv_30d) : '—'}
+        </p>
+        <p className="text-[11px] tabular-nums text-muted-foreground/70">
+          {p.roas_30d != null ? `${formatNumber(p.roas_30d)}x` : 'sem ROAS'}
+          {aberto && ` · ${rotuloDeDias(p.dias_aberto)}`}
+        </p>
+      </div>
+
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/30 transition-colors group-hover:text-primary" />
     </div>
   );
 }
