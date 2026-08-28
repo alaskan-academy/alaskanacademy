@@ -140,7 +140,14 @@ export function RadarContent() {
   // filtros
   const [search, setSearch]               = useState('');
   const [filtroArea, setFiltroArea]             = useState('');
-  const [filtroStatus, setFiltroStatus]         = useState('');
+  /*
+    A tela abre no que está rodando AGORA.
+
+    Abria em tudo, e "tudo" é uma pilha onde os 24 concluídos empurram para
+    baixo os 28 em andamento — que são os únicos sobre os quais dá para fazer
+    alguma coisa hoje.
+  */
+  const [filtroStatus, setFiltroStatus]         = useState('em_andamento');
   const [filtroResultado, setFiltroResultado]   = useState('');
   const [filtroProjeto, setFiltroProjeto]       = useState('');
   const [filtroResponsavel, setFiltroResponsavel] = useState('');
@@ -240,13 +247,22 @@ export function RadarContent() {
 
   useEffect(() => { load(); }, []);
 
-  // ── Filtros ───────────────────────────────────────────────────────────────
-  const testesFiltrados = useMemo(() => {
+  /*
+    ── Filtros, em dois andares ─────────────────────────────────────────────
+
+    Os cards viraram o filtro de status, e isso obriga a separar as coisas: se
+    eles contassem a lista JÁ filtrada por status, clicar em "Concluídos"
+    zeraria "Em andamento" e não haveria mais como voltar — o filtro comeria o
+    próprio botão de desfazer.
+
+    Então o primeiro andar é tudo MENOS status e resultado. É ele que os cards
+    contam: os números obedecem busca, área, projeto, responsável e período, e
+    ficam estáveis enquanto se alterna entre os cards.
+  */
+  const baseDosCards = useMemo(() => {
     return testes.filter(t => {
       if (search && !t.titulo.toLowerCase().includes(search.toLowerCase())) return false;
       if (filtroArea && t.area_id !== filtroArea) return false;
-      if (filtroStatus && t.status !== filtroStatus) return false;
-      if (filtroResultado && t.resultado !== filtroResultado) return false;
       if (filtroProjeto && !(t.projeto_ids || []).includes(filtroProjeto)) return false;
       if (filtroResponsavel && t.responsavel_id !== filtroResponsavel) return false;
       /*
@@ -267,28 +283,61 @@ export function RadarContent() {
       }
       return true;
     });
-  }, [testes, search, filtroArea, filtroStatus, filtroResultado, filtroProjeto, filtroResponsavel, filtroDataDe, filtroDataAte]);
+  }, [testes, search, filtroArea, filtroProjeto, filtroResponsavel, filtroDataDe, filtroDataAte]);
+
+  /* O segundo andar: o que o card escolheu. */
+  const testesFiltrados = useMemo(() => baseDosCards.filter(t => {
+    if (filtroStatus && t.status !== filtroStatus) return false;
+    if (filtroResultado && t.resultado !== filtroResultado) return false;
+    return true;
+  }), [baseDosCards, filtroStatus, filtroResultado]);
 
   /*
-    Os números contam o que está NA TELA.
+    Os cards.
 
-    Contavam `testes`, a lista toda: filtrar por área "Copy" deixava 6 testes
-    na grade e os cards continuavam dizendo 36 / 19 / 0 / 14. Número de resumo
-    que ignora o filtro logo acima dele é número que ninguém pode usar.
-
-    "Positivos" ganhou denominador junto: 14 sozinho não diz nada; 14 de 19
-    concluídos, sim.
+    "Cancelados" só aparece quando existe algum — não há por que oferecer um
+    botão que leva a lugar nenhum. Os outros três ficam sempre, inclusive em
+    zero: "0 pausados" é informação, e some da tela seria a mesma informação
+    dita pior. A regra vem da contagem, não de uma lista escrita aqui, então um
+    status novo no enum não precisa que alguém lembre deste arquivo.
   */
-  const stats = useMemo(() => ({
-    em_andamento: testesFiltrados.filter(t => t.status === 'em_andamento').length,
-    concluido:    testesFiltrados.filter(t => t.status === 'concluido').length,
-    pausado:      testesFiltrados.filter(t => t.status === 'pausado').length,
-    positivos:    testesFiltrados.filter(t => t.resultado === 'positivo').length,
-  }), [testesFiltrados]);
+  const cards = useMemo(() => {
+    const contarStatus = (s: string) => baseDosCards.filter(t => t.status === s).length;
 
-  const temFiltro = Boolean(
-    search || filtroArea || filtroStatus || filtroResultado ||
-    filtroProjeto || filtroResponsavel || filtroDataDe || filtroDataAte,
+    const doStatus = (chave: string, label: string, color: string, anel: string) => ({
+      label, value: contarStatus(chave), color, anel,
+      ativo: filtroStatus === chave,
+      onClick: () => { setFiltroResultado(''); setFiltroStatus(a => (a === chave ? '' : chave)); },
+      nota: null as string | null,
+    });
+
+    const concluidos = contarStatus('concluido');
+    const lista = [
+      doStatus('em_andamento', 'Em andamento', 'text-blue-400',    'border-blue-400/60 ring-1 ring-blue-400/40'),
+      doStatus('concluido',    'Concluídos',   'text-emerald-400', 'border-emerald-400/60 ring-1 ring-emerald-400/40'),
+      doStatus('pausado',      'Pausados',     'text-yellow-400',  'border-yellow-400/60 ring-1 ring-yellow-400/40'),
+    ];
+    if (contarStatus('cancelado') > 0) {
+      lista.push(doStatus('cancelado', 'Cancelados', 'text-red-400', 'border-red-400/60 ring-1 ring-red-400/40'));
+    }
+
+    lista.push({
+      label: 'Positivos',
+      value: baseDosCards.filter(t => t.resultado === 'positivo').length,
+      color: 'text-emerald-400',
+      anel:  'border-emerald-400/60 ring-1 ring-emerald-400/40',
+      ativo: filtroResultado === 'positivo',
+      /* Positivo só existe entre concluídos: manter o status ligado junto daria
+         tela vazia toda vez que alguém clicasse vindo de "Em andamento". */
+      onClick: () => { setFiltroStatus(''); setFiltroResultado(a => (a === 'positivo' ? '' : 'positivo')); },
+      nota: concluidos > 0 ? `de ${concluidos} concluídos` : null,
+    });
+    return lista;
+  }, [baseDosCards, filtroStatus, filtroResultado]);
+
+  /* Os cards já se mostram escolhidos sozinhos; a linha é para o resto. */
+  const temOutroFiltro = Boolean(
+    search || filtroArea || filtroProjeto || filtroResponsavel || filtroDataDe || filtroDataAte,
   );
 
   /*
@@ -539,25 +588,33 @@ export function RadarContent() {
         </div>
       </div>
 
-      {/* ── Stats ── */}
-      {temFiltro && (
+      {/* ── Os números, que também são o filtro de status ── */}
+      {temOutroFiltro && (
         <p className="text-[11px] text-muted-foreground mb-2">
-          Contando os {testesFiltrados.length} testes do filtro, de {testes.length} no total.
+          Os números abaixo contam os {baseDosCards.length} testes do filtro, de {testes.length} no total.
         </p>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {[
-          { label: 'Em andamento', value: stats.em_andamento, color: 'text-blue-400',    nota: null },
-          { label: 'Concluídos',   value: stats.concluido,    color: 'text-emerald-400', nota: null },
-          { label: 'Pausados',     value: stats.pausado,      color: 'text-yellow-400',  nota: null },
-          { label: 'Positivos',    value: stats.positivos,    color: 'text-emerald-400',
-            nota: stats.concluido > 0 ? `de ${stats.concluido} concluídos` : null },
-        ].map(s => (
-          <div key={s.label} className="bg-card border border-border rounded-lg px-4 py-3">
+      {/* `flex-wrap` e não grade fixa: o número de cards varia com os dados. */}
+      <div className="flex flex-wrap gap-3 mb-6">
+        {cards.map(s => (
+          <button
+            key={s.label}
+            onClick={s.onClick}
+            aria-pressed={s.ativo}
+            title={s.ativo
+              ? `Mostrando só ${s.label.toLowerCase()} — clique para ver tudo`
+              : `Ver só ${s.label.toLowerCase()}`}
+            className={cn(
+              'min-w-[140px] flex-1 rounded-lg border bg-card px-4 py-3 text-left transition-colors',
+              s.ativo ? s.anel : 'border-border hover:border-border/80 hover:bg-card/70',
+            )}
+          >
             <div className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+            <div className={cn('text-xs mt-0.5', s.ativo ? 'text-foreground' : 'text-muted-foreground')}>
+              {s.label}
+            </div>
             {s.nota && <div className="text-[10px] text-muted-foreground/60">{s.nota}</div>}
-          </div>
+          </button>
         ))}
       </div>
 
@@ -587,20 +644,14 @@ export function RadarContent() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={filtroStatus || 'all'} onValueChange={v => setFiltroStatus(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os status</SelectItem>
-            {Object.entries(STATUS_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filtroResultado || 'all'} onValueChange={v => setFiltroResultado(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Resultado" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            {Object.entries(RESULTADO_CFG).map(([k, v]) => <SelectItem key={k} value={k}>{v.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        {/*
+          Os selects de Status e Resultado sairam daqui: os cards acima fazem as
+          duas coisas, com o número do lado. Mantê-los seria dois controles para
+          o mesmo estado na mesma tela — e, pior, os cards contam a lista SEM
+          status, então mexer no select não mexeria nos números logo acima dele.
+          Um filtro que não move o resumo que está colado nele é um filtro que
+          ensina a desconfiar do resumo.
+        */}
         <Select value={filtroProjeto || 'all'} onValueChange={v => setFiltroProjeto(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="Projeto" /></SelectTrigger>
           <SelectContent>
@@ -609,9 +660,9 @@ export function RadarContent() {
           </SelectContent>
         </Select>
         <Select value={filtroResponsavel || 'all'} onValueChange={v => setFiltroResponsavel(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Responsável" /></SelectTrigger>
+          <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="Responsável" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos os usuários</SelectItem>
+            <SelectItem value="all">Todo mundo</SelectItem>
             {perfis.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
           </SelectContent>
         </Select>
