@@ -27,6 +27,9 @@ export interface LinhaUtmAgregada {
   vendas_canceladas: number;
   /** Soma de `valor_total` das aprovadas — a mesma definição do resto do dashboard. */
   faturamento: number;
+  /** Das aprovadas, as que dizem de QUAL anúncio vieram (`ad_id_meta` preenchido). */
+  vendas_com_anuncio: number;
+  faturamento_com_anuncio: number;
 }
 
 /** Uma tupla já com os valores limpos e as razões refeitas sobre os totais. */
@@ -41,6 +44,8 @@ export interface TuplaUtm {
   vendas_pendentes: number;
   vendas_canceladas: number;
   faturamento: number;
+  vendas_com_anuncio: number;
+  faturamento_com_anuncio: number;
 }
 
 /** Uma linha da tabela do drill-down, no nível aberto no momento. */

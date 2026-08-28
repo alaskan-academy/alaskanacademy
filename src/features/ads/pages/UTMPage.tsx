@@ -180,12 +180,16 @@ export default function UTMPage() {
             vendas_pendentes: 0,
             vendas_canceladas: 0,
             faturamento: 0,
+            vendas_com_anuncio: 0,
+            faturamento_com_anuncio: 0,
           };
         }
         utmMap[key].vendas_aprovadas += Number(v.vendas_aprovadas || 0);
         utmMap[key].vendas_pendentes += Number(v.vendas_pendentes || 0);
         utmMap[key].vendas_canceladas += Number(v.vendas_canceladas || 0);
         utmMap[key].faturamento += Number(v.faturamento || 0);
+        utmMap[key].vendas_com_anuncio += Number(v.vendas_com_anuncio || 0);
+        utmMap[key].faturamento_com_anuncio += Number(v.faturamento_com_anuncio || 0);
       });
 
       setAllUtm(Object.values(utmMap));
@@ -266,10 +270,33 @@ export default function UTMPage() {
       faturamento: acc.faturamento + (r.utm_source === SEM_ORIGEM ? r.faturamento : 0),
       total: acc.total + r.faturamento,
       vendas: acc.vendas + (r.utm_source === SEM_ORIGEM ? r.vendas_aprovadas : 0),
+      comAnuncio: acc.comAnuncio + r.faturamento_com_anuncio,
+      vendasComAnuncio: acc.vendasComAnuncio + r.vendas_com_anuncio,
+      vendasTotal: acc.vendasTotal + r.vendas_aprovadas,
     }),
-    { faturamento: 0, total: 0, vendas: 0 },
+    { faturamento: 0, total: 0, vendas: 0, comAnuncio: 0, vendasComAnuncio: 0, vendasTotal: 0 },
   );
   const pctSemOrigem = semOrigem.total > 0 ? (semOrigem.faturamento / semOrigem.total) * 100 : 0;
+
+  /*
+    O segundo buraco, encaixado no primeiro: tem canal e não tem anúncio.
+
+    "Sem origem" é o link que não leva UTM nenhuma. "Sem anúncio" é maior e
+    inclui aquele: são as vendas sem `ad_id_meta`, ou seja, sem dizer QUAL
+    anúncio pagou por elas. Agosto/2026:
+
+      sem anúncio             R$ 73.958,87   819 vendas   44,4%
+        ├─ sem origem         R$ 60.395,04   675
+        └─ com canal, sem id  R$ 13.563,83   144
+
+    São dois consertos diferentes — o primeiro no link, o segundo no parâmetro
+    da campanha —, e por isso dois números em vez de um.
+  */
+  const semAnuncio = {
+    faturamento: semOrigem.total - semOrigem.comAnuncio,
+    vendas: semOrigem.vendasTotal - semOrigem.vendasComAnuncio,
+  };
+  const pctSemAnuncio = semOrigem.total > 0 ? (semAnuncio.faturamento / semOrigem.total) * 100 : 0;
 
 
   const drillDown = (value: string) => {
@@ -385,15 +412,32 @@ export default function UTMPage() {
             alguém entrou numa campanha. Ele é o estado do rastreio, não um
             recorte.
           */}
-          <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-3 xl:grid-cols-5">
-            <KPICard title="Total Vendas" value={formatNumber(totals.vendas)} />
-            <KPICard title="Faturamento" value={formatCurrency(totals.faturamento)} />
-            <KPICard title="Taxa Aprovação" value={formatPercent(taxaTotal)} />
-            <KPICard title="Ticket Médio" value={formatCurrency(avgTicket)} />
+          {/*
+            Seis números numa faixa só, 2 / 3 / 6 colunas — o mesmo bloco de
+            Vendas. Cinco cartões soltos numa grade de três deixavam um cartão
+            sozinho na última linha e um buraco do lado dele.
+
+            Os quatro primeiros são do nível aberto; os dois últimos são do
+            período inteiro e não acompanham o filtro, de propósito: eles
+            respondem "quanto chega cego", e isso não muda porque alguém entrou
+            numa campanha.
+          */}
+          <div className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
+            <KPICard title="Total Vendas" value={formatNumber(totals.vendas)} className="rounded-none border-0" />
+            <KPICard title="Faturamento" value={formatCurrency(totals.faturamento)} className="rounded-none border-0" />
+            <KPICard title="Taxa Aprovação" value={formatPercent(taxaTotal)} className="rounded-none border-0" />
+            <KPICard title="Ticket Médio" value={formatCurrency(avgTicket)} className="rounded-none border-0" />
             <KPICard
               title="Sem origem"
               value={formatPercent(pctSemOrigem)}
               subtitle={`${formatCurrency(semOrigem.faturamento)} · ${formatNumber(semOrigem.vendas)} vendas`}
+              className="rounded-none border-0"
+            />
+            <KPICard
+              title="Sem anúncio"
+              value={formatPercent(pctSemAnuncio)}
+              subtitle={`${formatCurrency(semAnuncio.faturamento)} · ${formatNumber(semAnuncio.vendas)} vendas`}
+              className="rounded-none border-0"
             />
           </div>
 
