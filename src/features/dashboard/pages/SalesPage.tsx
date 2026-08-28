@@ -199,8 +199,22 @@ type LinhaQuando = {
   taxa?: number;
 };
 
+/**
+ * O resumo da SELEÇÃO da lista — o filtro de status e a busca já aplicados.
+ *
+ * É outra pergunta que a faixa do topo: lá é o período inteiro, aqui é
+ * "e disto que estou vendo, quanto é?". Vem do banco porque a tela tem 50
+ * linhas na mão e a seleção pode ter 2.449 — somar a página daria um número
+ * que muda ao virar a página.
+ *
+ * `base_periodo` é o denominador do "% do período" e vem da mesma função, com
+ * a mesma regra de quais vendas contam. O `resumo` dos agregados não serve:
+ * ele exclui upsell e a lista não.
+ */
+type ResumoDaLista = { quantidade: number; valor: number; base_periodo: number };
+
 /** O que `fn_vendas_lista` devolve. */
-type BrutoLista = { total: number; linhas: Venda[] };
+type BrutoLista = { total: number; resumo: ResumoDaLista; linhas: Venda[] };
 
 const PAGE_SIZE = 50;
 
@@ -216,6 +230,8 @@ function rotuloDoMes(mesAno: string) {
 const RESUMO_VAZIO: ResumoVendas = {
   faturamento: 0, aprovadas: 0, tentativas: 0, upsell_aprovadas: 0, upsell_faturamento: 0,
 };
+
+const RESUMO_LISTA_VAZIO: ResumoDaLista = { quantidade: 0, valor: 0, base_periodo: 0 };
 
 export default function SalesPage() {
   const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
@@ -234,6 +250,7 @@ export default function SalesPage() {
   const [saleItems, setSaleItems] = useState<ItemDaVenda[]>([]);
   const [statusFilter, setStatusFilter] = useState("todos");
   const [resumo, setResumo] = useState<ResumoVendas>(RESUMO_VAZIO);
+  const [resumoLista, setResumoLista] = useState<ResumoDaLista>(RESUMO_LISTA_VAZIO);
   /*
     Os status possíveis, vindos do enum `status_venda` pelo banco.
 
@@ -309,9 +326,10 @@ export default function SalesPage() {
         p_tamanho: PAGE_SIZE,
       });
       if (error) console.error("fn_vendas_lista:", error.message);
-      const r = (data ?? { total: 0, linhas: [] }) as BrutoLista;
+      const r = (data ?? {}) as Partial<BrutoLista>;
       setSalesData(r.linhas ?? []);
       setSalesTotal(Number(r.total ?? 0));
+      setResumoLista({ ...RESUMO_LISTA_VAZIO, ...(r.resumo ?? {}) });
       setLoadingSales(false);
     };
     loadSales();
@@ -497,6 +515,16 @@ export default function SalesPage() {
   const displayId = (sale: Venda) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
   const taxaBadge = (t: number) => (t > 70 ? "text-success" : t >= 50 ? "text-warning" : "text-destructive");
 
+  /*
+    A base do "% das vendas" é a soma da própria tabela, e não `resumo.aprovadas`.
+
+    Os dois dão o mesmo número hoje (1.244 + 529 = 1.773), mas somando as
+    linhas a coluna fecha em 100% por construção — se um dia um meio de
+    pagamento ficar de fora de um dos dois lados, o percentual não passa a
+    mentir em silêncio.
+  */
+  const aprovadasNoPeriodo = paymentData.reduce((s, r) => s + (r.aprovadas || 0), 0);
+
   // Ticket e taxa saem dos totais do período, não de média de médias.
   const ticketMedio = resumo.aprovadas > 0 ? resumo.faturamento / resumo.aprovadas : 0;
   const taxaPeriodo = resumo.tentativas > 0 ? (resumo.aprovadas / resumo.tentativas) * 100 : 0;
@@ -583,7 +611,20 @@ export default function SalesPage() {
         quanto vendeu no mês era preciso ler barras. O Resumo, o Meta Ads e o
         Financeiro todos abrem assim.
       */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {/*
+        Uma faixa só, e não cinco cartões soltos.
+
+        Com cinco cartões numa grade de dois em dois sobrava um cartão sozinho
+        na última linha e um buraco do lado dele. Numa faixa única, o que sobra
+        é espaço DENTRO do bloco, e não um cartão perdido — e os cinco números
+        se leem como um conjunto, que é o que eles são.
+
+        As divisórias são o fundo aparecendo pelo `gap-px`: assim elas se
+        acertam sozinhas em qualquer número de colunas, sem borda que sobra na
+        ponta. A célula vazia no fim existe para o buraco não virar um bloco da
+        cor da borda; em `lg` os cinco cabem numa linha e ela some.
+      */}
+      <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
         <Kpi rotulo="Faturamento" valor={loading ? "—" : formatCurrency(resumo.faturamento)} />
         <Kpi rotulo="Vendas aprovadas" valor={loading ? "—" : formatNumber(resumo.aprovadas)} />
         <Kpi rotulo="Ticket médio" valor={loading ? "—" : formatCurrency(ticketMedio)} />
@@ -609,6 +650,7 @@ export default function SalesPage() {
               : `${formatNumber(resumo.upsell_aprovadas)} vendas · fora dos gráficos`
           }
         />
+        <div className="bg-card lg:hidden" />
       </div>
 
       <Tabs defaultValue="quando" className="space-y-4">
@@ -806,23 +848,20 @@ export default function SalesPage() {
                 <thead>
                   <tr className="border-b border-border">
                     {/*
-                      Sete colunas, e não oito.
+                      Cinco colunas.
 
-                      Com oito a tabela passava da largura da tela e a rolagem
-                      lateral escondia justamente as duas últimas — taxa e
-                      ticket —, que são o motivo de a tabela existir.
+                      "Tentativas", "Aprovadas" e "Não aprovadas" saíram: eram
+                      três contagens para sustentar um número que a coluna
+                      "Taxa Aprov." já dá pronto. Elas não se perderam — estão
+                      no `title` da taxa, que é onde alguém vai procurá-las se
+                      duvidar do percentual.
 
-                      "Canceladas" e "Expiradas" viraram uma coluna só porque
-                      cada meio usa uma delas e zera a outra: Pix expira (441
-                      expiradas, 0 canceladas) e cartão é recusado (131
-                      canceladas, 0 expiradas). Eram duas colunas para dizer
-                      "não aprovadas", metade delas sempre em branco.
+                      No lugar entrou "% das vendas": de cada 100 compras do
+                      período, quantas saíram por aquele meio.
                     */}
                     {[
                       "Meio",
-                      "Tentativas",
-                      "Aprovadas",
-                      "Não aprovadas",
+                      "% das vendas",
                       "Faturamento",
                       "Taxa Aprov.",
                       "Ticket Médio",
@@ -839,18 +878,25 @@ export default function SalesPage() {
                       <td className="px-4 py-3 font-medium text-foreground">
                         {paymentLabels[r.meio_pagamento] || r.meio_pagamento}
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-foreground">{formatNumber(r.total_tentativas || 0)}</td>
-                      <td className="px-4 py-3 tabular-nums text-foreground">{formatNumber(r.aprovadas || 0)}</td>
                       <td
                         className="px-4 py-3 tabular-nums text-foreground"
-                        title={`${r.canceladas || 0} cancelada(s), ${r.expiradas || 0} expirada(s)`}
+                        title={`${formatNumber(r.aprovadas || 0)} de ${formatNumber(aprovadasNoPeriodo)} compras`}
                       >
-                        {formatNumber((r.canceladas || 0) + (r.expiradas || 0))}
+                        {formatPercent(
+                          aprovadasNoPeriodo > 0 ? ((r.aprovadas || 0) / aprovadasNoPeriodo) * 100 : 0,
+                        )}
                       </td>
                       <td className="px-4 py-3 font-medium tabular-nums text-foreground">
                         {formatCurrency(r.faturamento || 0)}
                       </td>
-                      <td className={cn("px-4 py-3 font-medium tabular-nums", taxaBadge(Number(r.taxa_aprovacao_pct)))}>
+                      {/* As contagens que saíram da tabela vivem aqui: é a base da taxa. */}
+                      <td
+                        className={cn("px-4 py-3 font-medium tabular-nums", taxaBadge(Number(r.taxa_aprovacao_pct)))}
+                        title={
+                          `${formatNumber(r.aprovadas || 0)} aprovadas de ${formatNumber(r.total_tentativas || 0)} tentativas · ` +
+                          `${r.canceladas || 0} cancelada(s), ${r.expiradas || 0} expirada(s)`
+                        }
+                      >
                         {Number(r.taxa_aprovacao_pct).toFixed(1)}%
                       </td>
                       <td className="px-4 py-3 tabular-nums text-foreground">{formatCurrency(r.ticket_medio || 0)}</td>
@@ -858,7 +904,7 @@ export default function SalesPage() {
                   ))}
                   {paymentData.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                         {loading ? "Carregando..." : "Sem vendas no período"}
                       </td>
                     </tr>
@@ -881,14 +927,9 @@ export default function SalesPage() {
       */}
       <div className="mt-6 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-medium text-foreground">
-            Vendas do período
-            {salesTotal > 0 && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                {salesTotal.toLocaleString("pt-BR")}
-              </span>
-            )}
-          </h3>
+          {/* Sem a contagem repetida aqui: ela é o primeiro número da faixa
+              logo abaixo dos filtros. */}
+          <h3 className="text-sm font-medium text-foreground">Vendas do período</h3>
           <Input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
@@ -912,6 +953,57 @@ export default function SalesPage() {
               {s.replace("_", " ")}
             </button>
           ))}
+        </div>
+
+        {/*
+          Os números da SELEÇÃO, logo abaixo do filtro que os produziu.
+
+          A faixa do topo fala do período; esta fala do que está filtrado agora
+          — e é o que dá sentido a filtrar. "Expirada" sozinho é uma contagem;
+          "446 vendas, R$ 47.678,44, 18,2% do período" é o dinheiro que ficou
+          na mesa.
+
+          Vem do banco junto com a lista: somar as 50 linhas da página daria um
+          número que muda ao virar a página.
+        */}
+        <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm">
+          <span className="text-muted-foreground">
+            Vendas{" "}
+            <b className="ml-1 font-semibold tabular-nums text-foreground">
+              {formatNumber(resumoLista.quantidade)}
+            </b>
+            {resumoLista.base_periodo > 0 && resumoLista.quantidade !== resumoLista.base_periodo && (
+              <span className="ml-2 text-xs">
+                {" "}
+                {formatPercent((resumoLista.quantidade / resumoLista.base_periodo) * 100)} do período
+              </span>
+            )}
+          </span>
+          <span className="text-muted-foreground">
+            Valor{" "}
+            <b className="ml-1 font-semibold tabular-nums text-foreground">
+              {formatCurrency(resumoLista.valor)}
+            </b>
+          </span>
+          <span className="text-muted-foreground">
+            Ticket médio{" "}
+            <b className="ml-1 font-semibold tabular-nums text-foreground">
+              {formatCurrency(resumoLista.quantidade > 0 ? resumoLista.valor / resumoLista.quantidade : 0)}
+            </b>
+          </span>
+          {/*
+            O aviso de que esta faixa e a do topo não têm a mesma base.
+
+            A do topo exclui upsell — senão a mesma pessoa entra duas vezes nos
+            gráficos. A lista não exclui, porque quem procura um pedido quer
+            achar o pedido. Sem esta linha, "1.836 aprovadas" aqui e "1.773" lá
+            em cima seriam dois números certos parecendo um erro.
+          */}
+          {statusFilter === "aprovada" && !buscaAdiada && resumo.upsell_aprovadas > 0 && (
+            <span className="text-xs text-muted-foreground">
+              inclui {formatNumber(resumo.upsell_aprovadas)} upsell(s), que os gráficos deixam de fora
+            </span>
+          )}
         </div>
 
         <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -1128,10 +1220,12 @@ export default function SalesPage() {
 /** Um número do topo: rótulo pequeno, valor grande, nota opcional embaixo. */
 function Kpi({ rotulo, valor, nota, cor }: { rotulo: string; valor: string; nota?: string; cor?: string }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{rotulo}</p>
-      <p className={cn("mt-1 text-xl font-semibold tabular-nums text-foreground", cor)}>{valor}</p>
-      {nota && <p className="mt-0.5 text-xs text-muted-foreground">{nota}</p>}
+    <div className="flex flex-col justify-start bg-card px-4 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{rotulo}</p>
+      <p className={cn("mt-1 text-lg font-semibold tabular-nums text-foreground", cor)}>{valor}</p>
+      {/* Altura reservada mesmo sem nota: sem isso os cinco valores ficavam em
+          linhas de base diferentes conforme o cartão tivesse ou não legenda. */}
+      <p className="mt-0.5 min-h-[1rem] text-[11px] leading-4 text-muted-foreground">{nota ?? ""}</p>
     </div>
   );
 }
