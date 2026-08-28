@@ -585,15 +585,36 @@ export default function AnalisesPage() {
 
           {/* Escolher o REV direto, sem percorrer um a um -- e sem gravar:
               olhar nao e analisar. */}
+          {/*
+            `truncate` no texto, `shrink-0` no visto e no método.
+
+            O rótulo é "Saponaria Brasil · REV3 - VSL" mais o selo do método, e
+            dentro de 288px ele quebrava em duas linhas — a caixa crescia e
+            saía do lugar em relação ao seletor de período ao lado.
+
+            O `line-clamp-1` que o `SelectTrigger` já aplica não segurava: ele
+            vale para o filho direto, e o filho direto aqui era um
+            `inline-flex` cujo texto quebra por conta própria. Quem corta é o
+            `truncate` no pedaço de texto, com `min-w-0` no pai para o flex
+            deixar ele encolher.
+
+            `h-10` e não `h-9`: é a mesma altura do seletor de período, que
+            fica colado nele.
+          */}
           <Select value={atual?.id ?? ''} onValueChange={trocarRev}>
-            <SelectTrigger className="h-9 w-72 text-base"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-80 max-w-full text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               {revs.map(r => (
                 <SelectItem key={r.id} value={r.id}>
-                  <span className="inline-flex items-center gap-1.5">
-                    {r.id in lidos && <Check className="h-3 w-3 text-emerald-400" />}
-                    {r.projeto ? `${r.projeto} · ` : ''}{r.rev}
-                    {r.metodo && <span className="text-xs text-muted-foreground">{r.metodo}</span>}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {r.id in lidos && <Check className="h-3 w-3 shrink-0 text-emerald-400" />}
+                    {/* O projeto encolhe; o REV nunca. Cortar "REV3 - VSL"
+                        em "REV3 - V…" apaga justamente a identidade da linha. */}
+                    {r.projeto && <span className="truncate">{r.projeto} ·</span>}
+                    <span className="shrink-0">{r.rev}</span>
+                    {r.metodo && (
+                      <span className="shrink-0 text-xs text-muted-foreground">{r.metodo}</span>
+                    )}
                   </span>
                 </SelectItem>
               ))}

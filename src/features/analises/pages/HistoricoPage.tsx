@@ -418,7 +418,7 @@ export default function HistoricoPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Select value={filtro} onValueChange={setFiltro}>
-            <SelectTrigger className="h-9 w-72 text-base"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-10 w-72 max-w-full text-base"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={TODOS}>Todos os REVs</SelectItem>
               {revsComAnalise.map(r => (

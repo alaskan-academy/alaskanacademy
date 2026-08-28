@@ -178,7 +178,7 @@ export default function CompararPage() {
 
           {!ladoALado && (
             <Select value={ordem} onValueChange={v => setOrdem(v as Ordem)}>
-              <SelectTrigger className="h-9 w-56 text-base"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-10 w-56 max-w-full text-base"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {ORDENS.map(o => (
                   <SelectItem key={o.valor} value={o.valor}>{o.label}</SelectItem>
