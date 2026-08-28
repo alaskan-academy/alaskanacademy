@@ -82,7 +82,14 @@ type Venda = {
   id: string;
   pedido_id: string | null;
   data_venda: string;
+  /*
+    `produto` é a CATEGORIA (6 valores: velas, saponaria, cosmeticos...) e
+    `produto_nome` é o produto mesmo (46 valores). A lista mostra o nome, com a
+    categoria embaixo — dizer só "velas" na linha de uma venda não identifica o
+    que a pessoa comprou.
+  */
   produto: string | null;
+  produto_nome: string | null;
   valor_total: number | null;
   status: string;
   meio_pagamento: string | null;
@@ -571,7 +578,6 @@ export default function SalesPage() {
                       <tr className="border-b border-border">
                         {[
                           "Pedido",
-                          "Tipo",
                           "Data",
                           "Cliente",
                           "Produto",
@@ -596,16 +602,19 @@ export default function SalesPage() {
                           onClick={() => openDetail(sale)}
                           className="border-b border-border/50 hover:bg-secondary/50 cursor-pointer"
                         >
-                          <td className="px-4 py-3 font-mono text-xs text-foreground">{displayId(sale)}</td>
-                          {/* Coluna Tipo: Upsell ou Normal */}
-                          <td className="px-4 py-3">
-                            {sale.is_upsell ? (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 whitespace-nowrap">
-                                Upsell
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-muted-foreground border border-border">
-                                Normal
+                          {/*
+                            A coluna "Tipo" virou uma marca ao lado do pedido.
+
+                            Ela dizia "Normal" em 96% das linhas — uma coluna
+                            inteira de largura para repetir a mesma palavra
+                            2.352 vezes e destacar 97. Etiqueta que quase nunca
+                            muda não informa: informa a exceção.
+                          */}
+                          <td className="px-4 py-3 font-mono text-xs text-foreground whitespace-nowrap">
+                            {displayId(sale)}
+                            {sale.is_upsell && (
+                              <span className="ml-2 rounded-full border border-yellow-500/30 bg-yellow-500/20 px-1.5 py-0.5 font-sans text-[10px] font-medium text-yellow-400">
+                                upsell
                               </span>
                             )}
                           </td>
@@ -613,7 +622,24 @@ export default function SalesPage() {
                             {sale.data_venda ? format(new Date(sale.data_venda), "dd/MM/yy HH:mm") : "-"}
                           </td>
                           <td className="px-4 py-3 text-foreground">{sale.clientes?.nome || "-"}</td>
-                          <td className="px-4 py-3 text-foreground capitalize">{sale.produto || "-"}</td>
+                          {/*
+                            Largura travada e nome cortado: há produto com 46
+                            caracteres ("Workshop Primeira Venda em 7 dias +
+                            Comunidade 2.0") e sem o corte ele quebra em três
+                            linhas e estica a linha inteira. O nome cheio fica
+                            no `title` e no detalhe da venda.
+                          */}
+                          <td className="px-4 py-3 max-w-[220px]">
+                            <div
+                              className="truncate text-foreground"
+                              title={sale.produto_nome?.trim() || undefined}
+                            >
+                              {sale.produto_nome?.trim() || sale.produto || "-"}
+                            </div>
+                            {sale.produto_nome?.trim() && sale.produto && (
+                              <div className="text-xs capitalize text-muted-foreground">{sale.produto}</div>
+                            )}
+                          </td>
                           <td className="px-4 py-3">
                             <span
                               className={cn(
@@ -702,6 +728,15 @@ export default function SalesPage() {
         {/* ── Por Produto ──────────────────────────────────── */}
         <TabsContent value="produto">
           <div className="bg-card border border-border rounded-lg p-5">
+            {/*
+              Rótulo dentro da pizza: não.
+
+              Com sete fatias e três delas abaixo de 1%, os rótulos se
+              empilhavam em cima uns dos outros ao lado do gráfico —
+              "Cosmeticos 0% Outros 0% Velaroma 0%" escritos por cima da mesma
+              linha. A legenda ao lado já diz nome, valor e percentual, e ela
+              cabe: a pizza vira só a proporção.
+            */}
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Faturamento por Produto</h3>
             <div className="flex flex-col lg:flex-row items-center gap-6">
               <ResponsiveContainer width="100%" height={280}>
@@ -713,7 +748,6 @@ export default function SalesPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius={110}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                   >
                     {byProduct.map((_, i) => (
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
@@ -723,15 +757,28 @@ export default function SalesPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 w-full max-w-xs">
-                {byProduct.map((r, i) => (
-                  <div key={i} className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="text-sm text-foreground capitalize">{r.name}</span>
+                {byProduct.map((r, i) => {
+                  const total = byProduct.reduce((s, x) => s + x.value, 0);
+                  const pct = total > 0 ? (r.value / total) * 100 : 0;
+                  return (
+                    <div key={i} className="flex items-baseline justify-between gap-3">
+                      <div className="flex min-w-0 items-baseline gap-2">
+                        <span
+                          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                        />
+                        {/* Sem `capitalize`: os nomes vem da Payt ja escritos como
+                            a pessoa cadastrou, e a classe transformava
+                            "Curso Saponaria Brasil" em algo que ninguem escreveu. */}
+                        <span className="truncate text-sm text-foreground" title={r.name}>{r.name}</span>
+                      </div>
+                      <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+                        {formatCurrency(r.value)}
+                        <span className="ml-2 text-xs text-muted-foreground">{pct.toFixed(1)}%</span>
+                      </span>
                     </div>
-                    <span className="text-sm font-medium text-foreground">{formatCurrency(r.value)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -744,12 +791,26 @@ export default function SalesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
+                    {/*
+                      Sete colunas, e nao oito.
+
+                      Com oito a tabela passava da largura da tela e a rolagem
+                      lateral escondia justamente as duas ultimas -- taxa e
+                      ticket --, que sao o motivo de a tabela existir. Quem
+                      abria a aba via "tentativas, aprovadas, canceladas,
+                      expiradas" e tinha que descobrir que havia mais.
+
+                      "Canceladas" e "Expiradas" viraram uma coluna so porque
+                      cada meio usa uma delas e zera a outra: Pix expira (441
+                      expiradas, 0 canceladas) e cartao e recusado (131
+                      canceladas, 0 expiradas). Eram duas colunas para dizer
+                      "nao aprovadas", metade delas sempre em branco.
+                    */}
                     {[
                       "Meio",
                       "Tentativas",
                       "Aprovadas",
-                      "Canceladas",
-                      "Expiradas",
+                      "Não aprovadas",
                       "Faturamento",
                       "Taxa Aprov.",
                       "Ticket Médio",
@@ -768,8 +829,12 @@ export default function SalesPage() {
                       </td>
                       <td className="px-4 py-3 text-foreground">{formatNumber(r.total_tentativas || 0)}</td>
                       <td className="px-4 py-3 text-foreground">{formatNumber(r.aprovadas || 0)}</td>
-                      <td className="px-4 py-3 text-foreground">{formatNumber(r.canceladas || 0)}</td>
-                      <td className="px-4 py-3 text-foreground">{formatNumber(r.expiradas || 0)}</td>
+                      <td
+                        className="px-4 py-3 text-foreground"
+                        title={`${r.canceladas || 0} cancelada(s), ${r.expiradas || 0} expirada(s)`}
+                      >
+                        {formatNumber((r.canceladas || 0) + (r.expiradas || 0))}
+                      </td>
                       <td className="px-4 py-3 font-medium text-foreground">{formatCurrency(r.faturamento || 0)}</td>
                       <td className={cn("px-4 py-3 font-medium", taxaBadge(Number(r.taxa_aprovacao_pct)))}>
                         {Number(r.taxa_aprovacao_pct).toFixed(1)}%
@@ -829,7 +894,9 @@ export default function SalesPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Produto:</span>{" "}
-                  <span className="text-foreground ml-1 capitalize">{selectedSale.produto}</span>
+                  <span className="text-foreground ml-1">
+                    {selectedSale.produto_nome?.trim() || selectedSale.produto || "-"}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total:</span>{" "}
