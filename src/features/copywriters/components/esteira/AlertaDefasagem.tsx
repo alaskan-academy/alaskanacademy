@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, HelpCircle, MinusCircle, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Defasagem } from './tipos';
 
@@ -8,12 +8,27 @@ import { Defasagem } from './tipos';
  *
  * Duas versões anteriores erraram o alvo pelo mesmo motivo: diagnosticavam em
  * vez de mandar fazer. "falta iteração e novo" é uma lista do que não existe, e
- * quem lê ainda precisa traduzir para trabalho. Agora cada linha é uma ordem de
- * serviço com quantidade — "escreva 1 iteração e 1 novo" — e as contagens ficam
- * ao lado como prova, não como a mensagem.
+ * quem lê ainda precisa traduzir para trabalho. Cada linha é uma ordem de
+ * serviço com quantidade — "escreva 1 iteração e 1 novo".
  *
  * Nenhum valor em dinheiro aparece. A lista É ordenada por investimento — quem
  * mais gasta cobra primeiro — mas o número não vai para a tela.
+ *
+ * TRÊS COISAS SAÍRAM DA FRENTE, PORQUE ERAM PROVA E NÃO ORDEM
+ *
+ * 1. O quadro inteiro era tingido de âmbar, com borda âmbar e fundo âmbar. Uma
+ *    superfície grande tingida diz "tudo aqui dentro é alerta" — inclusive as
+ *    linhas em dia. O âmbar ficou só no ícone e na frase de cada linha, que é
+ *    onde ele significa alguma coisa.
+ *
+ * 2. As três colunas de contagem (Novo · Iter. · Var.) eram a coisa mais
+ *    barulhenta da tela: seis zeros vermelhos competindo com a ordem de serviço
+ *    que fica ao lado. Elas são a PROVA da conta, não a conta — foram para trás
+ *    de "ver as contas".
+ *
+ * 3. As linhas em dia ocupavam uma linha inteira cada para dizer que não há o
+ *    que fazer. Viraram uma frase no rodapé. Continuam visíveis, que é a regra
+ *    que ela pediu: ausência não diz "está ok", diz "não sei".
  *
  * A coluna "A partir de", que sugeria qual validado variar, saiu a pedido dela.
  * A função ainda calcula a sugestão (`sug_ad` e companhia continuam vindo da
@@ -24,28 +39,32 @@ export function AlertaDefasagem({ linhas, semVerba = [] }: {
   /** Projetos ativos que não entraram na conta por não terem gasto em 7 dias. */
   semVerba?: { projeto: string; ads: number }[];
 }) {
-  const urgentes = useMemo(() => linhas.filter(l => l.prioridade < 5), [linhas]);
+  const [verContas, setVerContas] = useState(false);
+  const [verRessalvas, setVerRessalvas] = useState(false);
 
   /*
-    TODOS os funis aparecem, inclusive os que estão em dia.
+    Só o que pede trabalho entra na tabela.
 
-    Antes só os problemáticos entravam, e o Saponaria VSL sumia da tela — sem
-    dar para saber se estava bem ou se tinha sido esquecido. Ausência não diz
-    "está ok", diz "não sei"; e um painel que só mostra o que está ruim obriga
-    a lembrar de cor o que deveria estar lá.
+    Todos os funis continuam na tela — o que está em dia vai para o rodapé, numa
+    frase. Antes cada um gastava uma linha da tabela para dizer que não havia o
+    que fazer, e com seis funis metade da lista era ruído.
+  */
+  const foraDoAlvo = useMemo(() => linhas.filter(l => l.prioridade < 5), [linhas]);
+  const emDia      = useMemo(() => linhas.filter(l => l.prioridade === 5), [linhas]);
 
+  /*
     Um projeto vira um bloco, com uma linha por funil: quem roda TSL e VSL
     aparecia duas vezes seguidas e lia como duplicata.
   */
   const grupos = useMemo(() => {
     const mapa = new Map<string, Defasagem[]>();
-    for (const l of linhas) {
+    for (const l of foraDoAlvo) {
       const k = l.projeto ?? '—';
       if (!mapa.has(k)) mapa.set(k, []);
       mapa.get(k)!.push(l);
     }
     return Array.from(mapa, ([projeto, funis]) => ({ projeto, funis }));
-  }, [linhas]);
+  }, [foraDoAlvo]);
 
   /* O aviso de "sem funil" é por PROJETO — repetido em cada linha viraria eco. */
   const semFunil = useMemo(() => Array.from(
@@ -60,125 +79,148 @@ export function AlertaDefasagem({ linhas, semVerba = [] }: {
     );
   }
 
-  const tudoOk = urgentes.length === 0;
+  const tudoOk = foraDoAlvo.length === 0;
+
+  /*
+    As duas ressalvas viraram uma linha dobrada no pé do quadro.
+
+    Elas eram dois cartões de largura inteira entre o que escrever e a fila de
+    pedidos — o terceiro e o quarto blocos da página, ocupando o lugar mais
+    nobre da tela para dizer um rodapé de contabilidade. São verdadeiras e
+    precisam existir; só não são o assunto.
+
+    Dobrar em vez de fechar, e nada de `localStorage`: um "não me avise mais"
+    faria metade dos ADs sumirem da conta em silêncio, que é exatamente o
+    defeito que escondeu 4 REVs por um `ativo=false`.
+  */
+  const ressalvas: React.ReactNode[] = [];
+  if (semFunil.length > 0) {
+    ressalvas.push(
+      <>
+        <span className="text-foreground">
+          {semFunil.reduce((s, l) => s + l.lotes_sem_funil, 0)} ADs sem funil informado
+        </span>
+        {' '}ficam fora das contas —{' '}
+        {semFunil.map(l => `${l.projeto} (${l.lotes_sem_funil})`).join(' · ')}.
+        {' '}Preencher o campo Funil na Produção faz eles contarem.
+      </>,
+    );
+  }
+  if (semVerba.length > 0) {
+    ressalvas.push(
+      <>
+        Fora da conta por não ter investimento nos últimos 7 dias:{' '}
+        {semVerba.map((p, i) => (
+          <span key={p.projeto}>
+            {i > 0 && ' · '}
+            <span className="text-foreground">{p.projeto}</span>
+            {p.ads > 0 && (
+              <span className="text-muted-foreground/70">
+                {' '}({p.ads} {p.ads === 1 ? 'AD parado' : 'ADs parados'} na esteira)
+              </span>
+            )}
+          </span>
+        ))}
+        . Sem verba não há defasagem de criativo — é outra conversa.
+      </>,
+    );
+  }
 
   return (
-    <div className="space-y-2">
-      <div className={cn('overflow-hidden rounded-lg border',
-        tudoOk ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
-               : 'border-amber-500/30 bg-amber-500/[0.07]')}>
-        <div className={cn('flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b px-3.5 py-2.5',
-          tudoOk ? 'border-emerald-500/20' : 'border-amber-500/20')}>
-          {tudoOk
-            ? <Check className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-emerald-400" />
-            : <AlertTriangle className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-amber-400" />}
-          <span className={cn('text-xs font-medium', tudoOk ? 'text-emerald-200' : 'text-amber-200')}>
-            {tudoOk ? 'Todos os funis em dia' : 'O que escrever agora'}
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-3.5 py-3">
+        {tudoOk
+          ? <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+          : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />}
+        <span className="text-sm font-semibold text-foreground">
+          {tudoOk ? 'Todos os funis em dia' : 'O que escrever agora'}
+        </span>
+        {!tudoOk && (
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+            {foraDoAlvo.length} de {linhas.length} funis
           </span>
-          <span className="text-[10px] text-muted-foreground/70">
-            {urgentes.length > 0 && `${urgentes.length} de ${linhas.length} funis com verba fora do alvo · `}
+        )}
+        {!tudoOk && (
+          <span className="text-[11px] text-muted-foreground">
             do que mais gasta para o que menos gasta
           </span>
-        </div>
+        )}
 
+        {!tudoOk && (
+          <button
+            type="button"
+            onClick={() => setVerContas(v => !v)}
+            className="ml-auto shrink-0 text-[11px] text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+          >
+            {verContas ? 'esconder as contas' : 'ver as contas'}
+          </button>
+        )}
+      </div>
+
+      {!tudoOk && (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead>
-              <tr className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
-                <th className="whitespace-nowrap px-3.5 py-1 text-left font-medium">Projeto</th>
-                <th className="px-2 py-1 text-left font-medium">Funil</th>
-                <th className="w-11 px-1 py-1 text-right font-medium">Novo</th>
-                <th className="w-11 px-1 py-1 text-right font-medium">Iter.</th>
-                <th className="w-11 px-1 py-1 text-right font-medium">Var.</th>
-                <th className="w-full px-3 py-1 text-left font-medium">O que escrever</th>
-              </tr>
-            </thead>
+            {/*
+              O cabeçalho só existe quando há coluna de número para nomear.
+              Sem as contagens, "Projeto · Funil · O que escrever" é óbvio pelo
+              conteúdo, e três títulos em maiúscula sobre três colunas seriam
+              mais uma fileira de texto de 10px numa tela que já tem demais.
+            */}
+            {verContas && (
+              <thead>
+                <tr className="text-[10px] uppercase tracking-wide text-muted-foreground/50">
+                  <th className="whitespace-nowrap px-3.5 py-1 text-left font-medium">Projeto</th>
+                  <th className="px-2 py-1 text-left font-medium">Funil</th>
+                  <th className="w-11 px-1 py-1 text-right font-medium">Novo</th>
+                  <th className="w-11 px-1 py-1 text-right font-medium">Iter.</th>
+                  <th className="w-11 px-1 py-1 text-right font-medium">Var.</th>
+                  <th className="w-full px-3 py-1 text-left font-medium">O que escrever</th>
+                </tr>
+              </thead>
+            )}
             <tbody>
               {grupos.map(g => g.funis.map((l, i) => (
                 <LinhaDoFunil key={`${g.projeto}-${l.funil}`} l={l}
                               projeto={i === 0 ? g.projeto : null}
                               linhasDoProjeto={g.funis.length}
-                              primeiraDoGrupo={i === 0} />
+                              primeiraDoGrupo={i === 0}
+                              verContas={verContas} />
               )))}
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/*
-        Um lote sem funil não entra na conta de TSL nem de VSL, porque ninguém
-        sabe qual ele serve — chutar produziria um estoque que não existe. São
-        metade dos lotes hoje, então este aviso não é detalhe: é o que impede os
-        números acima de parecerem piores do que são.
-      */}
-      {semFunil.length > 0 && (
-        <AvisoFechavel icone={HelpCircle}>
-          <span className="text-foreground">
-            {semFunil.reduce((s, l) => s + l.lotes_sem_funil, 0)} ADs sem funil informado
-          </span>
-          {' '}ficam fora das contas acima —{' '}
-          {semFunil.map(l => `${l.projeto} (${l.lotes_sem_funil})`).join(' · ')}.
-          {' '}Preencher o campo Funil na Produção faz eles contarem.
-        </AvisoFechavel>
       )}
 
       {/*
-        Os projetos ativos que NÃO entraram, e por quê.
-
-        O Guia dos Comportamentos sumia da tela por não ter verba, e ela
-        perguntou "cadê o Guia dos Comportamentos?" — que é a mesma coisa que
-        tinha acontecido com o Saponaria VSL. Sumir sem explicação faz o painel
-        parecer quebrado; dizer o motivo transforma a ausência em informação.
+        O que está em dia continua na tela, como ela pediu — mas numa frase, não
+        numa linha de tabela por funil.
       */}
-      {semVerba.length > 0 && (
-        <AvisoFechavel icone={MinusCircle}>
-          Fora da conta por não ter investimento nos últimos 7 dias:{' '}
-          {semVerba.map((p, i) => (
-            <span key={p.projeto}>
-              {i > 0 && ' · '}
-              <span className="text-foreground">{p.projeto}</span>
-              {p.ads > 0 && (
-                <span className="text-muted-foreground/70">
-                  {' '}({p.ads} {p.ads === 1 ? 'AD parado' : 'ADs parados'} na esteira)
-                </span>
-              )}
-            </span>
-          ))}
-          . Sem verba não há defasagem de criativo — é outra conversa.
-        </AvisoFechavel>
+      {emDia.length > 0 && !tudoOk && (
+        <p className="border-t border-border px-3.5 py-2 text-[11px] text-muted-foreground">
+          <Check className="mr-1 inline h-3 w-3 -translate-y-px text-emerald-400" />
+          Em dia: {emDia.map(l => `${l.projeto} ${l.funil}`).join(' · ')}
+        </p>
       )}
-    </div>
-  );
-}
 
-/**
- * Um aviso que dá para fechar, e que volta ao recarregar.
- *
- * O estado é local de propósito — nada de `localStorage`. Estes dois avisos
- * dizem que metade dos ADs não entra na conta e que um projeto ativo está sem
- * verba: se o "fechar" fosse permanente, alguém fecharia uma vez e o problema
- * sumiria da tela para sempre, exatamente como aconteceu com os 4 REVs
- * escondidos por um `ativo=false`. Fechar aqui é "vi, sai da frente agora", não
- * "não me avise mais".
- */
-function AvisoFechavel({ icone: Icone, children }: {
-  icone: typeof HelpCircle;
-  children: React.ReactNode;
-}) {
-  const [aberto, setAberto] = useState(true);
-  if (!aberto) return null;
-
-  return (
-    <div className="flex items-start gap-2 rounded-lg border border-border bg-card py-2.5 pl-3.5 pr-2">
-      <Icone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-      <div className="flex-1 text-[11px] leading-relaxed text-muted-foreground">
-        {children}
-      </div>
-      <button onClick={() => setAberto(false)}
-              aria-label="Fechar aviso"
-              className="-mt-0.5 shrink-0 rounded p-1 text-muted-foreground/40 transition-colors hover:bg-secondary hover:text-foreground">
-        <X className="h-3 w-3" />
-      </button>
+      {ressalvas.length > 0 && (
+        <div className="border-t border-border">
+          <button
+            type="button"
+            onClick={() => setVerRessalvas(v => !v)}
+            className="flex w-full items-center gap-1.5 px-3.5 py-2 text-left text-[11px] text-muted-foreground transition-colors hover:bg-secondary/40 hover:text-foreground"
+          >
+            {ressalvas.length === 1 ? '1 ressalva nas contas' : `${ressalvas.length} ressalvas nas contas`}
+            <ChevronDown className={cn('h-3 w-3 transition-transform', verRessalvas && 'rotate-180')} />
+          </button>
+          {verRessalvas && (
+            <div className="space-y-1.5 border-t border-border/60 px-3.5 py-2.5">
+              {ressalvas.map((r, i) => (
+                <p key={i} className="text-[11px] leading-relaxed text-muted-foreground">{r}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -189,8 +231,9 @@ function emLista(itens: string[]): string {
   return `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}`;
 }
 
-function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo }: {
-  l: Defasagem; projeto: string | null; linhasDoProjeto: number; primeiraDoGrupo: boolean;
+function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo, verContas }: {
+  l: Defasagem; projeto: string | null; linhasDoProjeto: number;
+  primeiraDoGrupo: boolean; verContas: boolean;
 }) {
   const total = l.ads_novo + l.ads_iteracao + l.ads_variacao;
 
@@ -214,44 +257,43 @@ function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo }: {
   if (l.falta_variacao) pedidos.push('1 variação');
   if (l.falta_novo)     pedidos.push('1 novo');
 
-  const emDia = l.prioridade === 5;
   const critico = total === 0;
 
-  const ordem = emDia
-    ? 'Em dia'
-    : pedidos.length > 0
-      ? `Escreva ${emLista(pedidos)}`
-      : paraOMix > 0
-        ? `Escreva mais ${paraOMix} de iteração ou variação`
-        : 'Em dia';
+  const ordem = pedidos.length > 0
+    ? `Escreva ${emLista(pedidos)}`
+    : paraOMix > 0
+      ? `Escreva mais ${paraOMix} de iteração ou variação`
+      : 'Em dia';
 
   return (
-    <tr className={cn(primeiraDoGrupo && 'border-t border-amber-500/15',
-      emDia && 'text-muted-foreground')}>
+    <tr className={cn(primeiraDoGrupo && 'border-t border-border/60')}>
       {/* O nome do projeto ocupa as linhas dos seus funis: repetido em cada uma
           fazia dois funis do mesmo projeto lerem como duplicata. */}
       {projeto !== null && (
         <td rowSpan={linhasDoProjeto}
-            className="whitespace-nowrap px-3.5 py-1.5 align-top text-xs font-medium text-foreground">
+            className="whitespace-nowrap px-3.5 py-2 align-top text-xs font-medium text-foreground">
           {projeto}
         </td>
       )}
 
-      <td className="px-2 py-1.5">
+      <td className="px-2 py-2">
         <span className="rounded bg-secondary px-1.5 py-px text-[10px] font-medium tracking-wide text-foreground">
           {l.funil}
         </span>
       </td>
 
-      {/* O zero é a informação, então é o único número que muda de cor. */}
-      <Num n={l.ads_novo} />
-      <Num n={l.ads_iteracao} />
-      <Num n={l.ads_variacao} />
+      {/* O zero é a informação, então é o único número que muda de cor — e só
+          aparece em modo prova. */}
+      {verContas && <Num n={l.ads_novo} />}
+      {verContas && <Num n={l.ads_iteracao} />}
+      {verContas && <Num n={l.ads_variacao} />}
 
-      <td className="px-3 py-1.5">
+      {/* `w-full` na coluna da ordem: sem o `thead` visível não há nada dizendo
+          qual coluna absorve a largura sobrando, e a folga ia parar entre o
+          projeto e o funil, abrindo um vão no meio da frase. */}
+      <td className="w-full px-3 py-2">
         <span className={cn('flex items-baseline gap-1 text-xs font-medium',
-          emDia ? 'text-emerald-400/90' : critico ? 'text-red-300' : 'text-amber-200')}>
-          {emDia && <Check className="h-3 w-3 shrink-0 translate-y-0.5" />}
+          critico ? 'text-red-300' : 'text-amber-200')}>
           {ordem}
         </span>
         {/* O porquê da ordem do mix, que não cabe no imperativo */}
@@ -268,7 +310,7 @@ function LinhaDoFunil({ l, projeto, linhasDoProjeto, primeiraDoGrupo }: {
 
 function Num({ n }: { n: number }) {
   return (
-    <td className={cn('px-1 py-1.5 text-right text-xs tabular-nums',
+    <td className={cn('px-1 py-2 text-right text-xs tabular-nums',
       n === 0 ? 'font-medium text-red-400' : 'text-muted-foreground')}>
       {n}
     </td>

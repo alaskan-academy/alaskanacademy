@@ -165,8 +165,17 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
       */}
       <div>
         <h2 className="text-base font-semibold text-foreground">Esteira de criativos</h2>
+        {/*
+          O subtítulo diz a ORDEM DE LEITURA, não o conteúdo.
+
+          "O que falta produzir, o que foi pedido e o que já está em produção"
+          descrevia os três blocos — e quem lê já vê os três blocos. O que
+          faltava era dizer que eles são uma sequência: os dois primeiros são
+          trabalho, o terceiro é consulta.
+        */}
         <p className="mt-0.5 text-xs text-muted-foreground">
-          O que falta produzir, o que foi pedido e o que já está em produção.
+          De cima para baixo: o que falta escrever, o que foi pedido, e o
+          estoque que já existe.
         </p>
       </div>
 
