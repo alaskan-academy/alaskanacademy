@@ -470,7 +470,24 @@ export function RadarContent() {
     }
   };
 
-  const podeEditar = (t: Teste) => isAdmin || t.criado_por === user?.id;
+  /*
+    A MESMA regra que a RLS aplica no banco.
+
+    Era so `isAdmin || criado_por === user.id`, e 33 dos 44 testes de funil
+    tem `criado_por` nulo porque a origem tambem tem. "Sem dono" virava "so
+    admin" por acidente de `null === undefined` ser falso -- e o botao Editar
+    sumia justamente nos testes onde falta preencher area, projeto e
+    aprendizado, que sao os campos que so existem aqui.
+
+    O espelho do Funis segue a origem: quem enxerga o teste la pode anota-lo
+    aqui. Os campos que pertencem ao Funis continuam travados no formulario,
+    com o cadeado.
+  */
+  const podeEditar = (t: Teste) =>
+    isAdmin
+    || t.criado_por === user?.id
+    || t.criado_por === null
+    || t.fonte === 'funis';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
