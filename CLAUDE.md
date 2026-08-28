@@ -69,7 +69,7 @@ The sidebar (`AppSidebar`) lists funnels fetched from the `funis` table. Selecti
 ### Key Supabase tables/views
 
 - `vendas` — sales records; `status` can be `aprovada`, `pendente`, `cancelada`, `expirada`; `is_upsell` flag; `utm_source` for traffic attribution
-- `venda_itens` — line items (order bumps); `converteu` boolean; `tipo` / `code_payt`
+- `venda_itens` — line items (order bumps); `tipo` / `code_payt`. A coluna `converteu` existe mas é **constante**: `true` em 3.884 de 3.884 linhas, porque `fn_normalizar_venda_payt` grava `true` literal e o array `order_bumps` do payload da Payt só lista o que a pessoa levou. Não filtre por ela — a existência da linha *é* a conversão
 - `vw_faturamento_liquido` — view aggregating revenue, platform fees, refunds, taxes, Meta investment per day/funnel
 - `vw_reembolsos` — view with refund and chargeback totals
 - `funis` — funnel definitions (id, nome, produto, ativo)
@@ -89,7 +89,7 @@ The sidebar (`AppSidebar`) lists funnels fetched from the `funis` table. Selecti
 - **Lucro c/ custo fixo** = lucro − custo_fixo (prorated by period days: `(mensal / 30) * dias`)
 - **Margem %** uses lucro operacional (without fixed cost) divided by faturamento_bruto
 - **Upsells** are `vendas` rows where `is_upsell = true` AND the product name matches an `ofertas` entry with `tipo = 'upsell'`
-- **Order bumps** are `venda_itens` rows where `converteu = true`
+- **Order bumps** are `venda_itens` rows — uma linha só existe se a pessoa levou o bump. `vendas.valor_total` **já inclui** os bumps: receita de bump é uma fatia do faturamento, nunca uma parcela a somar por fora (medido: `valor_total − bumps` bate com o preço de quem comprou sem bump, ±R$ 0,80 nos três produtos de maior volume)
 
 ### Editor performance module (EditorsPage)
 
