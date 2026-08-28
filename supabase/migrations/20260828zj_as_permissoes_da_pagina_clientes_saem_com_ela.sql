@@ -1,0 +1,30 @@
+-- ── As permissões da página Clientes saem junto com a página ──────────────
+--
+-- A página `/clientes` foi removida do menu. Sobraram 6 linhas em
+-- `permissoes_paginas` apontando para uma tela que não existe mais.
+--
+-- Conferido antes de apagar:
+--
+--   * nenhuma função ou view do banco lê `permissoes_paginas` -- a checagem
+--     acontece no front, contra a lista `PAGINAS` do `AuthContext`, e
+--     'clientes' saiu dessa lista;
+--   * `setor_permissoes` não tem nenhuma linha com `pagina = 'clientes'`;
+--   * nenhuma outra tela consulta `vw_clientes_listagem`, que fica intacta.
+--
+-- Ou seja: são linhas que ninguém lê e que só apareceriam de novo se a página
+-- voltasse -- e, se voltar, ela volta como coluna dentro de Vendas.
+--
+-- O conteúdo apagado fica escrito aqui, e é isso que torna a remoção
+-- reversível sem tabela de backup:
+--
+--   usuario_id                             permitido
+--   1f19135b-3892-48eb-8bb0-70baf8f8b6bc   false
+--   2b425a33-7eeb-4611-b8d2-c6adce0b34da   false
+--   6b54d873-05b1-4edb-9894-e18d100e27cb   true
+--   7cd714dc-a6e7-4bf0-b7be-9200f25e9041   false
+--   ed51f0c3-2e76-44cc-bb4d-7eefd781eeba   true
+--   f6805221-84b2-4cc3-a58c-3acacfc0801e   false
+--
+-- Note que quatro dos seis eram `false`: apagar não abre acesso a ninguém, e
+-- os dois `true` perdem acesso a uma tela que já não existe.
+DELETE FROM permissoes_paginas WHERE pagina = 'clientes';
