@@ -9,7 +9,7 @@
  * eu acabei de mexer: teste que só cobre a última mudança não protege o resto.
  */
 import { describe, it, expect } from 'vitest';
-import { ocorrencias, segundaDa, toYMD, daYMD } from '@/lib/recorrencia';
+import { ocorrencias, diasOcupados, duracaoEmDias, toYMD, daYMD } from '@/lib/recorrencia';
 
 const base = {
   inicio: '2026-09-01', // terça
@@ -125,14 +125,81 @@ describe('ocorrencias', () => {
   });
 });
 
+describe('diasOcupados', () => {
+  it('sem data_fim é a mesma coisa que ocorrencias', () => {
+    const r = { ...base, recorrencia_tipo: 'diario', recorrencia_fim: '2026-09-03' };
+    expect(diasOcupados(r, '2026-09-01', '2026-09-30')).toEqual(ocorrencias(r, '2026-09-01', '2026-09-30'));
+  });
+
+  it('data_fim igual à data continua sendo um dia só', () => {
+    const r = { ...base, data_fim: '2026-09-01' };
+    expect(duracaoEmDias(r)).toBe(0);
+    expect(diasOcupados(r, '2026-09-01', '2026-09-30')).toEqual(['2026-09-01']);
+  });
+
+  it('feriado emendado pinta todos os dias', () => {
+    const r = { ...base, inicio: '2026-12-24', data_fim: '2026-12-26' };
+    expect(diasOcupados(r, '2026-12-01', '2026-12-31')).toEqual([
+      '2026-12-24', '2026-12-25', '2026-12-26',
+    ]);
+  });
+
+  it('aparece na janela mesmo tendo começado antes dela', () => {
+    // O caso que motivou alargar a janela para trás: o começo está fora, mas o
+    // evento está acontecendo dentro.
+    const r = { ...base, inicio: '2026-12-24', data_fim: '2026-12-26' };
+    expect(diasOcupados(r, '2026-12-25', '2026-12-31')).toEqual(['2026-12-25', '2026-12-26']);
+  });
+
+  it('o fim da janela corta o que passa dela', () => {
+    const r = { ...base, inicio: '2026-12-28', data_fim: '2027-01-02' };
+    expect(diasOcupados(r, '2026-12-01', '2026-12-31')).toEqual([
+      '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31',
+    ]);
+  });
+
+  it('a duração vale para cada ocorrência da série', () => {
+    // Toda terça, de terça a quarta.
+    const r = {
+      ...base,
+      data_fim: '2026-09-02',
+      recorrencia_tipo: 'semanal',
+      recorrencia_dias_semana: [2],
+      recorrencia_fim: '2026-09-15',
+    };
+    expect(diasOcupados(r, '2026-09-01', '2026-09-30')).toEqual([
+      '2026-09-01', '2026-09-02',
+      '2026-09-08', '2026-09-09',
+      '2026-09-15', '2026-09-16',
+    ]);
+  });
+
+  it('pular tira só aquele dia, e não a ocorrência inteira', () => {
+    // A diferença que motivou filtrar os pulados fora de `ocorrencias`: lá o
+    // dia 24 derrubaria os três.
+    const r = { ...base, inicio: '2026-12-24', data_fim: '2026-12-26', recorrencia_puladas: ['2026-12-24'] };
+    expect(diasOcupados(r, '2026-12-01', '2026-12-31')).toEqual(['2026-12-25', '2026-12-26']);
+  });
+
+  it('pular no meio do período deixa as duas pontas', () => {
+    const r = { ...base, inicio: '2026-12-24', data_fim: '2026-12-26', recorrencia_puladas: ['2026-12-25'] };
+    expect(diasOcupados(r, '2026-12-01', '2026-12-31')).toEqual(['2026-12-24', '2026-12-26']);
+  });
+
+  it('ocorrências que se sobrepõem não repetem o mesmo dia', () => {
+    // Um evento de três dias (01 a 03) repetindo todo dia até 03: as três
+    // ocorrências cobrem 01-03, 02-04 e 03-05, e os dias em comum aparecem uma
+    // vez só — repetidos, seriam o mesmo evento desenhado duas vezes na célula.
+    const r = { ...base, data_fim: '2026-09-03', recorrencia_tipo: 'diario', recorrencia_fim: '2026-09-03' };
+    expect(diasOcupados(r, '2026-09-01', '2026-09-30')).toEqual([
+      '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05',
+    ]);
+  });
+});
+
 describe('datas da agenda', () => {
   it('daYMD não anda um dia para trás no fuso do Brasil', () => {
     expect(toYMD(daYMD('2026-09-01'))).toBe('2026-09-01');
   });
 
-  it('segundaDa devolve a segunda da semana, e a própria segunda', () => {
-    expect(toYMD(segundaDa(daYMD('2026-09-01')))).toBe('2026-08-31'); // terça -> segunda
-    expect(toYMD(segundaDa(daYMD('2026-08-31')))).toBe('2026-08-31');
-    expect(toYMD(segundaDa(daYMD('2026-09-06')))).toBe('2026-08-31'); // domingo fecha a semana
-  });
 });

@@ -21,13 +21,13 @@ export interface RegraRecorrencia {
   recorrencia_fim: string | null;
   /** Datas em que esta série não acontece. Pular não é excluir. */
   recorrencia_puladas?: string[] | null;
-}
-
-/** Segunda-feira da semana em que `d` cai. */
-export function segundaDa(d: Date): Date {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
-  return x;
+  /**
+   * Último dia de CADA ocorrência; nulo é um dia só.
+   *
+   * Coisa diferente de `recorrencia_fim`: este diz quanto tempo o evento dura,
+   * aquele diz até quando ele volta.
+   */
+  data_fim?: string | null;
 }
 
 export function toYMD(d: Date): string {
@@ -96,4 +96,56 @@ export function ocorrencias(
   }
 
   return datas;
+}
+
+/** Quantos dias UMA ocorrência dura além do próprio dia. Um dia só = 0. */
+export function duracaoEmDias(regra: RegraRecorrencia): number {
+  const fim = regra.data_fim;
+  if (!fim || fim <= regra.inicio) return 0;
+  return Math.round((daYMD(fim).getTime() - daYMD(regra.inicio).getTime()) / 86_400_000);
+}
+
+/**
+ * Todos os dias que o evento ocupa dentro de [ini, fim].
+ *
+ * É `ocorrencias` mais a duração: cada ocorrência deixa de ser um ponto e passa
+ * a ser um trecho. Feriado emendado de 24 a 26 pinta os três dias; a reunião de
+ * toda terça continua pintando um por semana.
+ *
+ * A janela é alargada para trás pela duração antes de expandir, e só depois
+ * recortada: sem isso, o feriado que começou ontem e vai até amanhã sumiria de
+ * uma tela que começa hoje — o começo dele está fora da janela, mas ele está
+ * acontecendo dentro dela.
+ */
+export function diasOcupados(regra: RegraRecorrencia, ini: string, fim: string): string[] {
+  const duracao = duracaoEmDias(regra);
+  if (duracao === 0) return ocorrencias(regra, ini, fim);
+
+  const recuado = daYMD(ini);
+  recuado.setDate(recuado.getDate() - duracao);
+
+  /*
+    Os dias pulados saem AQUI, e não dentro de `ocorrencias`.
+
+    Lá eles derrubam a ocorrência inteira, o que num evento de um dia dá no
+    mesmo — mas num feriado de 24 a 26 pular o dia 24 apagaria os três. Pulado
+    é o dia, não a ocorrência: expande tudo, depois tira os dias marcados.
+  */
+  const puladas = new Set(regra.recorrencia_puladas ?? []);
+  const semPuladas = { ...regra, recorrencia_puladas: null };
+
+  const dias: string[] = [];
+  ocorrencias(semPuladas, toYMD(recuado), fim).forEach(comeco => {
+    const d = daYMD(comeco);
+    for (let i = 0; i <= duracao; i++) {
+      const ymd = toYMD(d);
+      if (ymd > fim) break;
+      if (ymd >= ini && !puladas.has(ymd)) dias.push(ymd);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+
+  // Séries com duração maior que o intervalo entre ocorrências se sobrepõem —
+  // e um dia repetido viraria o mesmo evento desenhado duas vezes na célula.
+  return [...new Set(dias)].sort();
 }

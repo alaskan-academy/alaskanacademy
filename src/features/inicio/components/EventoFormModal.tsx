@@ -5,11 +5,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Check, ChevronRight, Loader2, X } from 'lucide-react';
-import { toYMD } from '@/lib/recorrencia';
+import { Calendar as CalendarIcon, Check, ChevronRight, Loader2, X } from 'lucide-react';
+import { toYMD, daYMD } from '@/lib/recorrencia';
 import type { Evento, TipoEvento } from '../types';
 
 const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -46,6 +49,10 @@ export function EventoFormModal({
   const [tipo, setTipo]     = useState<TipoEvento>(evento?.tipo ?? (ehAdmin ? 'reuniao' : 'folga'));
   const [titulo, setTitulo] = useState(evento?.titulo ?? '');
   const [data, setData]     = useState(evento?.data ?? dataSugerida ?? toYMD(new Date()));
+  const [dataFim, setDataFim] = useState(evento?.data_fim ?? '');
+  const [calAberto, setCalAberto] = useState(false);
+  /** Verdadeiro entre o clique do primeiro dia e o do ultimo. */
+  const [escolhendoFim, setEscolhendoFim] = useState(false);
   const [hIni, setHIni]     = useState(evento?.hora_inicio?.slice(0, 5) ?? '');
   const [hFim, setHFim]     = useState(evento?.hora_fim?.slice(0, 5) ?? '');
   const [call, setCall]     = useState(evento?.link_call ?? '');
@@ -71,6 +78,64 @@ export function EventoFormModal({
     return `${d.getDate()} de ${MES_CURTO[d.getMonth()]}`;
   };
 
+  /**
+   * O período escrito como uma pessoa escreveria.
+   *
+   * O ano só aparece quando não é o ano corrente. Escrito por extenso dos dois
+   * lados, "30 de ago de 2026 a 1 de set de 2026" não cabe na metade da linha e
+   * o campo trunca justo no fim, que é a parte que interessa — e ninguém diz o
+   * ano quando fala do feriado da semana que vem.
+   */
+  const rotuloPeriodo = (() => {
+    if (!data) return 'Escolher o dia';
+
+    const anoAtual = new Date().getFullYear();
+    const dia  = (d: Date) => `${d.getDate()} de ${MES_CURTO[d.getMonth()]}`;
+    const ano  = (d: Date) => (d.getFullYear() === anoAtual ? '' : ` de ${d.getFullYear()}`);
+
+    const de = daYMD(data);
+    if (!dataFim) return dia(de) + ano(de);
+
+    const ate = daYMD(dataFim);
+    const mesmoAno = de.getFullYear() === ate.getFullYear();
+
+    if (mesmoAno && de.getMonth() === ate.getMonth()) return `${de.getDate()} a ${dia(ate)}${ano(ate)}`;
+    if (mesmoAno) return `${dia(de)} a ${dia(ate)}${ano(ate)}`;
+    return `${dia(de)}${ano(de)} a ${dia(ate)}${ano(ate)}`;
+  })();
+
+  /**
+   * Dois cliques: o primeiro é o começo, o segundo é o fim.
+   *
+   * Contando os cliques na mão, e não pelo `onSelect` do react-day-picker.
+   * O `onSelect` do modo intervalo não recomeça: com um período já escolhido,
+   * clicar num dia qualquer ele entende como "arrastar uma das pontas", então
+   * abrir um evento de 30/8 a 1/9 e clicar no dia 10 dava "10 de ago a 1 de
+   * set" — um período que ninguém pediu e que já fechava o calendário.
+   *
+   * Aqui o primeiro clique sempre começa de novo, e enquanto o segundo não
+   * vier o evento é de um dia só. Quem quer um dia só clica uma vez e fecha,
+   * que foi exatamente como ela descreveu.
+   */
+  const clicarNoDia = (d: Date) => {
+    const ymd = toYMD(d);
+
+    if (!escolhendoFim) {
+      setData(ymd);
+      setDataFim('');
+      setEscolhendoFim(true);
+      return;
+    }
+
+    // Clicar antes do começo não é erro: é a mesma escolha ao contrário.
+    if (ymd < data) { setDataFim(data); setData(ymd); }
+    else if (ymd > data) { setDataFim(ymd); }
+    else { setDataFim(''); }
+
+    setEscolhendoFim(false);
+    setCalAberto(false);
+  };
+
   const alternar = (lista: string[], id: string) =>
     lista.includes(id) ? lista.filter(x => x !== id) : [...lista, id];
 
@@ -87,6 +152,7 @@ export function EventoFormModal({
       tipo,
       titulo: nome,
       data,
+      data_fim: dataFim || null,
       hora_inicio: ehReuniao && hIni ? hIni : null,
       hora_fim:    ehReuniao && hFim ? hFim : null,
       link_call:     ehReuniao ? (call.trim() || null) : null,
@@ -99,8 +165,12 @@ export function EventoFormModal({
       recorrencia_tipo: recTipo === 'none' ? null : recTipo,
       recorrencia_dias_semana: recTipo === 'semanal' ? recDias : null,
       recorrencia_fim: recTipo === 'none' ? null : (recFim || null),
-      /* Sem recorrência não há o que pular: a lista some junto com a série. */
-      recorrencia_puladas: recTipo === 'none' ? [] : puladas,
+      /*
+        Evento de um dia e sem repetição não tem o que pular: a lista some
+        junto. Com período, ela fica — dá para tirar um dia do meio de um
+        feriado emendado sem desmanchar o resto.
+      */
+      recorrencia_puladas: recTipo === 'none' && !dataFim ? [] : puladas,
       criado_por: userId,
     };
 
@@ -149,9 +219,54 @@ export function EventoFormModal({
                 </p>
               )}
             </div>
+            {/*
+              Um calendário, e não dois campos de data.
+
+              Feriado emendado e folga de uma semana eram um evento por dia,
+              digitados um a um e sem nada ligando um ao outro — apagar "as
+              férias" era apagar sete linhas e lembrar das sete. Aqui é uma
+              linha só: clica no primeiro dia, clica no último, pronto. Um
+              clique só continua sendo um dia só, que é a esmagadora maioria
+              dos casos e por isso não custa nada a mais.
+            */}
             <div>
-              <Label className="text-xs">Data</Label>
-              <Input type="date" className="mt-1" value={data} onChange={e => setData(e.target.value)} />
+              <Label className="text-xs">Quando</Label>
+              <Popover open={calAberto} onOpenChange={v => { setCalAberto(v); setEscolhendoFim(false); }}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="mt-1 flex h-10 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground hover:bg-muted/40"
+                  >
+                    <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{rotuloPeriodo}</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    locale={ptBR}
+                    numberOfMonths={1}
+                    defaultMonth={data ? daYMD(data) : undefined}
+                    selected={data ? { from: daYMD(data), to: dataFim ? daYMD(dataFim) : undefined } : undefined}
+                    onDayClick={clicarNoDia}
+                  />
+                  <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+                    {escolhendoFim
+                      ? 'Agora clique no último dia — ou feche, e fica só este.'
+                      : dataFim
+                        ? (
+                            <button
+                              type="button"
+                              onClick={() => setDataFim('')}
+                              className="hover:text-foreground"
+                            >
+                              Voltar a ser um dia só
+                            </button>
+                          )
+                        : 'Clique no primeiro dia e depois no último.'}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 

@@ -5,7 +5,14 @@ export interface Evento {
   id: string;
   tipo: TipoEvento;
   titulo: string;
-  data: string;                    // yyyy-MM-dd
+  data: string;                    // yyyy-MM-dd — o primeiro dia
+  /**
+   * Último dia DESTA ocorrência; nulo quer dizer um dia só.
+   *
+   * Não confundir com `recorrencia_fim`, que é até quando a série se repete:
+   * um é quanto tempo o evento dura, o outro é por quanto tempo ele volta.
+   */
+  data_fim: string | null;
   hora_inicio: string | null;      // HH:mm:ss
   hora_fim: string | null;
   link_call: string | null;

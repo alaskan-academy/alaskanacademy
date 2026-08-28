@@ -17,6 +17,16 @@ function quando(data: string, hIni: string | null, hFim: string | null): string 
   return s;
 }
 
+/** `de 24 a 26 de dez`, com o mês repetido só quando ele muda. */
+function periodo(de: string, ate: string): string {
+  const a = new Date(de + 'T00:00:00');
+  const b = new Date(ate + 'T00:00:00');
+  const cheio = (d: Date) => `${d.getDate()} de ${MES_CURTO[d.getMonth()]}`;
+  return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
+    ? `de ${a.getDate()} a ${cheio(b)}`
+    : `de ${cheio(a)} a ${cheio(b)}`;
+}
+
 /**
  * O detalhe do que está na agenda.
  *
@@ -53,6 +63,12 @@ export function EventoDrawer({
           </SheetTitle>
           <p className="mt-1 text-xs text-muted-foreground">
             {ROTULO_TIPO[item.tipo] ?? item.tipo} · {quando(item.data, ev?.hora_inicio ?? null, ev?.hora_fim ?? null)}
+            {/*
+              O drawer abre num dia; num evento de vários, dizer só esse dia
+              esconde metade do que a pessoa precisa saber — o dia 25 sozinho
+              não conta que a folga vai até o 27.
+            */}
+            {ev?.data_fim && ev.data_fim > ev.data && ` · ${periodo(ev.data, ev.data_fim)}`}
             {ev?.recorrencia_tipo && ' · se repete'}
           </p>
         </div>
@@ -168,7 +184,7 @@ export function EventoDrawer({
                 acontecer. Excluir apagaria a série inteira — que era a única
                 saída antes, e por isso ninguém usava.
               */}
-              {ev.recorrencia_tipo && onPular && (
+              {(ev.recorrencia_tipo || ev.data_fim) && onPular && (
                 <Button variant="outline" size="sm" onClick={() => onPular(item)}>
                   <CalendarOff className="mr-1.5 h-3.5 w-3.5" /> Pular este dia
                 </Button>

@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
-import { ocorrencias, toYMD, segundaDa } from '@/lib/recorrencia';
-import { ChevronLeft, ChevronRight, Plus, Loader2 } from 'lucide-react';
+import { diasOcupados, toYMD, daYMD } from '@/lib/recorrencia';
+import { ChevronLeft, ChevronRight, Plus, Loader2, PartyPopper } from 'lucide-react';
 import { Agenda } from '../components/Agenda';
 import { EventoDrawer } from '../components/EventoDrawer';
 import { EventoFormModal } from '../components/EventoFormModal';
@@ -17,12 +17,52 @@ import { horaCurta, type Evento, type ItemAgenda } from '../types';
 
 const DIA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
+/**
+ * Com quantos dias de antecedência o feriado é anunciado.
+ *
+ * Quatro: dá para remarcar a reunião, avisar cliente e fechar o que vence, e
+ * ainda é perto o bastante para a pessoa se importar. Um aviso de trinta dias
+ * vira paisagem e ninguém age.
+ */
+const AVISO_FERIADO_DIAS = 4;
+
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 
 interface Perfil { id: string; nome: string }
+
+const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** `2026-12-24` vira `24 de dez`. */
+function diaCurto(ymd: string): string {
+  const d = daYMD(ymd);
+  return `${d.getDate()} de ${MES_CURTO[d.getMonth()]}`;
+}
+
+/** `24 a 26 de dez` quando o mês é o mesmo, `28 de dez a 2 de jan` quando não. */
+function periodoCurto(de: string, ate: string): string {
+  if (de === ate) return diaCurto(de);
+  const a = daYMD(de);
+  const b = daYMD(ate);
+  return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
+    ? `${a.getDate()} a ${diaCurto(ate)}`
+    : `${diaCurto(de)} a ${diaCurto(ate)}`;
+}
+
+/** "na quinta", "no sábado" — domingo e sábado são os dois masculinos. */
+function diaDaSemana(ymd: string): string {
+  const n = daYMD(ymd).getDay();
+  return `${n === 0 || n === 6 ? 'no' : 'na'} ${DIA_SEMANA[n]}`;
+}
+
+/** A data de daqui a `n` dias, em `yyyy-MM-dd`. */
+function emDias(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return toYMD(d);
+}
 
 function saudacao(): string {
   const h = new Date().getHours();
@@ -54,11 +94,13 @@ export default function InicioPage() {
 
   const ehAdmin = !!perfil?.is_admin;
   const hoje = toYMD(new Date());
+  const ateFeriado = emDias(AVISO_FERIADO_DIAS);
 
   const [ancora, setAncora] = useState(() => new Date());
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [perfis, setPerfis] = useState<Perfil[]>([]);
   const [atas, setAtas] = useState<Evento[]>([]);
+  const [feriados, setFeriados] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [aberto, setAberto] = useState<ItemAgenda | null>(null);
@@ -86,7 +128,7 @@ export default function InicioPage() {
         .from('eventos')
         .select('*')
         .lte('data', fim)
-        .or(`recorrencia_tipo.not.is.null,data.gte.${ini}`),
+        .or(`recorrencia_tipo.not.is.null,data.gte.${ini},data_fim.gte.${ini}`),
       supabase.from('perfis').select('id, nome').eq('ativo', true).order('nome'),
     ]);
 
@@ -111,17 +153,42 @@ export default function InicioPage() {
       .then(({ data }) => setAtas((data as Evento[]) ?? []));
   }, [hoje, eventos]);
 
+  /*
+    Feriado à vista.
+
+    Consulta própria, e não uma leitura de `itens`: `itens` é o mês que está na
+    tela, então navegar para dezembro faria o aviso da semana que vem sumir ou
+    aparecer feriado que ainda está longe. O aviso é sobre os próximos dias,
+    não sobre o mês aberto.
+
+    Sai do calendário e de mais nada — nenhuma lista de datas no código. Apagar
+    o evento apaga o aviso, criar um cria; e feriado que a empresa inventar
+    ("emenda de fim de ano") avisa igual aos oficiais, porque para o código não
+    há diferença entre eles. O `eventos` na dependência é o que faz isso valer
+    já no mesmo instante: qualquer mexida na agenda recarrega esta consulta.
+  */
+  useEffect(() => {
+    supabase
+      .from('eventos')
+      .select('*')
+      .eq('tipo', 'feriado')
+      .lte('data', ateFeriado)
+      .or(`recorrencia_tipo.not.is.null,data.gte.${hoje},data_fim.gte.${hoje}`)
+      .then(({ data }) => setFeriados((data as Evento[]) ?? []));
+  }, [hoje, ateFeriado, eventos]);
+
   // ---- o que a agenda desenha ----
   const itens = useMemo<ItemAgenda[]>(() => {
     const lista: ItemAgenda[] = [];
     eventos.forEach(ev => {
-      const datas = ocorrencias(
+      const datas = diasOcupados(
         {
           inicio: ev.data,
           recorrencia_tipo: ev.recorrencia_tipo,
           recorrencia_dias_semana: ev.recorrencia_dias_semana,
           recorrencia_puladas: ev.recorrencia_puladas,
           recorrencia_fim: ev.recorrencia_fim,
+          data_fim: ev.data_fim,
         },
         ini, fim,
       );
@@ -152,21 +219,84 @@ export default function InicioPage() {
    * segunda.
    */
   const fora = useMemo(() => {
-    return itens
-      .filter(i => i.tipo === 'folga')
-      .sort((a, b) => a.data.localeCompare(b.data))
-      .map(i => {
-        const id = i.evento?.pessoa_id;
-        const cheio = (id && nomes[id]) || i.titulo.replace(/^Folga\s*[—-]\s*/, '');
-        const d = new Date(i.data + 'T00:00:00');
+    /*
+      Uma linha por folga, e não por dia dela.
+
+      Desde que folga pode durar mais de um dia, listar dia a dia faria uma
+      semana de férias virar "Ana na segunda, Ana na terça, Ana na quarta…" e
+      empurrar todo mundo para fora da faixa. Agrupado pelo evento, sai
+      "Ana de 24 a 28 de dez", que é o que a pessoa diria.
+    */
+    const porEvento = new Map<string, { item: ItemAgenda; de: string; ate: string }>();
+
+    itens.filter(i => i.tipo === 'folga').forEach(i => {
+      const id = i.evento?.id ?? i.chave;
+      const atual = porEvento.get(id);
+      if (!atual) { porEvento.set(id, { item: i, de: i.data, ate: i.data }); return; }
+      // O item guardado é o do primeiro dia: é ele que o clique deve abrir.
+      if (i.data < atual.de)  { atual.de = i.data; atual.item = i; }
+      if (i.data > atual.ate) { atual.ate = i.data; }
+    });
+
+    return [...porEvento.values()]
+      .sort((a, b) => a.de.localeCompare(b.de))
+      .map(({ item, de, ate }) => {
+        const id = item.evento?.pessoa_id;
+        const cheio = (id && nomes[id]) || item.titulo.replace(/^Folga\s*[—-]\s*/, '');
         return {
-          chave: i.chave,
-          item: i,
+          chave: item.chave,
+          item,
           quem: cheio.split(' ')[0],
-          dia: DIA_SEMANA[d.getDay()],
+          quando: de === ate ? diaDaSemana(de) : `de ${periodoCurto(de, ate)}`,
         };
       });
   }, [itens, nomes]);
+
+  /**
+   * Os feriados que chegam nos próximos dias, com o "quando" já escrito.
+   *
+   * Passa pela mesma expansão de recorrência da agenda: feriado que alguém
+   * cadastrar como série (uma folga coletiva de três dias, por exemplo) avisa
+   * em cada dia dela, e um dia pulado não avisa — a regra é uma só, e não uma
+   * segunda cópia aqui dentro.
+   */
+  const feriadosAVista = useMemo(() => {
+    const lista: { chave: string; item: ItemAgenda; quando: string }[] = [];
+
+    feriados.forEach(ev => {
+      const dias = diasOcupados(
+        {
+          inicio: ev.data,
+          recorrencia_tipo: ev.recorrencia_tipo,
+          recorrencia_dias_semana: ev.recorrencia_dias_semana,
+          recorrencia_puladas: ev.recorrencia_puladas,
+          recorrencia_fim: ev.recorrencia_fim,
+          data_fim: ev.data_fim,
+        },
+        hoje, ateFeriado,
+      );
+      if (dias.length === 0) return;
+
+      // Um aviso por feriado, não por dia dele: um emendado de três dias
+      // apareceria três vezes na mesma faixa dizendo a mesma coisa.
+      const de  = dias[0];
+      const ate = dias[dias.length - 1];
+      const faltam = Math.round((daYMD(de).getTime() - daYMD(hoje).getTime()) / 86_400_000);
+
+      const inicio =
+        faltam === 0 ? 'é hoje'
+        : faltam === 1 ? 'é amanhã'
+        : `${diaDaSemana(de)}, em ${faltam} dias`;
+
+      lista.push({
+        chave: `${ev.id}@${de}`,
+        item: { chave: `${ev.id}@${de}`, data: de, tipo: ev.tipo, titulo: ev.titulo, hora: null, evento: ev },
+        quando: de === ate ? inicio : `${periodoCurto(de, ate)} — começa ${inicio.replace(/^é /, '')}`,
+      });
+    });
+
+    return lista.sort((a, b) => a.item.data.localeCompare(b.item.data));
+  }, [feriados, hoje, ateFeriado]);
 
   const mover = (passo: number) =>
     setAncora(a => new Date(a.getFullYear(), a.getMonth() + passo, 1));
@@ -254,6 +384,27 @@ export default function InicioPage() {
         {/* ---- saúde do sistema: só admin e sócio ---- */}
         {ehAdmin && <SaudeSistema />}
 
+        {/* ---- feriado à vista ---- */}
+        {feriadosAVista.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-2.5 text-sm">
+            <PartyPopper className="h-3.5 w-3.5 shrink-0 text-amber-300/80" />
+            <span className="font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
+              {feriadosAVista.length === 1 ? 'feriado à vista' : 'feriados à vista'}
+            </span>
+            {feriadosAVista.map((f, i) => (
+              <button
+                key={f.chave}
+                type="button"
+                onClick={() => setAberto(f.item)}
+                className="text-amber-100/90 hover:text-amber-50 hover:underline"
+              >
+                {f.item.titulo} <span className="text-amber-300/70">{f.quando}</span>
+                {i < feriadosAVista.length - 1 && <span className="text-amber-300/40">,</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* ---- quem está fora ---- */}
         {fora.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-teal-400/25 bg-teal-400/[0.06] px-4 py-2.5 text-sm">
@@ -267,7 +418,7 @@ export default function InicioPage() {
                 onClick={() => setAberto(f.item)}
                 className="text-teal-100/90 hover:text-teal-50 hover:underline"
               >
-                {f.quem} <span className="text-teal-300/70">na {f.dia}</span>
+                {f.quem} <span className="text-teal-300/70">{f.quando}</span>
                 {i < fora.length - 1 && <span className="text-teal-300/40">,</span>}
               </button>
             ))}

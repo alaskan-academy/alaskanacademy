@@ -3,10 +3,18 @@ import { cn } from '@/lib/utils';
 import { toYMD } from '@/lib/recorrencia';
 import { COR_TIPO, type ItemAgenda } from '../types';
 
-/** As 42 células do mês, começando na segunda — como o mockup e como o RotinaCalendar. */
+/** A semana começa no domingo, como o calendário que todo mundo já usa. */
+const CABECALHO = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+/**
+ * As 42 células do mês, começando no domingo da semana em que cai o dia 1.
+ *
+ * `getDay()` já devolve 0 para domingo, então recuar essa quantidade de dias a
+ * partir do dia 1 dá exatamente o domingo que abre a grade.
+ */
 function gradeDoMes(ano: number, mes: number): Date[] {
   const primeiro = new Date(ano, mes, 1);
-  const inicio = new Date(ano, mes, 1 - ((primeiro.getDay() + 6) % 7));
+  const inicio = new Date(ano, mes, 1 - primeiro.getDay());
   return Array.from({ length: 42 }, (_, i) =>
     new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i));
 }
@@ -46,7 +54,7 @@ export function Agenda({
     <div className="overflow-x-auto">
       <div className="min-w-[560px]">
         <div className="mb-1.5 grid grid-cols-7 gap-1.5">
-          {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map(r => (
+          {CABECALHO.map(r => (
             <span key={r} className="pb-1 text-center font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               {r}
             </span>
