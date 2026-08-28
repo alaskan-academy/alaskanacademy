@@ -122,12 +122,17 @@ type PorPagamento = {
 /**
  * Por hora do dia, em horário de Brasília.
  *
- * Sem taxa de aprovação: recusa não traz horário (toda expirada e toda
- * cancelada estão gravadas em 00:00:00), então a base ficaria só com
- * aprovadas e a taxa daria ~100% em toda hora, sempre.
+ * A taxa voltou. Ela tinha saído porque recusa não trazia horário — e não
+ * trazia por defeito nosso: a Payt sempre mandou `started_at` no payload, e a
+ * normalização nunca olhou. Corrigido e feito o backfill, de junho em diante
+ * nenhuma linha fica sem hora e a taxa por hora é fiel ao mês.
+ *
+ * Antes de maio não há payload para recuperar, então lá ela continua sem base
+ * — e é por isso que a coluna só aparece quando o período está inteiro.
  */
 type PorHora = {
-  hora: number; vendas_aprovadas: number; vendas_pendentes: number; faturamento: number;
+  hora: number; vendas_aprovadas: number; vendas_pendentes: number;
+  faturamento: number; base_taxa: number; taxa_aprovacao_pct: number;
 };
 
 /** Por dia da semana. */
@@ -153,7 +158,7 @@ type BrutoTemporal   = { data: string; vendas_aprovadas: number; vendas_pendente
 type BrutoPagamento  = { meio_pagamento: string; total_tentativas: number; aprovadas: number;
                          canceladas: number; expiradas: number; faturamento: number };
 type BrutoHora       = { hora: number; vendas_aprovadas: number; vendas_pendentes: number;
-                         faturamento: number };
+                         base_taxa: number; faturamento: number };
 type BrutoDiaSemana  = { dia_semana: number; dia_nome: string; vendas_aprovadas: number; faturamento: number };
 type BrutoMes        = { mes_ano: string; vendas_aprovadas: number; faturamento: number };
 
@@ -184,6 +189,14 @@ export default function SalesPage() {
     a tela precisa dizer que deixou.
   */
   const [semRelogio, setSemRelogio] = useState(0);
+  /*
+    Linhas do período sem hora, de QUALQUER status.
+
+    Decide se a taxa de aprovação por hora pode aparecer. Zero, aparece;
+    qualquer coisa acima, some — taxa parcialmente cega é o tipo de número que
+    parece certo e não é.
+  */
+  const [semRelogioTotal, setSemRelogioTotal] = useState(0);
 
   // Reset page when filters change
   useEffect(() => { setSalesPage(0); }, [startDateStr, endDateStr, contaIds, statusFilter]);
@@ -260,6 +273,7 @@ export default function SalesPage() {
       const rW   = { data: lista<BrutoDiaSemana>("por_dia_semana") };
       const rM   = { data: lista<BrutoMes>("por_mes") };
       setSemRelogio(Number(dados.horas_sem_relogio ?? 0));
+      setSemRelogioTotal(Number(dados.sem_relogio_total ?? 0));
       setByProduct(lista<FatiaPorProduto>("por_produto"));
 
       setTemporal(
@@ -299,12 +313,19 @@ export default function SalesPage() {
 
       // A view devolve uma linha por produto (e agora por conta), entao 24 horas viram
       setHourlyData(
-        (rH.data ?? []).map((r): PorHora => ({
-          hora: Number(r.hora ?? 0),
-          vendas_aprovadas: Number(r.vendas_aprovadas || 0),
-          vendas_pendentes: Number(r.vendas_pendentes || 0),
-          faturamento: Number(r.faturamento || 0),
-        })),
+        (rH.data ?? []).map((r): PorHora => {
+          const base = Number(r.base_taxa || 0);
+          const aprovadas = Number(r.vendas_aprovadas || 0);
+          return {
+            hora: Number(r.hora ?? 0),
+            vendas_aprovadas: aprovadas,
+            vendas_pendentes: Number(r.vendas_pendentes || 0),
+            faturamento: Number(r.faturamento || 0),
+            base_taxa: base,
+            // A taxa sai dos totais da hora, e nao de media de taxas.
+            taxa_aprovacao_pct: base > 0 ? Number(((aprovadas / base) * 100).toFixed(2)) : 0,
+          };
+        }),
       );
 
       const weekOrder = [1, 2, 3, 4, 5, 6, 0];
@@ -430,23 +451,28 @@ export default function SalesPage() {
             </ResponsiveContainer>
           </div>
           {/*
-            Saiu a "Taxa Aprov." desta aba — ela não tinha como ser verdade.
+            A "Taxa Aprov." só aparece quando o período está inteiro.
 
-            Toda venda expirada (2.434 de 2.434) e toda cancelada (595 de 595)
-            estão gravadas com hora 00:00:00, em qualquer período. O recorte por
-            hora precisa descartar quem não tem hora, então a base da taxa
-            ficava só com aprovadas: 96% a 100% em toda hora do dia, sempre,
-            enquanto a taxa real do mês é 73% a 75%.
+            Ela chegou a sair da tela: recusa não trazia horário, então a base
+            ficava só com aprovadas e a taxa dava 96% a 100% em toda hora,
+            sempre, contra 73%-75% reais do mês.
 
-            Não era o histórico antigo, como cheguei a dizer: é a recusa que
-            nunca traz horário, inclusive hoje. Enquanto ela não trouxer, a taxa
-            por hora não existe — e um número que só sabe dizer "100%" é pior
-            que coluna nenhuma.
+            A causa era nossa, não da Payt — o payload sempre trouxe
+            `started_at` e a normalização nunca olhou. Corrigido e feito o
+            backfill, de junho em diante nenhuma linha fica sem hora.
 
-            A taxa por meio de pagamento continua, e essa é confiável: lá a base
-            são as tentativas, e elas estão todas lá.
+            Antes de maio não há payload para recuperar, e ali a taxa voltaria a
+            mentir. Por isso a coluna é condicional e não permanente: some
+            inteira se qualquer linha do período estiver sem hora. Meia-taxa é
+            pior que taxa nenhuma.
           */}
-          <TableCard headers={["Hora", "Vendas", "Faturamento"]}>
+          <TableCard
+            headers={
+              semRelogioTotal === 0
+                ? ["Hora", "Vendas", "Faturamento", "Taxa Aprov."]
+                : ["Hora", "Vendas", "Faturamento"]
+            }
+          >
             {hourlyData.map((r, i) => (
               <tr
                 key={i}
@@ -458,6 +484,11 @@ export default function SalesPage() {
                 <td className="px-4 py-2 font-medium text-foreground">{r.hora}h</td>
                 <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
                 <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
+                {semRelogioTotal === 0 && (
+                  <td className="px-4 py-2 text-foreground">
+                    {formatPercent(r.taxa_aprovacao_pct || 0)}
+                  </td>
+                )}
               </tr>
             ))}
           </TableCard>
