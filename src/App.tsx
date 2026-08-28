@@ -26,8 +26,6 @@ const ClientsPage              = lazy(() => import("./features/dashboard/pages/C
 const EditorsPage              = lazy(() => import("./features/editores/pages/EditorsPage"));
 const SettingsPage             = lazy(() => import("./features/admin/pages/SettingsPage"));
 const AdminPage                = lazy(() => import("./features/admin/pages/AdminPage"));
-const RadarPage                = lazy(() => import("./features/radar/pages/RadarPage"));
-const ReferenciasPage          = lazy(() => import("./features/referencias/pages/ReferenciasPage"));
 const LaboratorioPage          = lazy(() => import("./features/laboratorio/pages/LaboratorioPage"));
 const ProcessosPage            = lazy(() => import("./features/processos/pages/ProcessosPage"));
 const ProcessosCategoriaPage   = lazy(() => import("./features/processos/pages/ProcessosCategoriaPage"));

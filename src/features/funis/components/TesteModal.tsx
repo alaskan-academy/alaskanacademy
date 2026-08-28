@@ -62,97 +62,6 @@ const PIPELINE_OPTIONS: { value: PipelineStatus; label: string }[] = [
 ];
 
 
-// ── Sync to Radar ─────────────────────────────────────────────────────────────
-
-async function syncToRadar(opts: {
-  funisTesteId: string;
-  radarTesteId: string | null;
-  tipo: string;
-  titulo: string;
-  notas: string;
-  resultadoA: string;
-  resultadoB: string;
-  varianteA: string;
-  varianteB: string;
-  vencedor: string;
-  validado: boolean;
-  dataInicio: string;
-  dataFim: string;
-  kpi: string;
-  funilNome: string;
-  // AD-specific
-  nomeAd: string;
-  linkAd: string;
-  comentarioAd: string;
-}): Promise<string | null> {
-  const {
-    funisTesteId, radarTesteId, tipo,
-    titulo, notas, resultadoA, resultadoB, varianteA, varianteB,
-    vencedor, validado, dataInicio, dataFim, kpi, funilNome,
-    nomeAd, linkAd, comentarioAd,
-  } = opts;
-
-  const status = dataFim ? 'concluido' : 'em_andamento';
-  let resultado: 'positivo' | 'negativo' | 'inconclusivo' | null = null;
-  if (dataFim) {
-    if (vencedor === 'inconclusivo') resultado = 'inconclusivo';
-    else if (validado) resultado = 'positivo';
-    else resultado = 'negativo';
-  }
-
-  let hipotese: string | null;
-  let conclusao: string | null;
-  let tituloRadar: string;
-
-  if (tipo === 'ad') {
-    tituloRadar = nomeAd || titulo || 'Sem título';
-    hipotese = comentarioAd || notas || null;
-    conclusao = resultadoA || null;
-  } else {
-    tituloRadar = titulo || 'Sem título';
-    hipotese = notas || null;
-    const parts: string[] = [];
-    if (varianteA && resultadoA) parts.push(`A (${varianteA}): ${resultadoA}`);
-    else if (resultadoA)         parts.push(`A: ${resultadoA}`);
-    if (varianteB && resultadoB) parts.push(`B (${varianteB}): ${resultadoB}`);
-    else if (resultadoB)         parts.push(`B: ${resultadoB}`);
-    conclusao = parts.join('\n\n') || null;
-  }
-
-  const tags: string[] = ['funis', tipo];
-  if (kpi) tags.push(kpi.toLowerCase());
-  if (tipo === 'ad' && linkAd) tags.push('criativo');
-
-  const metodologia = funilNome ? `Funil: ${funilNome}` : null;
-
-  const payload = {
-    titulo:      tituloRadar,
-    hipotese,
-    metodologia,
-    conclusao,
-    data_inicio: dataInicio || null,
-    data_fim:    dataFim || null,
-    status,
-    resultado,
-    tags,
-    fonte:    'funis',
-    fonte_id: funisTesteId,
-    atualizado_em: new Date().toISOString(),
-  };
-
-  if (radarTesteId) {
-    await supabase.from('radar_testes').update(payload).eq('id', radarTesteId);
-    return radarTesteId;
-  } else {
-    const { data, error } = await supabase
-      .from('radar_testes')
-      .insert({ ...payload, criado_em: new Date().toISOString() })
-      .select('id')
-      .single();
-    if (error || !data) return null;
-    return data.id as string;
-  }
-}
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
@@ -363,31 +272,17 @@ export function TesteModal({ open, onClose, onSaved, teste, funis, projetos = []
       return;
     }
 
-    const funilNome = funis.find(f => f.id === funilIds[0])?.nome ?? '';
-    const newRadarId = await syncToRadar({
-      funisTesteId,
-      radarTesteId: teste?.radar_teste_id ?? null,
-      tipo,
-      titulo: tituloFinal,
-      notas: notas.trim(),
-      resultadoA: resultadoA.trim(),
-      resultadoB: resultadoB.trim(),
-      varianteA: varianteA.trim(),
-      varianteB: varianteB.trim(),
-      vencedor,
-      validado,
-      dataInicio,
-      dataFim,
-      kpi: kpi.trim(),
-      funilNome,
-      nomeAd: nomeAd.trim(),
-      linkAd: linkAd.trim(),
-      comentarioAd: comentarioAd.trim(),
-    }).catch(() => null);
+    /*
+      O espelho no Radar nao se escreve mais aqui.
 
-    if (newRadarId && !teste?.radar_teste_id) {
-      await supabase.from('testes_funis').update({ radar_teste_id: newRadarId }).eq('id', funisTesteId);
-    }
+      Escrevia: um `syncToRadar` logo depois de salvar, mais um segundo UPDATE
+      para carimbar `radar_teste_id`. Quarta armadilha do CLAUDE.md -- espelho
+      sem gatilho -- e o estrago estava medido: de 44 testes, 21 nunca chegaram
+      ao Radar e 2 copias ficaram vivas depois que o teste foi apagado.
+
+      Agora quem faz e `trg_radar_espelha_teste_funil`, no banco, no mesmo
+      commit do salvamento: nao tem como o teste entrar e o espelho nao.
+    */
 
     setSaving(false);
     toast({ title: teste ? 'Teste atualizado' : 'Teste registrado' });

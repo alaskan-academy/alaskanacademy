@@ -1,6 +1,5 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
-import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -19,6 +18,7 @@ import {
   Sheet, Loader2, BookMarked, Settings2, Layers, Lock,
 } from 'lucide-react';
 import { AreasSection } from '../components/RadarConfigTab';
+import { CATEGORIA_LABEL } from '../categorias';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -89,15 +89,6 @@ const RESULTADO_CFG = {
   inconclusivo: { label: 'Inconclusivo', color: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
 };
 
-const CATEGORIA_LABEL: Record<string, string> = {
-  trafego: 'Tráfego',
-  criativo: 'Criativo',
-  funil_oferta: 'Funil & Oferta',
-  produto: 'Produto',
-  relacionamento: 'Relacionamento',
-  interno: 'Interno',
-};
-
 function StatusBadge({ status }: { status: Teste['status'] }) {
   const cfg = STATUS_CFG[status];
   const Icon = cfg.icon;
@@ -121,6 +112,11 @@ function ResultadoBadge({ resultado }: { resultado: Teste['resultado'] }) {
   );
 }
 
+/** O que dá para mostrar de um erro que pode ser qualquer coisa. */
+function mensagemDe(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function fmtDate(d: string | null) {
   if (!d) return null;
   return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -131,7 +127,7 @@ function fmtDate(d: string | null) {
 export function RadarContent() {
   const { perfil: authPerfil, user } = useAuth();
   const isAdmin = authPerfil?.is_admin ?? false;
-  const podeCriar = (authPerfil as any)?.radar_pode_criar !== false;
+  const podeCriar = authPerfil?.radar_pode_criar !== false;
   const confirm = useConfirm();
 
   const [areas, setAreas]       = useState<Area[]>([]);
@@ -195,16 +191,25 @@ export function RadarContent() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
       toast({ title: `Planilha atualizada — ${json.synced} testes exportados` });
-    } catch (e: any) {
-      toast({ title: 'Erro ao sincronizar', description: e.message, variant: 'destructive' });
+    } catch (e: unknown) {
+      toast({ title: 'Erro ao sincronizar', description: mensagemDe(e), variant: 'destructive' });
     } finally {
       setSyncing(false);
     }
   };
 
   // ── Load ──────────────────────────────────────────────────────────────────
+  /*
+    `loading` só na PRIMEIRA carga.
+
+    Toda recarga ligava o "Carregando...": salvar um teste apagava a grade
+    inteira e jogava a rolagem para o topo, e quem estava no fim da lista
+    perdia o lugar.
+  */
+  const primeiraCarga = useRef(true);
+
   const load = async (afterLoad?: (loaded: Teste[]) => void) => {
-    setLoading(true);
+    if (primeiraCarga.current) setLoading(true);
     const [{ data: areasData }, { data: testesData }, { data: perfisData }, { data: projetosData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
       supabase.from('radar_testes').select('*').is('deletado_em', null).order('criado_em', { ascending: false }),
@@ -219,7 +224,7 @@ export function RadarContent() {
     const perfilMap  = Object.fromEntries((perfisData   || []).map((p: PerfilSimples) => [p.id, p.nome]));
     const projetoMap = Object.fromEntries((projetosData || []).map((p: Projeto)       => [p.id, p.nome]));
 
-    const loaded = (testesData || []).map((t: any) => ({
+    const loaded = (testesData ?? []).map((t): Teste => ({
       ...t,
       area:             areaMap[t.area_id] ?? null,
       responsavel_nome: perfilMap[t.responsavel_id] ?? null,
@@ -227,6 +232,7 @@ export function RadarContent() {
     }));
     setTestes(loaded);
     setLoading(false);
+    primeiraCarga.current = false;
     afterLoad?.(loaded);
   };
 
@@ -241,19 +247,63 @@ export function RadarContent() {
       if (filtroResultado && t.resultado !== filtroResultado) return false;
       if (filtroProjeto && !(t.projeto_ids || []).includes(filtroProjeto)) return false;
       if (filtroResponsavel && t.responsavel_id !== filtroResponsavel) return false;
-      if (filtroDataDe && (!t.data_inicio || t.data_inicio < filtroDataDe)) return false;
-      if (filtroDataAte && (!t.data_inicio || t.data_inicio > filtroDataAte)) return false;
+      /*
+        O período compara com o teste INTEIRO, e não só com o começo dele.
+
+        Comparava os dois lados contra `data_inicio`: um teste que começou em
+        julho e terminou em agosto sumia de um filtro de agosto, que é
+        justamente quando alguém procura o que estava rodando no mês.
+
+        Um teste sem data nenhuma nunca casa com um período — não há como saber.
+      */
+      if (filtroDataDe || filtroDataAte) {
+        const comecou  = t.data_inicio;
+        const terminou = t.data_fim ?? t.data_inicio;
+        if (!comecou) return false;
+        if (filtroDataAte && comecou > filtroDataAte) return false;
+        if (filtroDataDe && terminou && terminou < filtroDataDe) return false;
+      }
       return true;
     });
   }, [testes, search, filtroArea, filtroStatus, filtroResultado, filtroProjeto, filtroResponsavel, filtroDataDe, filtroDataAte]);
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
+  /*
+    Os números contam o que está NA TELA.
+
+    Contavam `testes`, a lista toda: filtrar por área "Copy" deixava 6 testes
+    na grade e os cards continuavam dizendo 36 / 19 / 0 / 14. Número de resumo
+    que ignora o filtro logo acima dele é número que ninguém pode usar.
+
+    "Positivos" ganhou denominador junto: 14 sozinho não diz nada; 14 de 19
+    concluídos, sim.
+  */
   const stats = useMemo(() => ({
-    em_andamento: testes.filter(t => t.status === 'em_andamento').length,
-    concluido:    testes.filter(t => t.status === 'concluido').length,
-    pausado:      testes.filter(t => t.status === 'pausado').length,
-    positivos:    testes.filter(t => t.resultado === 'positivo').length,
-  }), [testes]);
+    em_andamento: testesFiltrados.filter(t => t.status === 'em_andamento').length,
+    concluido:    testesFiltrados.filter(t => t.status === 'concluido').length,
+    pausado:      testesFiltrados.filter(t => t.status === 'pausado').length,
+    positivos:    testesFiltrados.filter(t => t.resultado === 'positivo').length,
+  }), [testesFiltrados]);
+
+  const temFiltro = Boolean(
+    search || filtroArea || filtroStatus || filtroResultado ||
+    filtroProjeto || filtroResponsavel || filtroDataDe || filtroDataAte,
+  );
+
+  /*
+    As áreas agrupadas por categoria, com a contagem de testes de cada uma.
+
+    Das 18 áreas cadastradas, 11 não têm um único teste — e apareciam no filtro
+    do mesmo jeito que as usadas. O "· vazia" não as esconde (esconder faria a
+    lista mudar de tamanho sozinha), mas avisa antes do clique que não vem nada.
+  */
+  const areasPorCategoria = useMemo(() => {
+    const porArea = new Map<string, number>();
+    for (const t of testes) if (t.area_id) porArea.set(t.area_id, (porArea.get(t.area_id) ?? 0) + 1);
+    return areas.reduce((acc, a) => {
+      (acc[a.categoria] ??= []).push({ ...a, testes: porArea.get(a.id) ?? 0 });
+      return acc;
+    }, {} as Record<string, (Area & { testes: number })[]>);
+  }, [areas, testes]);
 
   // ── Form helpers ──────────────────────────────────────────────────────────
   const openNew = () => {
@@ -413,8 +463,8 @@ export function RadarContent() {
           variant: 'destructive',
         });
       }
-    } catch (e: any) {
-      toast({ title: 'Erro no sync Obsidian', description: e.message, variant: 'destructive' });
+    } catch (e: unknown) {
+      toast({ title: 'Erro no sync Obsidian', description: mensagemDe(e), variant: 'destructive' });
     } finally {
       setSyncingObsidian(false);
     }
@@ -454,16 +504,23 @@ export function RadarContent() {
       </div>
 
       {/* ── Stats ── */}
+      {temFiltro && (
+        <p className="text-[11px] text-muted-foreground mb-2">
+          Contando os {testesFiltrados.length} testes do filtro, de {testes.length} no total.
+        </p>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Em andamento', value: stats.em_andamento, color: 'text-blue-400' },
-          { label: 'Concluídos',   value: stats.concluido,    color: 'text-emerald-400' },
-          { label: 'Pausados',     value: stats.pausado,      color: 'text-yellow-400' },
-          { label: 'Positivos',    value: stats.positivos,    color: 'text-emerald-400' },
+          { label: 'Em andamento', value: stats.em_andamento, color: 'text-blue-400',    nota: null },
+          { label: 'Concluídos',   value: stats.concluido,    color: 'text-emerald-400', nota: null },
+          { label: 'Pausados',     value: stats.pausado,      color: 'text-yellow-400',  nota: null },
+          { label: 'Positivos',    value: stats.positivos,    color: 'text-emerald-400',
+            nota: stats.concluido > 0 ? `de ${stats.concluido} concluídos` : null },
         ].map(s => (
           <div key={s.label} className="bg-card border border-border rounded-lg px-4 py-3">
             <div className={cn('text-2xl font-bold tabular-nums', s.color)}>{s.value}</div>
             <div className="text-xs text-muted-foreground mt-0.5">{s.label}</div>
+            {s.nota && <div className="text-[10px] text-muted-foreground/60">{s.nota}</div>}
           </div>
         ))}
       </div>
@@ -479,7 +536,19 @@ export function RadarContent() {
           <SelectTrigger className="w-40 h-8 text-sm"><SelectValue placeholder="Área" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as áreas</SelectItem>
-            {areas.map(a => <SelectItem key={a.id} value={a.id}>{a.icone} {a.nome}</SelectItem>)}
+            {Object.entries(areasPorCategoria).map(([cat, lista]) => (
+              <div key={cat}>
+                <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  {CATEGORIA_LABEL[cat] || cat}
+                </div>
+                {lista.map(a => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.icone} {a.nome}
+                    {a.testes === 0 && <span className="text-muted-foreground/50"> · vazia</span>}
+                  </SelectItem>
+                ))}
+              </div>
+            ))}
           </SelectContent>
         </Select>
         <Select value={filtroStatus || 'all'} onValueChange={v => setFiltroStatus(v === 'all' ? '' : v)}>
@@ -914,6 +983,3 @@ export function RadarContent() {
   );
 }
 
-export default function RadarPage() {
-  return <DashboardLayout title="Radar"><RadarContent /></DashboardLayout>;
-}

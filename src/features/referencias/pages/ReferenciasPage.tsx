@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { CATEGORIA_LABEL } from '@/features/radar/categorias';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
-import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -53,18 +53,11 @@ type FormState = {
   links: string[];
   imagensExistentes: string[];
   imagensPendentes: File[];
+  /** Tiradas na tela, ainda no Storage: só somem de lá quando o salvar der certo. */
+  imagensRemovidas: string[];
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const CATEGORIA_LABEL: Record<string, string> = {
-  trafego:        'Tráfego',
-  criativo:       'Criativo',
-  funil_oferta:   'Funil & Oferta',
-  produto:        'Produto',
-  relacionamento: 'Relacionamento',
-  interno:        'Interno',
-};
 
 const blankForm = (): FormState => ({
   titulo:             '',
@@ -74,11 +67,17 @@ const blankForm = (): FormState => ({
   links:              [''],
   imagensExistentes:  [],
   imagensPendentes:   [],
+  imagensRemovidas:   [],
 });
 
 function fmtDate(d: string | null) {
   if (!d) return null;
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+/** O que dá para mostrar de um erro que pode ser qualquer coisa. */
+function mensagemDe(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 function hostnameOf(url: string) {
@@ -87,6 +86,23 @@ function hostnameOf(url: string) {
 
 function storagePathFrom(url: string) {
   return url.split('/storage/v1/object/public/referencias/')[1] ?? null;
+}
+
+/**
+ * A mesma imagem, no tamanho em que ela vai aparecer.
+ *
+ * A grade mostra tiras de 140px de altura e a galeria, quadros de 160px — e as
+ * duas baixavam o arquivo original. São 17 MB no bucket, 398 KB de média e um
+ * de 2,5 MB, tudo isso para caber num quadradinho.
+ *
+ * O endpoint de transformação do Storage resolve, e de quebra devolve WebP
+ * quando o navegador aceita. Se a URL não for do bucket (nada garante que seja),
+ * volta a original em vez de montar um endereço quebrado.
+ */
+function miniatura(url: string, largura: number): string {
+  if (!storagePathFrom(url)) return url;
+  return url.replace('/storage/v1/object/public/', '/storage/v1/render/image/public/')
+    + `?width=${largura}&quality=75`;
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
@@ -119,8 +135,12 @@ export function ReferenciasContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
+  /* `loading` só na primeira carga: recarregar depois de salvar apagava a
+     grade e jogava a rolagem para o topo. */
+  const primeiraCarga = useRef(true);
+
   const load = async () => {
-    setLoading(true);
+    if (primeiraCarga.current) setLoading(true);
     const [{ data: areasData }, { data: refsData }, { data: perfisData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
       supabase.from('referencias').select('*').is('deletado_em', null).order('criado_em', { ascending: false }),
@@ -129,8 +149,8 @@ export function ReferenciasContent() {
     setAreas(areasData || []);
     setPerfis(perfisData || []);
     const areaMap  = Object.fromEntries((areasData  || []).map((a: Area)    => [a.id, a]));
-    const perfilMap = Object.fromEntries((perfisData || []).map((p: any)    => [p.id, p.nome]));
-    setReferencias((refsData || []).map((r: any) => ({
+    const perfilMap = Object.fromEntries((perfisData || []).map(pf => [pf.id, pf.nome]));
+    setReferencias((refsData ?? []).map((r): Referencia => ({
       ...r,
       links:            r.links   || [],
       imagens:          r.imagens || [],
@@ -139,12 +159,13 @@ export function ReferenciasContent() {
       criado_por_nome:  perfilMap[r.criado_por] ?? null,
     })));
     setLoading(false);
+    primeiraCarga.current = false;
   };
 
   useEffect(() => { load(); }, []);
 
   // ── Filtros ───────────────────────────────────────────────────────────────
-  const applyFilters = (list: Referencia[]) => list.filter(r => {
+  const applyFilters = useCallback((list: Referencia[]) => list.filter(r => {
     if (search) {
       const q = search.toLowerCase();
       const match = r.titulo.toLowerCase().includes(q)
@@ -157,10 +178,10 @@ export function ReferenciasContent() {
     if (filtroDataDe && r.criado_em.slice(0, 10) < filtroDataDe) return false;
     if (filtroDataAte && r.criado_em.slice(0, 10) > filtroDataAte) return false;
     return true;
-  });
+  }), [search, filtroArea, filtroCriador, filtroDataDe, filtroDataAte]);
 
-  const filtradas   = useMemo(() => applyFilters(referencias.filter(r => !r.arquivado)), [referencias, search, filtroArea, filtroCriador, filtroDataDe, filtroDataAte]);
-  const arquivadas  = useMemo(() => applyFilters(referencias.filter(r =>  r.arquivado)),  [referencias, search, filtroArea, filtroCriador, filtroDataDe, filtroDataAte]);
+  const filtradas  = useMemo(() => applyFilters(referencias.filter(r => !r.arquivado)), [referencias, applyFilters]);
+  const arquivadas = useMemo(() => applyFilters(referencias.filter(r =>  r.arquivado)), [referencias, applyFilters]);
 
   // ── Form helpers ──────────────────────────────────────────────────────────
   const openNew = () => {
@@ -181,6 +202,7 @@ export function ReferenciasContent() {
       links:             r.links.length > 0 ? [...r.links, ''] : [''],
       imagensExistentes: [...(r.imagens || [])],
       imagensPendentes:  [],
+      imagensRemovidas:  [],
     });
     setPreviewUrls([]);
     setOpenForm(true);
@@ -202,7 +224,15 @@ export function ReferenciasContent() {
   const removeLink = (idx: number) =>
     setForm(prev => ({ ...prev, links: prev.links.filter((_, i) => i !== idx) }));
 
-  // OG auto-fill título quando vazio
+  /*
+    Preenche o título a partir do primeiro link, quando ele está vazio.
+
+    Vale dizer alto: o endereço digitado é enviado ao `api.microlink.io`, um
+    serviço de fora, para ler o título da página. São links públicos (biblioteca
+    de anúncios, páginas de concorrente), mas mandar dado para fora sem avisar
+    é o tipo de coisa que ninguém descobre até descobrir — por isso o aviso
+    também está na tela, embaixo do campo de links.
+  */
   const tryFetchOG = async (url: string) => {
     if (!url || form.titulo.trim()) return;
     try {
@@ -211,7 +241,11 @@ export function ReferenciasContent() {
       if (json.status === 'success' && json.data?.title) {
         setForm(prev => prev.titulo.trim() ? prev : { ...prev, titulo: json.data.title });
       }
-    } catch {}
+    } catch {
+      /* O microlink pode estar fora, ou o link pode não ter título: o campo
+         fica em branco para ela preencher, que é o que aconteceria de qualquer
+         jeito sem esta consulta. */
+    }
   };
 
   // ── Imagens ───────────────────────────────────────────────────────────────
@@ -229,23 +263,47 @@ export function ReferenciasContent() {
     setPreviewUrls(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const removeExisting = async (url: string) => {
-    const path = storagePathFrom(url);
-    if (path) await supabase.storage.from('referencias').remove([path]);
-    setForm(prev => ({ ...prev, imagensExistentes: prev.imagensExistentes.filter(u => u !== url) }));
+  /*
+    Tirar a imagem da tela NÃO a tira do Storage.
+
+    Tirava: o clique no X chamava `storage.remove()` na hora. Quem tirasse uma
+    imagem e depois clicasse em Cancelar ficava com a linha do banco apontando
+    para um arquivo que não existia mais — imagem quebrada, e sem desfazer.
+
+    Agora ela entra numa lista de espera, e só some do Storage depois que o
+    salvar deu certo.
+  */
+  const removeExisting = (url: string) => {
+    setForm(prev => ({
+      ...prev,
+      imagensExistentes: prev.imagensExistentes.filter(u => u !== url),
+      imagensRemovidas:  [...prev.imagensRemovidas, url],
+    }));
+  };
+
+  /*
+    A RLS de `referencias` passou a ser "dono ou admin", igual à do Radar e
+    igual ao que a tela já dizia. Só que update barrado por RLS não devolve
+    erro: devolve ZERO linhas, calado. Sem `.select()`, a tela mostrava
+    "Referência arquivada" e nada acontecia.
+  */
+  const apagarDoStorage = async (urls: string[]) => {
+    const paths = urls.map(storagePathFrom).filter((x): x is string => !!x);
+    if (paths.length > 0) await supabase.storage.from('referencias').remove(paths);
   };
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const save = async () => {
     if (!form.titulo.trim()) return toast({ title: 'Título obrigatório', variant: 'destructive' });
     setSaving(true);
+    /* Fora do `try` para o `catch` alcançar o que já subiu e poder limpar. */
+    const newUrls: string[] = [];
     try {
       const cleanLinks = form.links.map(l => l.trim()).filter(Boolean);
       const tags       = form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
       const refId      = editingId || crypto.randomUUID();
 
       // Upload imagens pendentes
-      const newUrls: string[] = [];
       for (const file of form.imagensPendentes) {
         const ext  = file.name.split('.').pop() || 'jpg';
         const path = `${refId}/${crypto.randomUUID()}.${ext}`;
@@ -271,18 +329,32 @@ export function ReferenciasContent() {
         atualizado_por: user?.id ?? null,
       };
 
-      const { error } = editingId
-        ? await supabase.from('referencias').update(payload).eq('id', editingId)
-        : await supabase.from('referencias').insert({ ...payload, id: refId, criado_por: user?.id });
+      const { data: gravadas, error } = editingId
+        ? await supabase.from('referencias').update(payload).eq('id', editingId).select('id')
+        : await supabase.from('referencias')
+            .insert({ ...payload, id: refId, criado_por: user?.id }).select('id');
 
       if (error) throw error;
+      if (!gravadas || gravadas.length === 0) {
+        throw new Error('Você só pode editar referências que criou.');
+      }
+
+      /* Só agora as tiradas na tela saem do Storage: a gravação deu certo. */
+      await apagarDoStorage(form.imagensRemovidas);
 
       toast({ title: editingId ? 'Referência atualizada' : 'Referência criada' });
       closeForm();
       load();
       silentSyncSheets();
-    } catch (e: any) {
-      toast({ title: 'Erro ao salvar', description: e.message, variant: 'destructive' });
+    } catch (e: unknown) {
+      /*
+        O upload vem ANTES da gravação, e por isso a falha deixava arquivo para
+        trás — cada nova tentativa gera um `refId` novo e uma pasta órfã nova.
+        Eram 12 dos 44 arquivos do bucket, todos em pastas de referência que
+        nunca chegou a existir.
+      */
+      await apagarDoStorage(newUrls);
+      toast({ title: 'Erro ao salvar', description: mensagemDe(e), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -294,8 +366,10 @@ export function ReferenciasContent() {
       title: 'Arquivar referência?',
       description: 'A referência será ocultada da lista principal e movida para a área de arquivados.',
     }))) return;
-    const { error } = await supabase.from('referencias').update({ arquivado: true }).eq('id', r.id);
+    const { data, error } = await supabase.from('referencias')
+      .update({ arquivado: true }).eq('id', r.id).select('id');
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    if (!data?.length) return toast({ title: 'Só quem criou pode arquivar', variant: 'destructive' });
     toast({ title: 'Referência arquivada' });
     setDetalhe(null);
     load();
@@ -303,8 +377,10 @@ export function ReferenciasContent() {
   };
 
   const desarquivar = async (r: Referencia) => {
-    const { error } = await supabase.from('referencias').update({ arquivado: false }).eq('id', r.id);
+    const { data, error } = await supabase.from('referencias')
+      .update({ arquivado: false }).eq('id', r.id).select('id');
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+    if (!data?.length) return toast({ title: 'Só quem criou pode restaurar', variant: 'destructive' });
     toast({ title: 'Referência restaurada' });
     load();
     silentSyncSheets();
@@ -312,21 +388,27 @@ export function ReferenciasContent() {
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const remove = async (r: Referencia) => {
+    /*
+      O aviso dizia "excluídas permanentemente" e a linha virava soft delete: o
+      texto continuava recuperável e as imagens, não. Quem restaurasse pelo
+      banco recebia a referência com as imagens quebradas — foi o que aconteceu
+      com a única referência excluída, cujas 3 imagens já não existem.
+
+      As imagens ficam. Excluir aqui passa a ser o mesmo que excluir no Radar:
+      sai da lista, continua no histórico.
+    */
     if (!(await confirm({
       title: 'Excluir referência?',
-      description: 'A referência e todas as imagens serão excluídas permanentemente.',
+      description: 'Ela sai da lista e continua no histórico e na aba "Excluídas" do Google Sheets.',
     }))) return;
 
-    // Apaga imagens do Storage
-    const paths = (r.imagens || []).map(storagePathFrom).filter((p): p is string => !!p);
-    if (paths.length > 0) await supabase.storage.from('referencias').remove(paths);
-
-    const { error } = await supabase.from('referencias')
+    const { data, error } = await supabase.from('referencias')
       .update({ deletado_em: new Date().toISOString(), deletado_por: user?.id })
-      .eq('id', r.id);
+      .eq('id', r.id).select('id');
 
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    toast({ title: 'Referência excluída' });
+    if (!data?.length) return toast({ title: 'Só quem criou pode excluir', variant: 'destructive' });
+    toast({ title: 'Referência excluída', description: 'Salva no histórico — não se preocupe.' });
     setDetalhe(null);
     load();
     silentSyncSheets();
@@ -354,8 +436,8 @@ export function ReferenciasContent() {
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
       toast({ title: `Planilha atualizada — ${json.synced} referências exportadas` });
-    } catch (e: any) {
-      toast({ title: 'Erro ao sincronizar', description: e.message, variant: 'destructive' });
+    } catch (e: unknown) {
+      toast({ title: 'Erro ao sincronizar', description: mensagemDe(e), variant: 'destructive' });
     } finally {
       setSyncing(false);
     }
@@ -452,7 +534,7 @@ export function ReferenciasContent() {
                         i > 0 && 'border-l border-border/40',
                       )}
                     >
-                      <img src={img} alt="" className="w-full h-full object-cover" />
+                      <img src={miniatura(img, 400)} alt="" loading="lazy" className="w-full h-full object-cover" />
                       {i === 2 && r.imagens.length > 3 && (
                         <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
                           <span className="text-white text-sm font-bold">+{r.imagens.length - 3}</span>
@@ -539,13 +621,15 @@ export function ReferenciasContent() {
                     )}
                     <p className="text-sm font-medium leading-snug mb-3 line-clamp-2 text-muted-foreground">{r.titulo}</p>
                     <div className="flex items-center gap-2">
-                      <Button
-                        size="sm" variant="outline"
-                        className="h-7 text-xs"
-                        onClick={() => desarquivar(r)}
-                      >
-                        <ArchiveRestore className="h-3 w-3 mr-1" /> Restaurar
-                      </Button>
+                      {podeEditar(r) && (
+                        <Button
+                          size="sm" variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => desarquivar(r)}
+                        >
+                          <ArchiveRestore className="h-3 w-3 mr-1" /> Restaurar
+                        </Button>
+                      )}
                       {podeEditar(r) && (
                         <Button
                           size="sm" variant="ghost"
@@ -589,7 +673,7 @@ export function ReferenciasContent() {
                       <a key={i} href={img} target="_blank" rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
                         className="block overflow-hidden rounded-md border border-border hover:opacity-90 transition-opacity">
-                        <img src={img} alt="" className="w-full h-40 object-cover" />
+                        <img src={miniatura(img, 600)} alt="" loading="lazy" className="w-full h-40 object-cover" />
                       </a>
                     ))}
                   </div>
@@ -762,6 +846,10 @@ export function ReferenciasContent() {
                 <Button type="button" variant="outline" size="sm" onClick={addLink} className="w-full">
                   <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar link
                 </Button>
+                <p className="text-[11px] text-muted-foreground/70">
+                  Com o título em branco, ele é buscado a partir do primeiro link —
+                  o endereço é enviado ao microlink.io para isso.
+                </p>
               </div>
             </div>
 
@@ -776,7 +864,7 @@ export function ReferenciasContent() {
                   <div className="flex flex-wrap gap-2 mb-3">
                     {form.imagensExistentes.map((url, i) => (
                       <div key={`ex-${i}`} className="relative group w-20 h-20 shrink-0">
-                        <img src={url} alt="" className="w-full h-full object-cover rounded-md border border-border" />
+                        <img src={miniatura(url, 200)} alt="" loading="lazy" className="w-full h-full object-cover rounded-md border border-border" />
                         <button
                           type="button"
                           onClick={() => removeExisting(url)}
@@ -844,6 +932,3 @@ export function ReferenciasContent() {
   );
 }
 
-export default function ReferenciasPage() {
-  return <DashboardLayout title="Referências"><ReferenciasContent /></DashboardLayout>;
-}

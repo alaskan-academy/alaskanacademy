@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+// A lista de categorias mora num lugar so; estava copiada aqui e em mais dois arquivos.
+import { CATEGORIAS } from '../categorias';
 
 // Projetos não são gerenciados aqui — usam a tabela ofertas_editores,
 // gerenciada em Configurações → Empresas e Ofertas.
@@ -26,15 +28,6 @@ type Area = {
   ordem: number;
   ativo: boolean;
 };
-
-const CATEGORIAS = [
-  { value: 'trafego',        label: 'Tráfego' },
-  { value: 'criativo',       label: 'Criativo' },
-  { value: 'funil_oferta',   label: 'Funil & Oferta' },
-  { value: 'produto',        label: 'Produto' },
-  { value: 'relacionamento', label: 'Relacionamento' },
-  { value: 'interno',        label: 'Interno' },
-];
 
 const blankArea = () => ({ nome: '', slug: '', categoria: 'trafego', icone: '🔬', descricao: '' });
 

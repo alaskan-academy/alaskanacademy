@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { somenteAdmin } from "../_shared/somenteAdmin.ts";
 
 const SPREADSHEET_ID = "1UZKGatkgox6GC2yKuT_bPNVx5eMqh5ZERq3EaYdcLl8";
 const SHEET_ATIVOS    = "Referências";
@@ -183,6 +184,10 @@ const CORS = {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  /* A planilha leva o e-mail de todos os usuarios: quem chama precisa ser admin. */
+  const barrado = await somenteAdmin(req, CORS);
+  if (barrado) return barrado;
 
   try {
     const saJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT");
