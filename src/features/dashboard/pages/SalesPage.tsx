@@ -6,6 +6,7 @@ import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import {
   BarChart,
@@ -26,6 +27,8 @@ const statusStyles: Record<string, string> = {
   cancelada: "bg-muted text-muted-foreground border-border",
   expirada: "bg-muted text-muted-foreground border-border",
   reembolsada: "bg-destructive/20 text-destructive border-destructive/30",
+  reembolso_parcial: "bg-destructive/20 text-destructive border-destructive/30",
+  chargeback: "bg-destructive/20 text-destructive border-destructive/30",
 };
 
 const COLORS = ["hsl(239,84%,67%)", "hsl(160,60%,45%)", "hsl(38,92%,50%)", "hsl(0,72%,51%)", "hsl(280,65%,60%)"];
@@ -169,7 +172,50 @@ type BrutoHora       = { hora: number; vendas_aprovadas: number; vendas_pendente
 type BrutoDiaSemana  = { dia_semana: number; dia_nome: string; vendas_aprovadas: number; faturamento: number };
 type BrutoMes        = { mes_ano: string; vendas_aprovadas: number; faturamento: number };
 
+/**
+ * Os totais do período, para a linha de KPI.
+ *
+ * Vinham só números crus: ticket médio e taxa de aprovação se fazem aqui, a
+ * mesma regra do resto do arquivo — razão de dia não soma com razão de dia.
+ *
+ * `upsell_*` vem em campo separado porque todo recorte desta tela exclui
+ * upsell (senão a mesma pessoa entraria duas vezes), e isso apagava
+ * R$ 14.954,85 de agosto sem uma palavra na tela.
+ */
+type ResumoVendas = {
+  faturamento: number;
+  aprovadas: number;
+  tentativas: number;
+  upsell_aprovadas: number;
+  upsell_faturamento: number;
+};
+
+/** Uma linha da aba "Quando", já normalizada pelos quatro zooms. */
+type LinhaQuando = {
+  rotulo: string;
+  vendas: number;
+  faturamento: number;
+  /** Só o zoom por hora tem taxa, e só quando o período inteiro tem horário. */
+  taxa?: number;
+};
+
+/** O que `fn_vendas_lista` devolve. */
+type BrutoLista = { total: number; linhas: Venda[] };
+
 const PAGE_SIZE = 50;
+
+const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+/** "2026-08" → "ago/26". Sem `new Date`, que na virada do fuso volta um mês. */
+function rotuloDoMes(mesAno: string) {
+  const [ano, mes] = (mesAno || "").split("-");
+  const nome = MESES[Number(mes) - 1];
+  return nome && ano ? `${nome}/${ano.slice(2)}` : mesAno;
+}
+
+const RESUMO_VAZIO: ResumoVendas = {
+  faturamento: 0, aprovadas: 0, tentativas: 0, upsell_aprovadas: 0, upsell_faturamento: 0,
+};
 
 export default function SalesPage() {
   const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
@@ -187,6 +233,26 @@ export default function SalesPage() {
   const [selectedSale, setSelectedSale] = useState<Venda | null>(null);
   const [saleItems, setSaleItems] = useState<ItemDaVenda[]>([]);
   const [statusFilter, setStatusFilter] = useState("todos");
+  const [resumo, setResumo] = useState<ResumoVendas>(RESUMO_VAZIO);
+  /*
+    Os status possíveis, vindos do enum `status_venda` pelo banco.
+
+    A lista estava escrita aqui dentro com 5 valores e o enum tem 7:
+    `chargeback` (12 vendas) e `reembolso_parcial` não tinham botão, e essas
+    vendas eram inalcançáveis pela tela. Lista fixa no código que envelhece em
+    silêncio é a armadilha 3 da CLAUDE.md; a correção é derivar do banco.
+  */
+  const [statusPossiveis, setStatusPossiveis] = useState<string[]>([]);
+  /*
+    A busca da lista, e a versão adiada que de fato vai ao banco.
+
+    Sem adiar, cada tecla viraria uma consulta. 350ms é o tempo entre teclas de
+    quem digita corrido — o suficiente para uma palavra inteira virar uma
+    chamada só.
+  */
+  const [busca, setBusca] = useState("");
+  const [buscaAdiada, setBuscaAdiada] = useState("");
+  const [zoom, setZoom] = useState<"hora" | "semana" | "dia" | "mes">("dia");
   /*
     Vendas aprovadas sem hora registrada.
 
@@ -208,7 +274,50 @@ export default function SalesPage() {
   // Reset page when filters change
   useEffect(() => { setSalesPage(0); }, [startDateStr, endDateStr, contaIds, statusFilter]);
 
-  // Paginated sales fetch (runs when page OR filters change)
+  // A busca só vai ao banco quando a digitação para.
+  useEffect(() => {
+    const id = setTimeout(() => setBuscaAdiada(busca.trim()), 350);
+    return () => clearTimeout(id);
+  }, [busca]);
+
+  useEffect(() => { setSalesPage(0); }, [buscaAdiada]);
+
+  /*
+    A lista de vendas, agora com busca — e vinda do banco inteira.
+
+    Não havia como procurar uma venda: 50 por página, 48 páginas só em agosto,
+    e a única ordem era a data. Achar um pedido pelo código, pelo nome ou pelo
+    e-mail era rolar até topar com ele.
+
+    A busca precisa cruzar `vendas` e `clientes` (nome e e-mail moram lá), e o
+    PostgREST não faz OR entre a tabela e a embutida numa consulta só. Daria
+    para buscar os `cliente_id` antes e mandar a lista — e aí o corte de 1.000
+    linhas do PostgREST voltaria a agir em silêncio, que é justamente o defeito
+    que esta revisão passou desfazendo. Então a filtragem, a contagem e a
+    paginação ficam em `fn_vendas_lista`.
+  */
+  useEffect(() => {
+    const loadSales = async () => {
+      setLoadingSales(true);
+      const { data, error } = await supabase.rpc("fn_vendas_lista", {
+        p_inicio: startISO || null,
+        p_fim: endISO || null,
+        p_contas: contaIds,
+        p_status: statusFilter,
+        p_busca: buscaAdiada || null,
+        p_pagina: salesPage,
+        p_tamanho: PAGE_SIZE,
+      });
+      if (error) console.error("fn_vendas_lista:", error.message);
+      const r = (data ?? { total: 0, linhas: [] }) as BrutoLista;
+      setSalesData(r.linhas ?? []);
+      setSalesTotal(Number(r.total ?? 0));
+      setLoadingSales(false);
+    };
+    loadSales();
+  }, [salesPage, startDateStr, endDateStr, contaIds, statusFilter, buscaAdiada, startISO, endISO]);
+
+
   useEffect(() => {
     const loadSales = async () => {
       setLoadingSales(true);
@@ -281,6 +390,8 @@ export default function SalesPage() {
       const rM   = { data: lista<BrutoMes>("por_mes") };
       setSemRelogio(Number(dados.horas_sem_relogio ?? 0));
       setSemRelogioTotal(Number(dados.sem_relogio_total ?? 0));
+      setResumo({ ...RESUMO_VAZIO, ...((dados.resumo ?? {}) as Partial<ResumoVendas>) });
+      setStatusPossiveis((dados.status_possiveis ?? []) as string[]);
       setByProduct(lista<FatiaPorProduto>("por_produto"));
 
       setTemporal(
@@ -367,7 +478,7 @@ export default function SalesPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, contaIds, statusFilter]);
+  }, [startDateStr, endDateStr, contaIds, startISO, endISO]);
 
   const openDetail = async (sale: Venda) => {
     setSelectedSale(sale);
@@ -375,29 +486,134 @@ export default function SalesPage() {
     setSaleItems(items || []);
   };
 
-  // Inclui expirada nos filtros
-  const statuses = ["todos", "aprovada", "pendente", "cancelada", "expirada", "reembolsada"];
+  /*
+    Os status vêm do enum `status_venda`, pelo banco.
+
+    A lista estava escrita aqui com 5 valores, e o enum tem 7: `chargeback`
+    (12 vendas) e `reembolso_parcial` não tinham botão, então essas vendas
+    eram inalcançáveis pela tela.
+  */
+  const statuses = ["todos", ...statusPossiveis];
   const displayId = (sale: Venda) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
-  const peakHour = hourlyData.reduce(
-    (max, r) => ((r.vendas_aprovadas || 0) > (max?.vendas_aprovadas || 0) ? r : max),
-    hourlyData[0],
-  );
   const taxaBadge = (t: number) => (t > 70 ? "text-success" : t >= 50 ? "text-warning" : "text-destructive");
 
-  const tabs = [
-    { value: "horario", label: "Horário" },
-    { value: "dia", label: "Dia da Sem." },
-    { value: "lista", label: "Por Data" },
-    { value: "mes", label: "Por Mês" },
-    { value: "produto", label: "Por Produto" },
+  // Ticket e taxa saem dos totais do período, não de média de médias.
+  const ticketMedio = resumo.aprovadas > 0 ? resumo.faturamento / resumo.aprovadas : 0;
+  const taxaPeriodo = resumo.tentativas > 0 ? (resumo.aprovadas / resumo.tentativas) * 100 : 0;
+
+  /*
+    "Quando" é uma aba só, com quatro zooms.
+
+    Eram quatro abas irmãs — Horário, Dia da Sem., Por Data, Por Mês — que
+    fazem a MESMA pergunta em granularidades diferentes: mesmo dado, mesmo
+    eixo, mesmas colunas. Quatro abas para um assunto empurravam Produto e
+    Pagamento para a ponta e faziam a tela parecer um cardápio de recortes em
+    vez de uma resposta.
+
+    As barras mostram faturamento nos quatro zooms — é o que torna os quatro
+    comparáveis, e a contagem de vendas continua na tabela ao lado.
+  */
+  const zooms = [
+    { valor: "hora",   rotulo: "Hora" },
+    { valor: "semana", rotulo: "Dia da semana" },
+    { valor: "dia",    rotulo: "Dia" },
+    { valor: "mes",    rotulo: "Mês" },
+  ] as const;
+
+  const linhasQuando: LinhaQuando[] =
+    zoom === "hora"
+      ? hourlyData.map((r) => ({
+          rotulo: `${r.hora}h`,
+          vendas: r.vendas_aprovadas || 0,
+          faturamento: r.faturamento || 0,
+          taxa: semRelogioTotal === 0 ? r.taxa_aprovacao_pct : undefined,
+        }))
+      : zoom === "semana"
+        ? weekData.map((r) => ({
+            rotulo: r.dia_nome,
+            vendas: r.vendas_aprovadas || 0,
+            faturamento: r.faturamento || 0,
+          }))
+        : zoom === "dia"
+          ? temporal.map((r) => ({
+              rotulo: r.dataLabel,
+              vendas: Number(r.vendas_aprovadas || 0),
+              faturamento: Number(r.faturamento || 0),
+            }))
+          : monthData.map((r) => ({
+              // "2026-08" é como o banco agrupa; "ago/26" é como se lê.
+              rotulo: rotuloDoMes(r.mes_ano),
+              vendas: r.vendas_aprovadas || 0,
+              faturamento: r.faturamento || 0,
+            }));
+
+  // O pico é pelo faturamento, que é o que a barra desenha.
+  const pico = linhasQuando.reduce<LinhaQuando | undefined>(
+    (maior, r) => (maior && maior.faturamento >= r.faturamento ? maior : r),
+    undefined,
+  );
+  const mostraTaxa = zoom === "hora" && semRelogioTotal === 0;
+  /*
+    O eixo em milhares só quando há milhares.
+
+    Com "Hoje" selecionado o maior valor era R$ 104, e a régua fixa em "k"
+    escrevia "R$0k" nas cinco marcas — um eixo inteiro dizendo zero ao lado de
+    uma barra cheia.
+  */
+  const maiorFaturamento = linhasQuando.reduce((m, r) => Math.max(m, r.faturamento), 0);
+  const rotuloEixo = (v: number) =>
+    maiorFaturamento >= 10000
+      ? `R$${(v / 1000).toFixed(0)}k`
+      : maiorFaturamento >= 1000
+        ? `R$${(v / 1000).toFixed(1)}k`
+        : `R$${v.toFixed(0)}`;
+
+  const abas = [
+    { value: "quando", label: "Quando" },
+    { value: "produto", label: "Produto" },
     { value: "pagamento", label: "Pagamento" },
   ];
 
   return (
     <DashboardLayout title="Vendas" hideTitle>
-      <Tabs defaultValue="horario" className="space-y-4">
+      {/*
+        A linha de KPI, que não existia.
+
+        Era a única tela de dados do projeto sem número no topo: para saber
+        quanto vendeu no mês era preciso ler barras. O Resumo, o Meta Ads e o
+        Financeiro todos abrem assim.
+      */}
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Kpi rotulo="Faturamento" valor={loading ? "—" : formatCurrency(resumo.faturamento)} />
+        <Kpi rotulo="Vendas aprovadas" valor={loading ? "—" : formatNumber(resumo.aprovadas)} />
+        <Kpi rotulo="Ticket médio" valor={loading ? "—" : formatCurrency(ticketMedio)} />
+        <Kpi
+          rotulo="Taxa de aprovação"
+          valor={loading ? "—" : formatPercent(taxaPeriodo)}
+          cor={loading ? undefined : taxaBadge(taxaPeriodo)}
+          nota={loading ? undefined : `${formatNumber(resumo.tentativas)} tentativas`}
+        />
+        {/*
+          Os upsells em separado, e dizendo que estão de fora.
+
+          Todo recorte desta tela usa só vendas normais — e está certo, senão a
+          mesma pessoa entraria duas vezes. Só que em agosto isso é
+          R$ 14.954,85, 8,4% da receita, que a página omitia sem uma palavra.
+        */}
+        <Kpi
+          rotulo="Upsells"
+          valor={loading ? "—" : formatCurrency(resumo.upsell_faturamento)}
+          nota={
+            loading
+              ? undefined
+              : `${formatNumber(resumo.upsell_aprovadas)} vendas · fora dos gráficos`
+          }
+        />
+      </div>
+
+      <Tabs defaultValue="quando" className="space-y-4">
         <TabsList className="bg-secondary border border-border flex-wrap h-auto gap-1 p-1">
-          {tabs.map((t) => (
+          {abas.map((t) => (
             <TabsTrigger
               key={t.value}
               value={t.value}
@@ -408,49 +624,63 @@ export default function SalesPage() {
           ))}
         </TabsList>
 
-        {/* ── Por Horário ─────────────────────────────────── */}
-        <TabsContent value="horario">
+        {/* ── Quando ──────────────────────────────────────── */}
+        <TabsContent value="quando">
           <div className="bg-card border border-border rounded-lg p-5 mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-1">
-              Vendas por Hora
-              {peakHour && <span className="text-primary ml-2">| Pico: {peakHour.hora}h</span>}
-            </h3>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                Faturamento por {zooms.find((z) => z.valor === zoom)?.rotulo.toLowerCase()}
+                {pico && <span className="ml-2 text-primary">| Pico: {pico.rotulo}</span>}
+              </h3>
+              <div className="flex items-center gap-1 rounded-lg bg-secondary p-1">
+                {zooms.map((z) => (
+                  <button
+                    key={z.valor}
+                    onClick={() => setZoom(z.valor)}
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      zoom === z.valor
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {z.rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
             {/*
               O que ficou de fora, dito na tela.
 
-              Venda sem hora registrada é descartada aqui — se não fosse, metade
-              do histórico empilharia na meia-noite e o gráfico anunciaria um
-              pico que nunca existiu. Mas descartar em silêncio é o defeito que
-              esta noite inteira vem caçando: o número precisa aparecer.
-
-              São 4.288 no histórico, todas da carga inicial, que só trouxe a
-              data. De julho em diante a Payt manda a hora, e em agosto isto é
-              zero — a faixa some sozinha nos períodos recentes.
+              Venda sem hora registrada é descartada do zoom por hora — se não
+              fosse, metade do histórico empilharia na meia-noite e o gráfico
+              anunciaria um pico que nunca existiu. Mas descartar em silêncio é
+              o defeito que esta revisão vem caçando: o número precisa aparecer.
             */}
-            {semRelogio > 0 && (
+            {zoom === "hora" && semRelogio > 0 && (
               <p className="mb-3 text-xs text-muted-foreground">
                 {formatNumber(semRelogio)} venda(s) do período não entram aqui: vieram sem hora
                 registrada, da carga inicial.
               </p>
             )}
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={hourlyData}>
+              <BarChart data={linhasQuando}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                <XAxis dataKey="hora" stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}h`} />
-                <YAxis stroke="#555" tick={{ fontSize: 10 }} />
-                {/* Sem `formatter`, o balao mostrava o nome da coluna do banco:
-                    "vendas_aprovadas : 429". E o titulo dele vinha "8", sem a
-                    hora, o mesmo numero que ja esta no eixo. */}
+                <XAxis dataKey="rotulo" stroke="#555" tick={{ fontSize: 10 }} />
+                <YAxis
+                  stroke="#555"
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={rotuloEixo}
+                />
                 <Tooltip
                   {...chartTooltip}
-                  labelFormatter={(v) => `${v}h`}
-                  formatter={(v: number | string) => [formatNumber(Number(v)), "Vendas"]}
+                  formatter={(v: number | string) => [formatCurrency(Number(v)), "Faturamento"]}
                 />
-                <Bar dataKey="vendas_aprovadas" radius={[4, 4, 0, 0]}>
-                  {hourlyData.map((e, i) => (
+                <Bar dataKey="faturamento" radius={[4, 4, 0, 0]}>
+                  {linhasQuando.map((r, i) => (
                     <Cell
                       key={i}
-                      fill={peakHour && e.hora === peakHour.hora ? "hsl(38,92%,50%)" : "hsl(239,84%,67%)"}
+                      fill={pico && r.rotulo === pico.rotulo ? "hsl(38,92%,50%)" : "hsl(239,84%,67%)"}
                     />
                   ))}
                 </Bar>
@@ -458,329 +688,113 @@ export default function SalesPage() {
             </ResponsiveContainer>
           </div>
           {/*
-            A "Taxa Aprov." só aparece quando o período está inteiro.
-
-            Ela chegou a sair da tela: recusa não trazia horário, então a base
-            ficava só com aprovadas e a taxa dava 96% a 100% em toda hora,
-            sempre, contra 73%-75% reais do mês.
+            A "Taxa aprov." só aparece no zoom por hora, e só com o período
+            inteiro. Ela chegou a sair da tela: recusa não trazia horário, então
+            a base ficava só com aprovadas e a taxa dava 96% a 100% em toda
+            hora, sempre, contra 73%-75% reais do mês.
 
             A causa era nossa, não da Payt — o payload sempre trouxe
             `started_at` e a normalização nunca olhou. Corrigido e feito o
-            backfill, de junho em diante nenhuma linha fica sem hora.
-
-            Antes de maio não há payload para recuperar, e ali a taxa voltaria a
-            mentir. Por isso a coluna é condicional e não permanente: some
-            inteira se qualquer linha do período estiver sem hora. Meia-taxa é
-            pior que taxa nenhuma.
+            backfill, de junho em diante nenhuma linha fica sem hora. Antes de
+            maio não há payload para recuperar, e ali a taxa voltaria a mentir:
+            por isso a coluna some inteira se qualquer linha do período estiver
+            sem hora. Meia-taxa é pior que taxa nenhuma.
           */}
           <TableCard
             headers={
-              semRelogioTotal === 0
-                ? ["Hora", "Vendas", "Faturamento", "Taxa Aprov."]
-                : ["Hora", "Vendas", "Faturamento"]
+              mostraTaxa
+                ? ["Período", "Vendas", "Faturamento", "Ticket médio", "Taxa aprov."]
+                : ["Período", "Vendas", "Faturamento", "Ticket médio"]
             }
           >
-            {hourlyData.map((r, i) => (
+            {linhasQuando.map((r, i) => (
               <tr
                 key={i}
                 className={cn(
                   "border-b border-border/50 hover:bg-secondary/50",
-                  peakHour && r.hora === peakHour.hora && "bg-warning/10",
+                  pico && r.rotulo === pico.rotulo && "bg-warning/10",
                 )}
               >
-                <td className="px-4 py-2 font-medium text-foreground">{r.hora}h</td>
-                <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
-                <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
-                {semRelogioTotal === 0 && (
-                  <td className="px-4 py-2 text-foreground">
-                    {formatPercent(r.taxa_aprovacao_pct || 0)}
-                  </td>
+                <td className="px-4 py-2 font-medium text-foreground">{r.rotulo}</td>
+                <td className="px-4 py-2 tabular-nums text-foreground">{formatNumber(r.vendas)}</td>
+                <td className="px-4 py-2 tabular-nums text-foreground">{formatCurrency(r.faturamento)}</td>
+                <td className="px-4 py-2 tabular-nums text-foreground">
+                  {r.vendas > 0 ? formatCurrency(r.faturamento / r.vendas) : "-"}
+                </td>
+                {mostraTaxa && (
+                  <td className="px-4 py-2 tabular-nums text-foreground">{formatPercent(r.taxa || 0)}</td>
                 )}
               </tr>
             ))}
-          </TableCard>
-        </TabsContent>
-
-        {/* ── Por Dia da Semana ────────────────────────────── */}
-        <TabsContent value="dia">
-          <div className="bg-card border border-border rounded-lg p-5 mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Vendas por Dia da Semana</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={weekData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                <XAxis dataKey="dia_nome" stroke="#555" tick={{ fontSize: 10 }} />
-                <YAxis stroke="#555" tick={{ fontSize: 10 }} />
-                <Tooltip
-                  {...chartTooltip}
-                  formatter={(v: number | string) => [formatNumber(Number(v)), "Vendas"]}
-                />
-                <Bar dataKey="vendas_aprovadas" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <TableCard headers={["Dia", "Vendas", "Faturamento"]}>
-            {weekData.map((r, i) => (
-              <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                <td className="px-4 py-2 font-medium text-foreground">{r.dia_nome}</td>
-                <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
-                <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
-              </tr>
-            ))}
-          </TableCard>
-        </TabsContent>
-
-        {/* ── Lista / Por Data ─────────────────────────────── */}
-        <TabsContent value="lista">
-          <div className="space-y-3">
-            <div className="bg-card border border-border rounded-lg p-5">
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">Faturamento por Dia</h3>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={temporal}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                  <XAxis dataKey="dataLabel" stroke="#555" tick={{ fontSize: 10 }} />
-                  <YAxis stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    {...chartTooltip}
-                    formatter={(v: number | string) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
-                    labelFormatter={(l) => `Dia ${l}`}
-                  />
-                  <Bar dataKey="faturamento" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Filtro status */}
-            <div className="flex items-center gap-1 bg-secondary rounded-lg p-1 w-fit flex-wrap">
-              {statuses.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatusFilter(s)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-md text-xs font-medium transition-colors capitalize",
-                    statusFilter === s
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-
-            {/* Tabela com coluna Tipo */}
-            <div className="bg-card border border-border rounded-lg overflow-hidden">
-              {loading || loadingSales ? (
-                <div className="p-8 text-center text-muted-foreground">Carregando...</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        {[
-                          "Pedido",
-                          "Data",
-                          "Cliente",
-                          "Produto",
-                          "Status",
-                          "Total",
-                          "Pagamento",
-                          "UTM Source",
-                        ].map((h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {salesData.map((sale) => (
-                        <tr
-                          key={sale.id}
-                          onClick={() => openDetail(sale)}
-                          className="border-b border-border/50 hover:bg-secondary/50 cursor-pointer"
-                        >
-                          {/*
-                            A coluna "Tipo" virou uma marca ao lado do pedido.
-
-                            Ela dizia "Normal" em 96% das linhas — uma coluna
-                            inteira de largura para repetir a mesma palavra
-                            2.352 vezes e destacar 97. Etiqueta que quase nunca
-                            muda não informa: informa a exceção.
-                          */}
-                          <td className="px-4 py-3 font-mono text-xs text-foreground whitespace-nowrap">
-                            {displayId(sale)}
-                            {sale.is_upsell && (
-                              <span className="ml-2 rounded-full border border-yellow-500/30 bg-yellow-500/20 px-1.5 py-0.5 font-sans text-[10px] font-medium text-yellow-400">
-                                upsell
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-foreground whitespace-nowrap">
-                            {sale.data_venda ? format(new Date(sale.data_venda), "dd/MM/yy HH:mm") : "-"}
-                          </td>
-                          <td className="px-4 py-3 text-foreground">{sale.clientes?.nome || "-"}</td>
-                          {/*
-                            Largura travada e nome cortado: há produto com 46
-                            caracteres ("Workshop Primeira Venda em 7 dias +
-                            Comunidade 2.0") e sem o corte ele quebra em três
-                            linhas e estica a linha inteira. O nome cheio fica
-                            no `title` e no detalhe da venda.
-                          */}
-                          <td className="px-4 py-3 max-w-[220px]">
-                            <div
-                              className="truncate text-foreground"
-                              title={sale.produto_nome?.trim() || undefined}
-                            >
-                              {sale.produto_nome?.trim() || sale.produto || "-"}
-                            </div>
-                            {sale.produto_nome?.trim() && sale.produto && (
-                              <div className="text-xs capitalize text-muted-foreground">{sale.produto}</div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={cn(
-                                "px-2 py-0.5 rounded-full text-xs font-medium border",
-                                statusStyles[sale.status] || "",
-                              )}
-                            >
-                              {sale.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-medium text-foreground">
-                            {formatCurrency(sale.valor_total || 0)}
-                          </td>
-                          <td className="px-4 py-3 text-foreground capitalize">
-                            {sale.meio_pagamento?.replace("_", " ") || "-"}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-foreground">{sale.utm_source || "-"}</td>
-                        </tr>
-                      ))}
-                      {salesData.length === 0 && (
-                        <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
-                            Nenhuma venda
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-            {salesTotal > PAGE_SIZE && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border text-xs text-muted-foreground">
-                <span>
-                  {salesPage * PAGE_SIZE + 1}–{Math.min((salesPage + 1) * PAGE_SIZE, salesTotal)} de {salesTotal.toLocaleString('pt-BR')}
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    disabled={salesPage === 0}
-                    onClick={() => setSalesPage(p => p - 1)}
-                    className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
-                  >
-                    ← Anterior
-                  </button>
-                  <button
-                    disabled={(salesPage + 1) * PAGE_SIZE >= salesTotal}
-                    onClick={() => setSalesPage(p => p + 1)}
-                    className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
-                  >
-                    Próxima →
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* ── Por Mês ──────────────────────────────────────── */}
-        <TabsContent value="mes">
-          <div className="bg-card border border-border rounded-lg p-5 mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Faturamento por Mês</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
-                <XAxis dataKey="mes_ano" stroke="#555" tick={{ fontSize: 10 }} />
-                <YAxis stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip {...chartTooltip} formatter={(v: number | string) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
-                <Bar dataKey="faturamento" fill="hsl(160,60%,45%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <TableCard headers={["Mês", "Vendas", "Faturamento", "Ticket Médio"]}>
-            {monthData.map((r, i) => (
-              <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
-                <td className="px-4 py-2 font-medium text-foreground">{r.mes_ano}</td>
-                <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
-                <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
-                <td className="px-4 py-2 text-foreground">
-                  {r.vendas_aprovadas > 0 ? formatCurrency(r.faturamento / r.vendas_aprovadas) : "-"}
+            {linhasQuando.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  {loading ? "Carregando..." : "Sem vendas no período"}
                 </td>
               </tr>
-            ))}
+            )}
           </TableCard>
         </TabsContent>
 
-        {/* ── Por Produto ──────────────────────────────────── */}
+        {/* ── Produto ──────────────────────────────────────── */}
         <TabsContent value="produto">
           <div className="bg-card border border-border rounded-lg p-5">
             {/*
               Rótulo dentro da pizza: não.
 
               Com sete fatias e três delas abaixo de 1%, os rótulos se
-              empilhavam em cima uns dos outros ao lado do gráfico —
-              "Cosmeticos 0% Outros 0% Velaroma 0%" escritos por cima da mesma
-              linha. A legenda ao lado já diz nome, valor e percentual, e ela
-              cabe: a pizza vira só a proporção.
+              empilhavam uns em cima dos outros ao lado do gráfico. A legenda ao
+              lado já diz nome, valor e percentual, e ela cabe: a pizza vira só
+              a proporção.
             */}
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Faturamento por Produto</h3>
-            <div className="flex flex-col lg:flex-row items-center gap-6">
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={byProduct}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={110}
-                  >
-                    {byProduct.map((_, i) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip {...chartTooltip} formatter={(v: number | string) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2 w-full max-w-xs">
-                {byProduct.map((r, i) => {
-                  const total = byProduct.reduce((s, x) => s + x.value, 0);
-                  const pct = total > 0 ? (r.value / total) * 100 : 0;
-                  return (
-                    <div key={i} className="flex items-baseline justify-between gap-3">
-                      <div className="flex min-w-0 items-baseline gap-2">
-                        <span
-                          className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: COLORS[i % COLORS.length] }}
-                        />
-                        {/* Sem `capitalize`: os nomes vem da Payt ja escritos como
-                            a pessoa cadastrou, e a classe transformava
-                            "Curso Saponaria Brasil" em algo que ninguem escreveu. */}
-                        <span className="truncate text-sm text-foreground" title={r.name}>{r.name}</span>
+            {byProduct.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {loading ? "Carregando..." : "Sem vendas no período"}
+              </p>
+            ) : (
+              <div className="flex flex-col lg:flex-row items-center gap-6">
+                <ResponsiveContainer width="100%" height={280}>
+                  <PieChart>
+                    <Pie data={byProduct} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110}>
+                      {byProduct.map((_, i) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      {...chartTooltip}
+                      formatter={(v: number | string) => [formatCurrency(Number(v)), "Faturamento"]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-2 w-full max-w-xs">
+                  {byProduct.map((r, i) => {
+                    const total = byProduct.reduce((s, x) => s + x.value, 0);
+                    const pct = total > 0 ? (r.value / total) * 100 : 0;
+                    return (
+                      <div key={i} className="flex items-baseline justify-between gap-3">
+                        <div className="flex min-w-0 items-baseline gap-2">
+                          <span
+                            className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                          />
+                          {/* Sem `capitalize`: os nomes vêm da Payt já escritos como
+                              a pessoa cadastrou, e a classe transformava
+                              "Curso Saponaria Brasil" em algo que ninguém escreveu. */}
+                          <span className="truncate text-sm text-foreground" title={r.name}>
+                            {r.name}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+                          {formatCurrency(r.value)}
+                          <span className="ml-2 text-xs text-muted-foreground">{pct.toFixed(1)}%</span>
+                        </span>
                       </div>
-                      <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
-                        {formatCurrency(r.value)}
-                        <span className="ml-2 text-xs text-muted-foreground">{pct.toFixed(1)}%</span>
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </TabsContent>
 
@@ -792,19 +806,17 @@ export default function SalesPage() {
                 <thead>
                   <tr className="border-b border-border">
                     {/*
-                      Sete colunas, e nao oito.
+                      Sete colunas, e não oito.
 
                       Com oito a tabela passava da largura da tela e a rolagem
-                      lateral escondia justamente as duas ultimas -- taxa e
-                      ticket --, que sao o motivo de a tabela existir. Quem
-                      abria a aba via "tentativas, aprovadas, canceladas,
-                      expiradas" e tinha que descobrir que havia mais.
+                      lateral escondia justamente as duas últimas — taxa e
+                      ticket —, que são o motivo de a tabela existir.
 
-                      "Canceladas" e "Expiradas" viraram uma coluna so porque
+                      "Canceladas" e "Expiradas" viraram uma coluna só porque
                       cada meio usa uma delas e zera a outra: Pix expira (441
-                      expiradas, 0 canceladas) e cartao e recusado (131
+                      expiradas, 0 canceladas) e cartão é recusado (131
                       canceladas, 0 expiradas). Eram duas colunas para dizer
-                      "nao aprovadas", metade delas sempre em branco.
+                      "não aprovadas", metade delas sempre em branco.
                     */}
                     {[
                       "Meio",
@@ -827,25 +839,27 @@ export default function SalesPage() {
                       <td className="px-4 py-3 font-medium text-foreground">
                         {paymentLabels[r.meio_pagamento] || r.meio_pagamento}
                       </td>
-                      <td className="px-4 py-3 text-foreground">{formatNumber(r.total_tentativas || 0)}</td>
-                      <td className="px-4 py-3 text-foreground">{formatNumber(r.aprovadas || 0)}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{formatNumber(r.total_tentativas || 0)}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{formatNumber(r.aprovadas || 0)}</td>
                       <td
-                        className="px-4 py-3 text-foreground"
+                        className="px-4 py-3 tabular-nums text-foreground"
                         title={`${r.canceladas || 0} cancelada(s), ${r.expiradas || 0} expirada(s)`}
                       >
                         {formatNumber((r.canceladas || 0) + (r.expiradas || 0))}
                       </td>
-                      <td className="px-4 py-3 font-medium text-foreground">{formatCurrency(r.faturamento || 0)}</td>
-                      <td className={cn("px-4 py-3 font-medium", taxaBadge(Number(r.taxa_aprovacao_pct)))}>
+                      <td className="px-4 py-3 font-medium tabular-nums text-foreground">
+                        {formatCurrency(r.faturamento || 0)}
+                      </td>
+                      <td className={cn("px-4 py-3 font-medium tabular-nums", taxaBadge(Number(r.taxa_aprovacao_pct)))}>
                         {Number(r.taxa_aprovacao_pct).toFixed(1)}%
                       </td>
-                      <td className="px-4 py-3 text-foreground">{formatCurrency(r.ticket_medio || 0)}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{formatCurrency(r.ticket_medio || 0)}</td>
                     </tr>
                   ))}
                   {paymentData.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                        Sem dados
+                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                        {loading ? "Carregando..." : "Sem vendas no período"}
                       </td>
                     </tr>
                   )}
@@ -855,6 +869,170 @@ export default function SalesPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/*
+        A lista de vendas, fora das abas.
+
+        Ela morava dentro da aba "Por Data", embaixo do gráfico de faturamento
+        diário — a única aba que fazia duas coisas, e por isso a que parecia
+        bagunçada. As abas são recortes de um mesmo número; a lista é outra
+        tarefa: achar uma venda. Agora ela fica embaixo de todas, valendo para
+        qualquer aba aberta.
+      */}
+      <div className="mt-6 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-sm font-medium text-foreground">
+            Vendas do período
+            {salesTotal > 0 && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                {salesTotal.toLocaleString("pt-BR")}
+              </span>
+            )}
+          </h3>
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por pedido, cliente, e-mail ou produto"
+            className="h-9 w-full max-w-sm bg-secondary text-sm"
+          />
+        </div>
+
+        <div className="flex w-fit flex-wrap items-center gap-1 rounded-lg bg-secondary p-1">
+          {statuses.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors",
+                statusFilter === s
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {s.replace("_", " ")}
+            </button>
+          ))}
+        </div>
+
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          {loadingSales ? (
+            <div className="p-8 text-center text-muted-foreground">Carregando...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    {["Pedido", "Data", "Cliente", "Produto", "Status", "Total", "Pagamento", "UTM Source"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesData.map((sale) => (
+                    <tr
+                      key={sale.id}
+                      onClick={() => openDetail(sale)}
+                      className="border-b border-border/50 hover:bg-secondary/50 cursor-pointer"
+                    >
+                      {/*
+                        A coluna "Tipo" virou uma marca ao lado do pedido.
+
+                        Ela dizia "Normal" em 96% das linhas — uma coluna
+                        inteira de largura para repetir a mesma palavra e
+                        destacar as 4% que importam. Etiqueta que quase nunca
+                        muda não informa: informa a exceção.
+                      */}
+                      <td className="px-4 py-3 font-mono text-xs text-foreground whitespace-nowrap">
+                        {displayId(sale)}
+                        {sale.is_upsell && (
+                          <span className="ml-2 rounded-full border border-yellow-500/30 bg-yellow-500/20 px-1.5 py-0.5 font-sans text-[10px] font-medium text-yellow-400">
+                            upsell
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-foreground whitespace-nowrap">
+                        {sale.data_venda ? format(new Date(sale.data_venda), "dd/MM/yy HH:mm") : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{sale.clientes?.nome || "-"}</td>
+                      {/*
+                        Largura travada e nome cortado: há produto com 46
+                        caracteres ("Workshop Primeira Venda em 7 dias +
+                        Comunidade 2.0") e sem o corte ele quebra em três linhas
+                        e estica a linha inteira. O nome cheio fica no `title`
+                        e no detalhe da venda.
+                      */}
+                      <td className="px-4 py-3 max-w-[220px]">
+                        <div className="truncate text-foreground" title={sale.produto_nome?.trim() || undefined}>
+                          {sale.produto_nome?.trim() || sale.produto || "-"}
+                        </div>
+                        {sale.produto_nome?.trim() && sale.produto && (
+                          <div className="text-xs capitalize text-muted-foreground">{sale.produto}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={cn(
+                            "px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap",
+                            statusStyles[sale.status] || "bg-secondary text-muted-foreground border-border",
+                          )}
+                        >
+                          {sale.status.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium tabular-nums text-foreground">
+                        {formatCurrency(sale.valor_total || 0)}
+                      </td>
+                      <td className="px-4 py-3 text-foreground capitalize">
+                        {sale.meio_pagamento?.replace("_", " ") || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-foreground">{sale.utm_source || "-"}</td>
+                    </tr>
+                  ))}
+                  {salesData.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                        {buscaAdiada
+                          ? `Nenhuma venda para "${buscaAdiada}" neste período.`
+                          : "Nenhuma venda"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        {salesTotal > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+            <span>
+              {salesPage * PAGE_SIZE + 1}–{Math.min((salesPage + 1) * PAGE_SIZE, salesTotal)} de{" "}
+              {salesTotal.toLocaleString("pt-BR")}
+            </span>
+            <div className="flex gap-1">
+              <button
+                disabled={salesPage === 0}
+                onClick={() => setSalesPage((p) => p - 1)}
+                className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+              >
+                ← Anterior
+              </button>
+              <button
+                disabled={(salesPage + 1) * PAGE_SIZE >= salesTotal}
+                onClick={() => setSalesPage((p) => p + 1)}
+                className="px-3 py-1 rounded border border-border disabled:opacity-40 hover:bg-accent transition-colors"
+              >
+                Próxima →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
 
       {/* Modal detalhe */}
       <Dialog open={!!selectedSale} onOpenChange={() => setSelectedSale(null)}>
@@ -944,6 +1122,17 @@ export default function SalesPage() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+  );
+}
+
+/** Um número do topo: rótulo pequeno, valor grande, nota opcional embaixo. */
+function Kpi({ rotulo, valor, nota, cor }: { rotulo: string; valor: string; nota?: string; cor?: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{rotulo}</p>
+      <p className={cn("mt-1 text-xl font-semibold tabular-nums text-foreground", cor)}>{valor}</p>
+      {nota && <p className="mt-0.5 text-xs text-muted-foreground">{nota}</p>}
+    </div>
   );
 }
 
