@@ -6,6 +6,7 @@ import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ConciliacaoMeta } from "@/features/ads/components/ConciliacaoMeta";
+import type { LinhaMetricaMeta } from "@/features/ads/metricas";
 
 type Nivel = "campanha" | "adset" | "ad";
 
@@ -13,11 +14,11 @@ type Nivel = "campanha" | "adset" | "ad";
 const COLS = [
   { key: "nome", label: "Nome", fixed: true },
   { key: "investimento", label: "Gastos", money: true },
-  { key: "faturamento_atribuido", label: "Faturamento", money: true },
-  { key: "resultado", label: "Lucro", money: true },
+  { key: "faturamento_atribuido", label: "Faturamento (Meta)", money: true },
+  { key: "resultado", label: "Retorno", money: true },
   { key: "margem", label: "Margem %", pct: true },
   { key: "roas", label: "ROAS", suffix: "x" },
-  { key: "compras_meta", label: "Vendas", num: true },
+  { key: "compras_meta", label: "Vendas (Meta)", num: true },
   { key: "cpa", label: "CPA", money: true },
   { key: "taxa_video_3s", label: "V3s/Imp %", pct: true },
   { key: "taxa_video_75pct", label: "V75%/Inic %", pct: true },
@@ -50,6 +51,19 @@ function fmtCell(row: any, col: (typeof COLS)[number]) {
   return row[col.key] ?? "-";
 }
 
+/**
+ * A coluna que não rola junto.
+ *
+ * A tabela tem 24 colunas e nasceu para ser rolada de lado. Sem prender o
+ * nome, no meio da rolagem sobra uma fileira de números sem dono — e a
+ * pergunta que a tela existe para responder é "qual anúncio é esse".
+ *
+ * Precisa de fundo próprio: célula `sticky` sem fundo deixa o resto da linha
+ * passar por baixo. `group-hover` porque o realce da linha é do `<tr>`, e a
+ * célula presa não o herdaria.
+ */
+const COL_FIXA = "sticky z-10 bg-card group-hover:bg-secondary";
+
 function roasColor(v: number) {
   return v >= 3 ? "text-green-400" : v >= 1 ? "text-yellow-400" : "text-red-400";
 }
@@ -59,7 +73,7 @@ function margemColor(v: number) {
 
 export default function MetaAdsPage() {
   const { startDateStr, endDateStr, contaIds } = useFilters();
-  const [allRows, setAllRows] = useState<any[]>([]);
+  const [allRows, setAllRows] = useState<LinhaMetricaMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState("investimento");
@@ -102,7 +116,7 @@ export default function MetaAdsPage() {
         setAllRows([]);
       } else {
         setErro(null);
-        setAllRows((data as any[]) ?? []);
+        setAllRows((data as LinhaMetricaMeta[]) ?? []);
       }
       setLoading(false);
     };
@@ -215,7 +229,7 @@ export default function MetaAdsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              {showCheck && <th className="px-3 py-3 w-8" />}
+              {showCheck && <th className={cn("px-3 py-3 w-8", COL_FIXA, "left-0")} />}
               {COLS.map((c) => (
                 <th
                   key={c.key}
@@ -224,6 +238,9 @@ export default function MetaAdsPage() {
                     "px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase whitespace-nowrap",
                     !c.fixed && "cursor-pointer hover:text-foreground select-none",
                     sortCol === c.key && "text-primary",
+                    // O nome acompanha a rolagem lateral: são 24 colunas, e sem
+                    // ele a linha vira uma fileira de números sem dono.
+                    c.key === "nome" && cn(COL_FIXA, "border-r border-border", showCheck ? "left-8" : "left-0"),
                   )}
                 >
                   {c.label}
@@ -234,9 +251,9 @@ export default function MetaAdsPage() {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
+              <tr key={i} className="group border-b border-border/50 hover:bg-secondary/50">
                 {showCheck && onCheck && (
-                  <td className="px-3 py-2">
+                  <td className={cn("px-3 py-2", COL_FIXA, "left-0")}>
                     <input
                       type="checkbox"
                       checked={checked?.has(r.nivel_id) || false}
@@ -250,7 +267,10 @@ export default function MetaAdsPage() {
                     key={c.key}
                     className={cn(
                       "px-3 py-2 whitespace-nowrap",
-                      c.key === "nome" && "text-foreground font-medium max-w-48 truncate",
+                      c.key === "nome" && cn(
+                        "text-foreground font-medium max-w-48 truncate",
+                        COL_FIXA, "border-r border-border", showCheck ? "left-8" : "left-0",
+                      ),
                       c.key === "roas" && roasColor(Number(r.roas)),
                       c.key === "margem" && margemColor(Number(r.margem)),
                       c.key === "resultado" && (Number(r.resultado) >= 0 ? "text-green-400" : "text-red-400"),
@@ -313,8 +333,27 @@ export default function MetaAdsPage() {
               </button>
             </div>
           )}
+          {/*
+            De onde vem cada número, dito na tela.
+
+            "Lucro" aqui era faturamento atribuído menos gasto — e "Lucro" no
+            Resumo é depois da taxa da Payt, do Simples e do imposto de mídia.
+            A mesma palavra com duas contas em duas telas é a primeira
+            armadilha do CLAUDE.md aplicada ao vocabulário: ninguém percebe que
+            divergiu, porque as duas parecem certas.
+
+            Virou "Retorno", e o que é atribuição do Meta passou a dizer que é:
+            em agosto o Meta atribui R$ 182.499,40 enquanto a Payt registrou
+            R$ 178.200,72 — duas fontes, dois números, e a coluna não dizia de
+            qual estava falando.
+          */}
           <p className="text-xs text-muted-foreground mb-2">
             Marque campanhas para filtrar conjuntos e anúncios nas abas seguintes.
+            <span className="block mt-1">
+              Faturamento e vendas são a atribuição do Meta, não a venda registrada na Payt.
+              Retorno = faturamento atribuído − gasto; não desconta taxa, Simples nem imposto de
+              mídia — o lucro da empresa está no Resumo.
+            </span>
           </p>
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             {renderTable(campRows, "campanha", true, toggleCamp, selectedCamp)}

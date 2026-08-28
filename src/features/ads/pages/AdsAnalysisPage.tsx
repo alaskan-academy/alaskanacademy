@@ -6,6 +6,7 @@ import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, TrendingUp, DollarSign, ShoppingBag, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import type { LinhaMetricaMeta } from "@/features/ads/metricas";
 
 type SortKey = "compras_meta" | "roas" | "lucro" | "investimento" | "faturamento_atribuido" | "ctr" | "cpc" | "cpm" | "hook_rate";
 type SortDir = "asc" | "desc";
@@ -41,84 +42,75 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 
 export default function AdsAnalysisPage() {
   const { startDateStr, endDateStr, contaIds } = useFilters();
-  const [rawData, setRawData] = useState<any[]>([]);
+  const [rawData, setRawData] = useState<LinhaMetricaMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("compras_meta");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [tab, setTab] = useState("vendas");
 
+  /*
+    A soma vem do banco, pela mesma função que o Meta Ads usa.
+
+    Antes esta tela pedia a view crua no nível de anúncio e somava aqui. São
+    2.246 linhas só em agosto, e o PostgREST corta em 1.000 sem avisar: os
+    "top 5 por vendas", "por ROAS" e "por lucro" saíam de um pedaço arbitrário
+    do período — e um ranking de um pedaço arbitrário é pior que ranking
+    nenhum, porque parece completo.
+
+    A função devolve uma linha de jsonb com os três níveis já somados; aqui
+    interessa só o de anúncio.
+  */
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      
-      let q = supabase
-        .from("vw_metricas_meta_nivel")
-        .select("*")
-        .eq("nivel", "ad");
-      if (startDateStr && endDateStr) q = q.gte("data", startDateStr).lte("data", endDateStr);
-      if (contaIds.length) q = q.in("ad_account_id", contaIds);
-
-      const { data } = await q;
-      setRawData(data || []);
+      const { data, error } = await supabase.rpc("fn_metricas_meta_agregado", {
+        p_inicio: startDateStr || null,
+        p_fim: endDateStr || null,
+        p_contas: contaIds,
+      });
+      if (error) console.error("fn_metricas_meta_agregado:", error.message);
+      setRawData(((data as LinhaMetricaMeta[]) ?? []).filter(r => r.nivel === "ad"));
       setLoading(false);
     };
     load();
   }, [startDateStr, endDateStr, contaIds]);
 
-  // Agregar por ad_id (pode ter múltiplos dias)
+  /*
+    Só as razões: a soma por anúncio já veio pronta.
+
+    Elas continuam sendo calculadas aqui, e não no SQL, porque razão de um dia
+    não se soma — o CPM de 28 dias somados não é o CPM do mês. Quem agrega
+    recalcula depois.
+  */
   const ads: AdRow[] = useMemo(() => {
-    const map = new Map<string, AdRow>();
-    for (const r of rawData) {
-      const key = r.ad_id;
-      const existing = map.get(key);
-      if (existing) {
-        existing.impressoes += Number(r.impressoes || 0);
-        existing.cliques += Number(r.cliques || 0);
-        existing.investimento += Number(r.investimento || 0);
-        existing.compras_meta += Number(r.compras_meta || 0);
-        existing.faturamento_atribuido += Number(r.faturamento_atribuido || 0);
-        existing.visualizacoes_pagina += Number(r.visualizacoes_pagina || 0);
-        existing.initiate_checkout += Number(r.initiate_checkout || 0);
-        existing.video_plays += Number(r.video_plays || 0);
-        existing.video_3s += Number(r.video_3s || 0);
-        existing.video_75pct += Number(r.video_75pct || 0);
-      } else {
-        map.set(key, {
-          ad_id: key,
-          ad_nome: r.ad_nome || r.nome || "",
-          campanha_nome: r.campanha_nome || "",
-          produto: r.produto || "",
-          impressoes: Number(r.impressoes || 0),
-          cliques: Number(r.cliques || 0),
-          ctr: 0,
-          cpm: 0,
-          cpc: 0,
-          investimento: Number(r.investimento || 0),
-          compras_meta: Number(r.compras_meta || 0),
-          faturamento_atribuido: Number(r.faturamento_atribuido || 0),
-          roas: 0,
-          cpa: null,
-          visualizacoes_pagina: Number(r.visualizacoes_pagina || 0),
-          initiate_checkout: Number(r.initiate_checkout || 0),
-          video_plays: Number(r.video_plays || 0),
-          video_3s: Number(r.video_3s || 0),
-          video_75pct: Number(r.video_75pct || 0),
-          hook_rate: 0,
-          lucro: 0,
-        });
-      }
-    }
-    // Recalcular métricas derivadas
-    return [...map.values()].map((ad) => ({
-      ...ad,
-      ctr: ad.impressoes > 0 ? (ad.cliques / ad.impressoes) * 100 : 0,
-      cpm: ad.impressoes > 0 ? (ad.investimento / ad.impressoes) * 1000 : 0,
-      cpc: ad.cliques > 0 ? ad.investimento / ad.cliques : 0,
-      roas: ad.investimento > 0 ? ad.faturamento_atribuido / ad.investimento : 0,
-      cpa: ad.compras_meta > 0 ? ad.investimento / ad.compras_meta : null,
-      hook_rate: ad.impressoes > 0 ? (ad.video_3s / ad.impressoes) * 100 : 0,
-      lucro: ad.faturamento_atribuido - ad.investimento,
-    }));
+    return rawData.map((r) => {
+      const ad = {
+        ad_id: r.nivel_id,
+        ad_nome: r.nome || "",
+        campanha_nome: r.campanha_nome || "",
+        produto: r.produto || "",
+        impressoes: Number(r.impressoes || 0),
+        cliques: Number(r.cliques || 0),
+        investimento: Number(r.investimento || 0),
+        compras_meta: Number(r.compras_meta || 0),
+        faturamento_atribuido: Number(r.faturamento_atribuido || 0),
+        visualizacoes_pagina: Number(r.visualizacoes_pagina || 0),
+        initiate_checkout: Number(r.initiate_checkout || 0),
+        video_plays: Number(r.video_plays || 0),
+        video_3s: Number(r.video_3s || 0),
+        video_75pct: Number(r.video_75pct || 0),
+      } as AdRow;
+      return {
+        ...ad,
+        ctr: ad.impressoes > 0 ? (ad.cliques / ad.impressoes) * 100 : 0,
+        cpm: ad.impressoes > 0 ? (ad.investimento / ad.impressoes) * 1000 : 0,
+        cpc: ad.cliques > 0 ? ad.investimento / ad.cliques : 0,
+        roas: ad.investimento > 0 ? ad.faturamento_atribuido / ad.investimento : 0,
+        cpa: ad.compras_meta > 0 ? ad.investimento / ad.compras_meta : null,
+        hook_rate: ad.impressoes > 0 ? (ad.video_3s / ad.impressoes) * 100 : 0,
+        lucro: ad.faturamento_atribuido - ad.investimento,
+      };
+    });
   }, [rawData]);
 
   const sorted = useMemo(() => {
@@ -152,10 +144,10 @@ export default function AdsAnalysisPage() {
 
   const cols: { label: string; key: SortKey; fmt: (v: number) => string; align?: string }[] = [
     { label: "Compras", key: "compras_meta", fmt: (v) => String(Math.round(v)) },
-    { label: "Faturamento", key: "faturamento_atribuido", fmt: formatCurrency },
+    { label: "Faturamento (Meta)", key: "faturamento_atribuido", fmt: formatCurrency },
     { label: "Investimento", key: "investimento", fmt: formatCurrency },
     { label: "ROAS", key: "roas", fmt: (v) => `${v.toFixed(2)}x` },
-    { label: "Lucro", key: "lucro", fmt: formatCurrency },
+    { label: "Retorno", key: "lucro", fmt: formatCurrency },
     { label: "CTR", key: "ctr", fmt: (v) => `${v.toFixed(2)}%` },
     { label: "Hook", key: "hook_rate", fmt: (v) => `${v.toFixed(1)}%` },
     { label: "CPC", key: "cpc", fmt: formatCurrency },
@@ -228,7 +220,7 @@ export default function AdsAnalysisPage() {
         <div className="bg-card border border-border rounded-lg p-5">
           <div className="flex items-center gap-2 mb-3">
             <DollarSign className="h-4 w-4 text-primary" />
-            <h3 className="text-xs font-medium text-muted-foreground uppercase">Top Lucro</h3>
+            <h3 className="text-xs font-medium text-muted-foreground uppercase">Top Retorno</h3>
           </div>
           <div className="space-y-2">
             {topLucro.map((ad, i) => (
@@ -288,7 +280,7 @@ export default function AdsAnalysisPage() {
             <TrendingUp className="h-3 w-3 mr-1" /> Por ROAS
           </TabsTrigger>
           <TabsTrigger value="lucro" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <DollarSign className="h-3 w-3 mr-1" /> Por Lucro
+            <DollarSign className="h-3 w-3 mr-1" /> Por Retorno
           </TabsTrigger>
         </TabsList>
 
