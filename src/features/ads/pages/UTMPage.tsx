@@ -8,6 +8,7 @@ import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GeradorUtmTab } from "../components/GeradorUtmTab";
 import { cn } from "@/lib/utils";
+import { aoClicarSemArrastar } from "@/lib/clique";
 import type { LinhaNivelUtm, LinhaUtmAgregada, TuplaUtm } from "@/features/ads/utm";
 
 const LEVELS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_placement"] as const;
@@ -481,7 +482,7 @@ export default function UTMPage() {
                     {utmData.map((row, i) => (
                       <tr
                         key={i}
-                        onClick={() => drillDown(row.name)}
+                        onClick={aoClicarSemArrastar(() => drillDown(row.name))}
                         className={cn(
                           "border-b border-border/50 hover:bg-secondary/50 transition-colors",
                           levelIndex < LEVELS.length - 1 && "cursor-pointer",

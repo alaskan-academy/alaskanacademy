@@ -15,6 +15,7 @@ import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import type { Perfil, Funil } from '@/features/producao/components/types';
+import { aoClicarSemArrastar } from '@/lib/clique';
 
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -545,7 +546,7 @@ export function DesempenhoAdsView() {
                       <tr key={r.id} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors">
                         <td className="px-3 py-2 font-medium max-w-[180px]">
                           <button
-                            onClick={() => setSelectedId(r.id)}
+                            onClick={aoClicarSemArrastar(() => setSelectedId(r.id))}
                             className="truncate text-left hover:text-primary hover:underline w-full"
                           >
                             {r.nome}

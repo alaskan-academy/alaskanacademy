@@ -18,6 +18,7 @@ import { CENTROS_CUSTO } from '@/features/financeiro/constants';
 import { CampoCategoria } from '@/features/financeiro/components/CampoCategoria';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoDivergencias } from '@/features/financeiro/components/AvisoDivergencias';
+import { aoClicarSemArrastar } from '@/lib/clique';
 
 interface Transacao {
   id: string;
@@ -742,7 +743,7 @@ export default function FinanceiroRevisaoPage() {
                 return (
                   <tr
                     key={t.id}
-                    onClick={() => openModal(t)}
+                    onClick={aoClicarSemArrastar(() => openModal(t))}
                     className={cn(
                       'cursor-pointer transition-colors hover:bg-muted/30',
                       isPendente && 'bg-yellow-500/5'

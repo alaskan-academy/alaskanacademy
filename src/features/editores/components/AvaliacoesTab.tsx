@@ -12,6 +12,7 @@ import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { aoClicarSemArrastar } from '@/lib/clique';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
@@ -452,7 +453,7 @@ export function AvaliacoesTab() {
               </tr></thead>
               <tbody>
                 {filtered.map(a => (
-                  <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={() => openEdit(a, !canEditRow(a))}>
+                  <tr key={a.id} className="border-b border-border/50 hover:bg-secondary/40 cursor-pointer" onClick={aoClicarSemArrastar(() => openEdit(a, !canEditRow(a)))}>
                     <td className="px-3 py-2">{a.mes_referencia}</td>
                     <td className="px-3 py-2">{editorMap[a.editor_id] || '—'}</td>
                     <td className="px-3 py-2 font-medium">{formatCurrency(Number(a.bonus_total || 0))}</td>

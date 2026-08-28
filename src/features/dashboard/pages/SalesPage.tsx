@@ -4,6 +4,7 @@ import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
+import { aoClicarSemArrastar } from "@/lib/clique";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -1074,7 +1075,7 @@ export default function SalesPage() {
                   {salesData.map((sale) => (
                     <tr
                       key={sale.id}
-                      onClick={() => openDetail(sale)}
+                      onClick={aoClicarSemArrastar(() => openDetail(sale))}
                       className="border-b border-border/50 hover:bg-secondary/50 cursor-pointer"
                     >
                       {/*
