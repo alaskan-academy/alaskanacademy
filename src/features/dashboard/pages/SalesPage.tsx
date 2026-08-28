@@ -30,6 +30,17 @@ const statusStyles: Record<string, string> = {
 
 const COLORS = ["hsl(239,84%,67%)", "hsl(160,60%,45%)", "hsl(38,92%,50%)", "hsl(0,72%,51%)", "hsl(280,65%,60%)"];
 
+/*
+  O balão do gráfico.
+
+  `itemStyle` é o que faltava: o `color` do `contentStyle` não alcança as
+  linhas de valor — o recharts pinta cada uma com a cor da própria série. Num
+  balão de fundo quase preto, isso deixava o número em roxo-escuro sobre preto,
+  praticamente ilegível.
+
+  Cores fixas e não tokens porque o balão é desenhado com estilo inline pelo
+  recharts, fora do alcance das classes do Tailwind.
+*/
 const chartTooltip = {
   contentStyle: {
     backgroundColor: "hsl(0,0%,10%)",
@@ -38,6 +49,7 @@ const chartTooltip = {
     color: "#fff",
   },
   labelStyle: { color: "#aaa" },
+  itemStyle: { color: "#fff" },
 };
 
 const paymentLabels: Record<string, string> = {
@@ -107,10 +119,15 @@ type PorPagamento = {
   ticket_medio: number;
 };
 
-/** Por hora do dia, em horário de Brasília. */
+/**
+ * Por hora do dia, em horário de Brasília.
+ *
+ * Sem taxa de aprovação: recusa não traz horário (toda expirada e toda
+ * cancelada estão gravadas em 00:00:00), então a base ficaria só com
+ * aprovadas e a taxa daria ~100% em toda hora, sempre.
+ */
 type PorHora = {
-  hora: number; vendas_aprovadas: number; vendas_pendentes: number;
-  faturamento: number; base_taxa: number; taxa_aprovacao_pct: number;
+  hora: number; vendas_aprovadas: number; vendas_pendentes: number; faturamento: number;
 };
 
 /** Por dia da semana. */
@@ -136,7 +153,7 @@ type BrutoTemporal   = { data: string; vendas_aprovadas: number; vendas_pendente
 type BrutoPagamento  = { meio_pagamento: string; total_tentativas: number; aprovadas: number;
                          canceladas: number; expiradas: number; faturamento: number };
 type BrutoHora       = { hora: number; vendas_aprovadas: number; vendas_pendentes: number;
-                         base_taxa: number; faturamento: number };
+                         faturamento: number };
 type BrutoDiaSemana  = { dia_semana: number; dia_nome: string; vendas_aprovadas: number; faturamento: number };
 type BrutoMes        = { mes_ano: string; vendas_aprovadas: number; faturamento: number };
 
@@ -281,28 +298,14 @@ export default function SalesPage() {
       );
 
       // A view devolve uma linha por produto (e agora por conta), entao 24 horas viram
-      // ~100 linhas. Antes so ordenava, e o grafico desenhava a mesma hora varias vezes.
-      // Os outros tres graficos ja somavam; este era o unico que nao.
-      const hourMap: Record<number, PorHora> = {};
-      (rH.data ?? []).forEach((r: Record<string, unknown>) => {
-        const h = Number(r.hora ?? 0);
-        if (!hourMap[h]) {
-          hourMap[h] = { hora: h, vendas_aprovadas: 0, vendas_pendentes: 0,
-                         faturamento: 0, base_taxa: 0, taxa_aprovacao_pct: 0 };
-        }
-        hourMap[h].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
-        hourMap[h].vendas_pendentes += Number(r.vendas_pendentes || 0);
-        hourMap[h].faturamento      += Number(r.faturamento || 0);
-        hourMap[h].base_taxa        += Number(r.base_taxa || 0);
-      });
-      // A taxa se recalcula sobre os totais somados. Somar as taxas de cada produto e
-      // tirar a media daria peso igual a um produto com 3 vendas e a outro com 300.
-      Object.values(hourMap).forEach((x) => {
-        x.taxa_aprovacao_pct = x.base_taxa > 0
-          ? Number(((x.vendas_aprovadas / x.base_taxa) * 100).toFixed(2))
-          : 0;
-      });
-      setHourlyData(Object.values(hourMap).sort((a, b) => a.hora - b.hora));
+      setHourlyData(
+        (rH.data ?? []).map((r): PorHora => ({
+          hora: Number(r.hora ?? 0),
+          vendas_aprovadas: Number(r.vendas_aprovadas || 0),
+          vendas_pendentes: Number(r.vendas_pendentes || 0),
+          faturamento: Number(r.faturamento || 0),
+        })),
+      );
 
       const weekOrder = [1, 2, 3, 4, 5, 6, 0];
       const weekMap: Record<number, PorDiaDaSemana> = {};
@@ -407,7 +410,14 @@ export default function SalesPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
                 <XAxis dataKey="hora" stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `${v}h`} />
                 <YAxis stroke="#555" tick={{ fontSize: 10 }} />
-                <Tooltip {...chartTooltip} />
+                {/* Sem `formatter`, o balao mostrava o nome da coluna do banco:
+                    "vendas_aprovadas : 429". E o titulo dele vinha "8", sem a
+                    hora, o mesmo numero que ja esta no eixo. */}
+                <Tooltip
+                  {...chartTooltip}
+                  labelFormatter={(v) => `${v}h`}
+                  formatter={(v: number | string) => [formatNumber(Number(v)), "Vendas"]}
+                />
                 <Bar dataKey="vendas_aprovadas" radius={[4, 4, 0, 0]}>
                   {hourlyData.map((e, i) => (
                     <Cell
@@ -419,7 +429,24 @@ export default function SalesPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <TableCard headers={["Hora", "Vendas", "Faturamento", "Taxa Aprov."]}>
+          {/*
+            Saiu a "Taxa Aprov." desta aba — ela não tinha como ser verdade.
+
+            Toda venda expirada (2.434 de 2.434) e toda cancelada (595 de 595)
+            estão gravadas com hora 00:00:00, em qualquer período. O recorte por
+            hora precisa descartar quem não tem hora, então a base da taxa
+            ficava só com aprovadas: 96% a 100% em toda hora do dia, sempre,
+            enquanto a taxa real do mês é 73% a 75%.
+
+            Não era o histórico antigo, como cheguei a dizer: é a recusa que
+            nunca traz horário, inclusive hoje. Enquanto ela não trouxer, a taxa
+            por hora não existe — e um número que só sabe dizer "100%" é pior
+            que coluna nenhuma.
+
+            A taxa por meio de pagamento continua, e essa é confiável: lá a base
+            são as tentativas, e elas estão todas lá.
+          */}
+          <TableCard headers={["Hora", "Vendas", "Faturamento"]}>
             {hourlyData.map((r, i) => (
               <tr
                 key={i}
@@ -431,7 +458,6 @@ export default function SalesPage() {
                 <td className="px-4 py-2 font-medium text-foreground">{r.hora}h</td>
                 <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
                 <td className="px-4 py-2 text-foreground">{formatCurrency(r.faturamento || 0)}</td>
-                <td className="px-4 py-2 text-foreground">{formatPercent(r.taxa_aprovacao_pct || 0)}</td>
               </tr>
             ))}
           </TableCard>
@@ -446,7 +472,10 @@ export default function SalesPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
                 <XAxis dataKey="dia_nome" stroke="#555" tick={{ fontSize: 10 }} />
                 <YAxis stroke="#555" tick={{ fontSize: 10 }} />
-                <Tooltip {...chartTooltip} />
+                <Tooltip
+                  {...chartTooltip}
+                  formatter={(v: number | string) => [formatNumber(Number(v)), "Vendas"]}
+                />
                 <Bar dataKey="vendas_aprovadas" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
