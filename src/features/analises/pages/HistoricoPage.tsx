@@ -412,7 +412,7 @@ export default function HistoricoPage() {
   const arquivadas = rodadas.filter(r => r.arquivada_em).length;
 
   return (
-    <DashboardLayout title="Análises" hideFilters>
+    <DashboardLayout title="Análises" hideFilters hideTitle>
       <AnalisesNav />
 
       <div className="space-y-4">

@@ -505,7 +505,7 @@ export default function AnalisesPage() {
 
   if (carregando) {
     return (
-      <DashboardLayout title="Análises">
+      <DashboardLayout title="Análises" hideTitle>
         <AnalisesNav />
         <div className="flex items-center justify-center py-32">
           <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
@@ -516,7 +516,7 @@ export default function AnalisesPage() {
 
   if (revs.length === 0) {
     return (
-      <DashboardLayout title="Análises" hideFilters>
+      <DashboardLayout title="Análises" hideFilters hideTitle>
         <AnalisesNav />
         <div className="py-20 text-center space-y-2">
           <p className="text-base text-muted-foreground">Nenhum REV ativo para analisar.</p>
@@ -551,7 +551,7 @@ export default function AnalisesPage() {
     : undefined;
 
   return (
-    <DashboardLayout title="Análises" hideFilters>
+    <DashboardLayout title="Análises" hideFilters hideTitle>
       <AnalisesNav />
 
       <div className="space-y-4">

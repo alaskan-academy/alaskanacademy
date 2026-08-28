@@ -478,7 +478,7 @@ export function AtivosContent() {
 
 export default function AtivosPage() {
   return (
-    <DashboardLayout title="Ativos Meta Ads">
+    <DashboardLayout title="Ativos Meta Ads" hideTitle>
       <AtivosContent />
     </DashboardLayout>
   );

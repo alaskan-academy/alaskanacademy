@@ -144,7 +144,7 @@ export default function FinanceiroConciliacaoPage() {
   }, [transacoes]);
 
   return (
-    <DashboardLayout title="Financeiro" hideFilters>
+    <DashboardLayout title="Financeiro" hideFilters hideTitle>
       <FinanceiroNav />
 
       {/* filtros */}

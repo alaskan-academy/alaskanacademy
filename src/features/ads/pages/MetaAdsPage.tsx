@@ -256,7 +256,7 @@ export default function MetaAdsPage() {
     );
 
   return (
-    <DashboardLayout title="Meta Ads">
+    <DashboardLayout title="Meta Ads" hideTitle>
       <Tabs defaultValue="campanhas">
         <TabsList className="bg-secondary border border-border mb-4">
           <TabsTrigger

@@ -496,7 +496,7 @@ export default function OverviewPage() {
   const abaAtiva = abasDisponiveis.some(a => a.key === abaOp) ? abaOp : abasDisponiveis[0].key;
 
   return (
-    <DashboardLayout title="Visão Geral">
+    <DashboardLayout title="Visão Geral" hideTitle>
       {/* Cobra a conferência contra a Payt. Fica no topo do Resumo porque é aqui que
           os números que ela confere são lidos. */}
       <LembreteConferencia />

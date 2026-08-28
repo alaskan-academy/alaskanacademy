@@ -15,7 +15,7 @@ export default function CriativosPage() {
   const userId = user?.id ?? '';
 
   return (
-    <DashboardLayout title="Criativos" hideFilters>
+    <DashboardLayout title="Criativos" hideFilters hideTitle>
       <div className="flex items-center gap-1 mb-6 flex-wrap">
         {TABS.map(tab => (
           <button

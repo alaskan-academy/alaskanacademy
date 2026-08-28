@@ -164,13 +164,13 @@ export default function AdsAnalysisPage() {
 
   if (loading)
     return (
-      <DashboardLayout title="Análise de Ads">
+      <DashboardLayout title="Análise de Ads" hideTitle>
         <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>
       </DashboardLayout>
     );
 
   return (
-    <DashboardLayout title="Análise de Ads">
+    <DashboardLayout title="Análise de Ads" hideTitle>
       {/* Top cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-card border border-border rounded-lg p-5">

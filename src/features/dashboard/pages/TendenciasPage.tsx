@@ -574,7 +574,7 @@ export default function TendenciasPage() {
   const nomeForaDaJanela = dados.find(d => contaIds.includes(d.conta_id))?.conta;
 
   return (
-    <DashboardLayout title="Tendências" hideFilters>
+    <DashboardLayout title="Tendências" hideFilters hideTitle>
       {/* Uma linha só de controles: o recorte por conta, a janela, e a frase que diz
           exatamente o que está sendo comparado com o quê. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">

@@ -408,13 +408,13 @@ export default function FunnelPage() {
 
   if (loading)
     return (
-      <DashboardLayout title="Funil">
+      <DashboardLayout title="Funil" hideTitle>
         <div className="flex items-center justify-center h-64 text-muted-foreground animate-pulse">Carregando...</div>
       </DashboardLayout>
     );
 
   return (
-    <DashboardLayout title="Funil">
+    <DashboardLayout title="Funil" hideTitle>
       <Tabs defaultValue="geral">
         <TabsList className="bg-secondary border border-border mb-4">
           <TabsTrigger

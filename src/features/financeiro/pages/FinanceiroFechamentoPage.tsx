@@ -224,7 +224,7 @@ export default function FinanceiroFechamentoPage() {
   );
 
   return (
-    <DashboardLayout title="Financeiro" hideFilters>
+    <DashboardLayout title="Financeiro" hideFilters hideTitle>
       <FinanceiroNav />
 
       {/* Esta tela soma transação pendente junto com as revisadas. É escolha —

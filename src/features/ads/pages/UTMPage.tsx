@@ -260,7 +260,7 @@ export default function UTMPage() {
   const plTotal = placementData.reduce((s: number, r: any) => s + r.faturamento, 0);
 
   return (
-    <DashboardLayout title="Análise UTM">
+    <DashboardLayout title="Análise UTM" hideTitle>
       <Tabs defaultValue="drilldown">
         <TabsList className="bg-secondary border border-border mb-4">
           <TabsTrigger

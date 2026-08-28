@@ -93,7 +93,7 @@ export default function FunisPage() {
 
   if (state.loading) {
     return (
-      <DashboardLayout title="Funis">
+      <DashboardLayout title="Funis" hideTitle>
         <div className="flex items-center justify-center py-32">
           <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
         </div>
@@ -102,7 +102,7 @@ export default function FunisPage() {
   }
 
   return (
-    <DashboardLayout title="Funis" hideFilters>
+    <DashboardLayout title="Funis" hideFilters hideTitle>
       <div className="space-y-4">
         {/* Alert banner */}
         <AlertaBanner

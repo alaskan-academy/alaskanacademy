@@ -34,7 +34,7 @@ export default function FinanceiroGastosPage() {
   }
 
   return (
-    <DashboardLayout title="Gastos" hideFilters>
+    <DashboardLayout title="Gastos" hideFilters hideTitle>
       <FinanceiroNav />
 
       {/* O seletor governa só o "Fugiu do padrão" — o mapa mostra sempre os

@@ -505,7 +505,7 @@ export default function AcessosPage() {
   };
 
   return (
-    <DashboardLayout title="Acessos">
+    <DashboardLayout title="Acessos" hideTitle>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="relative flex-1 min-w-[200px]">

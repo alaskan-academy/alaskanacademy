@@ -310,7 +310,7 @@ export default function FinanceiroCaixaPage() {
   }
 
   return (
-    <DashboardLayout title="Caixa" hideFilters>
+    <DashboardLayout title="Caixa" hideFilters hideTitle>
       <FinanceiroNav />
 
       {/* O DRE só conta o que passou por olho humano — `confirmado` e

@@ -215,7 +215,7 @@ export default function InicioPage() {
   };
 
   return (
-    <DashboardLayout title="Início" hideFilters hideAvisos={ehAdmin}>
+    <DashboardLayout title="Início" hideFilters hideAvisos={ehAdmin} hideTitle>
       <div className="flex flex-col gap-4">
 
         <div className="flex flex-wrap items-baseline justify-between gap-2">

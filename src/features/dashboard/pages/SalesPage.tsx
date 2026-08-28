@@ -332,7 +332,7 @@ export default function SalesPage() {
   ];
 
   return (
-    <DashboardLayout title="Vendas">
+    <DashboardLayout title="Vendas" hideTitle>
       <Tabs defaultValue="horario" className="space-y-4">
         <TabsList className="bg-secondary border border-border flex-wrap h-auto gap-1 p-1">
           {tabs.map((t) => (

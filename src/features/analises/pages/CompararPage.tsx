@@ -145,7 +145,7 @@ export default function CompararPage() {
     prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   return (
-    <DashboardLayout title="Análises" hideFilters>
+    <DashboardLayout title="Análises" hideFilters hideTitle>
       <AnalisesNav />
 
       <div className="space-y-4">

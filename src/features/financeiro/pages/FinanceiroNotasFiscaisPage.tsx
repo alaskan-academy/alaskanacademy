@@ -247,7 +247,7 @@ export default function FinanceiroNotasFiscaisPage() {
   const faltamEditores = faltam.filter(i => i.tipo === 'servico');
 
   return (
-    <DashboardLayout title="Notas Fiscais" hideFilters>
+    <DashboardLayout title="Notas Fiscais" hideFilters hideTitle>
       <FinanceiroNav />
 
       <div className="flex items-center gap-2 mb-4">

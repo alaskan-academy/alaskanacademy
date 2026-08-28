@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
 import { IngestStatusBanner } from '@/components/IngestStatusBanner';
@@ -17,12 +17,18 @@ export function DashboardLayout({
   title: string;
   hideFilters?: boolean;
   /**
-   * Para a tela que já diz o próprio nome no corpo.
+   * Esconde o nome da tela no cabeçalho — no computador.
    *
-   * Em Processos o banner anuncia "Central de Processos" logo abaixo, e na
-   * categoria o nome dela aparece em tamanho grande a dois centímetros do
-   * cabeçalho — repetir ali é gastar a barra fixa para não dizer nada de novo.
-   * O `title` continua obrigatório porque é ele que nomeia a aba do navegador.
+   * Quem já diz onde você está é a sidebar, a dois centímetros dali. Repetir o
+   * nome ao lado dela gasta a barra fixa para não dizer nada de novo, e é por
+   * isso que hoje TODAS as telas passam este prop.
+   *
+   * No celular a sidebar fica fechada atrás do ☰, e aí o título é a única
+   * coisa que nomeia a tela: lá ele continua aparecendo.
+   *
+   * O `title` segue obrigatório, e agora é verdade que ele nomeia a aba do
+   * navegador — antes o comentário aqui dizia isso e ninguém tinha escrito a
+   * linha que faz acontecer.
    */
   hideTitle?: boolean;
   /** O Início traz os mesmos avisos num painel completo; a faixa aqui seria a
@@ -31,6 +37,21 @@ export function DashboardLayout({
 }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
   const { contaIds } = useFilters();
+
+  /*
+    O nome da tela na aba do navegador.
+
+    A aba dizia "Alaskan Dashboard" em todas as telas, vindo do `index.html`.
+    Com uma dúzia de abas abertas — que é como esta ferramenta é usada — nenhuma
+    delas dizia qual era qual, e o histórico e os favoritos guardavam doze
+    entradas com o mesmo nome.
+
+    Ficou óbvio ao esconder o título do cabeçalho: o `title` passou a ter um
+    lugar só onde aparece no computador, e era um lugar onde ele nunca esteve.
+  */
+  useEffect(() => {
+    document.title = title ? `${title} · Alaskan` : 'Alaskan Dashboard';
+  }, [title]);
 
   // Find selected funnel name for header context
   return (
@@ -57,7 +78,19 @@ export function DashboardLayout({
                   <Menu className="h-5 w-5" />
                 </button>
               )}
-              {!hideTitle && (
+              {/*
+                `hideTitle` esconde no computador e MANTÉM no celular.
+
+                O que torna o título dispensável é a sidebar: ela já marca em
+                qual página você está, e repetir o nome dois centímetros ao lado
+                gasta a barra inteira para não dizer nada de novo.
+
+                No celular a sidebar está fechada atrás do ☰, e aí o título é a
+                única coisa que nomeia a tela. Esconder nos dois lugares não
+                seria consistência, seria deixar quem abre no telefone sem saber
+                onde está.
+              */}
+              {(!hideTitle || isMobile) && (
                 <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">{title}</h1>
               )}
             </div>

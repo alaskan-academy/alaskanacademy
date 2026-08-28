@@ -565,7 +565,7 @@ export default function FinanceiroRevisaoPage() {
   const categorizadasHoje = transacoes.filter(t => t.status_revisao === 'confirmado' && t.data === hojeStr).length;
 
   return (
-    <DashboardLayout title="Financeiro" hideFilters>
+    <DashboardLayout title="Financeiro" hideFilters hideTitle>
       <FinanceiroNav />
 
       <AvisoDivergencias onAbrir={abrirPorId} recarregarEm={versao} />
