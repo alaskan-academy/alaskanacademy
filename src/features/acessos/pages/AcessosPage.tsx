@@ -28,6 +28,8 @@ type Acesso = {
   senha: string | null;
   status: 'ativo' | 'inativo';
   notas: string | null;
+  criado_por: string | null;
+  atualizado_por: string | null;
 };
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -37,16 +39,27 @@ const SETORES_DEFAULT = [
   'Construtor IA', 'Cursos e Formações', 'Edição', 'Pesquisa',
 ];
 
-const SETOR_DOT: Record<string, string> = {
-  'Administrativo':    'bg-blue-400',
-  'Edição':            'bg-yellow-400',
-  'Automação':         'bg-red-400',
-  'Área de Membros':   'bg-emerald-400',
-  'Pesquisa':          'bg-purple-400',
-  'Cursos e Formações':'bg-orange-400',
-  'Construtor IA':     'bg-pink-400',
-  'Banco de Dados':    'bg-slate-400',
-};
+/*
+  A cor do setor sai do NOME, e não de uma lista escrita aqui.
+
+  A lista tinha os oito setores que existiam quando ela foi escrita. Como dá
+  para criar setor pelo painel de gerenciar, o nono nascia cinza — a terceira
+  armadilha do CLAUDE.md, silenciosa: ninguém percebe que faltou, só acha que
+  aquele setor é sem graça.
+
+  A soma dos códigos das letras escolhe uma das oito cores. É estável (o mesmo
+  nome dá sempre a mesma cor) e não precisa de manutenção.
+*/
+const CORES_SETOR = [
+  'bg-blue-400', 'bg-emerald-400', 'bg-yellow-400', 'bg-purple-400',
+  'bg-orange-400', 'bg-pink-400', 'bg-red-400', 'bg-slate-400',
+];
+
+function corDoSetor(nome: string): string {
+  let soma = 0;
+  for (let i = 0; i < nome.length; i++) soma += nome.charCodeAt(i);
+  return CORES_SETOR[soma % CORES_SETOR.length];
+}
 
 const CONF_KEY = 'setores_acessos';
 
@@ -125,7 +138,7 @@ function AcessoRow({ a, isAdmin, onEdit, onDelete }: {
           <span className="text-muted-foreground/40 text-xs">—</span>
         )}
       </div>
-      <div className="w-52 shrink-0">
+      <div className="w-40 shrink-0">
         <SenhaCell senha={a.senha} />
       </div>
       <div className="w-24 shrink-0">
@@ -163,7 +176,7 @@ function SetorSection({ setor, itens, isAdmin, onEdit, onDelete }: {
   onEdit: (a: Acesso) => void; onDelete: (a: Acesso) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const dot = SETOR_DOT[setor] || 'bg-muted-foreground/40';
+  const dot = corDoSetor(setor);
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden mb-3">
@@ -185,7 +198,7 @@ function SetorSection({ setor, itens, isAdmin, onEdit, onDelete }: {
           <div className="flex items-center gap-3 px-4 py-1.5 border-t border-border bg-muted/20">
             <div className="w-44 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ferramenta</div>
             <div className="flex-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Login</div>
-            <div className="w-52 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Senha</div>
+            <div className="w-40 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Senha</div>
             <div className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Link</div>
             {isAdmin && <div className="w-14 shrink-0" />}
           </div>
@@ -373,7 +386,7 @@ function SetoresPanel({ setores, acessos, onClose, onSave }: {
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function AcessosPage() {
-  const { perfil } = useAuth();
+  const { perfil, user } = useAuth();
   const isAdmin = perfil?.is_admin ?? false;
   const confirm = useConfirm();
 
@@ -415,16 +428,22 @@ export default function AcessosPage() {
   };
 
   // ── Carrega acessos ──
+  /* `loading` só na primeira carga: recarregar depois de salvar apagava a
+     lista inteira e fechava as seções que estavam abertas. */
+  const primeiraCarga = useRef(true);
+
   const load = async () => {
-    setLoading(true);
+    if (primeiraCarga.current) setLoading(true);
     const { data, error } = await supabase
       .from('acessos')
       .select('*')
+      .is('deletado_em', null)
       .order('setor')
       .order('ferramenta');
     if (error) toast({ title: 'Erro ao carregar', description: error.message, variant: 'destructive' });
     setAcessos(data || []);
     setLoading(false);
+    primeiraCarga.current = false;
   };
 
   useEffect(() => { loadSetores(); load(); }, []);
@@ -484,11 +503,13 @@ export default function AcessosPage() {
       senha:         form.senha.trim() || null,
       status:        form.status,
       notas:         form.notas.trim() || null,
-      atualizado_em: new Date().toISOString(),
+      /* `atualizado_em` saiu daqui: virou gatilho no banco, para escrita por
+         fora do formulário também carimbar. */
+      atualizado_por: user?.id ?? null,
     };
     const { error } = editingId
       ? await supabase.from('acessos').update(payload).eq('id', editingId)
-      : await supabase.from('acessos').insert(payload);
+      : await supabase.from('acessos').insert({ ...payload, criado_por: user?.id ?? null });
     setSaving(false);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     toast({ title: editingId ? 'Ferramenta atualizada' : 'Ferramenta adicionada' });
@@ -496,16 +517,34 @@ export default function AcessosPage() {
     load();
   };
 
+  /*
+    Excluir some da lista, mas guarda a linha.
+
+    Era `DELETE` definitivo. Num cofre de credenciais a linha apagada é a única
+    cópia da senha — e não havia histórico nem quem fez para reconstruir depois.
+  */
   const remove = async (a: Acesso) => {
-    if (!(await confirm({ title: `Excluir "${a.ferramenta}"?`, description: 'Esta ação não pode ser desfeita.' }))) return;
-    const { error } = await supabase.from('acessos').delete().eq('id', a.id);
+    if (!(await confirm({
+      title: `Excluir "${a.ferramenta}"?`,
+      description: 'Ela sai da lista, mas fica guardada — dá para recuperar pelo banco.',
+    }))) return;
+    const { data, error } = await supabase.from('acessos')
+      .update({ deletado_em: new Date().toISOString(), deletado_por: user?.id ?? null })
+      .eq('id', a.id).select('id');
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    toast({ title: 'Ferramenta excluída' });
+    if (!data?.length) return toast({ title: 'Só admin pode excluir', variant: 'destructive' });
+    toast({ title: 'Ferramenta excluída', description: 'Guardada — não se preocupe.' });
     load();
   };
 
   return (
-    <DashboardLayout title="Acessos" hideTitle>
+    /*
+      `hideFilters` porque esta tela nao le `useFilters`: conta de anuncio e
+      periodo nao tem o que fazer numa lista de ferramentas, e a barra oferecia
+      dois controles que nao mudavam nada. A busca e o filtro de setor que
+      valem estao logo abaixo.
+    */
+    <DashboardLayout title="Acessos" hideFilters hideTitle>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="relative flex-1 min-w-[200px]">
