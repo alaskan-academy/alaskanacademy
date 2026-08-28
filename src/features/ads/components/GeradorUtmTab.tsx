@@ -287,6 +287,20 @@ export function GeradorUtmTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  /*
+    Escolher um projeto PREENCHE a campanha; não é a única forma de tê-la.
+
+    O campo era um seletor fechado com os projetos cadastrados, e link de UTM
+    se gera para muita coisa que não é projeto: um teste, um post pontual, uma
+    parceria, um material que ninguém vai cadastrar em lugar nenhum. Quem
+    precisava disso ficava sem link — ou cadastrava um projeto de mentira só
+    para destravar o formulário, que é pior.
+
+    O que o banco guarda em `utm_links` sempre foi só o texto de `campaign`:
+    não existe `projeto_id` na tabela. Ou seja, o seletor nunca foi a fonte da
+    verdade — era um atalho de digitação que estava se passando por
+    obrigatoriedade.
+  */
   useEffect(() => {
     const p = projetos.find(p => p.id === projetoId);
     if (p) setCampaign(slugify(p.nome));
@@ -460,11 +474,15 @@ export function GeradorUtmTab() {
 
             {/* Projeto */}
             <div className="flex gap-4 px-4 py-4">
-              <StepBadge n={stepNum(2)} filled={!!projetoId} />
+              {/* O passo está cumprido quando há CAMPANHA — escrita ou vinda
+                  do seletor —, e não quando há projeto escolhido. */}
+              <StepBadge n={stepNum(2)} filled={!!campaign} />
               <div className="flex-1 min-w-0 space-y-3">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Projeto</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Qual produto/campanha está sendo promovido — vira o <span className="font-mono">utm_campaign</span></p>
+                  <p className="text-sm font-semibold text-foreground">Campanha</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Escolha um projeto ou escreva — vira o <span className="font-mono">utm_campaign</span>
+                  </p>
                 </div>
                 <Select value={projetoId} onValueChange={setProjetoId}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione o projeto" /></SelectTrigger>
@@ -472,6 +490,18 @@ export function GeradorUtmTab() {
                     {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {/*
+                  O mesmo arranjo que o campo "Conta" logo acima já usa:
+                  sugestões primeiro, campo livre embaixo. Escrever aqui limpa
+                  o projeto selecionado — senão a tela mostraria um projeto
+                  escolhido ao lado de uma campanha que não é a dele.
+                */}
+                <Input
+                  className="h-8 text-sm"
+                  placeholder="ou escreva a campanha (teste-black-friday, parceria-fulano...)"
+                  value={campaign}
+                  onChange={e => { setCampaign(slugify(e.target.value)); if (projetoId) setProjetoId(''); }}
+                />
                 {campaign && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-muted/40 text-[11px] font-mono text-muted-foreground">
                     utm_campaign: <span className="text-foreground ml-1">{campaign}</span>
@@ -534,7 +564,7 @@ export function GeradorUtmTab() {
               </div>
             ) : (
               <div className="border border-dashed border-border/50 rounded-md px-3 py-2.5">
-                <p className="text-[11px] text-muted-foreground/40 text-center">Preencha Canal, Projeto e URL para gerar o link</p>
+                <p className="text-[11px] text-muted-foreground/40 text-center">Preencha Canal, Campanha e URL para gerar o link</p>
               </div>
             )}
             <Button className="w-full gap-2 h-9" disabled={!urlFinal || saving} onClick={handleSave}>
