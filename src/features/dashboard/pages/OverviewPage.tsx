@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { differenceInDays, parseISO, subDays, format } from "date-fns";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { inicioDiaBRT, fimDiaBRT } from "@/lib/periodo";
 import {
   calcularResultado,
@@ -32,6 +32,7 @@ import {
   cpa,
   taxaPlataformaPct,
 } from "@/lib/financeiro";
+import { impostoSobre, diasDoCustoFixo, lucroPorDia } from "@/lib/resumo";
 import { LembreteConferencia } from "@/features/dashboard/components/LembreteConferencia";
 
 /**
@@ -304,7 +305,20 @@ export default function OverviewPage() {
     const share = participacao(fatBruto, num(d.fat_bruto_total));
 
     const fiscal = d.fiscal ?? {};
-    const impSimples = num(fiscal.imposto_simples) * share;
+
+    /*
+      O Simples sai da receita DESTE recorte, e não do rateio do total.
+
+      Mesmo defeito do imposto do Meta, na linha de cima da cascata: com a conta
+      Saponaria em agosto, o rótulo dizia "Simples (10.00%)" e o número era
+      R$ 6.379,00 sobre R$ 64.050,95 — 9,96%. A diferença vinha de ratear um
+      imposto que incide sobre a RECEITA usando a participação no faturamento
+      BRUTO, que inclui juros de parcelamento.
+
+      Conferido: a própria view faz essa conta assim — em agosto,
+      R$ 173.777,54 x 10% = R$ 17.377,75 contra os R$ 17.377,76 que ela soma.
+    */
+    const impSimples = impostoSobre(receita, num(fiscal.simples_pct));
     // Custo de anúncio não existe no back-end, e o imposto sobre ele também não. O
     // imposto do Meta incide sobre o gasto, não sobre a receita — ratear pela
     // participação no faturamento fazia o back-end pagar imposto de mídia que ele
@@ -339,11 +353,10 @@ export default function OverviewPage() {
     const simplesPct = num(fiscal.simples_pct);
     const metaPct = num(fiscal.meta_pct);
     const custoMensal = num(fiscal.custo_fixo_mensal);
-    // Sem período definido (filtro "Todos") cai em 30 dias, ou seja, um mês cheio.
-    // É o comportamento antigo e continua sendo uma aproximação ruim: "todo o
-    // histórico" custaria vários meses de custo fixo, não um. Enquanto o número não
-    // for confiável nesse recorte, ao menos não muda sem aviso.
-    const diasCusto = diasDoPeriodo(startDateStr, endDateStr) || 30;
+    // Sem filtro de data, a extensão sai da primeira e da última venda do
+    // recorte — que o banco agora devolve. O 30 fixo sobrou só para o caso sem
+    // venda nenhuma, onde não há o que medir.
+    const diasCusto = diasDoCustoFixo(startDateStr, endDateStr, d.dia_min, d.dia_max);
     const custoFixo = ratearCustoFixo(custoMensal, diasCusto) * share;
 
     const resultado = calcularResultado({
@@ -465,27 +478,29 @@ export default function OverviewPage() {
     // de Brasília e ~5% das vendas caem entre 21h e 23h59, que em UTC seriam
     // contadas no dia seguinte.
     /*
-      Saiu a linha verde de "Lucro estimado", e saiu o investimento por dia.
+      O lucro por dia, agora medido.
 
-      Nenhum dos dois era medido. O lucro do dia era o faturamento do dia vezes
-      a margem do PERÍODO INTEIRO — ou seja, a mesma curva do faturamento
-      multiplicada por uma constante. Ela não podia mostrar um dia no vermelho,
-      nem um dia de gasto alto: era o faturamento outra vez, em verde, e o
-      gráfico não tinha legenda dizendo o contrário. O investimento por dia
-      tinha o mesmo problema — o total do período dividido pelos dias COM venda
-      — e ainda por cima era calculado e nunca desenhado.
+      A versão anterior era o faturamento do dia vezes a margem do PERÍODO
+      INTEIRO — a mesma curva multiplicada por uma constante, incapaz de mostrar
+      um dia no vermelho. Agora cada dia traz a taxa que a Payt cobrou nele e o
+      gasto de anúncio daquele dia, vindos do banco, e o lucro sai das mesmas
+      contas do topo da tela.
 
-      Um lucro por dia de verdade existe e dá para fazer: `metricas_meta` tem o
-      gasto por dia e por conta. Enquanto não for essa conta, é melhor não ter
-      a linha do que ter uma que parece medida e não é.
+      A consequência prática é o dia com gasto e sem venda: ele não existia na
+      lista (que saía só das vendas) e agora aparece, no vermelho, que é
+      exatamente o dia que se procura num gráfico assim.
     */
     setSerieDiaria(
-      (d.por_dia ?? []).map((x: any) => ({
-        dia: x.dia,
-        faturamento: num(x.faturamento),
-        vendas: num(x.vendas),
-        rotulo: format(parseISO(x.dia), "dd/MM"),
-      })),
+      lucroPorDia(
+        (d.por_dia ?? []).map((x: any) => ({
+          dia: x.dia,
+          faturamento: num(x.faturamento),
+          vendas: num(x.vendas),
+          taxa: num(x.taxa),
+          investimento: num(x.investimento),
+        })),
+        { simplesPct: num(fiscal.simples_pct), metaPct: num(fiscal.meta_pct), contarAds: !eBackend },
+      ),
     );
 
     setKpis({
@@ -724,7 +739,19 @@ export default function OverviewPage() {
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={240}>
-                  <AreaChart data={serieDiaria} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
+                  {/*
+                    `ComposedChart`, e não `AreaChart`.
+
+                    O `AreaChart` desenha as áreas e IGNORA em silêncio os
+                    outros tipos de série. A linha de lucro estava escrita ali
+                    dentro desde sempre e nunca chegou ao SVG — descobri porque
+                    fui conferir o desenho e não achei nenhum
+                    `recharts-line-curve` na página.
+
+                    Ou seja: a linha antiga não era só uma estimativa disfarçada
+                    de medição, era uma estimativa que ninguém nunca viu.
+                  */}
+                  <ComposedChart data={serieDiaria} margin={{ top: 4, right: 8, bottom: 0, left: -12 }}>
                     <defs>
                       <linearGradient id="gradFaturamento" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
@@ -754,8 +781,14 @@ export default function OverviewPage() {
                         fontSize: 12,
                       }}
                       labelStyle={{ color: "hsl(var(--foreground))" }}
-                      formatter={(v: number) => [formatCurrency(v), "Faturamento"]}
+                      formatter={(v: number, nome: string) => [
+                        formatCurrency(v),
+                        nome === "lucro" ? "Lucro operacional" : "Faturamento",
+                      ]}
                     />
+                    {/* Zero visível: sem a régua, um lucro negativo se lê como
+                        "pouco lucro" em vez de prejuízo. */}
+                    <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
                     <Area
                       type="monotone"
                       dataKey="faturamento"
@@ -763,7 +796,14 @@ export default function OverviewPage() {
                       strokeWidth={2}
                       fill="url(#gradFaturamento)"
                     />
-                  </AreaChart>
+                    <Line
+                      type="monotone"
+                      dataKey="lucro"
+                      stroke="hsl(var(--success))"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
               )}
             </div>

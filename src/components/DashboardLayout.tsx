@@ -3,7 +3,6 @@ import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
 import { IngestStatusBanner } from '@/components/IngestStatusBanner';
 import { useSidebarState } from '@/contexts/SidebarContext';
-import { useFilters } from '@/contexts/FilterContext';
 import { Menu, Search } from 'lucide-react';
 
 export function DashboardLayout({
@@ -15,6 +14,18 @@ export function DashboardLayout({
 }: {
   children: ReactNode;
   title: string;
+  /**
+   * Não renderiza a faixa de filtros global.
+   *
+   * Dois casos legítimos, e só eles: a tela não lê `useFilters` (a maioria), ou
+   * a tela oferece os mesmos controles no corpo, em outro arranjo — é o Resumo,
+   * que junta conta e período com o segmento e o Atualizar numa linha só.
+   *
+   * O que este prop NÃO pode fazer é esconder o seletor deixando o filtro
+   * ativo. Já aconteceu aqui: a página filtrava por conta e não havia controle
+   * nenhum na tela, então ela mostrava um recorte que ninguém tinha escolhido e
+   * ninguém conseguia desfazer.
+   */
   hideFilters?: boolean;
   /**
    * Esconde o nome da tela no cabeçalho — no computador.
@@ -36,7 +47,6 @@ export function DashboardLayout({
   hideAvisos?: boolean;
 }) {
   const { collapsed, isMobile, toggle } = useSidebarState();
-  const { contaIds } = useFilters();
 
   /*
     O nome da tela na aba do navegador.
@@ -53,7 +63,6 @@ export function DashboardLayout({
     document.title = title ? `${title} · Alaskan` : 'Alaskan Dashboard';
   }, [title]);
 
-  // Find selected funnel name for header context
   return (
     <div className="min-h-screen bg-background">
       <AppSidebar />
@@ -103,12 +112,36 @@ export function DashboardLayout({
                 <span>Buscar</span>
                 <kbd className="ml-1 text-[10px] bg-muted px-1 py-0.5 rounded font-mono">Ctrl+K</kbd>
               </button>
-              {!hideFilters && <GlobalFilters />}
             </div>
           </div>
         </header>
         <main className="p-4 md:p-6 animate-fade-in">
           {!hideAvisos && <IngestStatusBanner />}
+
+          {/*
+            Os filtros ficam na página, e não na barra fixa.
+
+            Na barra eles ficavam ao lado da busca e do nome da tela —
+            navegação — quando o que eles fazem é recortar o conteúdo logo
+            abaixo. No Resumo isso chegava a espalhar três filtros da mesma
+            leitura por dois cantos da tela: conta e período em cima, segmento
+            embaixo.
+
+            Fica aqui, e não dentro de cada página, para continuar existindo num
+            lugar só: quem não usa filtro global passa `hideFilters`, e quem
+            quer os controles em outro arranjo (o Resumo, que os junta com o
+            segmento e o Atualizar) também passa e monta o seu.
+
+            O custo, assumido: eles rolam com a página. Numa tabela longa, mudar
+            o período exige voltar ao topo. Se isso incomodar, um `sticky
+            top-14` aqui resolve sem mexer em mais nada.
+          */}
+          {!hideFilters && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <GlobalFilters />
+            </div>
+          )}
+
           {children}
         </main>
       </div>
