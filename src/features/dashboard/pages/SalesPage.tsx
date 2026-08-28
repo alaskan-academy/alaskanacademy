@@ -83,10 +83,9 @@ type Venda = {
 /** Linha de `venda_itens` — o que aparece no detalhe da venda. */
 type ItemDaVenda = { id: string; nome: string | null; valor: number | null };
 
-/** `vw_vendas_temporal`, com o rótulo do dia que a tela acrescenta. */
+/** Um dia da série, com o rótulo que a tela acrescenta. */
 type PontoTemporal = {
   data: string;
-  produto: string | null;
   vendas_aprovadas: number | null;
   vendas_pendentes: number | null;
   faturamento: number | null;
@@ -96,7 +95,7 @@ type PontoTemporal = {
 /** O que o gráfico de pizza por produto consome. */
 type FatiaPorProduto = { name: string; value: number };
 
-/** `vw_vendas_por_pagamento`, somada por meio e com taxa e ticket refeitos. */
+/** Por meio de pagamento, com taxa e ticket refeitos sobre os totais. */
 type PorPagamento = {
   meio_pagamento: string;
   aprovadas: number;
@@ -108,13 +107,13 @@ type PorPagamento = {
   ticket_medio: number;
 };
 
-/** `vw_vendas_por_horario`, somada por hora — a view devolve uma linha por produto. */
+/** Por hora do dia, em horário de Brasília. */
 type PorHora = {
   hora: number; vendas_aprovadas: number; vendas_pendentes: number;
   faturamento: number; base_taxa: number; taxa_aprovacao_pct: number;
 };
 
-/** `vw_vendas_por_dia_semana`, somada por dia. */
+/** Por dia da semana. */
 type PorDiaDaSemana = {
   dia_semana: number;
   dia_nome: string;
@@ -122,8 +121,24 @@ type PorDiaDaSemana = {
   faturamento: number;
 };
 
-/** `vw_vendas_por_mes`, somada por mês. */
+/** Por mês. */
 type PorMes = { mes_ano: string; vendas_aprovadas: number; faturamento: number };
+
+/*
+  O que `fn_vendas_agregado` devolve, recorte por recorte.
+
+  Sao as formas CRUAS, antes das contas da tela: a taxa de aprovacao e o ticket
+  medio nao vem do banco de proposito -- somar taxa de produto com taxa de
+  produto e tirar media daria peso igual a um produto com 3 vendas e a outro
+  com 300. Eles se refazem aqui embaixo, sobre os totais.
+*/
+type BrutoTemporal   = { data: string; vendas_aprovadas: number; vendas_pendentes: number; faturamento: number };
+type BrutoPagamento  = { meio_pagamento: string; total_tentativas: number; aprovadas: number;
+                         canceladas: number; expiradas: number; faturamento: number };
+type BrutoHora       = { hora: number; vendas_aprovadas: number; vendas_pendentes: number;
+                         base_taxa: number; faturamento: number };
+type BrutoDiaSemana  = { dia_semana: number; dia_nome: string; vendas_aprovadas: number; faturamento: number };
+type BrutoMes        = { mes_ano: string; vendas_aprovadas: number; faturamento: number };
 
 const PAGE_SIZE = 50;
 
@@ -143,6 +158,15 @@ export default function SalesPage() {
   const [selectedSale, setSelectedSale] = useState<Venda | null>(null);
   const [saleItems, setSaleItems] = useState<ItemDaVenda[]>([]);
   const [statusFilter, setStatusFilter] = useState("todos");
+  /*
+    Vendas aprovadas sem hora registrada.
+
+    Não é ruído: são 4.288 no histórico, todas da carga inicial, que só trouxe
+    a data. O recorte por hora tem que deixá-las de fora — senão metade do
+    histórico empilha na meia-noite e inventa um pico que nunca existiu —, mas
+    a tela precisa dizer que deixou.
+  */
+  const [semRelogio, setSemRelogio] = useState(0);
 
   // Reset page when filters change
   useEffect(() => { setSalesPage(0); }, [startDateStr, endDateStr, contaIds, statusFilter]);
@@ -178,34 +202,48 @@ export default function SalesPage() {
     const load = async () => {
       setLoading(true);
 
-      const endDateEnd = endISO;
+      /*
+        Uma chamada, e o filtro de período valendo para as seis abas.
 
-      let qT = supabase.from("vw_vendas_temporal").select("*");
-      if (startDateStr && endDateStr) qT = qT.gte("data", startDateStr).lte("data", endDateStr);
-      if (contaIds.length) qT = qT.in("ad_account_id", contaIds);
+        Quatro delas ignoravam o período — e não por descuido de quem escreveu
+        a página: `vw_vendas_por_pagamento`, `_por_horario`, `_por_dia_semana`
+        e `_por_mes` não TÊM coluna de data, agregam o histórico inteiro. Com
+        "Hoje" selecionado (1 venda), a aba de horário mostrava 4.410 vendas e
+        a de pagamento, 9.105. Sem nenhum sinal na tela.
 
-      let qP = supabase
-        .from("vendas")
-        .select("valor_total,produto")
-        .eq("status", "aprovada")
-        .not("pedido_id", "like", "TEST%")
-        .not("pedido_id", "like", "LC-%");
-      if (startISO && endDateEnd) qP = qP.gte("data_venda", startISO).lte("data_venda", endDateEnd);
-      if (contaIds.length) qP = qP.in("ad_account_id", contaIds);
+        A aba de produtos tinha o outro defeito da casa: lia linhas cruas de
+        `vendas` — 2.462 em agosto — e o PostgREST corta em 1.000.
 
-      let qPay = supabase.from("vw_vendas_por_pagamento").select("*");
-      if (contaIds.length) qPay = qPay.in("ad_account_id", contaIds);
+        E as views discordavam entre si sobre o que é uma venda: três excluíam
+        `LC-%` e duas não; quatro descontavam upsell pela heurística aposentada
+        (`upsell_de`, 69 linhas) em vez do campo atual (`is_upsell`, 403). Eram
+        358 upsells contados como venda normal aqui e em nenhuma outra tela.
 
-      let qH = supabase.from("vw_vendas_por_horario").select("*");
-      if (contaIds.length) qH = qH.in("ad_account_id", contaIds);
+        Agora a regra está escrita uma vez, dentro de `fn_vendas_agregado`.
+      */
+      const { data: agg, error } = await supabase.rpc("fn_vendas_agregado", {
+        p_inicio: startISO || null,
+        p_fim: endISO || null,
+        p_contas: contaIds,
+      });
+      if (error) console.error("fn_vendas_agregado:", error.message);
 
-      let qW = supabase.from("vw_vendas_por_dia_semana").select("*");
-      if (contaIds.length) qW = qW.in("ad_account_id", contaIds);
+      /*
+        `unknown` e não `any`: cada recorte é lido logo abaixo com o tipo que
+        a tela já declara, e o `unknown` obriga essa passagem a ser explícita.
+        Com `any`, um campo renomeado no SQL viraria uma aba vazia em silêncio.
+      */
+      const dados = (agg ?? {}) as Record<string, unknown>;
+      /** Cada recorte vem como lista; `lista` faz a leitura explicita uma vez. */
+      const lista = <T,>(chave: string) => (dados[chave] ?? []) as T[];
 
-      let qM = supabase.from("vw_vendas_por_mes").select("*").order("mes_ano", { ascending: true });
-      if (contaIds.length) qM = qM.in("ad_account_id", contaIds);
-
-      const [rT, rP, rPay, rH, rW, rM] = await Promise.all([qT, qP, qPay, qH, qW, qM]);
+      const rT   = { data: lista<BrutoTemporal>("temporal") };
+      const rPay = { data: lista<BrutoPagamento>("por_pagamento") };
+      const rH   = { data: lista<BrutoHora>("por_hora") };
+      const rW   = { data: lista<BrutoDiaSemana>("por_dia_semana") };
+      const rM   = { data: lista<BrutoMes>("por_mes") };
+      setSemRelogio(Number(dados.horas_sem_relogio ?? 0));
+      setByProduct(lista<FatiaPorProduto>("por_produto"));
 
       setTemporal(
         (rT.data ?? []).map((r): PontoTemporal => ({
@@ -213,13 +251,6 @@ export default function SalesPage() {
           dataLabel: String(new Date(r.data + "T00:00:00").getDate()).padStart(2, "0"),
         })),
       );
-
-      const prodMap: Record<string, number> = {};
-      (rP.data ?? []).forEach((v) => {
-        const p = v.produto || "Outros";
-        prodMap[p] = (prodMap[p] || 0) + Number(v.valor_total || 0);
-      });
-      setByProduct(Object.entries(prodMap).map(([name, value]) => ({ name, value })));
 
       const payMap: Record<string, Omit<PorPagamento, 'taxa_aprovacao_pct' | 'ticket_medio'>> = {};
       (rPay.data ?? []).forEach((r) => {
@@ -349,10 +380,28 @@ export default function SalesPage() {
         {/* ── Por Horário ─────────────────────────────────── */}
         <TabsContent value="horario">
           <div className="bg-card border border-border rounded-lg p-5 mb-4">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">
+            <h3 className="text-sm font-medium text-muted-foreground mb-1">
               Vendas por Hora
               {peakHour && <span className="text-primary ml-2">| Pico: {peakHour.hora}h</span>}
             </h3>
+            {/*
+              O que ficou de fora, dito na tela.
+
+              Venda sem hora registrada é descartada aqui — se não fosse, metade
+              do histórico empilharia na meia-noite e o gráfico anunciaria um
+              pico que nunca existiu. Mas descartar em silêncio é o defeito que
+              esta noite inteira vem caçando: o número precisa aparecer.
+
+              São 4.288 no histórico, todas da carga inicial, que só trouxe a
+              data. De julho em diante a Payt manda a hora, e em agosto isto é
+              zero — a faixa some sozinha nos períodos recentes.
+            */}
+            {semRelogio > 0 && (
+              <p className="mb-3 text-xs text-muted-foreground">
+                {formatNumber(semRelogio)} venda(s) do período não entram aqui: vieram sem hora
+                registrada, da carga inicial.
+              </p>
+            )}
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={hourlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
