@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -363,6 +364,16 @@ export default function InicioPage() {
     carregar();
   };
 
+  /*
+    O recado apontado pela notificação, se veio um.
+
+    Na URL e não em `location.state`: o state morre num F5, e a notificação
+    que a pessoa deixou aberta numa aba deixaria de apontar para nada. Mesma
+    razão do `?criativo=` da Produção.
+  */
+  const [params] = useSearchParams();
+  const recadoDaNotificacao = params.get('recado');
+
   const abrirNovo = (data: string | null) => {
     setEditando(null);
     setDataSugerida(data);
@@ -427,6 +438,19 @@ export default function InicioPage() {
             ))}
           </div>
         )}
+
+        {/*
+          ---- mural ----
+
+          Ele ficava no FIM da página, depois da agenda e das atas. Recado é a
+          coisa mais perecível do Início — vale hoje e não vale mês que vem —,
+          e estava no lugar onde só chega quem rola até embaixo. Pior: a
+          notificação "Fulano no mural" levava para cá e a pessoa caía no topo,
+          sem ver o recado.
+
+          Agora ele abre a página, junto dos avisos que também são de hoje.
+        */}
+        <MuralRecados ehAdmin={ehAdmin} userId={user?.id ?? ''} destacarId={recadoDaNotificacao} />
 
         {/* ---- agenda ---- */}
         <section className="rounded-xl border border-border bg-card p-4 md:p-5">
@@ -528,8 +552,6 @@ export default function InicioPage() {
             </div>
           )}
         </section>
-        {/* ---- mural ---- */}
-        <MuralRecados ehAdmin={ehAdmin} userId={user?.id ?? ''} />
       </div>
 
       <EventoDrawer

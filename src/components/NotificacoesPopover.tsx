@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -94,9 +95,21 @@ export function NotificacoesPopover({ userId }: Props) {
     marcarLida(n);
     setOpen(false);
 
-    // Recado mora no Inicio. Sem isto a notificacao abriria e nao levaria a
-    // lugar nenhum, que e pior do que nao notificar.
-    if (n.referencia_tipo === 'recado') { navigate('/'); return; }
+    /*
+      Recado mora no Inicio -- e agora leva ao recado, e nao so a pagina.
+
+      Antes ia para "/" e parava ali: o mural ficava no FIM do Inicio, entao a
+      pessoa caia no topo e tinha que procurar. Pior, o mural mostra tres
+      recados e esconde os vencidos, entao o recado da notificacao podia nao
+      estar na tela.
+
+      Com `?recado=<id>` o mural garante aquele recado na lista, rola ate ele e
+      o acende. Na URL e nao em `location.state` para sobreviver a um F5.
+    */
+    if (n.referencia_tipo === 'recado') {
+      navigate(n.referencia_id ? `/?recado=${n.referencia_id}` : '/');
+      return;
+    }
 
     /*
       Para onde ir sai de `referencia_tipo`, e de mais nada.
@@ -109,8 +122,23 @@ export function NotificacoesPopover({ userId }: Props) {
       nenhum. `referencia_tipo` já responde a pergunta, e é gravado junto.
     */
     if (n.referencia_tipo === 'criativo' && n.referencia_id) {
-      navigate('/producao', { state: { criativoId: n.referencia_id } });
+      navigate(`/producao?criativo=${n.referencia_id}`);
+      return;
     }
+
+    /*
+      Nenhum destino conhecido: avisa em vez de nao fazer nada.
+
+      Clique morto e o pior desfecho possivel -- a pessoa acha que a tela
+      travou e tenta de novo. Aqui ela ao menos fica sabendo que a notificacao
+      nao tem para onde levar, e o `console` diz qual tipo faltou mapear para
+      quem for consertar.
+    */
+    console.warn('notificacao sem destino:', n.referencia_tipo, n.referencia_id);
+    toast({
+      title: 'Essa notificação não tem para onde levar',
+      description: 'Marquei como lida. Se ela devia abrir alguma tela, me avise qual.',
+    });
   };
 
   return (
