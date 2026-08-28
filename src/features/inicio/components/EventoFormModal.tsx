@@ -13,7 +13,7 @@ import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Calendar as CalendarIcon, Check, ChevronRight, Loader2, X } from 'lucide-react';
 import { toYMD, daYMD } from '@/lib/recorrencia';
-import type { Evento, TipoEvento } from '../types';
+import { TIPOS_EVENTO, type Evento, type TipoEvento } from '../types';
 
 const MES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -207,10 +207,9 @@ export function EventoFormModal({
               <Select value={tipo} onValueChange={v => setTipo(v as TipoEvento)} disabled={!ehAdmin}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="reuniao">Reunião</SelectItem>
-                  <SelectItem value="folga">Folga</SelectItem>
-                  <SelectItem value="feriado">Feriado</SelectItem>
-                  <SelectItem value="marco">Marco</SelectItem>
+                  {TIPOS_EVENTO.map(t => (
+                    <SelectItem key={t.chave} value={t.chave}>{t.rotulo}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {!ehAdmin && (

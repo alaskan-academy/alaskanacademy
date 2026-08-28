@@ -13,7 +13,7 @@ import { EventoDrawer } from '../components/EventoDrawer';
 import { EventoFormModal } from '../components/EventoFormModal';
 import { SaudeSistema } from '../components/SaudeSistema';
 import { MuralRecados } from '../components/MuralRecados';
-import { horaCurta, type Evento, type ItemAgenda } from '../types';
+import { horaCurta, ROTULO_TIPO, TIPOS_EVENTO, TIPOS_QUE_PARAM, type Evento, type ItemAgenda } from '../types';
 
 const DIA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
@@ -24,7 +24,7 @@ const DIA_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta',
  * ainda é perto o bastante para a pessoa se importar. Um aviso de trinta dias
  * vira paisagem e ninguém age.
  */
-const AVISO_FERIADO_DIAS = 4;
+const AVISO_PARADA_DIAS = 4;
 
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -78,7 +78,7 @@ function saudacao(): string {
  * permissão para ele era jogado na primeira página da lista que pudesse acessar
  * (`PAGINAS.find(p => canAccess(p.key))`). Ninguém tinha decidido isso.
  *
- * A tela mostra **o que a empresa combinou** — reunião, folga, feriado, marco —
+ * A tela mostra **o que a empresa combinou** — reunião, folga, feriado, recesso, marco —
  * e nada mais. Nem número de faturamento, que é o Resumo, nem fila de trabalho,
  * que é o Produção. A primeira versão trazia prazos de criativo e contadores de
  * aprovação pendente, e o dado real mostrou por que não: uma leva de nove
@@ -94,13 +94,13 @@ export default function InicioPage() {
 
   const ehAdmin = !!perfil?.is_admin;
   const hoje = toYMD(new Date());
-  const ateFeriado = emDias(AVISO_FERIADO_DIAS);
+  const ateParada = emDias(AVISO_PARADA_DIAS);
 
   const [ancora, setAncora] = useState(() => new Date());
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [perfis, setPerfis] = useState<Perfil[]>([]);
   const [atas, setAtas] = useState<Evento[]>([]);
-  const [feriados, setFeriados] = useState<Evento[]>([]);
+  const [paradas, setParadas] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [aberto, setAberto] = useState<ItemAgenda | null>(null);
@@ -154,28 +154,31 @@ export default function InicioPage() {
   }, [hoje, eventos]);
 
   /*
-    Feriado à vista.
+    O que para a empresa nos próximos dias — feriado e recesso.
 
     Consulta própria, e não uma leitura de `itens`: `itens` é o mês que está na
     tela, então navegar para dezembro faria o aviso da semana que vem sumir ou
-    aparecer feriado que ainda está longe. O aviso é sobre os próximos dias,
+    aparecer parada que ainda está longe. O aviso é sobre os próximos dias,
     não sobre o mês aberto.
 
     Sai do calendário e de mais nada — nenhuma lista de datas no código. Apagar
-    o evento apaga o aviso, criar um cria; e feriado que a empresa inventar
-    ("emenda de fim de ano") avisa igual aos oficiais, porque para o código não
-    há diferença entre eles. O `eventos` na dependência é o que faz isso valer
-    já no mesmo instante: qualquer mexida na agenda recarrega esta consulta.
+    o evento apaga o aviso, criar um cria; e recesso que a empresa inventar
+    avisa igual aos feriados oficiais, porque para o código não há diferença
+    entre eles. O `eventos` na dependência é o que faz isso valer já no mesmo
+    instante: qualquer mexida na agenda recarrega esta consulta.
+
+    Quais tipos param sai de `TIPOS_QUE_PARAM`, e não de uma lista escrita
+    aqui: um tipo novo com `paraTodos` entra no aviso sozinho.
   */
   useEffect(() => {
     supabase
       .from('eventos')
       .select('*')
-      .eq('tipo', 'feriado')
-      .lte('data', ateFeriado)
+      .in('tipo', TIPOS_QUE_PARAM)
+      .lte('data', ateParada)
       .or(`recorrencia_tipo.not.is.null,data.gte.${hoje},data_fim.gte.${hoje}`)
-      .then(({ data }) => setFeriados((data as Evento[]) ?? []));
-  }, [hoje, ateFeriado, eventos]);
+      .then(({ data }) => setParadas((data as Evento[]) ?? []));
+  }, [hoje, ateParada, eventos]);
 
   // ---- o que a agenda desenha ----
   const itens = useMemo<ItemAgenda[]>(() => {
@@ -253,17 +256,16 @@ export default function InicioPage() {
   }, [itens, nomes]);
 
   /**
-   * Os feriados que chegam nos próximos dias, com o "quando" já escrito.
+   * As paradas que chegam nos próximos dias, com o "quando" já escrito.
    *
-   * Passa pela mesma expansão de recorrência da agenda: feriado que alguém
-   * cadastrar como série (uma folga coletiva de três dias, por exemplo) avisa
-   * em cada dia dela, e um dia pulado não avisa — a regra é uma só, e não uma
-   * segunda cópia aqui dentro.
+   * Passa pela mesma expansão de recorrência da agenda: parada cadastrada como
+   * série avisa em cada ocorrência, e um dia pulado não avisa — a regra é uma
+   * só, e não uma segunda cópia aqui dentro.
    */
-  const feriadosAVista = useMemo(() => {
+  const paradasAVista = useMemo(() => {
     const lista: { chave: string; item: ItemAgenda; quando: string }[] = [];
 
-    feriados.forEach(ev => {
+    paradas.forEach(ev => {
       const dias = diasOcupados(
         {
           inicio: ev.data,
@@ -273,11 +275,11 @@ export default function InicioPage() {
           recorrencia_fim: ev.recorrencia_fim,
           data_fim: ev.data_fim,
         },
-        hoje, ateFeriado,
+        hoje, ateParada,
       );
       if (dias.length === 0) return;
 
-      // Um aviso por feriado, não por dia dele: um emendado de três dias
+      // Um aviso por parada, não por dia dela: um recesso de três dias
       // apareceria três vezes na mesma faixa dizendo a mesma coisa.
       const de  = dias[0];
       const ate = dias[dias.length - 1];
@@ -296,7 +298,7 @@ export default function InicioPage() {
     });
 
     return lista.sort((a, b) => a.item.data.localeCompare(b.item.data));
-  }, [feriados, hoje, ateFeriado]);
+  }, [paradas, hoje, ateParada]);
 
   const mover = (passo: number) =>
     setAncora(a => new Date(a.getFullYear(), a.getMonth() + passo, 1));
@@ -384,22 +386,23 @@ export default function InicioPage() {
         {/* ---- saúde do sistema: só admin e sócio ---- */}
         {ehAdmin && <SaudeSistema />}
 
-        {/* ---- feriado à vista ---- */}
-        {feriadosAVista.length > 0 && (
+        {/* ---- feriado ou recesso à vista ---- */}
+        {paradasAVista.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-2.5 text-sm">
             <PartyPopper className="h-3.5 w-3.5 shrink-0 text-amber-300/80" />
             <span className="font-mono text-[10px] uppercase tracking-wider text-amber-300/80">
-              {feriadosAVista.length === 1 ? 'feriado à vista' : 'feriados à vista'}
+              a empresa para
             </span>
-            {feriadosAVista.map((f, i) => (
+            {paradasAVista.map((f, i) => (
               <button
                 key={f.chave}
                 type="button"
                 onClick={() => setAberto(f.item)}
                 className="text-amber-100/90 hover:text-amber-50 hover:underline"
               >
+                <span className="text-amber-300/55">{ROTULO_TIPO[f.item.tipo]}:</span>{' '}
                 {f.item.titulo} <span className="text-amber-300/70">{f.quando}</span>
-                {i < feriadosAVista.length - 1 && <span className="text-amber-300/40">,</span>}
+                {i < paradasAVista.length - 1 && <span className="text-amber-300/40">,</span>}
               </button>
             ))}
           </div>
@@ -480,14 +483,9 @@ export default function InicioPage() {
           )}
 
           <div className="mt-4 flex flex-wrap gap-3.5 border-t border-border pt-3">
-            {[
-              ['bg-primary', 'Reunião'],
-              ['bg-teal-400', 'Folga'],
-              ['bg-violet-400', 'Marco'],
-              ['bg-muted-foreground', 'Feriado'],
-            ].map(([cor, rotulo]) => (
-              <span key={rotulo} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <i className={cn('h-2 w-2 rounded-sm', cor)} /> {rotulo}
+            {TIPOS_EVENTO.map(t => (
+              <span key={t.chave} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <i className={cn('h-2 w-2 rounded-sm', t.ponto)} /> {t.rotulo}
               </span>
             ))}
           </div>
