@@ -63,28 +63,50 @@ export function NotificacoesPopover({ userId, collapsed }: Props) {
     setNaoLidas(0);
   };
 
-  const handleOpen = (v: boolean) => {
-    setOpen(v);
-    if (v) marcarTodasLidas();
+  /*
+    Abrir o sino NÃO marca tudo como lido.
+
+    Marcava — e o efeito estava no banco: das 47 notificações que já existiram,
+    47 constavam como lidas, nenhuma pendente. A bolinha e o contador sumiam
+    antes de a pessoa ler qualquer coisa, e o botão "Marcar todas como lidas"
+    virava inalcançável, porque ele só aparece quando há algo não lido — o que
+    deixava de ser verdade no instante seguinte ao clique.
+
+    Agora lido é o que foi clicado. O resto continua esperando, e quem quiser
+    limpar de uma vez tem o botão, que voltou a ter função.
+  */
+  const marcarLida = async (n: Notificacao) => {
+    if (n.lida) return;
+    await supabase.from('notificacoes').update({ lida: true }).eq('id', n.id);
+    setNotificacoes(prev => prev.map(x => (x.id === n.id ? { ...x, lida: true } : x)));
+    setNaoLidas(c => Math.max(0, c - 1));
   };
 
   const handleClick = (n: Notificacao) => {
+    marcarLida(n);
     setOpen(false);
 
     // Recado mora no Inicio. Sem isto a notificacao abriria e nao levaria a
     // lugar nenhum, que e pior do que nao notificar.
     if (n.referencia_tipo === 'recado') { navigate('/'); return; }
 
-    const isCriativo =
-      n.referencia_tipo === 'criativo' ||
-      (!!n.referencia_id && ['criativo_alteracao', 'mencao_comentario'].includes(n.tipo));
-    if (isCriativo && n.referencia_id) {
+    /*
+      Para onde ir sai de `referencia_tipo`, e de mais nada.
+
+      Havia uma lista de tipos aqui ao lado — `['criativo_alteracao',
+      'mencao_comentario']` — que já não incluía `criativo_aprovado` (45 linhas
+      no banco) e não incluiria `resposta_comentario`, que é novo. Lista de
+      tipos escrita no código é a terceira armadilha do CLAUDE.md: envelhece em
+      silêncio, e a linha que ela esquece vira um clique que não leva a lugar
+      nenhum. `referencia_tipo` já responde a pergunta, e é gravado junto.
+    */
+    if (n.referencia_tipo === 'criativo' && n.referencia_id) {
       navigate('/producao', { state: { criativoId: n.referencia_id } });
     }
   };
 
   return (
-    <Popover open={open} onOpenChange={handleOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           title="Notificações"

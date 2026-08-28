@@ -270,15 +270,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       valor_anterior: criativo.fase,
       valor_novo:     novaFase,
     });
-    if (novaFase === 'alteracao' && criativo.responsavel_id && criativo.responsavel_id !== userId) {
-      await supabase.from('notificacoes').insert({
-        usuario_id:      criativo.responsavel_id,
-        tipo:            'criativo_alteracao',
-        mensagem:        `"${criativo.nome}" foi devolvido para alteração.`,
-        referencia_id:   criativo.id,
-        referencia_tipo: 'criativo',
-      });
-    }
+    /*
+      O aviso ao responsável não é mais escrito aqui: quem escreve é o gatilho
+      em `producoes`. Esta mesma regra estava em três lugares — aqui, no kanban
+      e dentro de `fn_devolver_criativo` — e as três já discordavam entre si.
+    */
     setMovingFase(false);
     load(true);
     onUpdate();
@@ -331,23 +327,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       texto,
       tipo:        'comentario',
     });
-    // Notificar menções
-    const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
-    const mentioned = perfis.filter(p => {
-      const first = p.nome.split(' ')[0].toLowerCase();
-      return (mentions.includes(first) || mentions.includes(p.nome.toLowerCase())) && p.id !== userId;
-    });
-    if (mentioned.length) {
-      await supabase.from('notificacoes').insert(
-        mentioned.map(p => ({
-          usuario_id:      p.id,
-          tipo:            'mencao_comentario',
-          mensagem:        `Você foi mencionado em um comentário em "${criativo.nome}".`,
-          referencia_id:   criativo.id,
-          referencia_tipo: 'criativo',
-        }))
-      );
-    }
+    /*
+      As menções saem do gatilho em `criativo_comentarios`, que lê o próprio
+      texto do comentário — inclusive "@ana," com a vírgula colada, que o
+      `@(\S+)` daqui perdia porque levava a pontuação junto.
+    */
     setNovoComentario('');
     setPostando(false);
     loadComentarios();
@@ -374,23 +358,11 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       tipo:        'comentario',
       resposta_a:  parentId,
     });
-    // Notificar menções
-    const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
-    const mentioned = perfis.filter(p => {
-      const first = p.nome.split(' ')[0].toLowerCase();
-      return (mentions.includes(first) || mentions.includes(p.nome.toLowerCase())) && p.id !== userId;
-    });
-    if (mentioned.length) {
-      await supabase.from('notificacoes').insert(
-        mentioned.map(p => ({
-          usuario_id:      p.id,
-          tipo:            'mencao_comentario',
-          mensagem:        `Você foi mencionado em uma resposta em "${criativo.nome}".`,
-          referencia_id:   criativo.id,
-          referencia_tipo: 'criativo',
-        }))
-      );
-    }
+    /*
+      Mesma coisa aqui — e a resposta agora avisa também quem está sendo
+      respondido, que era o buraco mais óbvio: responder a alguém não produzia
+      aviso nenhum, só o @ produzia.
+    */
     setNovaResposta('');
     setRespondendoId(null);
     setPostando(false);

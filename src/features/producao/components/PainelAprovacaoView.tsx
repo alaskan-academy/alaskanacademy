@@ -91,28 +91,21 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
    * havia transação — o pior caso silencioso era o criativo voltar para
    * alteração e o editor nunca ficar sabendo.
    *
-   * Quem é mencionado continua sendo decidido AQUI, e não no banco: depende da
-   * lista de perfis que a tela já carregou, e mandar os nomes para o SQL só
-   * para ele reencontrá-los seria trabalho a mais para o mesmo resultado.
+   * Quem é mencionado passou a ser decidido no banco, e não mais aqui.
+   * A mesma regra estava escrita em três lugares — aqui, no drawer e no
+   * kanban — e as três já discordavam entre si; e o casamento por `@(\S+)`
+   * perdia "@ana," porque levava a vírgula junto. Agora o gatilho lê o texto
+   * do comentário, que é onde a menção realmente está.
    */
   const handleDevolver = async (c: Criativo) => {
     const texto = notaDevolucao.trim();
     if (!texto) return;
-
-    const mentions = texto.match(/@(\S+)/g)?.map(m => m.slice(1).toLowerCase()) ?? [];
-    const mencionados = perfis
-      .filter(p => {
-        const first = p.nome.split(' ')[0].toLowerCase();
-        return mentions.includes(first) || mentions.includes(p.nome.toLowerCase());
-      })
-      .map(p => p.id);
 
     setSaving(true);
     const { error } = await supabase.rpc('fn_devolver_criativo', {
       p_criativo_id: c.id,
       p_usuario_id:  userId,
       p_nota:        texto,
-      p_mencionados: mencionados,
     });
     setSaving(false);
     if (error) {

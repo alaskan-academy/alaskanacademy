@@ -208,15 +208,12 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       valor_novo:     novaFase,
     });
 
-    if (novaFase === 'alteracao' && criativo.responsavel_id && criativo.responsavel_id !== userId) {
-      await supabase.from('notificacoes').insert({
-        usuario_id:      criativo.responsavel_id,
-        tipo:            'criativo_alteracao',
-        mensagem:        `"${criativo.nome}" foi devolvido para alteração.`,
-        referencia_id:   criativoId,
-        referencia_tipo: 'criativo',
-      });
-    }
+    /*
+      Arrastar para "alteração" avisa o responsável — pelo gatilho em
+      `producoes`, e não daqui. Uma regra escrita em três lugares nunca
+      permaneceu igual nos três, e é por isso que ninguém sabia dizer se este
+      aviso funcionava (nunca disparou uma vez sequer).
+    */
   }, [criativos, nivel, userId, toast]);
 
   const activeCriativo = activeId ? criativos.find(c => c.id === activeId) : null;
