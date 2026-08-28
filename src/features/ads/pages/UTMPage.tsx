@@ -8,7 +8,7 @@ import { ChevronRight, ArrowLeft } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GeradorUtmTab } from "../components/GeradorUtmTab";
 import { cn } from "@/lib/utils";
-import type { LinhaUtmAgregada } from "@/features/ads/utm";
+import type { LinhaNivelUtm, LinhaUtmAgregada, TuplaUtm } from "@/features/ads/utm";
 
 const LEVELS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_placement"] as const;
 type UTMLevel = (typeof LEVELS)[number];
@@ -30,39 +30,44 @@ const placementInfo: Record<string, { label: string; network: string; color: str
   search: { label: "Search", network: "Facebook", color: "hsl(214,89%,38%)" },
   audience_network: { label: "Audience Network", network: "Meta", color: "hsl(239,84%,60%)" },
   messenger: { label: "Messenger", network: "Facebook", color: "hsl(214,89%,60%)" },
-  outro: { label: "Outro", network: "Outro", color: "hsl(0,0%,50%)" },
+  outro: { label: "Outro", network: "Meta", color: "hsl(0,0%,50%)" },
+  /*
+    "Sem placement" nao e "outro".
+
+    Sao 804 vendas e R$ 72.606,20 em agosto que nao trouxeram `utm_term`
+    nenhum, contra 51 vendas e R$ 5.222,01 que trouxeram e nao se encaixaram em
+    nenhuma categoria. Juntar os dois dava um "Outro" de 46,7%, que se le como
+    "a Meta entregou num lugar estranho" quando quase tudo e "nao temos o dado".
+  */
+  sem_placement: { label: "Sem placement", network: "Sem dado", color: "hsl(0,0%,32%)" },
 };
 
-const sourceColors: Record<string, string> = {
-  "meta ads": "hsl(214,89%,52%)",
-  instagram: "hsl(329,86%,56%)",
-  google: "hsl(4,90%,58%)",
-  organico: "hsl(160,60%,45%)",
-};
+/*
+  `sourceColors` saiu junto com a aba "Por Source", que era o único lugar que
+  o usava. Ele também já carregava uma entrada morta: `organico`, que a
+  limpeza nunca produzia porque valor vazio vira "(vazio)", não "organico".
+*/
 
 const normalizeText = (value: string | null | undefined) => String(value ?? "").replace(/\s+/g, " ").trim();
 
-const cleanPlacementValue = (value: string | null | undefined) => {
-  const raw = normalizeText(value);
-  if (!raw) return "(vazio)";
+/*
+  `cleanPlacementValue` foi embora.
 
-  const base = raw
-    .split("::")[0]
-    .split("|")[0]
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_");
+  Ela refazia em JavaScript a MESMA escada de regras que o gatilho
+  `fn_campos_data` já roda no banco para preencher `vendas.utm_placement`
+  (enum): reels, stories, feed, marketplace, search, audience_network, senão
+  `outro`. Duas cópias de uma regra só — e elas já divergiam na cauda, porque
+  só a do banco tem o `outro`:
 
-  if (base.includes("stories")) return "stories";
-  if (base.includes("reels")) return "reels";
-  if (base.includes("marketplace")) return "marketplace";
-  if (base.includes("audience_network")) return "audience_network";
-  if (base.includes("messenger")) return "messenger";
-  if (base.includes("search")) return "search";
-  if (base.includes("feed")) return "feed";
+    utm_term                   banco    esta tela
+    Whatsapp_Status            outro    whatsapp_status
+    Facebook_Instream_Video    outro    facebook_instream_video
+    an                         outro    an
 
-  return base || "(vazio)";
-};
+  Ou seja: a aba de placement inventava categorias que o detalhe da venda, que
+  lê a coluna, não reconhecia. Agora `fn_utm_agregado` devolve o placement já
+  classificado e existe uma regra só.
+*/
 
 const cleanUtmValue = (value: string | null | undefined, level: UTMLevel) => {
   const raw = normalizeText(value);
@@ -83,15 +88,22 @@ const cleanUtmValue = (value: string | null | undefined, level: UTMLevel) => {
     return base;
   }
 
-  if (level === "utm_placement") {
-    return cleanPlacementValue(base);
-  }
-
+  // `utm_placement` não passa por aqui: ele chega classificado do banco.
   return base;
 };
 
+/*
+  "(vazio)" é o maior item da tela e merecia um nome.
+
+  Em agosto ele é a segunda maior "origem": 675 vendas e 36,5% do faturamento
+  sem nenhum UTM. Escrito como "(vazio)" ele se lê como falha de formatação e
+  passa batido; escrito como "Sem origem" ele se lê como o que é — a maior
+  fatia do faturamento que ninguém sabe de onde veio.
+*/
+const SEM_ORIGEM = "(vazio)";
+
 const displayUtmValue = (value: string, level: UTMLevel) => {
-  if (value === "(vazio)") return value;
+  if (value === SEM_ORIGEM) return "Sem origem";
   if (level === "utm_placement") return placementInfo[value]?.label || value.replace(/_/g, " ");
   return value.replace(/_/g, " ");
 };
@@ -100,9 +112,8 @@ export default function UTMPage() {
   const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [utmData, setUtmData] = useState<any[]>([]);
-  const [allUtm, setAllUtm] = useState<any[]>([]);
-  const [placementData, setPlacementData] = useState<any[]>([]);
+  const [utmData, setUtmData] = useState<LinhaNivelUtm[]>([]);
+  const [allUtm, setAllUtm] = useState<TuplaUtm[]>([]);
   const [loading, setLoading] = useState(true);
 
   const currentLevel = LEVELS[levelIndex];
@@ -110,25 +121,27 @@ export default function UTMPage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      
 
       /*
-        A soma vem do banco; a limpeza continua aqui.
+        A soma vem do banco; a limpeza de source/medium/campaign/content
+        continua aqui.
 
         A tela pedia as linhas cruas de `vendas` e agrupava no JavaScript.
         Agosto tem 2.462 vendas no recorte dela e o PostgREST corta em 1.000
         sem avisar — então a análise que existe para dizer de ONDE vem a venda
         respondia sobre 40% delas, sem sinal de erro.
 
-        `fn_utm_agregado` para nas tuplas CRUAS de UTM: 2.462 vendas viram 406
-        linhas. A limpeza (`cleanUtmValue`) fica onde sempre esteve, com as
-        regras que ela tem — "FBjLj6a8…" vira "meta ads", placement vira rótulo
-        legível. Reescrever isso em SQL seria duas versões da mesma regra
-        esperando divergir.
+        `fn_utm_agregado` para nas tuplas CRUAS de UTM: 2.462 vendas viram 409
+        linhas. A limpeza fica onde sempre esteve, com as regras que ela tem —
+        "FBjLj6a8…" vira "meta ads". Reescrever isso em SQL seria duas versões
+        da mesma regra esperando divergir.
 
         Funciona porque limpar é função pura do valor cru: duas tuplas que
         limpam para a mesma chave são somadas aqui embaixo, e soma de soma dá a
         mesma soma.
+
+        A exceção é `utm_placement`, que vem PRONTO do banco — ali a segunda
+        versão da regra já existia, e já divergia.
       */
       const { data: agregado, error } = await supabase.rpc("fn_utm_agregado", {
         p_inicio: startISO || null,
@@ -137,13 +150,22 @@ export default function UTMPage() {
       });
       if (error) console.error("fn_utm_agregado:", error.message);
 
-      const utmMap: Record<string, any> = {};
+      /*
+        As tuplas cruas viram tuplas limpas, somando as que colapsam.
+
+        Nenhuma razão é calculada aqui: taxa e ticket só existem depois do
+        agrupamento, sobre os TOTAIS do grupo. Guardar a taxa por tupla foi o
+        que produziu a média de médias que esta revisão desfez.
+      */
+      const utmMap: Record<string, TuplaUtm> = {};
       ((agregado as LinhaUtmAgregada[]) ?? []).forEach((v) => {
         const utmSource = cleanUtmValue(v.utm_source, "utm_source");
         const utmMedium = cleanUtmValue(v.utm_medium, "utm_medium");
         const utmCampaign = cleanUtmValue(v.utm_campaign, "utm_campaign");
         const utmContent = cleanUtmValue(v.utm_content, "utm_content");
-        const utmPlacement = cleanUtmValue(v.utm_term, "utm_placement");
+        // Vem pronto do banco: uma regra só para classificar placement. E
+        // nulo vira `sem_placement`, que é resposta diferente de "outro".
+        const utmPlacement = v.utm_placement || "sem_placement";
 
         const key = [utmSource, utmMedium, utmCampaign, utmContent, utmPlacement].join("|||");
         if (!utmMap[key]) {
@@ -152,7 +174,6 @@ export default function UTMPage() {
             utm_medium: utmMedium,
             utm_campaign: utmCampaign,
             utm_content: utmContent,
-            utm_term: utmPlacement,
             utm_placement: utmPlacement,
             produto: v.produto,
             vendas_aprovadas: 0,
@@ -161,72 +182,95 @@ export default function UTMPage() {
             faturamento: 0,
           };
         }
-        utmMap[key].vendas_aprovadas  += Number(v.vendas_aprovadas || 0);
-        utmMap[key].vendas_pendentes  += Number(v.vendas_pendentes || 0);
+        utmMap[key].vendas_aprovadas += Number(v.vendas_aprovadas || 0);
+        utmMap[key].vendas_pendentes += Number(v.vendas_pendentes || 0);
         utmMap[key].vendas_canceladas += Number(v.vendas_canceladas || 0);
-        utmMap[key].faturamento       += Number(v.faturamento || 0);
+        utmMap[key].faturamento += Number(v.faturamento || 0);
       });
 
-      const utmRows = Object.values(utmMap).map((r: any) => {
-        const total = r.vendas_aprovadas + r.vendas_pendentes + r.vendas_canceladas;
-        return {
-          ...r,
-          taxa_aprovacao_pct: total > 0 ? (r.vendas_aprovadas / total) * 100 : 0,
-          ticket_medio: r.vendas_aprovadas > 0 ? r.faturamento / r.vendas_aprovadas : 0,
-        };
-      });
-      setAllUtm(utmRows);
-
-      const plMap: Record<string, any> = {};
-      utmRows.forEach((r: any) => {
-        const k = r.utm_placement || "(vazio)";
-        if (!plMap[k]) plMap[k] = { placement: k, vendas_aprovadas: 0, faturamento: 0 };
-        plMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
-        plMap[k].faturamento += Number(r.faturamento || 0);
-      });
-      setPlacementData(Object.values(plMap).sort((a, b) => b.faturamento - a.faturamento));
+      setAllUtm(Object.values(utmMap));
       setLoading(false);
     };
     load();
-  }, [contaIds, startDateStr, endDateStr]);
+  }, [contaIds, startDateStr, endDateStr, startISO, endISO]);
 
   useEffect(() => {
     let rows = allUtm;
 
     Object.entries(filters).forEach(([key, value]) => {
-      rows = rows.filter((r: any) => (r[key] || "(vazio)") === value);
+      rows = rows.filter((r) => (String(r[key as keyof TuplaUtm] ?? "") || SEM_ORIGEM) === value);
     });
 
-    const grouped: Record<string, any> = {};
-    rows.forEach((r: any) => {
-      const key = r[currentLevel] || "(vazio)";
-      if (!grouped[key]) grouped[key] = { vendas_aprovadas: 0, faturamento: 0, taxa_sum: 0, count: 0 };
-      grouped[key].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
-      grouped[key].faturamento += Number(r.faturamento || 0);
-      grouped[key].taxa_sum += Number(r.taxa_aprovacao_pct || 0);
-      grouped[key].count += 1;
+    /*
+      Taxa e ticket saem dos TOTAIS do grupo, e não da média das tuplas.
+
+      A tela fazia média de médias: guardava a taxa de cada tupla e tirava a
+      média aritmética delas dentro do grupo. Uma tupla com 2 vendas pesava o
+      mesmo que uma com 300, e a distorção não era pequena — medida em agosto
+      de 2026, por source:
+
+        Sem origem   81,9% na tela   contra   71,4% real   (10,5 pontos)
+        instagram    77,8%           contra   64,6%        (13,2 pontos)
+        whatsapp     68,4%           contra   78,1%        (−9,8 pontos)
+
+      Errava para os dois lados, que é o pior caso: não dá para corrigir "de
+      cabeça" quem já se acostumou com o número. Agora somam-se aprovadas e
+      tentativas, e a divisão é feita uma vez no fim.
+    */
+    const grouped: Record<string, { aprovadas: number; tentativas: number; faturamento: number }> = {};
+    rows.forEach((r) => {
+      const key = String(r[currentLevel as keyof TuplaUtm] ?? "") || SEM_ORIGEM;
+      if (!grouped[key]) grouped[key] = { aprovadas: 0, tentativas: 0, faturamento: 0 };
+      grouped[key].aprovadas += r.vendas_aprovadas;
+      grouped[key].tentativas += r.vendas_aprovadas + r.vendas_pendentes + r.vendas_canceladas;
+      grouped[key].faturamento += r.faturamento;
     });
 
-    const table = Object.entries(grouped)
-      .map(([name, v]: any) => ({
-        name,
-        displayName: displayUtmValue(name, currentLevel),
-        vendas_aprovadas: v.vendas_aprovadas,
-        faturamento: v.faturamento,
-        taxa_aprovacao_pct: v.count > 0 ? v.taxa_sum / v.count : 0,
-        ticket_medio: v.vendas_aprovadas > 0 ? v.faturamento / v.vendas_aprovadas : 0,
-      }))
-      .sort((a, b) => b.faturamento - a.faturamento);
-
-    setUtmData(table);
+    setUtmData(
+      Object.entries(grouped)
+        .map(([name, v]): LinhaNivelUtm => ({
+          name,
+          displayName: displayUtmValue(name, currentLevel),
+          vendas_aprovadas: v.aprovadas,
+          tentativas: v.tentativas,
+          faturamento: v.faturamento,
+          taxa_aprovacao_pct: v.tentativas > 0 ? (v.aprovadas / v.tentativas) * 100 : 0,
+          ticket_medio: v.aprovadas > 0 ? v.faturamento / v.aprovadas : 0,
+        }))
+        .sort((a, b) => b.faturamento - a.faturamento),
+    );
   }, [allUtm, levelIndex, filters, currentLevel]);
 
+  // Os totais do nível aberto. A taxa é a razão das somas, pelo mesmo motivo.
   const totals = utmData.reduce(
-    (acc, r) => ({ vendas: acc.vendas + r.vendas_aprovadas, faturamento: acc.faturamento + r.faturamento }),
-    { vendas: 0, faturamento: 0 },
+    (acc, r) => ({
+      vendas: acc.vendas + r.vendas_aprovadas,
+      tentativas: acc.tentativas + r.tentativas,
+      faturamento: acc.faturamento + r.faturamento,
+    }),
+    { vendas: 0, tentativas: 0, faturamento: 0 },
   );
-  const avgTaxa = utmData.length > 0 ? utmData.reduce((s, r) => s + r.taxa_aprovacao_pct, 0) / utmData.length : 0;
+  const taxaTotal = totals.tentativas > 0 ? (totals.vendas / totals.tentativas) * 100 : 0;
   const avgTicket = totals.vendas > 0 ? totals.faturamento / totals.vendas : 0;
+
+  /*
+    Quanto do faturamento chega sem dizer de onde veio.
+
+    É a pergunta que esta tela existe para responder, e ela estava diluída numa
+    linha chamada "(vazio)" no meio da tabela. Em agosto são 36,5% — mais de um
+    terço do faturamento sem origem nenhuma. Fica no topo, e sempre sobre o
+    período inteiro: filtrar por uma origem não muda quanto do total é cego.
+  */
+  const semOrigem = allUtm.reduce(
+    (acc, r) => ({
+      faturamento: acc.faturamento + (r.utm_source === SEM_ORIGEM ? r.faturamento : 0),
+      total: acc.total + r.faturamento,
+      vendas: acc.vendas + (r.utm_source === SEM_ORIGEM ? r.vendas_aprovadas : 0),
+    }),
+    { faturamento: 0, total: 0, vendas: 0 },
+  );
+  const pctSemOrigem = semOrigem.total > 0 ? (semOrigem.faturamento / semOrigem.total) * 100 : 0;
+
 
   const drillDown = (value: string) => {
     if (levelIndex < LEVELS.length - 1) {
@@ -254,18 +298,30 @@ export default function UTMPage() {
     value: displayUtmValue(filters[level], level),
   }));
 
-  const sourceRows = (() => {
-    const map: Record<string, any> = {};
-    allUtm.forEach((r: any) => {
-      const k = r.utm_source || "organico";
-      if (!map[k]) map[k] = { source: k, displaySource: displayUtmValue(k, "utm_source"), vendas_aprovadas: 0, faturamento: 0 };
-      map[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
-      map[k].faturamento += Number(r.faturamento || 0);
+  /*
+    A aba "Por Source" saiu.
+
+    Ela era o nível 0 do drill-down mostrado de novo, com menos informação: as
+    mesmas linhas por source, sem taxa de aprovação e sem ticket médio, e sem
+    poder abrir. Duas telas para a mesma pergunta, e a pior delas era a que
+    abria primeiro.
+
+    "Por Placement" fica, e por um motivo concreto: no drill-down ele é o
+    último nível, a quatro cliques de distância, então na prática ninguém
+    chegava lá.
+  */
+  const placementData = (() => {
+    const mapa: Record<string, { placement: string; vendas_aprovadas: number; faturamento: number }> = {};
+    allUtm.forEach((r) => {
+      const k = r.utm_placement || "sem_placement";
+      if (!mapa[k]) mapa[k] = { placement: k, vendas_aprovadas: 0, faturamento: 0 };
+      mapa[k].vendas_aprovadas += r.vendas_aprovadas;
+      mapa[k].faturamento += r.faturamento;
     });
-    return Object.values(map).sort((a: any, b: any) => b.faturamento - a.faturamento);
+    return Object.values(mapa).sort((a, b) => b.faturamento - a.faturamento);
   })();
-  const srcTotal = sourceRows.reduce((s: number, r: any) => s + r.faturamento, 0);
-  const plTotal = placementData.reduce((s: number, r: any) => s + r.faturamento, 0);
+  const plTotal = placementData.reduce((s, r) => s + r.faturamento, 0);
+
 
   return (
     <DashboardLayout title="Análise UTM" hideTitle>
@@ -276,12 +332,6 @@ export default function UTMPage() {
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             UTM Drill-down
-          </TabsTrigger>
-          <TabsTrigger
-            value="source"
-            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            Por Source
           </TabsTrigger>
           <TabsTrigger
             value="placement"
@@ -327,12 +377,24 @@ export default function UTMPage() {
             </div>
           )}
 
-          {/* KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/*
+            Quatro números do nível aberto, e um do período inteiro.
+
+            "Sem origem" não acompanha o filtro de propósito: ele responde
+            "quanto do faturamento chega cego", e essa resposta não muda porque
+            alguém entrou numa campanha. Ele é o estado do rastreio, não um
+            recorte.
+          */}
+          <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-3 xl:grid-cols-5">
             <KPICard title="Total Vendas" value={formatNumber(totals.vendas)} />
             <KPICard title="Faturamento" value={formatCurrency(totals.faturamento)} />
-            <KPICard title="Taxa Aprovação" value={formatPercent(avgTaxa)} />
+            <KPICard title="Taxa Aprovação" value={formatPercent(taxaTotal)} />
             <KPICard title="Ticket Médio" value={formatCurrency(avgTicket)} />
+            <KPICard
+              title="Sem origem"
+              value={formatPercent(pctSemOrigem)}
+              subtitle={`${formatCurrency(semOrigem.faturamento)} · ${formatNumber(semOrigem.vendas)} vendas`}
+            />
           </div>
 
           {/* Voltar */}
@@ -381,7 +443,11 @@ export default function UTMPage() {
                           levelIndex < LEVELS.length - 1 && "cursor-pointer",
                         )}
                       >
-                        <td className="px-4 py-3 text-primary font-medium">{row.name}</td>
+                        {/* `displayName` e não `name`: é o rótulo tratado —
+                            "Sem origem" no lugar de "(vazio)", "Stories" no
+                            lugar de "stories". A tabela mostrava o valor cru e
+                            só o breadcrumb mostrava o tratado. */}
+                        <td className="px-4 py-3 font-medium text-primary">{row.displayName}</td>
                         <td className="px-4 py-3 text-foreground">{formatNumber(row.vendas_aprovadas)}</td>
                         <td className="px-4 py-3 text-foreground">{formatCurrency(row.faturamento)}</td>
                         <td className="px-4 py-3 text-foreground">
@@ -399,7 +465,12 @@ export default function UTMPage() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-foreground">{formatPercent(row.taxa_aprovacao_pct)}</td>
+                        <td
+                          className="px-4 py-3 text-foreground"
+                          title={`${formatNumber(row.vendas_aprovadas)} de ${formatNumber(row.tentativas)} tentativas`}
+                        >
+                          {formatPercent(row.taxa_aprovacao_pct)}
+                        </td>
                         <td className="px-4 py-3 text-foreground">{formatCurrency(row.ticket_medio)}</td>
                       </tr>
                     ))}
@@ -417,53 +488,13 @@ export default function UTMPage() {
           </div>
         </TabsContent>
 
-        {/* ── Por Source ───────────────────────────────────── */}
-        <TabsContent value="source">
-          <div className="bg-card border border-border rounded-lg p-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por UTM Source</h3>
-            <div className="space-y-2">
-              {sourceRows.map((r: any, i: number) => (
-                <div key={i} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: sourceColors[r.source] || "hsl(0,0%,50%)" }}
-                    />
-                    <span className="text-sm font-medium text-foreground capitalize">{r.source}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-24 bg-secondary rounded-full h-1.5">
-                        <div
-                          className="h-1.5 rounded-full"
-                          style={{
-                            width: `${srcTotal > 0 ? (r.faturamento / srcTotal) * 100 : 0}%`,
-                            backgroundColor: sourceColors[r.source] || "hsl(239,84%,67%)",
-                          }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground w-10">
-                        {srcTotal > 0 ? ((r.faturamento / srcTotal) * 100).toFixed(1) : 0}%
-                      </span>
-                    </div>
-                    <span className="text-muted-foreground">{formatNumber(r.vendas_aprovadas)} vendas</span>
-                    <span className="font-semibold text-foreground w-24 text-right">
-                      {formatCurrency(r.faturamento)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {sourceRows.length === 0 && <div className="text-center text-muted-foreground py-8">Sem dados</div>}
-            </div>
-          </div>
-        </TabsContent>
 
         {/* ── Por Placement ────────────────────────────────── */}
         <TabsContent value="placement">
           <div className="bg-card border border-border rounded-lg p-5">
             <h3 className="text-sm font-medium text-muted-foreground mb-4">Vendas por Placement</h3>
             <div className="space-y-2">
-              {placementData.map((r: any, i: number) => {
+              {placementData.map((r, i) => {
                 const info = placementInfo[r.placement] || {
                   label: r.placement,
                   network: "Outro",
