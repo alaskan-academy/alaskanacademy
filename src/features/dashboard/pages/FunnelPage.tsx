@@ -341,7 +341,17 @@ export default function FunnelPage() {
         qMetaAnt = qMetaAnt.gte("data", ant.start).lte("data", ant.end);
         qVAnt = qVAnt.gte("data_venda", inicioDiaBRT(ant.start)).lte("data_venda", fimDiaBRT(ant.end));
       }
-      if (contaIds) {
+      /*
+        `.length`, e não a verdade do array.
+
+        Estava `if (contaIds)` — array vazio é truthy, então com "todas as
+        contas" isto rodava `.in("ad_account_id", [])`, que não casa com linha
+        nenhuma. O período de comparação vinha zerado, e sem erro: a tela
+        mostrava variação contra zero como se fosse o dado. As duas consultas
+        do período atual, vinte linhas acima, já usavam `.length` — esta ficou
+        para trás na mesma mexida que quebrou o Resumo.
+      */
+      if (contaIds.length) {
         qMetaAnt = qMetaAnt.in("ad_account_id", contaIds);
         qVAnt = qVAnt.in("ad_account_id", contaIds);
       }

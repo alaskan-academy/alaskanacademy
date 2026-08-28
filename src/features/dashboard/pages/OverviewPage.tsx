@@ -248,7 +248,23 @@ export default function OverviewPage() {
     // timestamptz e comparar com data solta faria o Postgres ler em UTC, puxando as
     // 21h–23h59 do dia anterior para dentro do período.
     const ant = periodoAnt(startDateStr, endDateStr);
-    const argsBase = { p_segmento: segmento, p_conta: contaIds ?? null };
+
+    /*
+      `p_contas`, no plural e como array.
+
+      A página mandava `p_conta: contaIds ?? null` para uma função que recebia
+      um `uuid` escalar. Com nenhuma conta escolhida — o estado padrão — o que
+      chegava era `[]`, virava a string "[]" no PostgREST, e o Resumo morria
+      com "invalid input syntax for type uuid". Não era só com conta
+      selecionada: era sempre.
+
+      O `?? null` parecia um cuidado e nunca rodou: `??` só pega null e
+      undefined, e `[]` não é nenhum dos dois. Foi ele que fez o defeito
+      parecer tratado.
+
+      Do lado do banco, nulo e vazio significam a mesma coisa: todas as contas.
+    */
+    const argsBase = { p_segmento: segmento, p_contas: contaIds };
 
     const [atual, anterior] = await Promise.all([
       supabase.rpc("fn_overview", { ...argsBase, p_inicio: startISO, p_fim: endISO }),
