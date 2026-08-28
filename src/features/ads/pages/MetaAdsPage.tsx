@@ -39,7 +39,11 @@ const COLS = [
 
 function fmtCell(row: any, col: (typeof COLS)[number]) {
   const v = Number(row[col.key] ?? 0);
-  if (col.money) return `R$ ${v.toFixed(2)}`;
+  // `formatCurrency`, e nao `R$ ${v.toFixed(2)}`: a tabela mostrava
+  // "R$ 43915.63" com ponto decimal e sem separador de milhar, enquanto o
+  // cartao de conciliacao logo abaixo, na mesma tela, mostrava
+  // "R$ 43.915,63". O CLAUDE.md pede os formatadores justamente para isso.
+  if (col.money) return formatCurrency(v);
   if (col.pct) return `${v.toFixed(2)}%`;
   if (col.suffix) return `${v.toFixed(2)}${col.suffix}`;
   if (col.num) return formatNumber(v);
@@ -57,27 +61,62 @@ export default function MetaAdsPage() {
   const { startDateStr, endDateStr, contaIds } = useFilters();
   const [allRows, setAllRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState("investimento");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   // Checkboxes: IDs selecionados por nível pai (para filtrar filhos)
   const [selectedCamp, setSelectedCamp] = useState<Set<string>>(new Set());
   const [selectedAdset, setSelectedAdset] = useState<Set<string>>(new Set());
 
+  /*
+    A soma acontece no banco, e não aqui.
+
+    A tela pedia a view inteira — uma linha por dia e por nível — e somava no
+    JavaScript. O PostgREST corta em 1.000 linhas por padrão e não avisa:
+    devolve 200 com mil linhas. Agosto tem 3.285.
+
+    O que isso mostrava, medido com "Este mês":
+
+      na tela    6 campanhas   R$  25.082,09
+      no banco  16 campanhas   R$ 102.541,16
+
+    Um quarto do gasto, dez campanhas sumidas, sem erro nenhum. E o cartão de
+    conciliação logo abaixo, na MESMA tela, já mostrava R$ 102.541,16.
+
+    `fn_metricas_meta_agregado` devolve uma linha só de jsonb, com os níveis já
+    somados — e uma linha não tem teto para cortar.
+  */
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      
-      let q = supabase.from("vw_metricas_meta_nivel").select("*");
-      if (startDateStr && endDateStr) q = q.gte("data", startDateStr).lte("data", endDateStr);
-      if (contaIds.length) q = q.in("ad_account_id", contaIds);
-      const { data } = await q;
-      setAllRows(data || []);
+      const { data, error } = await supabase.rpc("fn_metricas_meta_agregado", {
+        p_inicio: startDateStr || null,
+        p_fim: endDateStr || null,
+        p_contas: contaIds,
+      });
+      // Erro tem que aparecer como erro: tela com zeros e "não consegui ler"
+      // são coisas diferentes, e confundi-las é como este defeito durou tanto.
+      if (error) {
+        console.error("fn_metricas_meta_agregado:", error.message);
+        setErro(error.message);
+        setAllRows([]);
+      } else {
+        setErro(null);
+        setAllRows((data as any[]) ?? []);
+      }
       setLoading(false);
     };
     load();
   }, [startDateStr, endDateStr, contaIds]);
 
-  // Agregar rows de um nível, filtrando pelo parent se necessário
+  /*
+    Filtra o nível e calcula as razões — a soma já veio pronta.
+
+    As razões ficam aqui, e não no SQL, apesar de a view também as calcular:
+    razão de um dia não se soma. CPM de 28 dias somados não é o CPM do mês.
+    Quem agrega tem que recalcular depois, e por isso a conta mora num lugar
+    só, aplicada sobre os totais.
+  */
   const aggregate = (nivel: Nivel, parentIds?: Set<string>) => {
     const filtered = allRows.filter((r) => {
       if (r.nivel !== nivel) return false;
@@ -87,46 +126,21 @@ export default function MetaAdsPage() {
       return true;
     });
 
-    const map: Record<string, any> = {};
-    filtered.forEach((r) => {
-      const k = r.nivel_id;
-      if (!map[k])
-        map[k] = {
-          nivel_id: k,
-          parent_id: r.parent_id,
-          nome: r.nome,
-          produto: r.produto,
-          campanha_id: r.campanha_id,
-          campanha_nome: r.campanha_nome,
-          adset_id: r.adset_id,
-          adset_nome: r.adset_nome,
-          impressoes: 0,
-          cliques: 0,
-          cliques_link: 0,
-          investimento: 0,
-          compras_meta: 0,
-          faturamento_atribuido: 0,
-          initiate_checkout: 0,
-          visualizacoes_pagina: 0,
-          video_plays: 0,
-          video_3s: 0,
-          video_75pct: 0,
+    return filtered
+      .map((linha: any) => {
+        const r = {
+          ...linha,
+          impressoes: Number(linha.impressoes || 0),
+          cliques: Number(linha.cliques || 0),
+          investimento: Number(linha.investimento || 0),
+          compras_meta: Number(linha.compras_meta || 0),
+          faturamento_atribuido: Number(linha.faturamento_atribuido || 0),
+          initiate_checkout: Number(linha.initiate_checkout || 0),
+          visualizacoes_pagina: Number(linha.visualizacoes_pagina || 0),
+          video_plays: Number(linha.video_plays || 0),
+          video_3s: Number(linha.video_3s || 0),
+          video_75pct: Number(linha.video_75pct || 0),
         };
-      const m = map[k];
-      m.impressoes += Number(r.impressoes || 0);
-      m.cliques += Number(r.cliques || 0);
-      m.investimento += Number(r.investimento || 0);
-      m.compras_meta += Number(r.compras_meta || 0);
-      m.faturamento_atribuido += Number(r.faturamento_atribuido || 0);
-      m.initiate_checkout += Number(r.initiate_checkout || 0);
-      m.visualizacoes_pagina += Number(r.visualizacoes_pagina || 0);
-      m.video_plays += Number(r.video_plays || 0);
-      m.video_3s += Number(r.video_3s || 0);
-      m.video_75pct += Number(r.video_75pct || 0);
-    });
-
-    return Object.values(map)
-      .map((r: any) => {
         const inv = r.investimento;
         const fat = r.faturamento_atribuido;
         const luc = fat - inv;
@@ -191,6 +205,11 @@ export default function MetaAdsPage() {
   ) =>
     loading ? (
       <div className="p-8 text-center text-muted-foreground animate-pulse">Carregando...</div>
+    ) : erro ? (
+      <div className="p-8 text-center">
+        <p className="text-sm font-medium text-foreground">Não foi possível carregar as métricas</p>
+        <p className="mt-1 text-xs text-muted-foreground">{erro}</p>
+      </div>
     ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
