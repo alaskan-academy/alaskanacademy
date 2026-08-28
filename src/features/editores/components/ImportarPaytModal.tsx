@@ -17,8 +17,8 @@ function detectSep(line: string) {
 // normaliza header para matching robusto: lowercase, sem BOM, sem espaços duplos
 function normalizeHeader(h: string) {
   return h
-    .replace(/^﻿/, '')   // BOM
-    .replace(/ /g, ' ')  // non-breaking space
+    .replace(/^\uFEFF/, '')   // BOM
+    .replace(/\u00A0/g, ' ')  // espaço fixo
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ');
@@ -26,7 +26,7 @@ function normalizeHeader(h: string) {
 
 function parseCSV(text: string) {
   // remove BOM do início do arquivo
-  const clean = text.replace(/^﻿/, '');
+  const clean = text.replace(/^\uFEFF/, '');
   const lines = clean.trim().split(/\r?\n/);
   const sep = detectSep(lines[0]);
   const headers = splitLine(lines[0], sep).map(h => h.replace(/^"|"$/g, '').trim());

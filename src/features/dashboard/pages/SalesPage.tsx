@@ -47,23 +47,101 @@ const paymentLabels: Record<string, string> = {
   desconhecido: "Desconhecido",
 };
 
+/*
+  As formas dos dados desta tela.
+
+  Estavam todas como `any` — 31 dos 204 erros de lint do projeto moravam neste
+  arquivo. `any` aqui não era preguiça: o cliente do Supabase é criado sem os
+  tipos do banco, então todo `select` volta solto e cada tela inventa o próprio
+  jeito de lidar com isso.
+
+  Enquanto o cliente não for tipado, o remendo honesto é este: declarar a forma
+  ao lado de quem usa, copiada das colunas REAIS das views — conferidas no
+  `information_schema`, não adivinhadas. Tipo inventado é pior que `any`,
+  porque cala uma verificação em vez de só não fazê-la.
+
+  Os números vêm do Postgres como `numeric`/`bigint`, e o supabase-js entrega
+  `number`. Onde o código faz `Number(x || 0)` é porque nulo acontece — está
+  marcado com `| null`.
+*/
+
+/** Uma venda, com o cliente embutido pelo `select`. */
+type Venda = {
+  id: string;
+  pedido_id: string | null;
+  data_venda: string;
+  produto: string | null;
+  valor_total: number | null;
+  status: string;
+  meio_pagamento: string | null;
+  utm_source: string | null;
+  utm_placement: string | null;
+  is_upsell: boolean | null;
+  clientes: { nome: string | null; email: string | null; telefone: string | null } | null;
+};
+
+/** Linha de `venda_itens` — o que aparece no detalhe da venda. */
+type ItemDaVenda = { id: string; nome: string | null; valor: number | null };
+
+/** `vw_vendas_temporal`, com o rótulo do dia que a tela acrescenta. */
+type PontoTemporal = {
+  data: string;
+  produto: string | null;
+  vendas_aprovadas: number | null;
+  vendas_pendentes: number | null;
+  faturamento: number | null;
+  dataLabel: string;
+};
+
+/** O que o gráfico de pizza por produto consome. */
+type FatiaPorProduto = { name: string; value: number };
+
+/** `vw_vendas_por_pagamento`, somada por meio e com taxa e ticket refeitos. */
+type PorPagamento = {
+  meio_pagamento: string;
+  aprovadas: number;
+  faturamento: number;
+  total_tentativas: number;
+  canceladas: number;
+  expiradas: number;
+  taxa_aprovacao_pct: string;
+  ticket_medio: number;
+};
+
+/** `vw_vendas_por_horario`, somada por hora — a view devolve uma linha por produto. */
+type PorHora = {
+  hora: number; vendas_aprovadas: number; vendas_pendentes: number;
+  faturamento: number; base_taxa: number; taxa_aprovacao_pct: number;
+};
+
+/** `vw_vendas_por_dia_semana`, somada por dia. */
+type PorDiaDaSemana = {
+  dia_semana: number;
+  dia_nome: string;
+  vendas_aprovadas: number;
+  faturamento: number;
+};
+
+/** `vw_vendas_por_mes`, somada por mês. */
+type PorMes = { mes_ano: string; vendas_aprovadas: number; faturamento: number };
+
 const PAGE_SIZE = 50;
 
 export default function SalesPage() {
   const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
-  const [salesData, setSalesData] = useState<any[]>([]);
+  const [salesData, setSalesData] = useState<Venda[]>([]);
   const [salesTotal, setSalesTotal] = useState(0);
   const [salesPage, setSalesPage] = useState(0);
-  const [temporal, setTemporal] = useState<any[]>([]);
-  const [byProduct, setByProduct] = useState<any[]>([]);
-  const [paymentData, setPaymentData] = useState<any[]>([]);
-  const [hourlyData, setHourlyData] = useState<any[]>([]);
-  const [weekData, setWeekData] = useState<any[]>([]);
-  const [monthData, setMonthData] = useState<any[]>([]);
+  const [temporal, setTemporal] = useState<PontoTemporal[]>([]);
+  const [byProduct, setByProduct] = useState<FatiaPorProduto[]>([]);
+  const [paymentData, setPaymentData] = useState<PorPagamento[]>([]);
+  const [hourlyData, setHourlyData] = useState<PorHora[]>([]);
+  const [weekData, setWeekData] = useState<PorDiaDaSemana[]>([]);
+  const [monthData, setMonthData] = useState<PorMes[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingSales, setLoadingSales] = useState(false);
-  const [selectedSale, setSelectedSale] = useState<any>(null);
-  const [saleItems, setSaleItems] = useState<any[]>([]);
+  const [selectedSale, setSelectedSale] = useState<Venda | null>(null);
+  const [saleItems, setSaleItems] = useState<ItemDaVenda[]>([]);
   const [statusFilter, setStatusFilter] = useState("todos");
 
   // Reset page when filters change
@@ -130,21 +208,21 @@ export default function SalesPage() {
       const [rT, rP, rPay, rH, rW, rM] = await Promise.all([qT, qP, qPay, qH, qW, qM]);
 
       setTemporal(
-        (rT.data || []).map((r: any) => ({
+        (rT.data ?? []).map((r): PontoTemporal => ({
           ...r,
           dataLabel: String(new Date(r.data + "T00:00:00").getDate()).padStart(2, "0"),
         })),
       );
 
       const prodMap: Record<string, number> = {};
-      (rP.data || []).forEach((v: any) => {
+      (rP.data ?? []).forEach((v) => {
         const p = v.produto || "Outros";
         prodMap[p] = (prodMap[p] || 0) + Number(v.valor_total || 0);
       });
       setByProduct(Object.entries(prodMap).map(([name, value]) => ({ name, value })));
 
-      const payMap: Record<string, any> = {};
-      (rPay.data || []).forEach((r: any) => {
+      const payMap: Record<string, Omit<PorPagamento, 'taxa_aprovacao_pct' | 'ticket_medio'>> = {};
+      (rPay.data ?? []).forEach((r) => {
         const k = r.meio_pagamento;
         if (!payMap[k])
           payMap[k] = {
@@ -164,7 +242,7 @@ export default function SalesPage() {
       // A taxa ja era recalculada aqui; o ticket medio nao vinha junto e a coluna
       // mostrava R$ 0,00 para todos os meios. Os dois saem dos totais somados.
       setPaymentData(
-        Object.values(payMap).map((r: any) => ({
+        Object.values(payMap).map((r): PorPagamento => ({
           ...r,
           taxa_aprovacao_pct: r.total_tentativas > 0 ? ((r.aprovadas / r.total_tentativas) * 100).toFixed(1) : "0.0",
           ticket_medio: r.aprovadas > 0 ? r.faturamento / r.aprovadas : 0,
@@ -174,10 +252,6 @@ export default function SalesPage() {
       // A view devolve uma linha por produto (e agora por conta), entao 24 horas viram
       // ~100 linhas. Antes so ordenava, e o grafico desenhava a mesma hora varias vezes.
       // Os outros tres graficos ja somavam; este era o unico que nao.
-      type PorHora = {
-        hora: number; vendas_aprovadas: number; vendas_pendentes: number;
-        faturamento: number; base_taxa: number; taxa_aprovacao_pct: number;
-      };
       const hourMap: Record<number, PorHora> = {};
       (rH.data ?? []).forEach((r: Record<string, unknown>) => {
         const h = Number(r.hora ?? 0);
@@ -200,8 +274,8 @@ export default function SalesPage() {
       setHourlyData(Object.values(hourMap).sort((a, b) => a.hora - b.hora));
 
       const weekOrder = [1, 2, 3, 4, 5, 6, 0];
-      const weekMap: Record<number, any> = {};
-      (rW.data || []).forEach((r: any) => {
+      const weekMap: Record<number, PorDiaDaSemana> = {};
+      (rW.data ?? []).forEach((r) => {
         const d = r.dia_semana;
         if (!weekMap[d]) weekMap[d] = { dia_semana: d, dia_nome: r.dia_nome, vendas_aprovadas: 0, faturamento: 0 };
         weekMap[d].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
@@ -219,21 +293,21 @@ export default function SalesPage() {
         ),
       );
 
-      const monthMap: Record<string, any> = {};
-      (rM.data || []).forEach((r: any) => {
+      const monthMap: Record<string, PorMes> = {};
+      (rM.data ?? []).forEach((r) => {
         const k = r.mes_ano;
         if (!monthMap[k]) monthMap[k] = { mes_ano: k, vendas_aprovadas: 0, faturamento: 0 };
         monthMap[k].vendas_aprovadas += Number(r.vendas_aprovadas || 0);
         monthMap[k].faturamento += Number(r.faturamento || 0);
       });
-      setMonthData(Object.values(monthMap).sort((a: any, b: any) => a.mes_ano.localeCompare(b.mes_ano)));
+      setMonthData(Object.values(monthMap).sort((a, b) => a.mes_ano.localeCompare(b.mes_ano)));
 
       setLoading(false);
     };
     load();
   }, [startDateStr, endDateStr, contaIds, statusFilter]);
 
-  const openDetail = async (sale: any) => {
+  const openDetail = async (sale: Venda) => {
     setSelectedSale(sale);
     const { data: items } = await supabase.from("venda_itens").select("*").eq("venda_id", sale.id);
     setSaleItems(items || []);
@@ -241,7 +315,7 @@ export default function SalesPage() {
 
   // Inclui expirada nos filtros
   const statuses = ["todos", "aprovada", "pendente", "cancelada", "expirada", "reembolsada"];
-  const displayId = (sale: any) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
+  const displayId = (sale: Venda) => (sale.pedido_id?.startsWith("LC-") ? "Carrinho Abandonado" : sale.pedido_id);
   const peakHour = hourlyData.reduce(
     (max, r) => ((r.vendas_aprovadas || 0) > (max?.vendas_aprovadas || 0) ? r : max),
     hourlyData[0],
@@ -286,7 +360,7 @@ export default function SalesPage() {
                 <YAxis stroke="#555" tick={{ fontSize: 10 }} />
                 <Tooltip {...chartTooltip} />
                 <Bar dataKey="vendas_aprovadas" radius={[4, 4, 0, 0]}>
-                  {hourlyData.map((e: any, i: number) => (
+                  {hourlyData.map((e, i) => (
                     <Cell
                       key={i}
                       fill={peakHour && e.hora === peakHour.hora ? "hsl(38,92%,50%)" : "hsl(239,84%,67%)"}
@@ -297,7 +371,7 @@ export default function SalesPage() {
             </ResponsiveContainer>
           </div>
           <TableCard headers={["Hora", "Vendas", "Faturamento", "Taxa Aprov."]}>
-            {hourlyData.map((r: any, i: number) => (
+            {hourlyData.map((r, i) => (
               <tr
                 key={i}
                 className={cn(
@@ -329,7 +403,7 @@ export default function SalesPage() {
             </ResponsiveContainer>
           </div>
           <TableCard headers={["Dia", "Vendas", "Faturamento"]}>
-            {weekData.map((r: any, i: number) => (
+            {weekData.map((r, i) => (
               <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
                 <td className="px-4 py-2 font-medium text-foreground">{r.dia_nome}</td>
                 <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
@@ -351,7 +425,7 @@ export default function SalesPage() {
                   <YAxis stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
                   <Tooltip
                     {...chartTooltip}
-                    formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
+                    formatter={(v: number | string) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]}
                     labelFormatter={(l) => `Dia ${l}`}
                   />
                   <Bar dataKey="faturamento" fill="hsl(239,84%,67%)" radius={[4, 4, 0, 0]} />
@@ -497,13 +571,13 @@ export default function SalesPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,0%,16%)" />
                 <XAxis dataKey="mes_ano" stroke="#555" tick={{ fontSize: 10 }} />
                 <YAxis stroke="#555" tick={{ fontSize: 10 }} tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip {...chartTooltip} formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
+                <Tooltip {...chartTooltip} formatter={(v: number | string) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
                 <Bar dataKey="faturamento" fill="hsl(160,60%,45%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
           <TableCard headers={["Mês", "Vendas", "Faturamento", "Ticket Médio"]}>
-            {monthData.map((r: any, i: number) => (
+            {monthData.map((r, i) => (
               <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
                 <td className="px-4 py-2 font-medium text-foreground">{r.mes_ano}</td>
                 <td className="px-4 py-2 text-foreground">{formatNumber(r.vendas_aprovadas || 0)}</td>
@@ -536,7 +610,7 @@ export default function SalesPage() {
                       <Cell key={i} fill={COLORS[i % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip {...chartTooltip} formatter={(v: any) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
+                  <Tooltip {...chartTooltip} formatter={(v: number | string) => [`R$ ${Number(v).toFixed(2)}`, "Faturamento"]} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 w-full max-w-xs">
@@ -578,7 +652,7 @@ export default function SalesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paymentData.map((r: any, i: number) => (
+                  {paymentData.map((r, i) => (
                     <tr key={i} className="border-b border-border/50 hover:bg-secondary/50">
                       <td className="px-4 py-3 font-medium text-foreground">
                         {paymentLabels[r.meio_pagamento] || r.meio_pagamento}
@@ -677,7 +751,7 @@ export default function SalesPage() {
                 <div>
                   <h4 className="text-sm font-medium text-muted-foreground mb-2">Order Bumps</h4>
                   <div className="space-y-2">
-                    {saleItems.map((item: any) => (
+                    {saleItems.map((item) => (
                       <div
                         key={item.id}
                         className="flex justify-between items-center bg-secondary rounded-md px-3 py-2 text-sm"

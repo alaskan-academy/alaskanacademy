@@ -319,7 +319,7 @@ export default function FunnelPage() {
       if (contaIds.length) qV = qV.in("ad_account_id", contaIds);
 
       // OBs e Upsells vinculados às vendas (com utm_campaign)
-      let qItems = supabase
+      const qItems = supabase
         .from("venda_itens")
         .select("code_payt,tipo,nome,valor,converteu,venda_id,vendas(utm_campaign,produto,status)")
         .eq("converteu", true);
