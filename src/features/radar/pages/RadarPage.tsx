@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,10 +15,12 @@ import { cn } from '@/lib/utils';
 import {
   Plus, Search, Pencil, Trash2, Calendar, User, Tag, FolderOpen,
   FlaskConical, CheckCircle2, XCircle, MinusCircle, Clock, PauseCircle,
-  Sheet, Loader2, BookMarked, Settings2, Layers, Lock, ArrowUpRight,
+  Sheet, Loader2, BookMarked, Settings2, Layers, Lock,
 } from 'lucide-react';
 import { AreasSection } from '../components/RadarConfigTab';
 import { CATEGORIA_LABEL } from '../categorias';
+import { TesteModal } from '@/features/funis/components/TesteModal';
+import type { TesteFunil, Funil, Projeto as ProjetoDoFunis } from '@/features/funis/types';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,27 @@ export function RadarContent() {
 
   // detalhe dialog
   const [detalhe, setDetalhe]       = useState<Teste | null>(null);
+
+  /*
+    O teste do Funis abre AQUI, sem sair do Radar.
+
+    A primeira versão era um link para `/funis-gestao?aba=testes&teste=…`.
+    Funcionava, mas mandava embora: quem só queria marcar o vencedor perdia a
+    lista, o filtro e o lugar na rolagem, e voltava por conta própria. É o
+    mesmo motivo pelo qual a Produção e a Esteira do Copy montam o card na
+    própria tela em vez de navegar.
+
+    O modal é o DO FUNIS, não uma cópia dele — copiar um formulário de 600
+    linhas seria a primeira armadilha do CLAUDE.md em escala grande, com as
+    duas versões divergindo na primeira regra nova.
+
+    As listas de funis e projetos carregam na primeira vez que alguém abre, e
+    não junto com a página: quem entra no Radar para ler não deveria pagar duas
+    consultas por um formulário que talvez não abra.
+  */
+  const [testeFunil, setTesteFunil]   = useState<TesteFunil | null>(null);
+  const [ctxFunis, setCtxFunis]       = useState<{ funis: Funil[]; projetos: ProjetoDoFunis[] } | null>(null);
+  const [abrindoFunil, setAbrindoFunil] = useState(false);
   const [gerenciarAreas, setGerenciarAreas] = useState(false);
 
   // sync sheets
@@ -552,6 +574,41 @@ export function RadarContent() {
     : t.criado_por_nome ? { nome: t.criado_por_nome, rotulo: 'criado por ' }
     : null;
 
+  async function abrirNoFunis(fonteId: string) {
+    setAbrindoFunil(true);
+    try {
+      const [{ data: teste }, contexto] = await Promise.all([
+        supabase.from('testes_funis').select('*').eq('id', fonteId).maybeSingle(),
+        ctxFunis ? Promise.resolve(ctxFunis) : (async () => {
+          const [f, pr] = await Promise.all([
+            supabase.from('funis').select('*').order('nome'),
+            supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').eq('ativo', true).order('nome'),
+          ]);
+          const c = {
+            funis:    (f.data  ?? []) as unknown as Funil[],
+            projetos: (pr.data ?? []) as unknown as ProjetoDoFunis[],
+          };
+          setCtxFunis(c);
+          return c;
+        })(),
+      ]);
+      void contexto;
+      if (!teste) {
+        /* Aqui o toast funciona: sai de um clique, não do primeiro efeito. */
+        return toast({
+          title: 'Teste não encontrado no Funis',
+          description: 'Ele pode ter sido excluído lá.',
+          variant: 'destructive',
+        });
+      }
+      /* Fecha o detalhe antes: dois diálogos empilhados é pior que a troca. */
+      setDetalhe(null);
+      setTesteFunil(teste as unknown as TesteFunil);
+    } finally {
+      setAbrindoFunil(false);
+    }
+  }
+
   const podeEditar = (t: Teste) =>
     isAdmin
     || t.criado_por === user?.id
@@ -798,12 +855,15 @@ export function RadarContent() {
                     Sincronizado via módulo Funis — título, hipótese, datas e resultado se alteram lá.
                   </span>
                   {detalhe.fonte_id && (
-                    <Link
-                      to={`/funis-gestao?aba=testes&teste=${detalhe.fonte_id}`}
-                      className="ml-auto inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-2 py-1 font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                    <button
+                      onClick={() => void abrirNoFunis(detalhe.fonte_id!)}
+                      disabled={abrindoFunil}
+                      className="ml-auto inline-flex shrink-0 items-center gap-1 rounded border border-border bg-background px-2 py-1 font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-60"
                     >
-                      Abrir no Funis <ArrowUpRight className="h-3 w-3" />
-                    </Link>
+                      {abrindoFunil
+                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Abrindo…</>
+                        : <><Pencil className="h-3 w-3" /> Editar no Funis</>}
+                    </button>
                   )}
                 </div>
               )}
@@ -1085,6 +1145,28 @@ export function RadarContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/*
+        O formulário do Funis, montado aqui.
+
+        `key` no id força o modal a renascer a cada teste: ele carrega os
+        campos num efeito de montagem, e reaproveitar a instância mostraria o
+        teste anterior por um quadro.
+
+        Ao salvar, o gatilho no banco já atualizou o espelho — o `load()` é só
+        para a tela ver o que o banco já sabe.
+      */}
+      {ctxFunis && (
+        <TesteModal
+          key={testeFunil?.id ?? 'nenhum'}
+          open={!!testeFunil}
+          onClose={() => setTesteFunil(null)}
+          onSaved={() => { setTesteFunil(null); load(); }}
+          teste={testeFunil}
+          funis={ctxFunis.funis}
+          projetos={ctxFunis.projetos}
+        />
+      )}
 
       {/* ── Gerenciar Áreas ── */}
       <Dialog open={gerenciarAreas} onOpenChange={v => { if (!v) { setGerenciarAreas(false); load(); } }}>
