@@ -186,6 +186,9 @@ type ResumoVendas = {
   faturamento: number;
   aprovadas: number;
   tentativas: number;
+  /** Canceladas + expiradas. Reembolsada e chargeback não entram: foram aprovadas. */
+  recusadas: number;
+  recusadas_valor: number;
   upsell_aprovadas: number;
   upsell_faturamento: number;
 };
@@ -228,7 +231,8 @@ function rotuloDoMes(mesAno: string) {
 }
 
 const RESUMO_VAZIO: ResumoVendas = {
-  faturamento: 0, aprovadas: 0, tentativas: 0, upsell_aprovadas: 0, upsell_faturamento: 0,
+  faturamento: 0, aprovadas: 0, tentativas: 0, recusadas: 0, recusadas_valor: 0,
+  upsell_aprovadas: 0, upsell_faturamento: 0,
 };
 
 const RESUMO_LISTA_VAZIO: ResumoDaLista = { quantidade: 0, valor: 0, base_periodo: 0 };
@@ -621,10 +625,13 @@ export default function SalesPage() {
 
         As divisórias são o fundo aparecendo pelo `gap-px`: assim elas se
         acertam sozinhas em qualquer número de colunas, sem borda que sobra na
-        ponta. A célula vazia no fim existe para o buraco não virar um bloco da
-        cor da borda; em `lg` os cinco cabem numa linha e ela some.
+        ponta.
+
+        São seis números, e as colunas são 2 / 3 / 6 — nunca 4 nem 5, que
+        deixariam um cartão sozinho na última linha. Seis só em `xl`: em `lg`,
+        com a sidebar aberta, "R$ 163.245,87" não cabe na largura que sobra.
       */}
-      <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
         <Kpi rotulo="Faturamento" valor={loading ? "—" : formatCurrency(resumo.faturamento)} />
         <Kpi rotulo="Vendas aprovadas" valor={loading ? "—" : formatNumber(resumo.aprovadas)} />
         <Kpi rotulo="Ticket médio" valor={loading ? "—" : formatCurrency(ticketMedio)} />
@@ -650,7 +657,25 @@ export default function SalesPage() {
               : `${formatNumber(resumo.upsell_aprovadas)} vendas · fora dos gráficos`
           }
         />
-        <div className="bg-card lg:hidden" />
+        {/*
+          O par da taxa de aprovação, e o que preenche a sexta célula.
+
+          A taxa ao lado diz que 24,6% não passaram; sozinha, ela não diz quanto
+          isso é. São R$ 57.867,43 em agosto — um terço do que entrou, parado no
+          checkout. É o número desta tela que aponta para uma ação.
+
+          "Recusada" é cancelada + expirada, a mesma definição da coluna "Não
+          aprovadas" da aba Pagamento. Reembolsada e chargeback ficam de fora:
+          foram aprovadas e devolvidas depois, são outro problema.
+        */}
+        <Kpi
+          rotulo="Não aprovado"
+          valor={loading ? "—" : formatCurrency(resumo.recusadas_valor)}
+          cor={loading ? undefined : "text-muted-foreground"}
+          nota={
+            loading ? undefined : `${formatNumber(resumo.recusadas)} canceladas e expiradas`
+          }
+        />
       </div>
 
       <Tabs defaultValue="quando" className="space-y-4">
