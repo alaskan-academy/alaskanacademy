@@ -1,7 +1,7 @@
 import { todasAsLinhas } from '@/lib/supabase';
 import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, Search, CalendarIcon } from 'lucide-react';
+import { Loader2, Search, CalendarIcon, GitBranch } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
@@ -14,7 +14,21 @@ import { fetchProjetos, fetchFunis } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
+import { PedidoVariacaoModal } from '@/features/producao/components/PedidoVariacaoModal';
 import type { Perfil, Funil } from '@/features/producao/components/types';
+
+/*
+  A grade da lista, escrita uma vez.
+
+  Ela aparece no cabeçalho e em cada linha; com a largura repetida nos dois
+  lugares, acrescentar coluna significa acertar dois literais iguais — e o dia
+  em que só um for acertado, o cabeçalho desalinha das linhas em silêncio.
+*/
+const GRADE             = 'grid-cols-[1fr_120px_120px_120px_100px]';
+// 36px: o atalho e so o icone. Com rotulo escrito ele custava 72px e comia a
+// largura da coluna NOME, que passava a mostrar "AD 00..." -- trocar o nome do
+// criativo por um botao e o oposto do que o atalho existe para fazer.
+const GRADE_COM_ATALHO  = 'grid-cols-[1fr_120px_120px_120px_100px_36px]';
 
 interface CriativoPostado {
   id: string;
@@ -86,8 +100,40 @@ export function AvaliacaoView({ userId }: Props) {
   const [preset, setPreset]               = useState<'this' | 'last' | 'custom'>('this');
   const [dateRange, setDateRange]         = useState<DateRange | undefined>();
   const [calOpen, setCalOpen]             = useState(false);
+  /*
+    O atalho de pedir variação, sem precisar abrir o card.
+
+    A ação já existia — dentro do card, embaixo da avaliação, que é onde a
+    decisão nasce. O que faltava era o caminho curto: nesta lista a pessoa
+    avalia dez criativos seguidos, e abrir e fechar o card para pedir variação
+    de um deles quebra o ritmo da revisão.
+
+    É o MESMO modal e a MESMA regra de permissão — `fn_pode_pedir_variacao`, a
+    função que a RLS aplica. Não há cópia da condição aqui: escrever "é gestor
+    de tráfego ou admin" numa segunda tela seria a versão que envelhece.
+  */
+  const [podePedir, setPodePedir]       = useState(false);
+  const [comPedido, setComPedido]       = useState<Set<string>>(new Set());
+  const [pedindo, setPedindo]           = useState<{ id: string; nome: string } | null>(null);
   const [somentePendentes, setSomentePendentes] = useState(false);
   const [mostrarInativos, setMostrarInativos]   = useState(false);
+
+  /*
+    Quem já tem pedido aberto vem numa consulta só, e não uma por linha.
+
+    São 148 criativos na tela; perguntar por card seriam 148 idas ao banco para
+    desenhar uma lista.
+  */
+  const carregarPedidos = useCallback(async () => {
+    const [pode, abertos] = await Promise.all([
+      supabase.rpc('fn_pode_pedir_variacao'),
+      supabase.from('pedidos_variacao').select('producao_id').eq('status', 'aberto'),
+    ]);
+    setPodePedir(pode.data === true);
+    setComPedido(new Set(((abertos.data ?? []) as { producao_id: string }[]).map(x => x.producao_id)));
+  }, []);
+
+  useEffect(() => { void carregarPedidos(); }, [carregarPedidos]);
 
   // `toISOString()` em toda linha aqui — e a última dupla é a que doía: as
   // datas vêm do calendário, onde a escolhida pode carregar a hora atual. Às
@@ -416,12 +462,19 @@ export function AvaliacaoView({ userId }: Props) {
         </div>
       ) : (
         <div className="border border-border rounded-lg overflow-hidden">
-          <div className="grid grid-cols-[1fr_120px_120px_120px_100px] gap-3 px-4 py-2 bg-muted/30 border-b border-border text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {/* A coluna do atalho só existe para quem pode pedir: uma coluna
+              vazia em toda linha para o resto da equipe é largura gasta a
+              dizer "isto não é para você". */}
+          <div className={cn(
+            'grid gap-3 px-4 py-2 bg-muted/30 border-b border-border text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
+            podePedir ? GRADE_COM_ATALHO : GRADE,
+          )}>
             <span>Nome</span>
             <span>Projeto</span>
             <span>Editor</span>
             <span>Status</span>
             <span>Avaliação</span>
+            {podePedir && <span className="text-right" title="Pedir variação">Var.</span>}
           </div>
 
           {displayCriativos.map(c => {
@@ -430,7 +483,8 @@ export function AvaliacaoView({ userId }: Props) {
               <div
                 key={c.id}
                 className={cn(
-                  'grid grid-cols-[1fr_120px_120px_120px_100px] gap-3 px-4 py-2.5 items-center border-b border-border/50 last:border-0 text-sm transition-colors',
+                  'grid gap-3 px-4 py-2.5 items-center border-b border-border/50 last:border-0 text-sm transition-colors',
+                  podePedir ? GRADE_COM_ATALHO : GRADE,
                   pendente ? 'bg-amber-500/5' : '',
                 )}
               >
@@ -496,6 +550,32 @@ export function AvaliacaoView({ userId }: Props) {
                     </div>
                   )}
                 </div>
+
+                {podePedir && (
+                  <div className="flex justify-end">
+                    {comPedido.has(c.id) ? (
+                      /* Já pedido: o estado é dito, e o botão não volta a
+                         aparecer. Dois pedidos para o mesmo criativo virariam
+                         duas entradas na esteira do Copy. */
+                      <span
+                        title="Variação já pedida — está na esteira do Copy"
+                        className="grid h-6 w-6 place-items-center rounded-md border border-success/30 bg-success/10 text-success"
+                      >
+                        <GitBranch className="h-3 w-3" />
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPedindo({ id: c.id, nome: c.nome })}
+                        title="Pedir variação deste criativo"
+                        aria-label="Pedir variação"
+                        className="grid h-6 w-6 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                      >
+                        <GitBranch className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -505,12 +585,24 @@ export function AvaliacaoView({ userId }: Props) {
       <CriativoDrawer
         criativoId={selectedId}
         onClose={() => setSelectedId(null)}
-        onUpdate={load}
+        onUpdate={() => { void load(); void carregarPedidos(); }}
         nivel="socio"
         userId={userId}
         funis={funis}
         perfis={perfis}
       />
+
+      {/* O mesmo modal que o card usa. Nada foi reescrito: o atalho muda de
+          onde a ação é alcançada, não o que ela faz nem o que ela pergunta. */}
+      {pedindo && (
+        <PedidoVariacaoModal
+          open
+          producaoId={pedindo.id}
+          nome={pedindo.nome}
+          onClose={() => setPedindo(null)}
+          onSalvo={() => { setPedindo(null); void carregarPedidos(); }}
+        />
+      )}
     </div>
   );
 }
