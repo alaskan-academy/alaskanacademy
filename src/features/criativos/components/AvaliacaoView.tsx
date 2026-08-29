@@ -14,6 +14,7 @@ import { fetchProjetos, fetchFunis } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
+import { useMetricasDoAd, TiraDeMetricas, LegendaFontes } from '@/features/criativos/metricasDoAd';
 import { PedidoVariacaoModal } from '@/features/producao/components/PedidoVariacaoModal';
 import type { Perfil, Funil } from '@/features/producao/components/types';
 
@@ -24,11 +25,36 @@ import type { Perfil, Funil } from '@/features/producao/components/types';
   lugares, acrescentar coluna significa acertar dois literais iguais — e o dia
   em que só um for acertado, o cabeçalho desalinha das linhas em silêncio.
 */
-const GRADE             = 'grid-cols-[1fr_120px_120px_120px_100px]';
-// 36px: o atalho e so o icone. Com rotulo escrito ele custava 72px e comia a
-// largura da coluna NOME, que passava a mostrar "AD 00..." -- trocar o nome do
-// criativo por um botao e o oposto do que o atalho existe para fazer.
-const GRADE_COM_ATALHO  = 'grid-cols-[1fr_120px_120px_120px_100px_36px]';
+/*
+  O nome tem PISO, e projeto e editor cedem no lugar dele.
+
+  Com `1fr` puro e as outras colunas fixas, a coluna do nome ficava com 92px
+  numa janela de 959 -- e tres criativos diferentes ("AD 002 H01 V01", "H02",
+  "H03") apareciam todos como "AD 002 H0...". Numa tela de avaliacao, nao
+  distinguir um AD do outro e o defeito mais caro possivel.
+
+  140px cabe o codigo inteiro. Projeto e editor viram `1fr` com piso menor
+  porque truncar "Velas Lembrancinhas" ainda deixa reconhecer o projeto;
+  truncar o codigo do AD nao deixa reconhecer nada.
+*/
+/*
+  Em `style`, e nao em classe do Tailwind.
+
+  O Tailwind varre o codigo procurando strings LITERAIS: uma classe montada
+  por template literal -- `grid-cols-[${COLS}]` -- nunca chega ao CSS, e a
+  grade simplesmente nao existe. Ou se escreve o literal duas vezes (o que o
+  comentario acima proibe, com razao) ou se sai do Tailwind para esta
+  propriedade. A segunda opcao mantem UM lugar definindo as colunas.
+
+  36px: o atalho e so o icone. Com rotulo escrito ele custava 72px e comia a
+  largura da coluna NOME, que passava a mostrar "AD 00..." -- trocar o nome do
+  criativo por um botao e o oposto do que o atalho existe para fazer.
+*/
+const COLS_BASE = 'minmax(140px,1.6fr) minmax(80px,1fr) minmax(80px,1fr) 120px 120px';
+
+const grade = (comAtalho: boolean) => ({
+  gridTemplateColumns: comAtalho ? `${COLS_BASE} 36px` : COLS_BASE,
+});
 
 interface CriativoPostado {
   id: string;
@@ -76,6 +102,15 @@ const AVAL_COR: Record<string, string> = {
 };
 
 export function AvaliacaoView({ userId }: Props) {
+  /*
+    O número de cada AD, da vida inteira do anúncio.
+
+    Sem período: avaliar um criativo pelo mês corrente reprovaria todo AD que
+    estreou ontem, e a pergunta aqui é "esta peça funcionou?", não "quanto ela
+    rendeu em agosto".
+  */
+  const { metricas } = useMetricasDoAd(null, null);
+
   const { toast } = useToast();
 
   const [criativos, setCriativos]     = useState<CriativoPostado[]>([]);
@@ -465,10 +500,10 @@ export function AvaliacaoView({ userId }: Props) {
           {/* A coluna do atalho só existe para quem pode pedir: uma coluna
               vazia em toda linha para o resto da equipe é largura gasta a
               dizer "isto não é para você". */}
-          <div className={cn(
-            'grid gap-3 px-4 py-2 bg-muted/30 border-b border-border text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
-            podePedir ? GRADE_COM_ATALHO : GRADE,
-          )}>
+          <div
+            style={grade(podePedir)}
+            className="grid gap-3 px-4 py-2 bg-muted/30 border-b border-border text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+          >
             <span>Nome</span>
             <span>Projeto</span>
             <span>Editor</span>
@@ -480,14 +515,24 @@ export function AvaliacaoView({ userId }: Props) {
           {displayCriativos.map(c => {
             const pendente = isPendente(c);
             return (
+              /*
+                A linha virou um envelope: a grade por dentro, a tira de números
+                por BAIXO dela, na largura inteira.
+
+                A primeira versão pôs a tira dentro da coluna do nome — que é
+                `1fr` e estreita. Os oito números empilharam um por linha e cada
+                AD virou um bloco de nove linhas: o mesmo muro de texto que a
+                fila da Esteira tinha. Número lado a lado se compara; número
+                empilhado se lê um por um.
+              */
               <div
                 key={c.id}
                 className={cn(
-                  'grid gap-3 px-4 py-2.5 items-center border-b border-border/50 last:border-0 text-sm transition-colors',
-                  podePedir ? GRADE_COM_ATALHO : GRADE,
+                  'border-b border-border/50 last:border-0 text-sm transition-colors',
                   pendente ? 'bg-amber-500/5' : '',
                 )}
               >
+              <div style={grade(podePedir)} className="grid gap-3 px-4 pt-2.5 items-center">
                 <div className="min-w-0">
                   <button
                     onClick={() => setSelectedId(c.id)}
@@ -501,6 +546,7 @@ export function AvaliacaoView({ userId }: Props) {
                       {new Date(c.data_ref + 'T00:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   )}
+
                 </div>
 
                 <span className="text-xs text-muted-foreground truncate">
@@ -576,6 +622,16 @@ export function AvaliacaoView({ userId }: Props) {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/*
+                Os números embaixo do AD, que é onde a decisão acontece.
+
+                Quem marca "Validado" ou "Não validado" precisava abrir o Meta
+                Ads noutra aba, achar o anúncio e voltar — e na prática avaliava
+                de memória.
+              */}
+              <TiraDeMetricas m={metricas.get(c.id)} className="px-4 pb-2.5 pt-1" />
               </div>
             );
           })}

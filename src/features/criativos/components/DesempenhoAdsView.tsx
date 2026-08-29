@@ -12,6 +12,8 @@ import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
+import { useMetricasDoAd, LegendaFontes } from '@/features/criativos/metricasDoAd';
+import { formatCurrency, formatNumber as fmtNum } from '@/lib/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import type { Perfil, Funil } from '@/features/producao/components/types';
@@ -188,6 +190,15 @@ export function DesempenhoAdsView() {
     const e = dateRange?.to   ? toYMD(dateRange.to)   : toYMD(endOfMonth(0));
     return { startStr: s, endStr: e };
   }, [preset, dateRange]);
+
+  /*
+    O número de cada AD, no MESMO período que a tela já mostra.
+
+    Aqui, ao contrário da Avaliação, o recorte importa: esta tela responde
+    "quantos ADs validei neste mês", e um retorno acumulado da vida inteira ao
+    lado de uma contagem mensal seria comparar coisas diferentes na mesma linha.
+  */
+  const { metricas } = useMetricasDoAd(startStr, endStr);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -523,7 +534,10 @@ export function DesempenhoAdsView() {
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <h4 className="text-sm font-medium">ADs escalados no período <span className="text-muted-foreground font-normal">(avaliação Escalado)</span></h4>
-              <span className="text-xs text-muted-foreground">{escaladosLista.length} ads</span>
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <LegendaFontes />
+                {escaladosLista.length} ads
+              </span>
             </div>
             {escaladosLista.length === 0 ? (
               <p className="px-4 py-6 text-center text-xs text-muted-foreground">Nenhum AD escalado no período selecionado.</p>
@@ -539,6 +553,21 @@ export function DesempenhoAdsView() {
                       <th className="text-left px-3 py-2">Editor</th>
                       <th className="text-left px-3 py-2">Projeto</th>
                       <th className="text-left px-3 py-2">Avaliação</th>
+                      {/*
+                        O dinheiro do AD escalado.
+
+                        A tabela listava nome, tipo, formato, ângulo, editor e
+                        projeto — tudo sobre a PEÇA e nada sobre o resultado.
+                        "Escalei 12 ADs" sem a verba e o retorno de cada um não
+                        diz se escalar foi acerto.
+
+                        Três colunas, não as oito da Avaliação: numa tabela de
+                        sete colunas, hook e CPM empurrariam o nome para fora da
+                        tela. Quem quiser o resto abre o card.
+                      */}
+                      <th className="text-right px-3 py-2">Verba</th>
+                      <th className="text-right px-3 py-2">ROAS</th>
+                      <th className="text-right px-3 py-2">Vendas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -569,6 +598,41 @@ export function DesempenhoAdsView() {
                             </span>
                           ) : '—'}
                         </td>
+
+                        {(() => {
+                          const m = metricas.get(r.id);
+                          /* Sem anúncio vinculado é travessão, não zero: "não
+                             sei" e "não vendeu" são coisas diferentes, e zerar
+                             o que falta é como uma média vira mentira. */
+                          if (!m) return (
+                            <>
+                              <td className="px-3 py-2 text-right text-muted-foreground/40">—</td>
+                              <td className="px-3 py-2 text-right text-muted-foreground/40">—</td>
+                              <td className="px-3 py-2 text-right text-muted-foreground/40">—</td>
+                            </>
+                          );
+                          return (
+                            <>
+                              <td className="px-3 py-2 text-right tabular-nums">
+                                {m.investimento == null ? '—' : formatCurrency(m.investimento)}
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                <span className="text-[hsl(var(--fonte-payt))]">
+                                  {m.roas == null ? '—' : `${fmtNum(m.roas)}x`}
+                                </span>
+                                <span className="text-muted-foreground/40"> / </span>
+                                <span className="text-[hsl(var(--fonte-meta))]">
+                                  {m.roas_meta == null ? '—' : `${fmtNum(m.roas_meta)}x`}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                                <span className="text-[hsl(var(--fonte-payt))]">{m.vendas ?? 0}</span>
+                                <span className="text-muted-foreground/40"> / </span>
+                                <span className="text-[hsl(var(--fonte-meta))]">{m.vendas_meta ?? 0}</span>
+                              </td>
+                            </>
+                          );
+                        })()}
                       </tr>
                     ))}
                   </tbody>
