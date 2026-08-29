@@ -13,6 +13,7 @@ import { Agenda } from '../components/Agenda';
 import { EventoDrawer } from '../components/EventoDrawer';
 import { EventoFormModal } from '../components/EventoFormModal';
 import { SaudeSistema } from '../components/SaudeSistema';
+import { AlertaSyncMeta } from '@/features/ads/AlertaSyncMeta';
 import { MuralRecados } from '../components/MuralRecados';
 import { horaCurta, ROTULO_TIPO, TIPOS_EVENTO, TIPOS_QUE_PARAM, type Evento, type ItemAgenda } from '../types';
 
@@ -393,6 +394,15 @@ export default function InicioPage() {
             {ehAdmin ? 'Novo evento' : 'Registrar folga'}
           </Button>
         </div>
+
+        {/*
+          O alarme do sync da Meta vem ANTES do painel de saúde, e não dentro
+          dele, porque diz outra coisa: o painel lista fontes e horas, este diz
+          quanto dinheiro está deixando de ser contado e o que isso faz com o
+          lucro. "Fonte sem atualizar há 2h" ninguém age; "o lucro está R$ 2.264
+          por dia mais alto do que é" alguém age.
+        */}
+        {ehAdmin && <AlertaSyncMeta className="mb-4" />}
 
         {/* ---- saúde do sistema: só admin e sócio ---- */}
         {ehAdmin && <SaudeSistema />}

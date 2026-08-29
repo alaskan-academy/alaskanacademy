@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   SITUACAO, ORDEM_SITUACAO, situacaoDe, chaveEstado, type EstadoDoObjeto,
 } from "@/features/ads/situacao";
+import { AlertaSyncMeta } from "@/features/ads/AlertaSyncMeta";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
@@ -736,6 +737,14 @@ export default function MetaAdsPage() {
 
   return (
     <DashboardLayout title="Meta Ads" hideTitle>
+      {/*
+        Conta que parou de sincronizar aparece aqui como tarja, e não só como
+        ponto cinza na tabela: a tabela mostra o que foi lido, e o que não foi
+        lido não tem linha para carregar aviso nenhum. Sem esta tarja, uma conta
+        inteira pode sumir sem deixar rastro na tela — foi o que aconteceu.
+      */}
+      <AlertaSyncMeta className="mb-4" />
+
       <Tabs
         value={aba}
         onValueChange={(v) => { setAba(v as typeof aba); setBusca(''); }}

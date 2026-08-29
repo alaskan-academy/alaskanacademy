@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { AlertaSyncMeta } from "@/features/ads/AlertaSyncMeta";
 import GlobalFilters from "@/components/GlobalFilters";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
@@ -579,6 +580,17 @@ export default function OverviewPage() {
       caso — a página filtra por algo que ninguém vê.
     */
     <DashboardLayout title="Visão Geral" hideTitle hideFilters>
+      {/*
+        O alarme do sync vem ANTES de tudo, inclusive do lembrete de conferência.
+
+        Ele fica aqui, e não só no Meta Ads, porque é aqui que o estrago
+        aparece: conta que não sincroniza deixa de subtrair mídia do lucro, e o
+        Resumo mostra um número melhor do que a realidade. Erro que faz o
+        resultado parecer BOM é o mais perigoso que existe — ninguém desconfia
+        de lucro alto.
+      */}
+      <AlertaSyncMeta className="mb-4" />
+
       {/* Cobra a conferência contra a Payt. Fica no topo do Resumo porque é aqui que
           os números que ela confere são lidos. */}
       <LembreteConferencia />
