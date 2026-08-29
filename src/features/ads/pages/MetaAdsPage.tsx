@@ -3,6 +3,9 @@ import {
   SITUACAO, ORDEM_SITUACAO, situacaoDe, chaveEstado, type EstadoDoObjeto,
 } from "@/features/ads/situacao";
 import { AlertaSyncMeta } from "@/features/ads/AlertaSyncMeta";
+import { CriativoDrawer } from "@/features/producao/components/CriativoDrawer";
+import type { ProducaoNivel } from "@/features/producao/components/types";
+import { useAuth } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
@@ -375,6 +378,21 @@ export default function MetaAdsPage() {
   const [filtroSituacao, setFiltroSituacao] = useState<string | null>(null);
 
   /*
+    O card de Produção de cada anúncio.
+
+    O vínculo já existia em `producao_ads` (`ad_id` → `producao_id`), montado
+    pelo módulo de Criativos, e cobre 339 dos 346 anúncios com gasto nos últimos
+    30 dias — 98% da verba. O que faltava era usá-lo aqui: quem olha o
+    desempenho de um AD nesta tela e quer ver o criativo tinha que decorar o
+    número, ir para Produção e procurar.
+  */
+  const { perfil, user } = useAuth();
+  const nivelProducao: ProducaoNivel = perfil?.is_admin ? 'socio'
+    : perfil?.cargo?.pode_aprovar ? 'head' : 'membro';
+  const [cardDeAd, setCardDeAd] = useState<Map<string, string>>(new Map());
+  const [cardAberto, setCardAberto] = useState<string | null>(null);
+
+  /*
     A soma acontece no banco, e não aqui.
 
     A tela pedia a view inteira — uma linha por dia e por nível — e somava no
@@ -414,6 +432,31 @@ export default function MetaAdsPage() {
     };
     load();
   }, [startDateStr, endDateStr, contaIds]);
+
+  /*
+    O vínculo anúncio → card não depende de período nem de conta: é cadastro.
+
+    Paginado pelo mesmo motivo do estado — são 669 vínculos hoje, abaixo do teto
+    de 1.000 do PostgREST, e é exatamente esse teto que já escondeu um quarto do
+    gasto desta tela uma vez.
+  */
+  useEffect(() => {
+    void (async () => {
+      const PAGINA = 1000;
+      const pares: [string, string][] = [];
+      for (let de = 0; ; de += PAGINA) {
+        const { data, error } = await supabase
+          .from('producao_ads')
+          .select('ad_id,producao_id')
+          .range(de, de + PAGINA - 1);
+        if (error) { console.error('producao_ads:', error.message); break; }
+        const lote = (data ?? []) as { ad_id: string; producao_id: string }[];
+        pares.push(...lote.map(l => [l.ad_id, l.producao_id] as [string, string]));
+        if (lote.length < PAGINA) break;
+      }
+      setCardDeAd(new Map(pares));
+    })();
+  }, []);
 
   /*
     O estado não depende do período: carrega uma vez, e recarrega só quando a
@@ -628,18 +671,35 @@ export default function MetaAdsPage() {
                         há o passo de escolher a campanha de novo, do outro
                         lado do menu.
                       */
-                      <button
-                        type="button"
-                        onClick={() => setFunilAberto(a => (a === r.nivel_id ? null : r.nivel_id))}
-                        title={r.nome ?? undefined}
-                        className="flex w-full items-center gap-1 text-left hover:text-primary"
-                      >
-                        <ChevronRight
-                          className={cn(
-                            "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
-                            funilAberto === r.nivel_id && "rotate-90 text-primary",
-                          )}
-                        />
+                      /*
+                        Dois alvos na mesma célula, porque são duas perguntas.
+
+                        O chevron abre o FUNIL daquela linha (impressão → clique
+                        → compra). O nome abre o CARD DE PRODUÇÃO do anúncio —
+                        o criativo, quem escreveu, quem editou, em que fase está.
+
+                        Antes a célula inteira era um botão só, do funil. Quem
+                        via um AD gastando mal e queria ver a peça tinha que
+                        decorar o número e procurar em Produção.
+
+                        Só no nível de anúncio: campanha e conjunto não têm card,
+                        e ali o nome continua abrindo o funil, como sempre.
+                      */
+                      <div className="flex w-full items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setFunilAberto(a => (a === r.nivel_id ? null : r.nivel_id))}
+                          title="Ver o funil desta linha"
+                          className="shrink-0 hover:text-primary"
+                        >
+                          <ChevronRight
+                            className={cn(
+                              "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+                              funilAberto === r.nivel_id && "rotate-90 text-primary",
+                            )}
+                          />
+                        </button>
+
                         {/*
                           O ponto vive AQUI, na coluna do nome, e não numa coluna
                           própria: são 24 colunas e só esta acompanha a rolagem —
@@ -650,8 +710,27 @@ export default function MetaAdsPage() {
                           há algo e não o quê.
                         */}
                         <PontoDeSituacao estado={estadoDaLinha(r)} />
-                        <span className="truncate">{r.nome}</span>
-                      </button>
+
+                        {nivel === 'ad' && cardDeAd.get(r.nivel_id) ? (
+                          <button
+                            type="button"
+                            onClick={() => setCardAberto(cardDeAd.get(r.nivel_id)!)}
+                            title={`${r.nome ?? ''} — abrir o card em Produção`}
+                            className="truncate text-left underline-offset-2 transition-colors hover:text-primary hover:underline"
+                          >
+                            {r.nome}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setFunilAberto(a => (a === r.nivel_id ? null : r.nivel_id))}
+                            title={r.nome ?? undefined}
+                            className="truncate text-left hover:text-primary"
+                          >
+                            {r.nome}
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       fmtCell(r, c)
                     )}
@@ -891,6 +970,24 @@ export default function MetaAdsPage() {
       <div className="mt-6">
         <ConciliacaoMeta meses={6} />
       </div>
+
+      {/*
+        O card abre SOBRE o Meta Ads, como na Esteira e em Criativos Meta: sair
+        da tela para ver o criativo e ter que voltar, refazendo periodo e
+        filtros, e o que faz ninguem conferir.
+
+        funis e perfis vazios porque fora da Producao nao ha de onde tira-los, e
+        o drawer so os usa no seletor de funil e nas mencoes.
+      */}
+      <CriativoDrawer
+        criativoId={cardAberto}
+        onClose={() => setCardAberto(null)}
+        onUpdate={() => { /* metrica nao muda ao editar o card */ }}
+        nivel={nivelProducao}
+        userId={user?.id ?? ''}
+        funis={[]}
+        perfis={[]}
+      />
     </DashboardLayout>
   );
 }
