@@ -280,9 +280,33 @@ export default function FinanceiroCaixaPage() {
   // Era `movimentos.reduce(...)` sobre a lista inteira, e o efeito aparecia na
   // cara: ela informava o saldo real de hoje e a tela devolvia R$ 2.559,21 a
   // menos, descontando aportes de janeiro que já estavam embutidos na foto.
+  /*
+    O SINAL VISTO PELA RESERVA É O INVERSO DO VISTO PELA CONTA.
+
+    `transacoes.valor` é sempre do ponto de vista da conta operacional, porque é
+    de lá que o extrato vem. Uma transferência de R$ 1.500 para a reserva é
+    −1.500 no extrato: saiu de lá. Mas ela ENTROU aqui.
+
+    A tela somava esse −1.500 ao saldo base e mostrava a reserva encolhendo
+    quando ela tinha acabado de crescer — erro de R$ 3.000 no caso dela, o dobro
+    do movimento, porque subtrai o que devia somar.
+
+    Confere nos dois sentidos, e é a mesma inversão:
+
+      "Reserva de Caixa"    16 movimentos, todos negativos (−R$ 36.000)
+                            dinheiro saindo da conta PARA a reserva → entra aqui
+      "Retirada do Caixa"   15 movimentos, todos positivos (+R$ 31.940,79)
+                            dinheiro voltando da reserva PARA a conta → sai daqui
+
+    O dado não muda: continua sendo uma saída da conta operacional, e é assim
+    que o DRE e o resto da tela devem tratá-lo. O que muda é só o ponto de vista
+    deste bloco, que é o da reserva.
+  */
+  const paraAReserva = (valorNaConta: number) => -valorNaConta;
+
   const movHistorico = movimentos
     .filter(m => !config?.data_referencia || m.data > config.data_referencia)
-    .reduce((a, m) => a + m.valor, 0);
+    .reduce((a, m) => a + paraAReserva(m.valor), 0);
   const saldoReserva = (config?.saldo_inicial ?? 0) + movHistorico;
 
   // ── Salvar config ──
@@ -429,22 +453,40 @@ export default function FinanceiroCaixaPage() {
 
           {/* Histórico de movimentos da reserva */}
           <div className="bg-card border border-border rounded-lg p-5">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Movimentos da Reserva</h2>
+            {/* O rótulo diz de quem é o sinal. Sem isso, quem cruzar esta lista
+                com o extrato vai achar que uma das duas está errada — as duas
+                estão certas, olhando de lados opostos do mesmo movimento. */}
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Movimentos da Reserva</h2>
+            <p className="mb-3 text-[11px] normal-case tracking-normal text-muted-foreground/60">
+              Do ponto de vista da reserva: <span className="text-green-400">+</span> é dinheiro que
+              entrou nela, e no extrato da conta aparece como saída.
+            </p>
             {movimentos.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhum movimento.</p>
             ) : (
               <div className="space-y-1 max-h-80 overflow-y-auto">
-                {movimentos.map(m => (
-                  <div key={m.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
-                    <div>
-                      <div className="text-xs text-muted-foreground">{m.data}</div>
-                      <div className="text-sm">{m.descricao}</div>
+                {movimentos.map(m => {
+                  /*
+                    A lista fala pela reserva, igual ao saldo acima dela.
+
+                    Mostrava todos os aportes em vermelho e entre parênteses —
+                    dinheiro ENTRANDO na reserva pintado como perda, e a soma
+                    logo acima dizendo o contrário do que a lista dizia. Duas
+                    leituras do mesmo movimento na mesma tela.
+                  */
+                  const v = paraAReserva(m.valor);
+                  return (
+                    <div key={m.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+                      <div>
+                        <div className="text-xs text-muted-foreground">{m.data}</div>
+                        <div className="text-sm">{m.descricao}</div>
+                      </div>
+                      <span className={cn('text-sm font-medium tabular-nums', v >= 0 ? 'text-green-400' : 'text-red-400')}>
+                        {v < 0 ? `(${formatCurrency(Math.abs(v))})` : `+${formatCurrency(v)}`}
+                      </span>
                     </div>
-                    <span className={cn('text-sm font-medium tabular-nums', m.valor >= 0 ? 'text-green-400' : 'text-red-400')}>
-                      {m.valor < 0 ? `(${formatCurrency(Math.abs(m.valor))})` : `+${formatCurrency(m.valor)}`}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
