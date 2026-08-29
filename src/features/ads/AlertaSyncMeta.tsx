@@ -62,6 +62,27 @@ const STATUS_CONTA: Record<string, string> = {
   '101': 'encerrada',
 };
 
+/**
+ * A Meta caiu, ou falta permissão? São conselhos opostos.
+ *
+ * Em 29/08 três contas falharam com `code 2 — Service temporarily unavailable`
+ * e a tarja mandou conferir atribuição no Business Manager, onde não havia nada
+ * errado. Instabilidade da Meta não se resolve mexendo em permissão, e mandar
+ * mexer é como se perde uma hora no lugar errado — já aconteceu nesta apuração.
+ *
+ * O código sai do texto que NÓS formatamos em `buscar()` — `(code N)` — então
+ * a leitura é confiável: não é adivinhação sobre a prosa da Meta.
+ *
+ * Códigos temporários, os mesmos que o sync repete: 1 e 2 (instabilidade),
+ * 4, 17, 341 e 613 (limite de chamada).
+ */
+const CODIGOS_TEMPORARIOS = [1, 2, 4, 17, 341, 613];
+
+function ehInstabilidade(mensagem: string | null): boolean {
+  const m = mensagem?.match(/\(code (\d+)\)/);
+  return m ? CODIGOS_TEMPORARIOS.includes(Number(m[1])) : false;
+}
+
 /** Quanto o imposto de mídia amplia o buraco no lucro (`imposto_meta_ads_pct`). */
 const FALLBACK_IMPOSTO_META = 12.5;
 
@@ -115,6 +136,12 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
   const semDinheiro = problemas.filter(p => p.saude === 'parcial');
   const semTudo     = problemas.filter(p => p.saude !== 'parcial' && p.saude !== 'ok');
   const cobranca    = problemas.filter(p => p.cobranca_com_problema);
+
+  /* Se TODAS as falhas de sync são instabilidade, o conselho é esperar, não
+     mexer em permissão. Basta uma não ser para o conselho de permissão voltar:
+     errar mandando conferir é barato, errar mandando esperar esconde o problema. */
+  const soInstabilidade = semTudo.length > 0
+    && semTudo.every(p => ehInstabilidade(p.mensagem_erro));
 
   const naoContado = semTudo.reduce((s, p) => s + (p.gasto_medio_dia ?? 0), 0);
   const lucroInflado = naoContado * (1 + impostoPct / 100);
@@ -214,12 +241,21 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
             no lugar errado, que foi exatamente o que aconteceu nesta apuração.
           */}
           {semTudo.length > 0 && (
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
-              Se a conta não é alcançada por nenhum token, falta atribuí-la ao usuário do
-              sistema com <code className="rounded bg-secondary px-1">ads_read</code> — ou
-              cadastrar o token da BM dela. Consertando em até 7 dias os números se corrigem
-              sozinhos: o sync reprocessa a última semana todo dia.
-            </p>
+            soInstabilidade ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+                A Meta esteve instável, não é permissão — não há o que mexer no Business
+                Manager. O sync repete sozinho na próxima rodada, de hora em hora, e o que
+                faltar volta no reprocessamento da última semana. Só vale investigar se
+                continuar aparecendo depois de algumas horas.
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+                Se a conta não é alcançada por nenhum token, falta atribuí-la ao usuário do
+                sistema com <code className="rounded bg-secondary px-1">ads_read</code> — ou
+                cadastrar o token da BM dela. Consertando em até 7 dias os números se corrigem
+                sozinhos: o sync reprocessa a última semana todo dia.
+              </p>
+            )
           )}
 
           {cobranca.length > 0 && (

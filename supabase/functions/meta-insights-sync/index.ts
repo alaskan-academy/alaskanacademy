@@ -190,7 +190,38 @@ const num = (v: unknown) => (v === undefined || v === null || v === '' ? null : 
 const centavos = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v) / 100);
 
 /**
- * Chama a Graph API com backoff. O erro 17 (rate limit) e o 613 (throttle) pedem
+ * Os códigos da Meta que MELHORAM se a chamada for repetida.
+ *
+ * Em 29/08 três das sete contas falharam às 11:00 com
+ * `400 (code 2): Service temporarily unavailable`, e o alarme acusou "pararam
+ * de sincronizar" mandando conferir permissão no Business Manager — onde não
+ * havia nada errado. Repetir a chamada na hora seguinte deu certo nas sete.
+ *
+ * O 2 é literalmente o código de "serviço temporariamente indisponível" da
+ * Meta, e não estava na lista: só 4, 17 e 613 estavam, que são os de limite de
+ * chamada. Faltavam os de instabilidade.
+ *
+ *     1    API Unknown        erro que a Meta não classificou; costuma passar
+ *     2    API Service        serviço temporariamente indisponível
+ *     4    API Too Many Calls limite do app
+ *    17    User Too Many Calls limite do usuário
+ *   341    Application limit  teto temporário do app
+ *   613    Rate limit         throttle do endpoint
+ *
+ * A lista é explícita, e não "tudo que não conheço é temporário", por causa do
+ * custo: são quatro tentativas com espera de 5s, 10s, 20s e 40s. Repetir um
+ * erro permanente — token inválido, conta sem permissão — gastaria 75 segundos
+ * por chamada e mais de sete minutos por conta antes de dizer o óbvio.
+ *
+ * Código que a Meta invente depois não é repetido, mas TAMBÉM não some: ele
+ * sobe com o número no texto (`(code N)`), fica em `meta_sync_estado` e aparece
+ * na tarja. É assim que um código novo vira uma linha nesta lista em vez de
+ * virar um sync que falha em silêncio.
+ */
+const CODIGOS_TEMPORARIOS = new Set([1, 2, 4, 17, 341, 613]);
+
+/**
+ * Chama a Graph API com backoff. Instabilidade e limite de chamada pedem
  * espera; os demais não melhoram com repetição e sobem na hora.
  */
 async function buscar(url: string, tentativa = 0): Promise<{ dados: Linha[]; usoPct: number | null }> {
@@ -215,7 +246,7 @@ async function buscar(url: string, tentativa = 0): Promise<{ dados: Linha[]; uso
 
   if (!resp.ok) {
     const codigo = corpo?.error?.code;
-    const recuperavel = codigo === 17 || codigo === 4 || codigo === 613 || resp.status >= 500;
+    const recuperavel = CODIGOS_TEMPORARIOS.has(Number(codigo)) || resp.status >= 500;
     if (recuperavel && tentativa < 4) {
       const espera = 2 ** tentativa * 5000;
       await new Promise(r => setTimeout(r, espera));
