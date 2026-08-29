@@ -402,7 +402,7 @@ export default function InicioPage() {
           lucro. "Fonte sem atualizar há 2h" ninguém age; "o lucro está R$ 2.264
           por dia mais alto do que é" alguém age.
         */}
-        {ehAdmin && <AlertaSyncMeta className="mb-4" />}
+        <AlertaSyncMeta className="mb-4" />
 
         {/* ---- saúde do sistema: só admin e sócio ---- */}
         {ehAdmin && <SaudeSistema />}

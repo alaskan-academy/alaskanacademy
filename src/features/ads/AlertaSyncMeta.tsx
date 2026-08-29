@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 
@@ -65,10 +66,26 @@ const STATUS_CONTA: Record<string, string> = {
 const FALLBACK_IMPOSTO_META = 12.5;
 
 export function AlertaSyncMeta({ className }: { className?: string }) {
+  /*
+    Só sócio e admin veem.
+
+    O gate mora AQUI dentro, e não em cada página que monta o componente: são
+    três pontos de montagem (Início, Resumo, Meta Ads) e bastaria um esquecer o
+    `&&` para vazar. `is_admin` é o flag de sócio/admin — é assim que a tela de
+    Permissões o chama, e é o mesmo critério do `IngestStatusBanner`.
+
+    A tarja fala de conta de anúncio, permissão de Business Manager e lucro
+    inflado: é conversa de quem responde pelo dinheiro, e para o resto da equipe
+    seria ruído que ninguém pode resolver.
+  */
+  const { perfil } = useAuth();
+  const podeVer = perfil?.is_admin === true;
+
   const [problemas, setProblemas] = useState<Saude[]>([]);
   const [impostoPct, setImpostoPct] = useState(FALLBACK_IMPOSTO_META);
 
   useEffect(() => {
+    if (!podeVer) return;
     void (async () => {
       const [{ data: saude }, { data: cfg }] = await Promise.all([
         supabase.from('vw_meta_sync_saude').select('*'),
@@ -85,9 +102,9 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
       setProblemas(((saude ?? []) as Saude[])
         .filter(s => s.saude !== 'ok' || s.cobranca_com_problema));
     })();
-  }, []);
+  }, [podeVer]);
 
-  if (problemas.length === 0) return null;
+  if (!podeVer || problemas.length === 0) return null;
 
   /*
     "parcial" é a conta cuja métrica passou e cujo ESTADO falhou: o dinheiro na
@@ -188,17 +205,30 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
           </ul>
 
           {/*
-            A janela de recuperação, que decide se isso é urgente ou fatal: o
-            sync reprocessa D-1 a D-7 todo dia, então consertar dentro de uma
-            semana corrige o passado sozinho. Passando disso o buraco fica, e
-            só um backfill manual resolve.
+            Cada instrução só aparece quando serve para alguma coisa.
+
+            A versão anterior mostrava "reatribuir ao usuário do sistema" sempre
+            — inclusive quando o único problema era cobrança recusada, que não
+            se resolve no Business Manager e não tem nada a ver com permissão.
+            Instrução errada é pior que instrução nenhuma: manda a pessoa mexer
+            no lugar errado, que foi exatamente o que aconteceu nesta apuração.
           */}
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
-            No Business Manager, reatribuir essas contas ao usuário do sistema com{' '}
-            <code className="rounded bg-secondary px-1">ads_read</code> resolve. Consertando em
-            até 7 dias os números se corrigem sozinhos — o sync reprocessa a última semana todo
-            dia; passando disso, o buraco fica até alguém rodar um backfill.
-          </p>
+          {semTudo.length > 0 && (
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+              Se a conta não é alcançada por nenhum token, falta atribuí-la ao usuário do
+              sistema com <code className="rounded bg-secondary px-1">ads_read</code> — ou
+              cadastrar o token da BM dela. Consertando em até 7 dias os números se corrigem
+              sozinhos: o sync reprocessa a última semana todo dia.
+            </p>
+          )}
+
+          {cobranca.length > 0 && (
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/70">
+              Cobrança se resolve no Gerenciador de Anúncios, em Configurações de pagamento —
+              não no Business Manager e não no sync. Enquanto a carência dura os anúncios
+              continuam rodando; quando ela acaba, a Meta desativa a conta.
+            </p>
+          )}
         </div>
       </div>
     </div>
