@@ -14,9 +14,23 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   modo=recente → D-1 a D-7 uma vez por dia, captura as correções de atribuição
  *   modo=backfill&desde=&ate= → carga histórica
  *   modo=descobrir → só reconcilia a lista de contas
+ *   modo=objetos → só o estado (ligado/pausado/reprovado), sem tocar métrica
  *
- * Volume: ~31 chamadas por conta por dia. O sync antigo usava intervalo de 60s,
- * o que dava ~14.400.
+ * O ESTADO VEM DE OUTRO LUGAR QUE O DESEMPENHO
+ *
+ * `/insights` devolve gasto e conversão, nunca configuração — por isso o
+ * dashboard sabia quanto cada anúncio gastou e não sabia se ele estava ligado.
+ * O estado mora em três outras arestas (/campaigns, /adsets, /ads) e vai para
+ * `meta_objetos`, uma linha por objeto, reescrita a cada rodada.
+ *
+ * Não dá para deduzir da impressão: medido contra 4 meses, "sem impressão há 2
+ * dias = desligado" erra 33,6% das vezes — 252 anúncios ficaram 2+ dias calados
+ * e voltaram a rodar, um deles depois de 88 dias. E anúncio reprovado nunca
+ * teve impressão, então não tem nem linha em `metricas_meta`: é invisível para
+ * qualquer dedução, não apenas mal classificado.
+ *
+ * Volume: ~31 chamadas de insights por conta por dia, mais 3 de estado por
+ * rodada. O sync antigo usava intervalo de 60s, o que dava ~14.400.
  */
 
 const supabase = createClient(
@@ -49,6 +63,40 @@ const NIVEL_API: Record<string, string> = {
   campanha: 'campaign',
   adset: 'adset',
   ad: 'ad',
+};
+
+/**
+ * As três arestas de ESTADO, que não são as de insights.
+ *
+ * `status` é a chave que a pessoa virou (ACTIVE, PAUSED, ARCHIVED).
+ * `effective_status` é o estado de verdade, já considerando os pais e a
+ * revisão da Meta — um anúncio ACTIVE dentro de um conjunto pausado vem como
+ * ADSET_PAUSED, e um reprovado vem como DISAPPROVED. Guardar os dois é o que
+ * responde "está ligado e não roda — por quê?".
+ *
+ * Só o pai DIRETO é gravado. A aresta /ads devolve `campaign_id` também, e
+ * guardar os dois seria a primeira armadilha do CLAUDE.md: a campanha do
+ * anúncio sai do salto duplo pelo conjunto.
+ */
+const ESTADO_EDGE: Record<string, { edge: string; campos: string[]; pai: string | null }> = {
+  campanha: {
+    edge: 'campaigns',
+    campos: ['id', 'name', 'status', 'effective_status', 'objective',
+             'daily_budget', 'lifetime_budget', 'created_time', 'updated_time'],
+    pai: null,
+  },
+  adset: {
+    edge: 'adsets',
+    campos: ['id', 'name', 'status', 'effective_status', 'campaign_id',
+             'daily_budget', 'lifetime_budget', 'created_time', 'updated_time'],
+    pai: 'campaign_id',
+  },
+  ad: {
+    edge: 'ads',
+    campos: ['id', 'name', 'status', 'effective_status', 'adset_id',
+             'created_time', 'updated_time'],
+    pai: 'adset_id',
+  },
 };
 
 type Linha = Record<string, unknown>;
@@ -104,6 +152,9 @@ const TIPOS_CARRINHO = ['offsite_conversion.fb_pixel_add_to_cart', 'omni_add_to_
 const TIPOS_PAGINA   = ['landing_page_view', 'omni_landing_page_view'];
 
 const num = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v));
+
+/** Orçamento: a Meta devolve em centavos, como string. */
+const centavos = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v) / 100);
 
 /**
  * Chama a Graph API com backoff. O erro 17 (rate limit) e o 613 (throttle) pedem
@@ -304,6 +355,62 @@ async function sincronizarConta(
   return { linhasGravadas, usoMax };
 }
 
+/**
+ * O estado atual dos objetos de uma conta.
+ *
+ * Reescreve `visto_em` em todo objeto que a API confirmou nesta rodada. É o
+ * que substitui o gatilho que um espelho de banco teria: objeto que sumiu da
+ * API fica com o `visto_em` para trás, e `vw_meta_status` o classifica como
+ * "sem_dado" em vez de mostrar um status congelado como se fosse de agora.
+ * Sem isso, um anúncio arquivado ficaria eternamente ACTIVE na tela — a quarta
+ * armadilha do CLAUDE.md, que já produziu venda órfã em `funil_checkouts`.
+ *
+ * Não apaga nada: o objeto some da API, não do histórico. `metricas_meta`
+ * continua ancorado nele.
+ */
+async function sincronizarEstado(conta: { id: string; account_id: string }) {
+  const agora = new Date().toISOString();
+  const porNivel: Record<string, number> = {};
+
+  for (const [nivel, cfg] of Object.entries(ESTADO_EDGE)) {
+    const params = new URLSearchParams({
+      fields: cfg.campos.join(','),
+      limit: '500',
+      access_token: TOKEN!,
+    });
+    const { dados } = await buscar(`${BASE}/${conta.account_id}/${cfg.edge}?${params}`);
+    porNivel[nivel] = dados.length;
+    if (dados.length === 0) continue;
+
+    const linhas = dados.map(o => ({
+      ad_account_id: conta.id,
+      nivel,
+      objeto_id: String(o.id),
+      nome: (o.name as string) ?? null,
+      pai_id: cfg.pai && o[cfg.pai] ? String(o[cfg.pai]) : null,
+      status: (o.status as string) ?? null,
+      effective_status: (o.effective_status as string) ?? null,
+      // A API devolve orçamento em centavos, como string.
+      orcamento_diario: centavos(o.daily_budget),
+      orcamento_total: centavos(o.lifetime_budget),
+      objetivo: (o.objective as string) ?? null,
+      criado_em_meta: (o.created_time as string) ?? null,
+      atualizado_em_meta: (o.updated_time as string) ?? null,
+      visto_em: agora,
+      atualizado_em: agora,
+    }));
+
+    // Em blocos: uma conta grande passa de 800 anúncios num upsert só.
+    for (let i = 0; i < linhas.length; i += 500) {
+      const { error } = await supabase.from('meta_objetos')
+        .upsert(linhas.slice(i, i + 500), { onConflict: 'ad_account_id,nivel,objeto_id' });
+      if (error) throw new Error(`upsert meta_objetos (${nivel}): ${error.message}`);
+    }
+  }
+
+  return porNivel;
+}
+
 function diasAtras(n: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
@@ -339,6 +446,10 @@ Deno.serve(async (req) => {
     } else if (modo === 'backfill') {
       desde = url.searchParams.get('desde') ?? diasAtras(30);
       ate = url.searchParams.get('ate') ?? diasAtras(1);
+    } else if (modo === 'objetos') {
+      // Só o estado. Datas não são usadas neste modo — estado é agora, não tem
+      // histórico por dia.
+      desde = ate = diasAtras(0);
     } else {
       return json({ erro: `modo desconhecido: ${modo}` }, 400);
     }
@@ -368,16 +479,56 @@ Deno.serve(async (req) => {
     const resultado: Linha[] = [];
     for (const conta of contas) {
       try {
-        const { linhasGravadas, usoMax } = await sincronizarConta(conta, desde, ate);
+        /*
+          O estado acompanha todo modo que olha o presente.
+
+          Em `backfill` não: aquele modo reescreve meses de métrica de uma vez,
+          e o estado de hoje não tem nada a ver com o que estava ligado em maio.
+          Gravá-lo ali só gastaria chamada e daria a impressão de que o histórico
+          carrega status.
+
+          O try/catch PRÓPRIO é a parte importante, e a medição mostrou por quê:
+          duas das sete contas ("Saponaria" e "Desafios na Sala - TSL") deixam
+          ler insights e devolvem 403 nas arestas de objeto — a permissão que o
+          dono da conta concedeu cobre uma coisa e não a outra. Sem este catch,
+          o throw do estado abortaria a conta inteira e as duas parariam de
+          receber MÉTRICA, que é o dado que o dashboard já tinha e do qual
+          depende. O estado é um acréscimo: pode faltar, não pode derrubar.
+
+          É o mesmo princípio do catch de fora, uma camada abaixo.
+        */
+        let estado: Record<string, number> | null = null;
+        let erroEstado: string | null = null;
+        if (modo !== 'backfill') {
+          try {
+            estado = await sincronizarEstado(conta);
+          } catch (e) {
+            erroEstado = e instanceof Error ? e.message : String(e);
+          }
+        }
+
+        const { linhasGravadas, usoMax } = modo === 'objetos'
+          ? { linhasGravadas: 0, usoMax: null }
+          : await sincronizarConta(conta, desde, ate);
+
+        const agora = new Date().toISOString();
         await supabase.from('meta_sync_estado').upsert({
           ad_account_id: conta.id,
-          ultimo_sucesso: new Date().toISOString(),
-          mensagem_erro: null,
+          // A métrica passou, então o sucesso é real; o erro do estado entra ao
+          // lado em vez de apagá-lo. Registrar só um dos dois esconderia metade
+          // do que aconteceu.
+          ultimo_sucesso: agora,
+          ...(erroEstado
+            ? { ultimo_erro: agora, mensagem_erro: erroEstado }
+            : { mensagem_erro: null }),
           linhas_ultima_execucao: linhasGravadas,
           uso_api_pct: usoMax,
-          atualizado_em: new Date().toISOString(),
+          atualizado_em: agora,
         });
-        resultado.push({ conta: conta.nome, linhas: linhasGravadas, uso_api_pct: usoMax });
+        resultado.push({
+          conta: conta.nome, linhas: linhasGravadas, uso_api_pct: usoMax,
+          estado, ...(erroEstado ? { estado_erro: erroEstado } : {}),
+        });
       } catch (e) {
         // Uma conta com problema não pode impedir a sincronização das outras.
         const msg = e instanceof Error ? e.message : String(e);
