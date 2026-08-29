@@ -15,6 +15,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  *   modo=backfill&desde=&ate= → carga histórica
  *   modo=descobrir → só reconcilia a lista de contas
  *   modo=objetos → só o estado (ligado/pausado/reprovado), sem tocar métrica
+ *   modo=quemsou → de quem é o token e o que ele enxerga (diagnóstico)
  *
  * O ESTADO VEM DE OUTRO LUGAR QUE O DESEMPENHO
  *
@@ -246,6 +247,60 @@ async function descobrirContas() {
   return { contas_na_api: dados.length, ids: vistos };
 }
 
+/**
+ * De quem é este token, e o que ele enxerga.
+ *
+ * Existe porque "conceder permissão ao usuário do sistema" não resolve quando
+ * ninguém sabe QUAL usuário do sistema. Em 29/08 duas contas pararam de
+ * sincronizar, a atribuição foi conferida no Business Manager e estava lá —
+ * num usuário que pode não ser o dono deste token. São várias BMs, cada uma
+ * com o seu usuário do sistema: sem saber de quem é o token, a conferência é
+ * no lugar errado.
+ *
+ * NUNCA devolve o token nem parte dele: só a identidade que ele representa e
+ * as contas que alcança. O segredo continua sendo segredo.
+ */
+async function quemSou() {
+  /*
+    Cada pedaço em `try` próprio.
+
+    O diagnóstico existe justamente para rodar quando algo está errado, então
+    um campo que exige permissão que o token não tem — e nem deve ter — não
+    pode derrubar a resposta inteira. A primeira versão pedia `business` junto,
+    levou 400 por falta de `business_management`, e o erro apagou também a
+    identidade, que era exatamente o que se queria saber.
+  */
+  const tentar = async <T>(f: () => Promise<T>): Promise<T | { erro: string }> => {
+    try { return await f(); } catch (e) {
+      return { erro: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
+  const eu = await tentar(async () => {
+    const r = await fetch(`${BASE}/me?fields=id,name&access_token=${TOKEN}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j?.error?.message ?? `HTTP ${r.status}`);
+    return { id: j?.id ?? null, nome: j?.name ?? null };
+  });
+
+  const contas = await tentar(async () => {
+    const { dados } = await buscar(
+      `${BASE}/me/adaccounts?fields=account_id,name,account_status&limit=200&access_token=${TOKEN}`,
+    );
+    return dados.map(c => ({
+      account_id: `act_${c.account_id}`,
+      nome: c.name,
+      status: c.account_status,
+    }));
+  });
+
+  return {
+    usuario_do_token: eu,
+    contas_que_o_token_alcanca: Array.isArray(contas) ? contas.length : null,
+    contas,
+  };
+}
+
 /** Converte uma linha de insight da API no formato de `metricas_meta`. */
 function normalizar(linha: Linha, contaUuid: string, nivel: string): Linha {
   const acoes = linha.actions;
@@ -434,6 +489,10 @@ Deno.serve(async (req) => {
   try {
     if (modo === 'descobrir') {
       return json({ ok: true, ...(await descobrirContas()) });
+    }
+
+    if (modo === 'quemsou') {
+      return json({ ok: true, ...(await quemSou()) });
     }
 
     let desde: string, ate: string;
