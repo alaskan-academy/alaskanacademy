@@ -39,3 +39,7 @@ Thumbs.db
 
 # Lixo do CLI do Supabase (npx supabase ...)
 supabase/.temp/
+
+# Artefato do `deno check` avulso nas Edge Functions — o projeto nao usa Deno
+# como gerenciador; o lock so aparece quando se roda `npx deno` a mao.
+deno.lock
