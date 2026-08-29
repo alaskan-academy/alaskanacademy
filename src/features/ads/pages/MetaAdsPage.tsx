@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  SITUACAO, ORDEM_SITUACAO, situacaoDe, chaveEstado, type EstadoDoObjeto,
+} from "@/features/ads/situacao";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
@@ -214,6 +217,109 @@ function fmtCell(row: LinhaCalculada, col: (typeof COLS)[number]) {
  */
 const COL_FIXA = "sticky z-10 bg-card group-hover:bg-secondary";
 
+/**
+ * O ponto que diz se aquela linha está no ar.
+ *
+ * Um ponto, e não um selo com texto: ele divide a coluna do nome com o chevron
+ * e com o próprio nome, que já vive truncado em `max-w-48`. O rótulo inteiro
+ * fica no `title`, junto com a explicação do que aquilo significa.
+ *
+ * Sem estado NÃO vira ponto cinza: vira um anel vazio, com título dizendo o
+ * porquê. Um cinza no meio de outros cinzas ("parado", "sem dado") faria
+ * "não sei" parecer "está desligado", e são coisas diferentes.
+ */
+function PontoDeSituacao({ estado }: { estado?: EstadoDoObjeto }) {
+  if (!estado) {
+    return (
+      <span
+        title="Sem estado: a Meta não deixou ler a configuração desta conta."
+        className="h-1.5 w-1.5 shrink-0 rounded-full border border-muted-foreground/30"
+      />
+    );
+  }
+
+  const s = situacaoDe(estado.situacao)!;
+  const detalhe = [
+    s.rotulo + " — " + s.explica,
+    estado.effective_status ? "Meta: " + estado.effective_status : null,
+    estado.dias_sem_entregar != null && estado.dias_sem_entregar > 1
+      ? "sem entregar há " + estado.dias_sem_entregar + " dias"
+      : null,
+  ].filter(Boolean).join(" · ");
+
+  return <span title={detalhe} className={cn("h-1.5 w-1.5 shrink-0 rounded-full", s.ponto)} />;
+}
+
+/**
+ * O sumário de situações, que também é o filtro.
+ *
+ * Segunda armadilha do CLAUDE.md: cadastrar sem medir. Guardar o estado de 486
+ * objetos e não mostrar a contagem em lugar nenhum seria criar o dado e nunca
+ * mais voltar nele.
+ */
+function LinhaDeSituacoes({ contagem, semEstado, filtro, onFiltrar }: {
+  contagem: Map<string, number>;
+  semEstado: number;
+  filtro: string | null;
+  onFiltrar: (s: string) => void;
+}) {
+  const presentes = ORDEM_SITUACAO.filter(s => (contagem.get(s) ?? 0) > 0);
+  if (presentes.length === 0 && semEstado === 0) return null;
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-1.5">
+      {presentes.map(s => {
+        const cfg = SITUACAO[s];
+        const ativo = filtro === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onFiltrar(s)}
+            title={cfg.explica}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition-colors",
+              cfg.selo,
+              ativo ? "ring-1 ring-inset ring-current" : "opacity-80 hover:opacity-100",
+            )}
+          >
+            <span className={cn("h-1.5 w-1.5 rounded-full", cfg.ponto)} />
+            {cfg.rotulo}
+            <span className="font-semibold tabular-nums">{contagem.get(s)}</span>
+          </button>
+        );
+      })}
+
+      {/*
+        Quantos a Meta não deixou ler.
+
+        Aparece porque a alternativa é a tabela mostrar linhas sem ponto e
+        ninguém saber por quê. Hoje são objetos de duas contas cujo token
+        perdeu a permissão de leitura.
+      */}
+      {semEstado > 0 && (
+        <span
+          title="A Meta não deixou ler a configuração destas contas. Conceder ads_read ao usuário do sistema no Business Manager resolve."
+          className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground"
+        >
+          <span className="h-1.5 w-1.5 rounded-full border border-muted-foreground/40" />
+          Sem estado
+          <span className="font-semibold tabular-nums">{semEstado}</span>
+        </span>
+      )}
+
+      {filtro && (
+        <button
+          type="button"
+          onClick={() => onFiltrar(filtro)}
+          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          limpar
+        </button>
+      )}
+    </div>
+  );
+}
 function roasColor(v: number) {
   return v >= 3 ? "text-green-400" : v >= 1 ? "text-yellow-400" : "text-red-400";
 }
@@ -257,6 +363,17 @@ export default function MetaAdsPage() {
   const [busca, setBusca] = useState('');
 
   /*
+    O que a Meta diz sobre cada objeto: ligado, pausado, reprovado.
+
+    Vem de `vw_meta_status`, e não de `fn_metricas_meta_agregado`, porque são
+    duas naturezas diferentes: métrica é histórico por dia e responde ao filtro
+    de período; estado é AGORA e não tem data. Juntar os dois na mesma consulta
+    faria o estado parecer que muda quando se troca o mês.
+  */
+  const [estados, setEstados] = useState<Map<string, EstadoDoObjeto>>(new Map());
+  const [filtroSituacao, setFiltroSituacao] = useState<string | null>(null);
+
+  /*
     A soma acontece no banco, e não aqui.
 
     A tela pedia a view inteira — uma linha por dia e por nível — e somava no
@@ -296,6 +413,36 @@ export default function MetaAdsPage() {
     };
     load();
   }, [startDateStr, endDateStr, contaIds]);
+
+  /*
+    O estado não depende do período: carrega uma vez, e recarrega só quando a
+    conta muda.
+
+    Em páginas de 1.000 porque é exatamente esse o teto que o PostgREST aplica
+    calado — o mesmo defeito que já escondeu um quarto do gasto desta tela. Com
+    486 objetos hoje uma página bastaria; o laço existe para o dia em que não
+    bastar, que chegaria sem aviso.
+  */
+  useEffect(() => {
+    const carregarEstado = async () => {
+      const PAGINA = 1000;
+      const todos: EstadoDoObjeto[] = [];
+      for (let de = 0; ; de += PAGINA) {
+        let q = supabase
+          .from('vw_meta_status')
+          .select('nivel,objeto_id,situacao,status,effective_status,dias_sem_entregar')
+          .range(de, de + PAGINA - 1);
+        if (contaIds && contaIds.length > 0) q = q.in('ad_account_id', contaIds);
+        const { data, error } = await q;
+        if (error) { console.error('vw_meta_status:', error.message); break; }
+        const lote = (data ?? []) as EstadoDoObjeto[];
+        todos.push(...lote);
+        if (lote.length < PAGINA) break;
+      }
+      setEstados(new Map(todos.map(e => [chaveEstado(e.nivel, e.objeto_id), e])));
+    };
+    void carregarEstado();
+  }, [contaIds]);
 
   /*
     Filtra o nível e calcula as razões — a soma já veio pronta.
@@ -360,9 +507,41 @@ export default function MetaAdsPage() {
     return rows.filter(r => normalizar(String(r.nome ?? '')).includes(termo));
   };
 
-  const campRows = filtrarPorNome(aggregate("campanha"));
-  const adsetRows = filtrarPorNome(aggregate("adset", selectedCamp.size > 0 ? selectedCamp : undefined));
-  const adRows = filtrarPorNome(aggregate("ad", selectedAdset.size > 0 ? selectedAdset : undefined));
+  const estadoDaLinha = (r: LinhaCalculada) =>
+    r.nivel && r.nivel_id ? estados.get(chaveEstado(r.nivel, r.nivel_id)) : undefined;
+
+  /*
+    O filtro por situação vem DEPOIS da busca, e a contagem é feita antes dele.
+
+    Se a contagem contasse o resultado já filtrado, clicar em "Rodando" faria os
+    outros selos irem a zero — e a linha de selos, que existe para comparar as
+    situações entre si, viraria uma tautologia.
+  */
+  const filtrarPorSituacao = (rows: LinhaCalculada[]) =>
+    filtroSituacao === null ? rows
+      : rows.filter(r => estadoDaLinha(r)?.situacao === filtroSituacao);
+
+  const campBase  = filtrarPorNome(aggregate("campanha"));
+  const adsetBase = filtrarPorNome(aggregate("adset", selectedCamp.size > 0 ? selectedCamp : undefined));
+  const adBase    = filtrarPorNome(aggregate("ad", selectedAdset.size > 0 ? selectedAdset : undefined));
+
+  const baseDaAba = aba === 'campanhas' ? campBase : aba === 'conjuntos' ? adsetBase : adBase;
+
+  const contagemSituacao = useMemo(() => {
+    const c = new Map<string, number>();
+    let semEstado = 0;
+    for (const r of baseDaAba) {
+      const e = estadoDaLinha(r);
+      if (!e) { semEstado++; continue; }
+      c.set(e.situacao, (c.get(e.situacao) ?? 0) + 1);
+    }
+    return { c, semEstado };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseDaAba, estados]);
+
+  const campRows  = filtrarPorSituacao(campBase);
+  const adsetRows = filtrarPorSituacao(adsetBase);
+  const adRows    = filtrarPorSituacao(adBase);
 
   const renderTable = (
     rows: LinhaCalculada[],
@@ -460,6 +639,16 @@ export default function MetaAdsPage() {
                             funilAberto === r.nivel_id && "rotate-90 text-primary",
                           )}
                         />
+                        {/*
+                          O ponto vive AQUI, na coluna do nome, e não numa coluna
+                          própria: são 24 colunas e só esta acompanha a rolagem —
+                          uma coluna de status seria a 25ª, fora da tela em todo
+                          monitor que não seja ultrawide.
+
+                          O texto inteiro fica no `title`, porque o ponto diz que
+                          há algo e não o quê.
+                        */}
+                        <PontoDeSituacao estado={estadoDaLinha(r)} />
                         <span className="truncate">{r.nome}</span>
                       </button>
                     ) : (
@@ -589,6 +778,24 @@ export default function MetaAdsPage() {
           />
         </div>
         </div>
+
+        {/*
+          A linha de situações: a resposta para "o que está ligado?".
+
+          Ela fica acima da tabela e não dentro dela porque é um SUMÁRIO — as
+          24 colunas de número respondem "quanto rendeu", e nenhuma respondia
+          "está no ar". Cada selo filtra a tabela ao ser clicado.
+
+          A ordem é por quanto pede ação, não por quantidade: o que alguém
+          ligou e não está rodando vem antes do que roda, e o que foi desligado
+          de propósito vem por último.
+        */}
+        <LinhaDeSituacoes
+          contagem={contagemSituacao.c}
+          semEstado={contagemSituacao.semEstado}
+          filtro={filtroSituacao}
+          onFiltrar={s => setFiltroSituacao(f => (f === s ? null : s))}
+        />
 
         <TabsContent value="campanhas">
           {selectedCamp.size > 0 && (
