@@ -36,7 +36,26 @@ interface Saude {
   horas_sem_sucesso: number | null;
   gasto_medio_dia: number | null;
   mensagem_erro: string | null;
+  status_meta: string | null;
+  cobranca_com_problema: boolean;
 }
+
+/**
+ * Os `account_status` da Meta, em português.
+ *
+ * Mapa de EXIBIÇÃO, não de decisão: quem decide se há problema é a view, com
+ * "diferente de 1". Um código que a Meta invente depois aparece cru na tela em
+ * vez de sumir do alarme — terceira armadilha do CLAUDE.md.
+ */
+const STATUS_CONTA: Record<string, string> = {
+  '2':   'desativada',
+  '3':   'com pendência financeira',
+  '7':   'em análise de risco',
+  '8':   'aguardando acerto de pagamento',
+  '9':   'em período de carência — cobrança recusada',
+  '100': 'em processo de encerramento',
+  '101': 'encerrada',
+};
 
 /** Quanto o imposto de mídia amplia o buraco no lucro (`imposto_meta_ads_pct`). */
 const FALLBACK_IMPOSTO_META = 12.5;
@@ -56,7 +75,11 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
          do Resumo no dia seguinte à mudança. A constante é só o socorro para
          quando a leitura falhar. */
       if (cfg?.valor) setImpostoPct(Number(cfg.valor) || FALLBACK_IMPOSTO_META);
-      setProblemas(((saude ?? []) as Saude[]).filter(s => s.saude !== 'ok'));
+      /* Duas perguntas diferentes na mesma tarja: o sync consegue ler, e a
+         conta está de pé na Meta. Filtrar só por `saude` deixaria de fora a
+         conta que sincroniza perfeitamente e está com o cartão recusado. */
+      setProblemas(((saude ?? []) as Saude[])
+        .filter(s => s.saude !== 'ok' || s.cobranca_com_problema));
     })();
   }, []);
 
@@ -69,7 +92,8 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
     erro de dinheiro, e o alarme perderia o peso quando o erro fosse de verdade.
   */
   const semDinheiro = problemas.filter(p => p.saude === 'parcial');
-  const semTudo     = problemas.filter(p => p.saude !== 'parcial');
+  const semTudo     = problemas.filter(p => p.saude !== 'parcial' && p.saude !== 'ok');
+  const cobranca    = problemas.filter(p => p.cobranca_com_problema);
 
   const naoContado = semTudo.reduce((s, p) => s + (p.gasto_medio_dia ?? 0), 0);
   const lucroInflado = naoContado * (1 + impostoPct / 100);
@@ -110,6 +134,24 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
             </>
           )}
 
+          {/*
+            A conta em si, que é outro problema e outra urgência: sync quebrado
+            atrapalha a leitura; conta em carência para de entregar quando a
+            carência acaba. A primeira custa visibilidade, a segunda custa venda.
+          */}
+          {cobranca.length > 0 && (
+            <p className={cn('text-xs', semTudo.length > 0 && 'mt-1.5')}>
+              <span className="font-semibold text-foreground">
+                {cobranca.length === 1
+                  ? '1 conta de anúncio está com problema na Meta'
+                  : `${cobranca.length} contas de anúncio estão com problema na Meta`}
+              </span>{' '}
+              <span className="text-muted-foreground">
+                — isso não é o sync: é a conta. Quando a carência acaba, os anúncios param.
+              </span>
+            </p>
+          )}
+
           {semDinheiro.length > 0 && (
             <p className={cn('text-xs text-muted-foreground', semTudo.length > 0 && 'mt-1.5')}>
               {semDinheiro.length === 1 ? '1 conta está' : `${semDinheiro.length} contas estão`}{' '}
@@ -123,13 +165,20 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
               <li key={p.account_id} className="text-[11px] leading-relaxed text-muted-foreground">
                 <span className="font-medium text-foreground">{p.conta}</span>
                 <span className="text-muted-foreground/60"> · {p.account_id}</span>
-                {p.horas_sem_sucesso != null && p.saude !== 'parcial' && (
+                {p.horas_sem_sucesso != null && p.saude !== 'parcial' && p.saude !== 'ok' && (
                   <> · sem sincronizar há {rotuloHoras(p.horas_sem_sucesso)}</>
                 )}
                 {p.gasto_medio_dia != null && p.gasto_medio_dia > 0 && (
                   <> · gasta {formatCurrency(p.gasto_medio_dia)}/dia</>
                 )}
-                <span className="block text-muted-foreground/60">{motivo(p)}</span>
+                {p.cobranca_com_problema && (
+                  <> · <span className="font-medium text-destructive">
+                    conta {STATUS_CONTA[p.status_meta ?? ''] ?? `com status ${p.status_meta}`}
+                  </span></>
+                )}
+                {p.saude !== 'ok' && (
+                  <span className="block text-muted-foreground/60">{motivo(p)}</span>
+                )}
               </li>
             ))}
           </ul>
