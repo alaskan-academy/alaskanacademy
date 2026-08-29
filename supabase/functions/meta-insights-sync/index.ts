@@ -39,7 +39,39 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-const TOKEN = Deno.env.get('META_ACCESS_TOKEN');
+/**
+ * TODOS os tokens da Meta, um por Business Manager.
+ *
+ * O PROBLEMA QUE ISTO RESOLVE
+ *
+ * O portfólio está em várias BMs, e um usuário do sistema pertence a UMA BM:
+ * o token dele enxerga só as contas atribuídas a ele. Por isso existem
+ * `META_ACCESS_TOKEN`, `_2` e `_3` como secret desde 20/08.
+ *
+ * E o sync lia só o primeiro. Duas contas — Saponaria e Desafios na Sala,
+ * juntas R$ 2.264/dia — ficaram fora porque o token que as enxerga estava
+ * cadastrado e nunca era usado. A conferência no Business Manager não achava
+ * nada errado porque não havia nada errado lá.
+ *
+ * A varredura vai até `_9` e para no primeiro buraco a partir do segundo:
+ * numerar até 9 cobre o crescimento previsível sem transformar a lista numa
+ * constante que envelhece calada — terceira armadilha do CLAUDE.md.
+ */
+function lerTokens(): string[] {
+  const achados: string[] = [];
+  const primeiro = Deno.env.get('META_ACCESS_TOKEN');
+  if (primeiro) achados.push(primeiro);
+  for (let i = 2; i <= 9; i++) {
+    const v = Deno.env.get(`META_ACCESS_TOKEN_${i}`);
+    if (v) achados.push(v);
+  }
+  return achados;
+}
+
+const TOKENS = lerTokens();
+/* Mantido para as chamadas que não dependem de conta (nenhuma hoje) e para o
+   guarda de "não configurado" lá embaixo. */
+const TOKEN = TOKENS[0];
 // A Meta lança versão nova a cada trimestre e aposenta as antigas em ~2 anos.
 // Deixar em variável evita ter que editar código para subir.
 const API = Deno.env.get('META_API_VERSION') ?? 'v21.0';
@@ -208,13 +240,45 @@ async function buscar(url: string, tentativa = 0): Promise<{ dados: Linha[]; uso
   return { dados, usoPct };
 }
 
-/** Descobre as contas do Business e reconcilia com `ad_accounts`. */
+/**
+ * Descobre as contas de TODOS os tokens e reconcilia com `ad_accounts`.
+ *
+ * Devolve também o mapa conta → token, que é o que permite sincronizar cada
+ * conta com a credencial que a enxerga.
+ *
+ * O mapa é montado a cada rodada, e não guardado numa coluna, de propósito: um
+ * campo `token_idx` em `ad_accounts` seria mais um espelho precisando de
+ * gatilho — o dia em que uma conta mudasse de BM, ele apontaria para o token
+ * errado e nada denunciaria. Três chamadas por rodada custam menos que isso.
+ */
 async function descobrirContas() {
-  const url = `${BASE}/me/adaccounts?fields=account_id,name,account_status,currency&limit=200&access_token=${TOKEN}`;
-  const { dados } = await buscar(url);
-
   const agora = new Date().toISOString();
   const vistos: string[] = [];
+  const porToken: Record<string, number> = {};
+  /* Qual token enxerga cada conta. O PRIMEIRO que a enxerga vence: se duas BMs
+     compartilham a mesma conta, tanto faz por qual delas se lê. */
+  const tokenDaConta = new Map<string, string>();
+
+  const dados: Linha[] = [];
+  for (let i = 0; i < TOKENS.length; i++) {
+    const tk = TOKENS[i];
+    const rotulo = i === 0 ? 'META_ACCESS_TOKEN' : `META_ACCESS_TOKEN_${i + 1}`;
+    try {
+      const r = await buscar(
+        `${BASE}/me/adaccounts?fields=account_id,name,account_status,currency&limit=200&access_token=${tk}`,
+      );
+      porToken[rotulo] = r.dados.length;
+      for (const c of r.dados) {
+        const id = `act_${c.account_id}`;
+        if (!tokenDaConta.has(id)) { tokenDaConta.set(id, tk); dados.push(c); }
+      }
+    } catch (e) {
+      /* Um token com problema não pode esconder as contas dos outros — é o
+         mesmo princípio do catch por conta, uma camada acima. */
+      porToken[rotulo] = -1;
+      console.error(`${rotulo}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   for (const c of dados) {
     const accountId = `act_${c.account_id}`;
@@ -244,7 +308,7 @@ async function descobrirContas() {
     }
   }
 
-  return { contas_na_api: dados.length, ids: vistos };
+  return { contas_na_api: dados.length, ids: vistos, por_token: porToken, tokenDaConta };
 }
 
 /**
@@ -276,29 +340,38 @@ async function quemSou() {
     }
   };
 
-  const eu = await tentar(async () => {
-    const r = await fetch(`${BASE}/me?fields=id,name&access_token=${TOKEN}`);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j?.error?.message ?? `HTTP ${r.status}`);
-    return { id: j?.id ?? null, nome: j?.name ?? null };
-  });
+  const porToken = [];
+  for (let i = 0; i < TOKENS.length; i++) {
+    const tk = TOKENS[i];
+    const rotulo = i === 0 ? 'META_ACCESS_TOKEN' : `META_ACCESS_TOKEN_${i + 1}`;
 
-  const contas = await tentar(async () => {
-    const { dados } = await buscar(
-      `${BASE}/me/adaccounts?fields=account_id,name,account_status&limit=200&access_token=${TOKEN}`,
-    );
-    return dados.map(c => ({
-      account_id: `act_${c.account_id}`,
-      nome: c.name,
-      status: c.account_status,
-    }));
-  });
+    const eu = await tentar(async () => {
+      const r = await fetch(`${BASE}/me?fields=id,name&access_token=${tk}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error?.message ?? `HTTP ${r.status}`);
+      return { id: j?.id ?? null, nome: j?.name ?? null };
+    });
 
-  return {
-    usuario_do_token: eu,
-    contas_que_o_token_alcanca: Array.isArray(contas) ? contas.length : null,
-    contas,
-  };
+    const contas = await tentar(async () => {
+      const { dados } = await buscar(
+        `${BASE}/me/adaccounts?fields=account_id,name,account_status&limit=200&access_token=${tk}`,
+      );
+      return dados.map(c => ({
+        account_id: `act_${c.account_id}`,
+        nome: c.name,
+        status: c.account_status,
+      }));
+    });
+
+    porToken.push({
+      secret: rotulo,
+      usuario_do_token: eu,
+      contas_que_alcanca: Array.isArray(contas) ? contas.length : null,
+      contas,
+    });
+  }
+
+  return { tokens_configurados: TOKENS.length, tokens: porToken };
 }
 
 /** Converte uma linha de insight da API no formato de `metricas_meta`. */
@@ -364,6 +437,7 @@ async function sincronizarConta(
   conta: { id: string; account_id: string; nome: string },
   desde: string,
   ate: string,
+  token: string,
 ) {
   let linhasGravadas = 0;
   let usoMax: number | null = null;
@@ -377,7 +451,7 @@ async function sincronizarConta(
       time_range: JSON.stringify({ since: desde, until: ate }),
       fields: CAMPOS,
       limit: '500',
-      access_token: TOKEN!,
+      access_token: token,
     });
 
     const { dados, usoPct } = await buscar(`${BASE}/${conta.account_id}/insights?${params}`);
@@ -423,7 +497,7 @@ async function sincronizarConta(
  * Não apaga nada: o objeto some da API, não do histórico. `metricas_meta`
  * continua ancorado nele.
  */
-async function sincronizarEstado(conta: { id: string; account_id: string }) {
+async function sincronizarEstado(conta: { id: string; account_id: string }, token: string) {
   const agora = new Date().toISOString();
   const porNivel: Record<string, number> = {};
 
@@ -431,7 +505,7 @@ async function sincronizarEstado(conta: { id: string; account_id: string }) {
     const params = new URLSearchParams({
       fields: cfg.campos.join(','),
       limit: '500',
-      access_token: TOKEN!,
+      access_token: token,
     });
     const { dados } = await buscar(`${BASE}/${conta.account_id}/${cfg.edge}?${params}`);
     porNivel[nivel] = dados.length;
@@ -475,11 +549,12 @@ function diasAtras(n: number) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
-  if (!TOKEN) {
+  if (TOKENS.length === 0) {
     return json({
-      erro: 'META_ACCESS_TOKEN não configurado',
+      erro: 'nenhum token da Meta configurado',
       comoResolver: 'Business Manager > Usuários do Sistema > gerar token com ads_read, '
-        + 'e cadastrar como secret META_ACCESS_TOKEN nas Edge Functions',
+        + 'e cadastrar como secret META_ACCESS_TOKEN nas Edge Functions. '
+        + 'Uma BM a mais é um secret a mais: META_ACCESS_TOKEN_2, _3, até _9.',
     }, 503);
   }
 
@@ -513,8 +588,14 @@ Deno.serve(async (req) => {
       return json({ erro: `modo desconhecido: ${modo}` }, 400);
     }
 
-    // A descoberta roda junto do sync diário para pegar conta nova sem intervenção.
-    if (modo === 'recente') await descobrirContas();
+    /*
+      A descoberta agora roda em TODO modo, e não só no diário.
+
+      Não é só para achar conta nova: é ela que monta o mapa conta → token, e
+      sem o mapa não há como saber com qual credencial ler cada conta. São
+      TOKENS.length chamadas por rodada — o preço de suportar várias BMs.
+    */
+    const { tokenDaConta } = await descobrirContas();
 
     // Só sincroniza conta que a descoberta confirmou existir (`visto_em`). As 10
     // cadastradas à mão antes deste sync não pertencem mais ao portfólio e
@@ -556,11 +637,25 @@ Deno.serve(async (req) => {
 
           É o mesmo princípio do catch de fora, uma camada abaixo.
         */
+        /*
+          O token desta conta. Sem ele no mapa, a conta não pertence a nenhum
+          token configurado — e aí o erro precisa dizer isso, não um 403 que
+          manda procurar permissão que já está lá.
+        */
+        const tk = tokenDaConta.get(conta.account_id);
+        if (!tk) {
+          throw new Error(
+            'Nenhum dos tokens configurados enxerga esta conta. '
+            + 'Ou ela não está atribuída a nenhum usuário do sistema, '
+            + 'ou falta cadastrar o token da BM dela (META_ACCESS_TOKEN_N).',
+          );
+        }
+
         let estado: Record<string, number> | null = null;
         let erroEstado: string | null = null;
         if (modo !== 'backfill') {
           try {
-            estado = await sincronizarEstado(conta);
+            estado = await sincronizarEstado(conta, tk);
           } catch (e) {
             erroEstado = e instanceof Error ? e.message : String(e);
           }
@@ -568,7 +663,7 @@ Deno.serve(async (req) => {
 
         const { linhasGravadas, usoMax } = modo === 'objetos'
           ? { linhasGravadas: 0, usoMax: null }
-          : await sincronizarConta(conta, desde, ate);
+          : await sincronizarConta(conta, desde, ate, tk);
 
         const agora = new Date().toISOString();
         await supabase.from('meta_sync_estado').upsert({

@@ -9,11 +9,15 @@ import { cn } from '@/lib/utils';
  *
  * POR QUE ELE EXISTE
  *
- * Em 29/08/2026 duas contas pararam de sincronizar às 07:00 por perda de
- * permissão na API. O erro foi gravado em `meta_sync_estado` a cada execução
- * seguinte, fielmente — e NENHUMA tela do app lia essa tabela. O dashboard
- * seguiu mostrando lucro inflado em ~R$ 2.250 no dia, porque a mídia gasta
- * deixou de ser subtraída, e nada avisou ninguém.
+ * Em 29/08/2026 duas contas pararam de sincronizar. A causa real levou horas
+ * para aparecer: o portfólio está em três Business Managers, existem três
+ * tokens cadastrados — e o sync lia só o primeiro. As contas estavam
+ * corretamente atribuídas; a credencial que as enxergava nunca era usada.
+ *
+ * O erro foi gravado em `meta_sync_estado` a cada execução, fielmente, e
+ * NENHUMA tela do app lia essa tabela. O dashboard seguiu mostrando lucro
+ * inflado em ~R$ 2.250 no dia, porque a mídia gasta deixou de ser subtraída, e
+ * nada avisou ninguém.
  *
  * É a segunda armadilha do CLAUDE.md aplicada ao próprio sync: o registro do
  * erro existia, a tela de resultado não. Este componente é a tela.
