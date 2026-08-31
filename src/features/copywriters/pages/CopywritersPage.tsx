@@ -7,6 +7,7 @@ import { CopyTrackTab } from '@/features/copywriters/components/copytrack/CopyTr
 import { EsteiraTab } from '@/features/copywriters/components/esteira/EsteiraTab';
 import type { Defasagem } from '@/features/copywriters/components/esteira/tipos';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { useAuth } from '@/contexts/AuthContext';
 import { Shield } from 'lucide-react';
 
@@ -68,21 +69,51 @@ export default function CopywritersPage() {
   const [defasagem, setDefasagem] = useState<Defasagem[]>([]);
   const [carregandoDefasagem, setCarregandoDefasagem] = useState(true);
 
+  /*
+    A defasagem também respeita a empresa escolhida.
+
+    Foi decidido antes que ela listaria as duas juntas, porque a capacidade de
+    escrever é compartilhada: quem escreve precisa ver tudo que falta. Isso
+    continua valendo — em "Ambas", que é o padrão.
+
+    O que mudou desde aquela decisão foi a TELA: agora existe um seletor no
+    cabeçalho dizendo, em letras, "você está na Aeliss". Listar funil da Alaskan
+    embaixo dele contradiz o que o próprio cabeçalho promete, e contradição de
+    tela é lida como defeito, não como intenção.
+
+    O filtro é no cliente porque `fn_esteira_defasagem` já devolve `projeto_id`
+    e a lista tem uma dezena de linhas — mandar a empresa ao banco aqui seria um
+    parâmetro a mais para não economizar nada.
+  */
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const carregarDefasagem = useCallback(async () => {
+    if (projetosDaEmpresa === undefined) return;
     const { data, error } = await supabase.rpc('fn_esteira_defasagem');
-    if (!error) setDefasagem((data ?? []) as unknown as Defasagem[]);
+    if (!error) {
+      const todas = (data ?? []) as unknown as Defasagem[];
+      setDefasagem(
+        projetosDaEmpresa
+          ? todas.filter(d => projetosDaEmpresa.includes(d.projeto_id))
+          : todas,
+      );
+    }
     setCarregandoDefasagem(false);
-  }, []);
+  }, [projetosDaEmpresa]);
 
   useEffect(() => { if (canView) void carregarDefasagem(); }, [canView, carregarDefasagem]);
 
   return (
     /*
-      `hideFilters` porque NENHUMA das abas lê o filtro global — conferido com
-      um grep por `useFilters` na área inteira, que não devolve nada. Ele
-      aparecia oferecendo conta e período que não mudavam coisa alguma, e a
-      Rotina ainda tem a própria navegação de mês logo abaixo: eram dois
-      "Hoje" na mesma tela querendo dizer coisas diferentes.
+      `hideFilters` porque nenhuma aba usa CONTA nem PERÍODO. Eles apareciam
+      oferecendo um recorte que não mudava coisa alguma, e a Rotina ainda tem a
+      própria navegação de mês logo abaixo: eram dois "Hoje" na mesma tela
+      querendo dizer coisas diferentes.
+
+      A EMPRESA é outra história e continua aparecendo: ela mora no cabeçalho,
+      fora desta fila, justamente porque não é um recorte do conteúdo — é quem
+      você é enquanto olha. Desde 31/08/2026 a esteira e a defasagem a
+      respeitam.
 
       `hideTitle` porque cada aba já se apresenta no corpo.
     */

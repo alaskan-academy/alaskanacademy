@@ -3,6 +3,7 @@ import { Loader2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase, linhas, linha } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
 import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
@@ -31,7 +32,12 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
 
   const today = toYMD(new Date());
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const load = useCallback(async () => {
+    /* undefined = ainda nao sei de quem sao os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
 
     const sel = [
@@ -46,6 +52,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
       if (fixedField && fixedValue) q = q.eq(fixedField, fixedValue);
       else if (nivel === 'membro') q = q.eq('responsavel_id', userId);
       if (fases?.length) q = q.in('fase', fases);
+      if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
       return q;
     };
 
@@ -71,7 +78,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
     setFunis(fs);
     setPerfis(ps);
     setLoading(false);
-  }, [nivel, userId, today, fixedField, fixedValue, fases]);
+  }, [nivel, userId, today, fixedField, fixedValue, fases, projetosDaEmpresa]);
 
   useEffect(() => { load(); }, [load]);
 

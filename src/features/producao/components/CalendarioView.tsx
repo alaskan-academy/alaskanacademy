@@ -26,6 +26,7 @@ import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
 import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 import { useAusencias, pontoDoTipo, rotuloDoTipo, type Ausencia } from '@/features/producao/ausencias';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { CriativoFormModal } from './CriativoFormModal';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { registrarMudancas } from '../registrarHistorico';
@@ -467,7 +468,13 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
    * junho. Este número é o que faz o atraso existir sem depender de quem
    * navegou até onde.
    */
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const contarAtrasados = useCallback(async () => {
+  /* `undefined` = ainda não sei de quem são os projetos. Consultar agora
+     mostraria as duas empresas por um instante — e num painel de produção
+     esse instante basta para alguém mexer no card errado. */
+    if (projetosDaEmpresa === undefined) return;
     const hoje = toYMD(new Date());
     let q = supabase
       .from('producoes')
@@ -480,12 +487,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     if (fixedField && fixedValue)       q = q.eq(fixedField, fixedValue);
     else if (nivel === 'membro')        q = q.eq('responsavel_id', userId);
     if (fasesVisiveis?.length)          q = q.in('fase', fasesVisiveis);
+    if (projetosDaEmpresa)              q = q.in('projeto_id', projetosDaEmpresa);
 
     const { count } = await q;
     setAtrasados(count ?? 0);
-  }, [fixedField, fixedValue, nivel, userId, fasesVisiveis]);
+  }, [fixedField, fixedValue, nivel, userId, fasesVisiveis, projetosDaEmpresa]);
 
   const loadCriativos = useCallback(async () => {
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
     const windowStart = new Date(year, month - 1, 1);
     const windowEnd   = new Date(year, month + 2, 0);
@@ -530,6 +539,9 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     }
 
     if (fasesVisiveis?.length) q = q.in('fase', fasesVisiveis);
+    /* Os dois convivem: a empresa restringe o universo, o filtro de projeto
+       escolhe dentro dele. Dois `in` sobre a mesma coluna é interseção. */
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
     if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
     if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
     if (filtroFase.length)    q = q.in('fase', filtroFase);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -62,18 +63,25 @@ export function FilaPedidos({ onMudou }: { onMudou?: () => void }) {
   const [adAberto, setAdAberto]       = useState<string | null>(null);
   const [verTodos, setVerTodos]       = useState(false);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const carregar = useCallback(async () => {
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
     setCarregando(true);
     setErro(null);
-    const { data, error } = await supabase
+    let q = supabase
       .from('vw_pedidos_variacao')
       .select('*')
       .order('inv_30d', { ascending: false, nullsFirst: false })
       .order('criado_em', { ascending: true });
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
+    const { data, error } = await q;
     if (error) { setErro(error.message); setCarregando(false); return; }
     setPedidos((data ?? []) as unknown as Pedido[]);
     setCarregando(false);
-  }, []);
+  }, [projetosDaEmpresa]);
 
   useEffect(() => { void carregar(); }, [carregar]);
 

@@ -11,6 +11,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { Plus, Loader2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -112,7 +113,12 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
     if (opS?.length) setOpStatus(opS.map(d => d.valor as string));
   }, []);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const loadCriativos = useCallback(async () => {
+    /* undefined = ainda nao sei de quem sao os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
 
     let responsavelFilter: string[] | null = null;
@@ -136,6 +142,9 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       .order('data_prazo', { ascending: false, nullsFirst: false });
 
     if (responsavelFilter?.length) q = q.in('responsavel_id', responsavelFilter);
+    /* Os dois convivem: a empresa restringe o universo, o filtro de projeto
+       escolhe dentro dele. Dois `in` sobre a mesma coluna e intersecao. */
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
     if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
     if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
     if (filtroResp.length)    q = q.in('responsavel_id', filtroResp);
@@ -146,7 +155,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
     const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
-  }, [nivel, setorId, userId, fixedResponsavelId, filtroProjeto, filtroTipo, filtroResp, filtroAval, filtroFormato, filtroStatus]);
+  }, [nivel, setorId, userId, fixedResponsavelId, filtroProjeto, filtroTipo, filtroResp, filtroAval, filtroFormato, filtroStatus, projetosDaEmpresa]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);

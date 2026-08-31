@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Perfil } from './types';
 import { useFases, fasesQueAprova, rotuloDaFase } from '../useFases';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { CriativoDrawer } from './CriativoDrawer';
 
 interface SetorInfo { id: string; nome: string }
@@ -45,17 +46,23 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
 
   const fasesVisiveis = fasesQueAprova(fases, setor?.id ?? null, nivel === 'socio');
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const loadCriativos = useCallback(async () => {
+    /* undefined = ainda nao sei de quem sao os projetos. */
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
-    const { data } = await supabase
+    let q = supabase
       .from('producoes')
       .select('*, funil:funis(id,nome,produto), responsavel:perfis!responsavel_id(id,nome), copy:perfis!copy_id(id,nome), gestor:perfis!gestor_id(id,nome)')
       .in('fase', fasesVisiveis)
       .order('data_prazo', { ascending: true, nullsFirst: false });
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
+    const { data } = await q;
     setCriativos(data ?? []);
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nivel, setor?.id, fasesVisiveis.join(',')]);
+  }, [nivel, setor?.id, fasesVisiveis.join(','), projetosDaEmpresa]);
 
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
 

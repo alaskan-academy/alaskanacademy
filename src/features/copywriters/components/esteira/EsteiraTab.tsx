@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { FASES_MAP } from '@/features/producao/components/constants';
 import { MultiFilter } from "@/features/producao/components/MultiFilter";
 import { CriativoDrawer } from "@/features/producao/components/CriativoDrawer";
@@ -69,18 +70,25 @@ export function EsteiraTab({ defasagem, carregandoDefasagem, onRecarregar }: {
     scroll para o topo — depois de abrir um AD lá embaixo, voltava-se ao começo
     da lista. O `carregando` agora só vale na PRIMEIRA carga.
   */
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const carregar = useCallback(async () => {
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
     setErro(null);
-    const { data, error } = await supabase
+    let q = supabase
       .from('vw_esteira_lotes')
       .select('*')
       .eq('projeto_ativo', true)
       .order('projeto', { ascending: true })
       .order('ad_num', { ascending: false });
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
+    const { data, error } = await q;
     if (error) { setErro(error.message); setCarregando(false); return; }
     setLotes((data ?? []) as unknown as Lote[]);
     setCarregando(false);
-  }, []);
+  }, [projetosDaEmpresa]);
 
   useEffect(() => { void carregar(); }, [carregar]);
 

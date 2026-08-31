@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { cn } from '@/lib/utils';
 import { fetchProjetos, fetchFunis } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
@@ -216,7 +217,12 @@ export function AvaliacaoView({ userId }: Props) {
     setFunis(fs as Funil[]);
   }, []);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const load = useCallback(async () => {
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
 
     // Constrói query base com os filtros do momento; chamada duas vezes para paginar
@@ -227,6 +233,7 @@ export function AvaliacaoView({ userId }: Props) {
         .order('nome');
       q = q.eq('fase', 'postado');
       if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
+      if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
       if (filtroProjeto.length) q = q.in('projeto_id', filtroProjeto);
       if (filtroTipo.length)    q = q.in('tipo', filtroTipo);
       if (filtroEditor.length)  q = q.in('responsavel_id', filtroEditor);
@@ -271,7 +278,7 @@ export function AvaliacaoView({ userId }: Props) {
       };
     }));
     setLoading(false);
-  }, [filtroProjeto, filtroTipo, filtroEditor, filtroAval, filtroFormato, filtroStatus, mostrarInativos]);
+  }, [filtroProjeto, filtroTipo, filtroEditor, filtroAval, filtroFormato, filtroStatus, mostrarInativos, projetosDaEmpresa]);
 
   useEffect(() => { loadOpcoes(); }, [loadOpcoes]);
   useEffect(() => { load(); }, [load]);

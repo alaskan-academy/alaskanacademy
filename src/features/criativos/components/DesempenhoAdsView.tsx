@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { formatNumber, formatPercent } from '@/lib/formatters';
 import { fetchProjetos, fetchFunis } from '@/lib/dataCache';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
@@ -200,7 +201,11 @@ export function DesempenhoAdsView() {
   */
   const { metricas } = useMetricasDoAd(startStr, endStr);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const load = useCallback(async () => {
+    /* undefined = ainda nao sei de quem sao os projetos. */
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
 
     const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
@@ -209,7 +214,11 @@ export function DesempenhoAdsView() {
     // fora de todos os gráficos e de todas as taxas desta tela.
     const [postados, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
       todasAsLinhas<PostadoRow>((de, ate) =>
-        supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(de, ate)),
+        {
+          let q = supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(de, ate);
+          if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
+          return q;
+        }),
       supabase.from('perfis')
         .select('id,nome,is_admin,cargo_id,setor_id,cargo:cargos(id,nome),setor:setores(id,nome),ativo')
         .eq('ativo', true).order('nome'),
@@ -256,7 +265,7 @@ export function DesempenhoAdsView() {
       };
     }));
     setLoading(false);
-  }, []);
+  }, [projetosDaEmpresa]);
 
   useEffect(() => { load(); }, [load]);
 

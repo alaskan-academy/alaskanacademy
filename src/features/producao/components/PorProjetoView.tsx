@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { MultiFilter } from './MultiFilter';
 import { supabase } from '@/lib/supabase';
 import { fetchFunis, fetchPerfis, fetchProjetos } from '@/lib/dataCache';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { cn } from '@/lib/utils';
 import { FASES_MAP, FASES } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
@@ -71,7 +72,12 @@ export function PorProjetoView({ nivel, userId }: Props) {
     if (opS && opS.length > 0) setOpStatus(opS.map(d => d.valor as string));
   }, []);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const loadCriativos = useCallback(async () => {
+    /* undefined = ainda nao sei de quem sao os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
     setLoading(true);
     const PAGE = 1000;
     let all: CriativoRow[] = [];
@@ -82,6 +88,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
         .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(nome)')
         .order('nome')
         .range(from, from + PAGE - 1);
+      if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
       if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
       if (filtroTipo.length) q = q.in('tipo', filtroTipo);
       if (filtroFase.length) q = q.in('fase', filtroFase);
@@ -101,7 +108,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
     }
     setCriativos(all);
     setLoading(false);
-  }, [filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, mostrarInativos]);
+  }, [filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, mostrarInativos, projetosDaEmpresa]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   useEffect(() => { loadCriativos(); }, [loadCriativos]);
