@@ -5,8 +5,68 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-// Chave de integração da Payt — configure em Supabase > Edge Functions > Secrets
-const INTEGRATION_KEY = Deno.env.get('PAYT_INTEGRATION_KEY');
+/**
+ * Uma Payt por empresa, e a CHAVE é quem diz de quem é a venda.
+ *
+ * A partir de 01/09/2026 são duas contas Payt — Alaskan e Aeliss —, cada uma
+ * com a sua chave de integração. Nenhum outro campo do payload responde essa
+ * pergunta com segurança: produto e funil são atribuição, não titularidade, e
+ * 60% das vendas históricas não têm nem funil nem conta de anúncio. Quem
+ * recebeu o dinheiro sabe sempre.
+ *
+ * O NOME DO SEGREDO é o mapa, para não existir lista de empresas no código:
+ *
+ *   PAYT_INTEGRATION_KEY          → alaskan   (o segredo que já existia)
+ *   PAYT_INTEGRATION_KEY_AELISS   → aeliss
+ *   PAYT_INTEGRATION_KEY_<SLUG>   → o `slug` correspondente em `empresas`
+ *
+ * Empresa nova = um segredo novo. Nada aqui muda — que é o contrário da lista
+ * escrita à mão que envelhece em silêncio.
+ */
+const PREFIXO_CHAVE = 'PAYT_INTEGRATION_KEY_';
+
+function chavesPorEmpresa(): Map<string, string> {
+  const mapa = new Map<string, string>();
+
+  /*
+    A chave histórica é lida DIRETO, e não pela varredura.
+
+    Se `toObject()` falhasse ou viesse vazio, o mapa ficaria sem nenhuma chave —
+    e como a validação só acontece quando há chave configurada, a autenticação se
+    desligaria sozinha, em silêncio, aceitando qualquer POST. Lendo esta aqui
+    pelo nome garantimos que isso nunca dependa da varredura dar certo.
+  */
+  const legada = Deno.env.get('PAYT_INTEGRATION_KEY');
+  if (legada && legada.trim() !== '') mapa.set(legada, 'alaskan');
+
+  try {
+    for (const [nome, valor] of Object.entries(Deno.env.toObject())) {
+      if (!valor || valor.trim() === '') continue;
+      if (nome.startsWith(PREFIXO_CHAVE)) {
+        mapa.set(valor, nome.slice(PREFIXO_CHAVE.length).toLowerCase());
+      }
+    }
+  } catch (e) {
+    // Sem a varredura só a Alaskan é reconhecida — o que recusa (e agora GRAVA)
+    // a venda da outra empresa, em vez de aceitar qualquer um.
+    console.error('Não consegui varrer os segredos das Payts:', e);
+  }
+
+  return mapa;
+}
+
+const CHAVES = chavesPorEmpresa();
+
+/** slug → id da empresa, resolvido uma vez por instância e guardado. */
+const empresaPorSlug = new Map<string, string>();
+
+async function empresaDoSlug(slug: string): Promise<string | null> {
+  const guardado = empresaPorSlug.get(slug);
+  if (guardado) return guardado;
+  const { data } = await supabase.from('empresas').select('id').eq('slug', slug).maybeSingle();
+  if (data?.id) empresaPorSlug.set(slug, data.id);
+  return data?.id ?? null;
+}
 
 /**
  * Onde a Payt pode colocar o identificador da transação.
@@ -70,9 +130,48 @@ Deno.serve(async (req) => {
     return json({ ok: true, stored: true, skipped: 'invalid json' });
   }
 
-  // A chave é o que separa a Payt de qualquer um: continua sendo 401 e não grava.
-  if (INTEGRATION_KEY && body.integration_key !== INTEGRATION_KEY) {
-    return json({ error: 'Unauthorized' }, 401);
+  /*
+    A chave continua separando a Payt de qualquer um — e agora também responde
+    de qual empresa é a venda.
+
+    A mudança que importa: chave desconhecida passou a GRAVAR o corpo antes de
+    devolver 401. Antes o 401 vinha primeiro e o evento sumia sem deixar rastro
+    nem em `payt_webhook_raw`.
+
+    E o caso realista não é ataque: é a Payt da empresa nova apontando para cá
+    antes de o segredo dela existir. Perder venda por uma janela de configuração
+    seria perder dinheiro por descuido de ordem — e sem nada na tela denunciando,
+    porque um 401 silencioso não deixa nada para achar depois.
+
+    Só guarda o que tem cara de Payt (o campo `integration_key` presente). Sem
+    esse corte, qualquer POST na URL encheria a tabela.
+
+    Segue devolvendo 401, para a Payt reenviar.
+  */
+  let empresa_id: string | null = null;
+
+  if (CHAVES.size > 0) {
+    const slug = CHAVES.get(body.integration_key);
+
+    if (!slug) {
+      if (typeof body.integration_key === 'string' && body.integration_key.trim() !== '') {
+        await supabase.from('payt_webhook_raw').insert({
+          payt_id: extrairId(body),
+          body,
+          motivo: 'chave de integração desconhecida — falta o segredo desta Payt',
+        });
+      }
+      return json({ error: 'Unauthorized' }, 401);
+    }
+
+    empresa_id = await empresaDoSlug(slug);
+
+    /* Chave válida mas sem empresa com esse slug: a venda entra sem dono, e
+       aparece em `vw_dinheiro_sem_empresa`. Recusar uma venda legítima por causa
+       de um cadastro faltando seria trocar um problema pequeno por um caro. */
+    if (!empresa_id) {
+      console.error('Sem empresa cadastrada para o slug "' + slug + '" — venda entra sem dono.');
+    }
   }
 
   const payt_id = extrairId(body);
@@ -191,6 +290,7 @@ Deno.serve(async (req) => {
 
   const linha = {
     payt_id,
+    empresa_id,
     data,
     valor,
     status,
