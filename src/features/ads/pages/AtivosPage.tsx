@@ -135,18 +135,36 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden mb-3">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors text-left"
-      >
-        <Building2 className="h-4 w-4 text-primary shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm">{bm.nome}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">{summary || 'Nenhum ativo vinculado'}</div>
-        </div>
+      {/*
+        O cabeçalho é uma DIV com botões irmãos, e não um botão que contém os
+        outros — que era o que estava aqui, e o que o console vinha avisando:
+        `validateDOMNesting: <button> cannot appear as a descendant of <button>`.
+
+        Não era só má formação. Um botão dentro de outro não tem comportamento
+        definido: o navegador escolhe, e o teclado não alcança o de dentro —
+        quem navega por Tab nunca chegava em copiar, editar ou excluir uma BM.
+        Os dois `stopPropagation` que existiam aqui eram o remendo do sintoma:
+        sem o aninhamento eles deixam de ser necessários, e saíram.
+
+        `AtivoRow`, logo acima, já tinha a forma certa. Esta seção é a mesma
+        coisa uma linha acima na hierarquia, e agora se parece com ela.
+      */}
+      <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+        <button
+          onClick={() => setOpen(o => !o)}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-3 min-w-0 text-left"
+        >
+          <Building2 className="h-4 w-4 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm">{bm.nome}</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{summary || 'Nenhum ativo vinculado'}</div>
+          </div>
+        </button>
+
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={e => { e.stopPropagation(); copy(bm.asset_id); }}
+            onClick={() => copy(bm.asset_id)}
             className="hidden sm:flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
             title="Copiar ID da BM"
           >
@@ -154,7 +172,7 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
             {copied === bm.asset_id ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
           </button>
           {isAdmin && (
-            <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
+            <div className="flex gap-0.5">
               <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => onEdit(bm)}>
                 <Pencil className="h-3 w-3" />
               </Button>
@@ -163,9 +181,19 @@ function BmSection({ bm, children, bmMap, isAdmin, onEdit, onDelete, copied, cop
               </Button>
             </div>
           )}
-          {open ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          {/* A seta repete o que o título já faz, para quem clica nela por
+              hábito. Fora da ordem de tabulação de propósito: dois caminhos
+              para a mesma ação viram duas paradas de teclado sem motivo. */}
+          <button
+            onClick={() => setOpen(o => !o)}
+            tabIndex={-1}
+            aria-hidden="true"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
         </div>
-      </button>
+      </div>
       {open && children.length > 0 && (
         <div className="border-t border-border divide-y divide-border/50">
           {children.map(a => (
