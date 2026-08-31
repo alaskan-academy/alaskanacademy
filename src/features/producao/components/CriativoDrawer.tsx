@@ -407,6 +407,22 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   if (loading || !criativo) {
     return (
       <>
+        {/*
+          Os DOIS ramos precisam dos mesmos filhos, na mesma ordem.
+
+          O React casa irmãos por POSIÇÃO. Quando este ramo tinha
+          [AlertDialog, Sheet] e o de baixo [dialogoMotivo, AlertDialog,
+          Sheet], a posição 1 mudava de Sheet para AlertDialog ao terminar de
+          carregar — tipos diferentes, então o React DESTRUÍA o Sheet e
+          montava outro. Na tela isso é a gaveta fazendo a animação de saída
+          e a de entrada em seguida: o pisque duplo ao abrir um AD.
+
+          `dialogoMotivo` fica fechado enquanto ninguém arquiva nada, então
+          repeti-lo aqui não desenha coisa alguma: ele existe só para manter
+          as posições alinhadas. Quem acrescentar um irmão em um dos ramos
+          tem de acrescentar no outro.
+        */}
+        {dialogoMotivo}
         <AlertDialog open={showCloseWarning} onOpenChange={setShowCloseWarning}>
           <AlertDialogContent>
             <AlertDialogHeader>
