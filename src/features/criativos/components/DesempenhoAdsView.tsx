@@ -87,6 +87,53 @@ const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalado';
 const isValidado  = (r: PostadoRow) => r.avaliacao === 'Validado';
 const isAprovado  = (r: PostadoRow) => r.avaliacao === 'Validado' || r.avaliacao === 'Escalado';
 
+/*
+  Os dois estados que não apareciam em lugar nenhum.
+
+  A linha de KPIs somava validado + escalado + não validado e parava aí. Nos
+  180 ADs de agosto isso deixava 66 de fora — 37% do mês invisível, e
+  invisível justo do lado errado: card sem avaliação é trabalho aguardando
+  julgamento, e card sem dados é AD que rodou e não gerou o suficiente para se
+  concluir nada. São coisas diferentes e nenhuma das duas é "não validado".
+
+  Sem elas na tela, a taxa de validação parecia calculada sobre o que foi
+  avaliado quando na verdade o denominador inclui quem nunca foi.
+*/
+const semAvaliacao = (r: PostadoRow) => !r.avaliacao;
+const semDados     = (r: PostadoRow) => r.avaliacao === 'Sem dados';
+
+/**
+ * Quanto tempo o AD ficou no ar: da primeira impressão até a última.
+ *
+ * Vem de `fn_vida_util_ads()`, e não de uma subtração aqui, porque duas coisas
+ * estragam o número e as duas moram no banco:
+ *
+ *   `aberta`   — o AD ainda está ACTIVE na Meta. A última impressão dele é
+ *                ontem porque ele está vivo, não porque parou. Somá-lo à média
+ *                responderia "quanto durou até agora", que é outra pergunta.
+ *
+ *   `truncada` — a primeira impressão cai em 01/05/2026, o primeiro dia que
+ *                `metricas_meta` tem. O AD provavelmente começou antes e a vida
+ *                aparece menor do que foi.
+ *
+ * Medido em 31/08/2026 sobre 403 cards: 39 abertos, 12 truncados. Nos que
+ * sobram, a mediana é 6 dias e o maior viveu 104.
+ */
+interface Vida {
+  producao_id: string;
+  dias: number | null;
+  aberta: boolean;
+  truncada: boolean;
+}
+
+function rotuloDaVida(v?: Vida): string {
+  if (!v || v.dias == null) return '—';
+  /* O sinal fica ANTES do número, não num rodapé: quem lê a linha precisa saber
+     que aqueles 40 dias ainda estão correndo antes de compará-los com 6. */
+  const marca = v.aberta ? '≥ ' : v.truncada ? '> ' : '';
+  return `${marca}${v.dias} ${v.dias === 1 ? 'dia' : 'dias'}`;
+}
+
 function buildBreakdown(
   rows: PostadoRow[],
   key: keyof PostadoRow,
@@ -201,6 +248,8 @@ export function DesempenhoAdsView() {
   */
   const { metricas } = useMetricasDoAd(startStr, endStr);
 
+  const [vidas, setVidas] = useState<Record<string, Vida>>({});
+
   const projetosDaEmpresa = useProjetosDaEmpresa();
 
   const load = useCallback(async () => {
@@ -212,7 +261,7 @@ export function DesempenhoAdsView() {
 
     // Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
     // fora de todos os gráficos e de todas as taxas desta tela.
-    const [postados, { data: pf }, pj, { data: opF }, fs] = await Promise.all([
+    const [postados, { data: pf }, pj, { data: opF }, fs, vd] = await Promise.all([
       todasAsLinhas<PostadoRow>((de, ate) =>
         {
           let q = supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(de, ate);
@@ -225,8 +274,13 @@ export function DesempenhoAdsView() {
       fetchProjetos(),
       supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'formato').order('ordem'),
       fetchFunis(),
+      /* Vida útil não respeita o período do filtro: ela é uma propriedade do AD
+         ao longo de toda a série, e recortá-la pelo mês daria a fatia do mês em
+         vez do tempo que ele viveu. */
+      supabase.rpc('fn_vida_util_ads'),
     ]);
 
+    setVidas(Object.fromEntries(((vd.data ?? []) as Vida[]).map(v => [v.producao_id, v])));
     setPerfis((pf ?? []) as Perfil[]);
     setProjetos(pj);
     setFunis(fs as Funil[]);
@@ -296,10 +350,12 @@ export function DesempenhoAdsView() {
     const escalados = filteredSemData.filter(isEscalado).length;
     const aprovados = filtered.filter(isAprovado).length;
     const naoValid  = filtered.filter(r => r.avaliacao === 'Não validado').length;
+    const pendentes = filtered.filter(semAvaliacao).length;
+    const semDado   = filtered.filter(semDados).length;
     const taxaValid = testados > 0 ? (validados / testados) * 100 : 0;
     const taxaEscal = filteredSemData.length > 0 ? (escalados / filteredSemData.length) * 100 : 0;
     const taxaAprov = testados > 0 ? (aprovados / testados) * 100 : 0;
-    return { testados, validados, escalados, aprovados, naoValid, taxaValid, taxaEscal, taxaAprov };
+    return { testados, validados, escalados, aprovados, naoValid, pendentes, semDado, taxaValid, taxaEscal, taxaAprov };
   }, [filtered, filteredSemData]);
 
   const porTipo       = useMemo(() => buildBreakdown(filtered, 'tipo', v => TIPO_LABEL[v ?? ''] ?? v ?? '—'), [filtered]);
@@ -457,13 +513,15 @@ export function DesempenhoAdsView() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
           { label: 'ADs testados',        value: totals.testados,  sub: null,                                                                                 color: '' },
           { label: 'Validados',           value: totals.validados, sub: formatPercent(totals.taxaValid),                                                      color: 'text-emerald-500' },
           { label: 'Escalados',           value: totals.escalados, sub: formatPercent(totals.taxaEscal),                                                      color: 'text-blue-400' },
           { label: 'Val. + Esc.',         value: totals.aprovados, sub: formatPercent(totals.taxaAprov),                                                      color: 'text-violet-400' },
           { label: 'Não validados',       value: totals.naoValid,  sub: totals.testados > 0 ? formatPercent((totals.naoValid / totals.testados) * 100) : null, color: 'text-red-500' },
+          { label: 'Pendentes de avaliação', value: totals.pendentes, sub: totals.testados > 0 ? formatPercent((totals.pendentes / totals.testados) * 100) : null, color: 'text-amber-500' },
+          { label: 'Sem dados',             value: totals.semDado,   sub: totals.testados > 0 ? formatPercent((totals.semDado / totals.testados) * 100) : null,   color: 'text-muted-foreground' },
           { label: 'Taxa de validação',   value: null,             sub: formatPercent(totals.taxaAprov),                                                      color: 'text-primary' },
         ].map(card => (
           <div key={card.label} className="bg-card border border-border rounded-lg p-4">
@@ -574,6 +632,9 @@ export function DesempenhoAdsView() {
                         sete colunas, hook e CPM empurrariam o nome para fora da
                         tela. Quem quiser o resto abre o card.
                       */}
+                      {/* Quanto tempo ficou no ar. `≥` quer dizer que ainda
+                          esta rodando; `>` que a serie comeca depois do AD. */}
+                      <th className="text-right px-3 py-2">Vida</th>
                       <th className="text-right px-3 py-2">Verba</th>
                       <th className="text-right px-3 py-2">ROAS</th>
                       <th className="text-right px-3 py-2">Vendas</th>
@@ -606,6 +667,9 @@ export function DesempenhoAdsView() {
                               {r.avaliacao}
                             </span>
                           ) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground whitespace-nowrap">
+                          {rotuloDaVida(vidas[r.id])}
                         </td>
 
                         {(() => {
