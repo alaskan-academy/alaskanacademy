@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
+import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
@@ -72,13 +73,15 @@ export default function FinanceiroNotasFiscaisPage() {
 
   const competencia = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
 
+  const { empresaId } = useFilters();
+
   const carregar = useCallback(async () => {
     setCarregando(true);
-    const { data, error } = await supabase.rpc('fn_checklist_fiscal', { p_competencia: competencia });
+    const { data, error } = await supabase.rpc('fn_checklist_fiscal', { p_competencia: competencia, p_empresa: empresaId });
     if (error) toast({ title: 'Erro ao carregar', description: error.message, variant: 'destructive' });
     else setItens((data ?? []).map((x: Item) => ({ ...x, valor: Number(x.valor) })));
     setCarregando(false);
-  }, [competencia]);
+  }, [competencia, empresaId]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -124,6 +127,7 @@ export default function FinanceiroNotasFiscaisPage() {
           .from('documentos_fiscais')
           .upsert({
             competencia,
+            empresa_id: empresaId,
             fornecedor: item.fornecedor,
             tipo: item.tipo,
             // Vazio em ferramenta e comprovante; 'pagamento'/'comissao' são de

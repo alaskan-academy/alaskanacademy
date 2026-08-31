@@ -2,6 +2,7 @@ import { hoje, ultimoDiaDoMes } from '@/lib/datas';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
+import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -192,6 +193,8 @@ export default function FinanceiroRevisaoPage() {
    *  teto de 500 ele dizia "500" e ninguém ficava sabendo das outras 24. */
   const [totalNoBanco, setTotalNoBanco] = useState<number | null>(null);
 
+  const { empresaId } = useFilters();
+
   const load = useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -203,6 +206,8 @@ export default function FinanceiroRevisaoPage() {
       .order('data', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(TETO);
+
+    if (empresaId) query = query.eq('empresa_id', empresaId);
 
     if (filtro === 'pendentes') {
       query = query.in('status_revisao', ['pendente', 'auto_categorizado']);
@@ -220,7 +225,7 @@ export default function FinanceiroRevisaoPage() {
     setTransacoes(data || []);
     setTotalNoBanco(count ?? null);
     setLoading(false);
-  }, [filtro, anoRev, mesRev]);
+  }, [filtro, anoRev, mesRev, empresaId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -308,9 +313,35 @@ export default function FinanceiroRevisaoPage() {
     }
   };
 
+  /*
+    Escrever no Financeiro exige saber de qual empresa é.
+
+    Um extrato bancário é de UMA conta, e a conta é de uma empresa. Importar em
+    "Ambas" gravaria transações sem dono — elas apareceriam nas duas telas, ou
+    em nenhuma, dependendo do filtro, e o erro só sairia na conciliação do
+    contador, semanas depois.
+
+    Aqui não vale a regra "ler pode somar": somar duas contas para olhar é
+    legítimo, gravar num limbo não é. `vw_dinheiro_sem_empresa` continua sendo
+    a rede de baixo, mas rede é para o que escapa, não para o caminho normal.
+  */
+  const exigeEmpresa = () => {
+    if (empresaId) return true;
+    toast({
+      title: 'Escolha uma empresa antes',
+      description: 'Um extrato é de uma conta bancária. Selecione a empresa no topo da tela para o lançamento nascer com dono.',
+      variant: 'destructive',
+    });
+    return false;
+  };
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!exigeEmpresa()) {
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
     setImporting(true);
     try {
       const text = await file.text();
@@ -357,6 +388,7 @@ export default function FinanceiroRevisaoPage() {
           // Veio categorizado do arquivo: já nasce como auto, e não pendente.
           status_revisao: temDoArquivo ? 'auto_categorizado' : daRegra.status_revisao,
           fonte: 'conta_simples',
+          empresa_id: empresaId,
         };
       });
 
@@ -378,6 +410,7 @@ export default function FinanceiroRevisaoPage() {
 
   const criarLancamento = async () => {
     if (!novoDesc.trim() || !novoCateg || !novoValor) return;
+    if (!exigeEmpresa()) return;
     setCriandoNovo(true);
     try {
       const valorNum = parseFloat(novoValor.replace(',', '.'));
@@ -393,6 +426,7 @@ export default function FinanceiroRevisaoPage() {
         centro_custo: novoCentro || null,
         status_revisao: 'confirmado',
         fonte: 'manual',
+        empresa_id: empresaId,
       });
       if (error) throw error;
       toast({ title: 'Lançamento criado com sucesso' });

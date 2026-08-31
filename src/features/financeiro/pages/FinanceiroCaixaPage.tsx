@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
+import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -173,13 +174,17 @@ export default function FinanceiroCaixaPage() {
   const dataFim = `${isoMes(ano, mes)}-${ultimoDia}`;
 
   // ── Buscar totais por categoria ──
+  const { empresaId } = useFilters();
+
   useEffect(() => {
     async function load() {
-      const { data, error } = await supabase
+      let q = supabase
         .from('transacoes')
         .select('categoria, valor')
         .gte('data', dataInicio)
         .lte('data', dataFim);
+      if (empresaId) q = q.eq('empresa_id', empresaId);
+      const { data, error } = await q;
         // Conta também o que foi auto-categorizado. Antes esta tela exigia
         // `confirmado`/`revisado`, e como julho e agosto inteiros (440
         // lançamentos) estavam em `auto_categorizado`, os dois meses mais
@@ -211,13 +216,32 @@ export default function FinanceiroCaixaPage() {
       setSemCategoria(semCat);
     }
     load();
-  }, [dataInicio, dataFim, SOCIOS]);
+  }, [dataInicio, dataFim, SOCIOS, empresaId]);
 
   // ── Buscar config da reserva e movimentos históricos ──
   useEffect(() => {
     async function load() {
-      const { data: cfg } = await supabase.from('caixa_config').select('*').limit(1).single();
-      if (cfg) setConfig(cfg as CaixaConfig);
+      /*
+        Ler pode somar; gravar exige uma empresa escolhida.
+
+        O saldo inicial é de uma CONTA BANCÁRIA, e agora há uma por empresa. Em
+        "Ambas" a reserva mostrada é a soma das duas — o que é verdade —, mas não
+        existe uma linha única para editar.
+
+        Por isso o `id` vai vazio ali: é o que impede uma gravação de acertar a
+        conta errada, sem depender de alguém lembrar de conferir antes de salvar.
+      */
+      let qCfg = supabase.from('caixa_config').select('*');
+      if (empresaId) qCfg = qCfg.eq('empresa_id', empresaId);
+      const { data: cfgs } = await qCfg;
+      const linhas = (cfgs ?? []) as CaixaConfig[];
+      if (linhas.length > 0) {
+        setConfig({
+          id: empresaId ? linhas[0].id : '',
+          saldo_inicial: linhas.reduce((s, l) => s + Number(l.saldo_inicial ?? 0), 0),
+          data_referencia: linhas[0].data_referencia,
+        });
+      }
 
       // Sem filtro de status, igual ao resto da tela. O que importa é que seja
       // a MESMA regra em todo lugar: quando esta seção e o DRE usavam critérios
@@ -235,16 +259,18 @@ export default function FinanceiroCaixaPage() {
       const cats = plano.filter(c => c.tipo === 'reserva').map(c => c.categoria);
       if (cats.length === 0) return;
 
-      const { data: mov } = await supabase
+      let qMov = supabase
         .from('transacoes')
         .select('id, data, descricao, valor')
         .in('categoria', cats)
         .order('data', { ascending: false });
+      if (empresaId) qMov = qMov.eq('empresa_id', empresaId);
+      const { data: mov } = await qMov;
 
       setMovimentos((mov ?? []) as MovimentoReserva[]);
     }
     load();
-  }, [plano]);
+  }, [plano, empresaId]);
 
   // ── KPIs ──
   const totalReceitas = totais
@@ -312,6 +338,18 @@ export default function FinanceiroCaixaPage() {
   // ── Salvar config ──
   async function salvarConfig() {
     if (!config) return;
+
+    /* Em "Ambas" o saldo na tela é a soma de duas contas bancárias, e não há
+       linha única para gravar. O `id` vazio é o que segura — ver o comentário
+       na leitura, logo acima. */
+    if (!config.id) {
+      toast({
+        title: 'Escolha uma empresa',
+        description: 'A reserva é de uma conta bancária. Em "Ambas" o saldo mostrado é a soma das duas, e não pode ser editado.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const val = parseFloat(novoSaldo.replace(',', '.'));
     if (isNaN(val)) return;
 

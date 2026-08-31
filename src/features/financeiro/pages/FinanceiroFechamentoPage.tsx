@@ -7,6 +7,7 @@ import {
 } from '@/features/financeiro/constants';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { supabase } from '@/lib/supabase';
+import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -79,6 +80,8 @@ export default function FinanceiroFechamentoPage() {
 
   // ── fetch ──────────────────────────────────────────────────────────────────
 
+  const { empresaId } = useFilters();
+
   const load = useCallback(async () => {
     setLoading(true);
     const inicio = primeiroDia(ano, mes);
@@ -86,13 +89,13 @@ export default function FinanceiroFechamentoPage() {
     const meses  = mesesAnteriores(ano, mes, 6);
 
     // Uma fonte só: o extrato. Venda de plataforma vive nas telas de Vendas.
-    const [trans] = await Promise.all([
-      supabase
-        .from('transacoes')
-        .select('valor,categoria')
-        .gte('data', inicio)
-        .lte('data', fim),
-    ]);
+    let qTrans = supabase
+      .from('transacoes')
+      .select('valor,categoria')
+      .gte('data', inicio)
+      .lte('data', fim);
+    if (empresaId) qTrans = qTrans.eq('empresa_id', empresaId);
+    const [trans] = await Promise.all([qTrans]);
 
     if (trans.error) {
       toast({ title: 'Erro ao carregar dados', variant: 'destructive' });
@@ -150,8 +153,10 @@ export default function FinanceiroFechamentoPage() {
         const d0 = primeiroDia(yyyy, mm);
         const d1 = ultimoDia(yyyy, mm);
         // Mesma regra do mês corrente: extrato, receita e custo pela mesma base.
-        const { data: t2 } = await supabase
+        let q2 = supabase
           .from('transacoes').select('valor,categoria').gte('data', d0).lte('data', d1);
+        if (empresaId) q2 = q2.eq('empresa_id', empresaId);
+        const { data: t2 } = await q2;
         const linhas2 = t2 || [];
         const soma2 = (f: (t: { valor: number; categoria: string | null }) => boolean) =>
           linhas2.filter(f).reduce((s, t) => s + Math.abs(Number(t.valor)), 0);
@@ -164,7 +169,7 @@ export default function FinanceiroFechamentoPage() {
     );
     setHistorico(hist);
     setLoading(false);
-  }, [ano, mes]);
+  }, [ano, mes, empresaId]);
 
   useEffect(() => { load(); }, [load]);
 

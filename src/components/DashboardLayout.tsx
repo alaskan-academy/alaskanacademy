@@ -1,6 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { AppSidebar } from '@/components/AppSidebar';
 import GlobalFilters from '@/components/GlobalFilters';
+import { SeletorEmpresa } from '@/components/SeletorEmpresa';
 import { NotificacoesPopover } from '@/components/NotificacoesPopover';
 import { ContaMenu } from '@/components/ContaMenu';
 import { IngestStatusBanner } from '@/components/IngestStatusBanner';
@@ -130,6 +131,18 @@ export function DashboardLayout({
                 sidebar está fechada atrás do ☰, e antes o sino ficava escondido
                 lá dentro.
               */}
+              {/*
+                A empresa fica AQUI, e não na fila de filtros abaixo.
+
+                Os filtros recortam o conteúdo da página; a empresa troca a
+                operação inteira — é da mesma família do sino e da conta, que
+                valem em qualquer tela.
+
+                E há a razão prática: o Financeiro passa `hideFilters`. Lá
+                embaixo, o seletor sumiria justamente na área onde a separação
+                por empresa mais importa, que é a que vai para a contabilidade.
+              */}
+              <SeletorEmpresa />
               {user && <NotificacoesPopover userId={user.id} />}
               <ContaMenu />
             </div>

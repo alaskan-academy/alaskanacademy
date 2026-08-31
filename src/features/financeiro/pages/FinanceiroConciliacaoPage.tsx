@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { supabase } from '@/lib/supabase';
+import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -52,6 +53,8 @@ export default function FinanceiroConciliacaoPage() {
   const [fCentro, setFCentro]       = useState(TODOS);
   const [fStatus, setFStatus]       = useState(TODOS);
 
+  const { empresaId } = useFilters();
+
   const load = useCallback(async () => {
     setLoading(true);
     let query = supabase
@@ -61,6 +64,7 @@ export default function FinanceiroConciliacaoPage() {
       .lte('data', dataFim)
       .order('data', { ascending: false });
 
+    if (empresaId) query = query.eq('empresa_id', empresaId);
     if (fCategoria !== TODOS) query = query.eq('categoria', fCategoria);
     if (fCentro    !== TODOS) query = query.eq('grupo', fCentro);
     if (fStatus    !== TODOS) query = query.eq('status_revisao', fStatus);
@@ -69,7 +73,7 @@ export default function FinanceiroConciliacaoPage() {
     if (error) toast({ title: 'Erro ao carregar extrato', variant: 'destructive' });
     setTransacoes(data || []);
     setLoading(false);
-  }, [dataInicio, dataFim, fCategoria, fCentro, fStatus]);
+  }, [dataInicio, dataFim, fCategoria, fCentro, fStatus, empresaId]);
 
   useEffect(() => { load(); }, [load]);
 
