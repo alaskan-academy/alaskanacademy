@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deYmd, hoje, emDias } from '@/lib/datas';
 import {
-  CardDaFila, agruparEmAds, rotuloDoAd, FAMILIA_SELO, FAMILIA_LABEL,
+  CardDaFila, agruparEmAds, rotuloDoAd, rotuloDoHook, FAMILIA_SELO, FAMILIA_LABEL,
 } from './tipos';
 
 const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -34,6 +34,23 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
     quantos ficaram de fora.
   */
   const [tudo, setTudo] = useState(false);
+
+  /*
+    Quais ADs estão abertos, mostrando os hooks.
+
+    A chave é DIA + AD, e não só o AD: o mesmo AD pode estar marcado para dois
+    dias diferentes, e abrir um abriria o outro junto — dois blocos se mexendo
+    quando se clicou em um.
+
+    Fechado por padrão: são 32 cards em 9 ADs hoje, e abrir tudo devolveria
+    exatamente a lista comprida que o agrupamento existe para evitar.
+  */
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
+  const alternar = (chave: string) => setAbertos(prev => {
+    const n = new Set(prev);
+    if (n.has(chave)) n.delete(chave); else n.add(chave);
+    return n;
+  });
 
   const ymdHoje = hoje();
   const de  = emDias(-7);
@@ -114,9 +131,31 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
             </div>
 
             {/* Um AD por linha, com o mesmo recuo e ritmo da fila acima. */}
-            {ads.map(ad => (
-              <div key={ad.chave}
-                   className="flex flex-wrap items-center gap-2 border-b border-border/25 py-1.5 pl-[32px] pr-4 last:border-0 hover:bg-secondary/20">
+            {ads.map(ad => {
+              const chaveAberto = `${d.data}|${ad.chave}`;
+              const aberto = abertos.has(chaveAberto);
+              return (
+              <div key={ad.chave} className="border-b border-border/25 last:border-0">
+              <div className="flex flex-wrap items-center gap-2 py-1.5 pl-3 pr-4 hover:bg-secondary/20">
+                {/*
+                  O chevron abre os hooks; o número do AD continua abrindo o
+                  card. Dois alvos, porque são duas perguntas — "quais hooks
+                  são?" e "quero ver este".
+
+                  Antes o número abria `cards[0]` e os outros hooks não tinham
+                  como ser alcançados daqui: para ver o H03 era preciso sair
+                  para outra tela e procurar pelo nome.
+                */}
+                <button
+                  type="button"
+                  onClick={() => alternar(chaveAberto)}
+                  title={aberto ? 'Esconder os hooks' : `Ver os ${ad.cards.length} hooks`}
+                  aria-expanded={aberto}
+                  className="shrink-0 text-muted-foreground/50 transition-colors hover:text-foreground"
+                >
+                  {aberto ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                </button>
+
                 <button onClick={() => onAbrirCard(ad.cards[0].id)} title="Abrir o card"
                         className="w-[62px] shrink-0 text-left text-xs font-medium tabular-nums text-foreground hover:text-primary hover:underline">
                   {rotuloDoAd(ad.ad_num)}
@@ -135,11 +174,43 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
                   {ad.tipo_teste ?? FAMILIA_LABEL[ad.familia] ?? '—'}
                 </span>
 
-                <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+                {/* A contagem também abre: é o número que responde "quais?", e
+                    mirar num chevron de 12px seria alvo pequeno à toa. */}
+                <button
+                  type="button"
+                  onClick={() => alternar(chaveAberto)}
+                  className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground/60 underline-offset-2 transition-colors hover:text-foreground hover:underline"
+                >
                   {ad.cards.length} {ad.cards.length === 1 ? 'hook' : 'hooks'}
-                </span>
+                </button>
               </div>
-            ))}
+
+              {/*
+                Um hook por linha, com o mesmo desenho da fila de aprovados:
+                código curto, nome inteiro e o editor à direita. Repetir o
+                formato de lá não é preguiça — é o que faz as duas listas serem
+                lidas do mesmo jeito, e elas ficam uma embaixo da outra.
+              */}
+              {aberto && ad.cards.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onAbrirCard(c.id)}
+                  title="Abrir o card"
+                  className="flex w-full items-baseline gap-2 border-t border-border/15 py-1.5 pl-[62px] pr-4 text-left transition-colors hover:bg-secondary/20"
+                >
+                  <span className="w-10 shrink-0 text-[11px] tabular-nums text-foreground">
+                    {rotuloDoHook(c)}
+                  </span>
+                  <span className="truncate text-[11px] text-muted-foreground">{c.nome}</span>
+                  {c.editor && (
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">{c.editor}</span>
+                  )}
+                </button>
+              ))}
+              </div>
+              );
+            })}
           </div>
         );
       })}
