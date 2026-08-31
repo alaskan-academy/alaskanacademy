@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import {
@@ -253,12 +254,19 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   // Carrega VSL, domínios, checkouts e vendas de cada REV. Consulta separada de
   // `funis` porque agrega vendas: se entrasse no mesmo select da página, o
   // carregamento da tela inteira passaria a esperar por ela.
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const carregarDados = useCallback(async () => {
-    const { data } = await supabase.from('vw_mapa_revs').select('*');
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
+    let q = supabase.from('vw_mapa_revs').select('*');
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
+    const { data } = await q;
     const porId: Record<string, DadosDoRev> = {};
     for (const d of (data ?? []) as DadosDoRev[]) porId[d.id] = d;
     setDados(porId);
-  }, []);
+  }, [projetosDaEmpresa]);
 
   useEffect(() => { carregarDados(); }, [carregarDados, funis]);
 

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
+import { useFilters } from '@/contexts/FilterContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -239,13 +241,31 @@ export function RadarContent() {
   */
   const primeiraCarga = useRef(true);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+  const { empresaId } = useFilters();
+
   const load = async (afterLoad?: (loaded: Teste[]) => void) => {
     if (primeiraCarga.current) setLoading(true);
+    /*
+      `radar_testes.projeto_ids` é ARRAY: um teste pode tocar mais de um
+      projeto. Por isso `overlaps` e não `in` — o teste entra se QUALQUER um
+      dos projetos dele for da empresa.
+
+      Teste sem projeto nenhum continua aparecendo: ele não é de ninguém, e
+      esconder pesquisa transversal dentro de uma empresa faria perder
+      justamente a que vale para as duas.
+    */
+    let qTestes = supabase.from('radar_testes').select('*').is('deletado_em', null).order('criado_em', { ascending: false });
+    if (projetosDaEmpresa) {
+      qTestes = qTestes.or(`projeto_ids.ov.{${projetosDaEmpresa.join(',')}},projeto_ids.is.null`);
+    }
+    let qProjetos = supabase.from('ofertas_editores').select('id, nome, ativo').eq('ativo', true).order('nome');
+    if (empresaId) qProjetos = qProjetos.eq('empresa_id', empresaId);
     const [{ data: areasData }, { data: testesData }, { data: perfisData }, { data: projetosData }] = await Promise.all([
       supabase.from('radar_areas').select('*').eq('ativo', true).order('ordem'),
-      supabase.from('radar_testes').select('*').is('deletado_em', null).order('criado_em', { ascending: false }),
+      qTestes,
       supabase.from('perfis').select('id, nome').eq('ativo', true).order('nome'),
-      supabase.from('ofertas_editores').select('id, nome, ativo').eq('ativo', true).order('nome'),
+      qProjetos,
     ]);
     setAreas(areasData || []);
     setPerfis(perfisData || []);
@@ -268,7 +288,7 @@ export function RadarContent() {
     afterLoad?.(loaded);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [projetosDaEmpresa, empresaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /*
     ── Filtros, em dois andares ─────────────────────────────────────────────

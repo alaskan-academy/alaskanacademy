@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { supabase } from "@/lib/supabase";
+import { useFilters } from "@/contexts/FilterContext";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
@@ -66,8 +67,26 @@ const GROUPS: GroupDef[] = [
 
 // ─── Aba Parâmetros Fiscais ───────────────────────────────────────────────────
 
+/**
+ * Parâmetros fiscais — da empresa escolhida no cabeçalho.
+ *
+ * Em "Ambas" esta tela edita a configuração GERAL, que é o valor de partida de
+ * quem não tem o seu. Com uma empresa escolhida, edita o valor DELA — e cria a
+ * linha na primeira vez que alguém salvar.
+ *
+ * Herdar continua permitido: a alternativa era exigir valor próprio, e enquanto
+ * ninguém preenchesse a alíquota da Aeliss seria ZERO. Imposto zero infla o
+ * lucro, e lucro alto ninguém questiona. Número herdado erra por uma diferença;
+ * número zerado erra pelo valor inteiro.
+ *
+ * O que a tela precisa dizer, então, é DE ONDE vem o número que está no campo.
+ * É o que o rótulo ao lado de cada um faz.
+ */
 function FiscalTab() {
+  const { empresaId } = useFilters();
   const [loading, setLoading] = useState(true);
+  /** Por chave: `propria` quando a empresa tem a sua, `herdada` quando usa a geral. */
+  const [origem, setOrigem] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     imposto_simples_nacional_pct: 0,
     imposto_meta_ads_pct: 0,
@@ -81,15 +100,29 @@ function FiscalTab() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      /*
+        Com empresa escolhida, `vw_config_por_empresa` já resolve a herança e diz
+        a origem. Sem ela, valem as linhas GERAIS — e o `is("empresa_id", null)`
+        é obrigatório: sem ele o mapa por `chave` ficaria com a última linha que
+        chegasse, e qual é a última é sorteio do Postgres.
+      */
+      let qFat = supabase.from("vw_faturamento_liquido")
+        .select("faturamento_bruto,taxa_plataforma,investimento_meta,reembolsos");
+      if (empresaId) qFat = qFat.eq("empresa_id", empresaId);
+
       const [r1, r2] = await Promise.all([
-        /* Só as linhas GERAIS. Um parâmetro pode ter uma linha por empresa desde
-           que a Aeliss existe; sem este filtro o mapa por `chave` ficaria com a
-           última linha que chegasse — e qual é a última é sorteio do Postgres. */
-        supabase.from("configuracoes").select("chave,valor").is("empresa_id", null),
-        supabase.from("vw_faturamento_liquido").select("faturamento_bruto,taxa_plataforma,investimento_meta,reembolsos"),
+        empresaId
+          ? supabase.from("vw_config_por_empresa").select("chave,valor,origem").eq("empresa_id", empresaId)
+          : supabase.from("configuracoes").select("chave,valor").is("empresa_id", null),
+        qFat,
       ]);
       const cfgMap: Record<string, number> = {};
-      (r1.data || []).forEach((row: any) => { cfgMap[row.chave] = parseFloat(row.valor) || 0; });
+      const orig: Record<string, string> = {};
+      (r1.data || []).forEach((row: any) => {
+        cfgMap[row.chave] = parseFloat(row.valor) || 0;
+        orig[row.chave] = row.origem ?? "geral";
+      });
+      setOrigem(orig);
       setForm({
         imposto_simples_nacional_pct: cfgMap["imposto_simples_nacional_pct"] ?? 0,
         imposto_meta_ads_pct:         cfgMap["imposto_meta_ads_pct"]         ?? 0,
@@ -103,7 +136,7 @@ function FiscalTab() {
       setLoading(false);
     };
     load();
-  }, []);
+  }, [empresaId]);
 
   const handleSave = async () => {
     const updates = [
@@ -112,6 +145,27 @@ function FiscalTab() {
       { chave: "custo_fixo_mensal",            valor: String(form.custo_fixo_mensal) },
     ];
     const errors: string[] = [];
+
+    /*
+      Com empresa escolhida a gravação é UPSERT, e não UPDATE: na primeira vez
+      a linha dela não existe ainda. `onConflict` cita as duas colunas porque a
+      unicidade passou a ser (chave, empresa) — o índice usa NULLS NOT DISTINCT,
+      então a linha geral também é única.
+    */
+    if (empresaId) {
+      const { error } = await supabase.from("configuracoes")
+        .upsert(updates.map(u => ({ chave: u.chave, valor: u.valor, empresa_id: empresaId })),
+                { onConflict: "chave,empresa_id" })
+        .select("chave");
+      if (error) {
+        toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Salvo para esta empresa" });
+        setOrigem(Object.fromEntries(updates.map(u => [u.chave, "propria"])));
+      }
+      return;
+    }
+
     for (const u of updates) {
       // O `.select()` no fim devolve as linhas afetadas. Sem ele, um UPDATE barrado
       // por RLS retorna 200 com zero linhas e o código comemora — foi assim que os
@@ -128,8 +182,8 @@ function FiscalTab() {
           silêncio a alíquota própria da Aeliss, e o DRE dela mudaria sem que
           ninguém tivesse mexido nela.
 
-          Esta tela edita a configuração GERAL. O valor próprio de uma empresa
-          se vê em `vw_config_por_empresa` e ainda não tem tela para editar.
+          Este ramo é o de "Ambas", e edita a configuração GERAL. O valor
+          próprio de uma empresa é gravado no ramo de cima, por upsert.
         */
         .is("empresa_id", null)
         .select("chave");
@@ -170,7 +224,21 @@ function FiscalTab() {
         </p>
         {fields.map(({ key, label, step }) => (
           <div key={key}>
-            <label className="text-xs text-muted-foreground">{label}</label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              {label}
+              {/* De onde vem este número. Herdar é permitido; herdar sem saber
+                  é que não — foi a razão de a coluna existir. */}
+              {empresaId && origem[key] === "herdada" && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  herdado da configuração geral
+                </span>
+              )}
+              {empresaId && origem[key] === "propria" && (
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                  próprio desta empresa
+                </span>
+              )}
+            </label>
             <input
               type="number"
               step={step}
@@ -180,7 +248,15 @@ function FiscalTab() {
             />
           </div>
         ))}
-        <Button onClick={handleSave} className="w-full mt-4">Salvar Configurações</Button>
+        <Button onClick={handleSave} className="w-full mt-4">
+          {empresaId ? "Salvar para esta empresa" : "Salvar configuração geral"}
+        </Button>
+        {!empresaId && (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Esta é a configuração <strong>geral</strong>: vale para toda empresa que não
+            tenha a sua. Para ajustar só uma, escolha-a no seletor do topo.
+          </p>
+        )}
       </div>
 
       <div className="bg-card border border-border rounded-lg p-6">

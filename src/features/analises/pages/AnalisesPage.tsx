@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { useAuth } from '@/contexts/AuthContext';
@@ -100,12 +101,20 @@ export default function AnalisesPage() {
    * "não rodou" em 18 delas — e é assim que um ritual quinzenal vira algo que
    * ninguém faz.
    */
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const carregarRevs = useCallback(async () => {
-    const [{ data, error }, { data: metodos }] = await Promise.all([
-      supabase.from('vw_mapa_revs').select('id,rev,projeto,vendas,status')
-        .eq('status', 'ativo').order('vendas', { ascending: false }),
-      supabase.from('funis').select('id,metodo,vsl_id'),
-    ]);
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
+    let qRevs = supabase.from('vw_mapa_revs').select('id,rev,projeto,vendas,status')
+      .eq('status', 'ativo').order('vendas', { ascending: false });
+    let qFunis = supabase.from('funis').select('id,metodo,vsl_id');
+    if (projetosDaEmpresa) {
+      qRevs  = qRevs.in('projeto_id', projetosDaEmpresa);
+      qFunis = qFunis.in('projeto_id', projetosDaEmpresa);
+    }
+    const [{ data, error }, { data: metodos }] = await Promise.all([qRevs, qFunis]);
 
     if (error) {
       toast({ title: 'Erro ao carregar os REVs', description: error.message, variant: 'destructive' });
@@ -121,7 +130,7 @@ export default function AnalisesPage() {
     }));
     setRevs(lista);
     return lista;
-  }, []);
+  }, [projetosDaEmpresa]);
 
   /**
    * Retoma a rodada aberta em vez de começar outra.

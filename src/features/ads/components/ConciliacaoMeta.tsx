@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { Info } from 'lucide-react';
@@ -51,17 +52,25 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
+  const { empresaId } = useFilters();
+
   useEffect(() => {
     let vivo = true;
     const hoje = new Date();
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth() - (meses - 1), 1);
     const inicioIso = `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}-01`;
 
-    supabase
+    /* Aqui a empresa vem do carimbo, e não do projeto: os dois lados deste
+       painel são dinheiro — o gasto que a Meta reporta e o que saiu da conta
+       bancária. Conferir o cartão de uma empresa contra a campanha da outra
+       não erraria por pouco: erraria por inteiro. */
+    let q = supabase
       .from('vw_conciliacao_meta')
       .select('*')
       .gte('mes', inicioIso)
-      .order('mes')
+      .order('mes');
+    if (empresaId) q = q.eq('empresa_id', empresaId);
+    q
       .then(({ data, error }) => {
         if (!vivo) return;
         if (error) setErro(error.message);
@@ -77,7 +86,7 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
       });
 
     return () => { vivo = false; };
-  }, [meses]);
+  }, [meses, empresaId]);
 
   // Só meses com as duas pontas: comparar contra um lado ausente não é
   // diferença, é falta de dado — e apareceria como se tudo fosse resíduo.

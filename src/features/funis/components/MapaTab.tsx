@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/lib/formatters';
@@ -80,14 +81,21 @@ export function MapaTab() {
   const [mostrarTodos, setMostrarTodos] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+
   const carregar = useCallback(async () => {
-    const { data, error } = await supabase.from('vw_mapa_revs').select('*');
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
+    let q = supabase.from('vw_mapa_revs').select('*');
+    if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
+    const { data, error } = await q;
     if (error) {
       toast({ title: 'Erro ao carregar o mapa', description: error.message, variant: 'destructive' });
     }
     setLinhas((data ?? []) as LinhaMapa[]);
     setLoading(false);
-  }, []);
+  }, [projetosDaEmpresa]);
 
   useEffect(() => { carregar(); }, [carregar]);
 

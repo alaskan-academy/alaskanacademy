@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
+import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
+import { useFilters } from '@/contexts/FilterContext';
 import { cn } from '@/lib/utils';
 import { Funil, Projeto, FunilSuboferta, Dominio, TesteFunil, PerfilSimples, getStatusDisplay } from '../types';
 import { AlertaBanner } from '../components/AlertaBanner';
@@ -56,10 +58,20 @@ export default function FunisPage() {
     dominios: [], testes: [], perfis: [], loading: true,
   });
 
+  const projetosDaEmpresa = useProjetosDaEmpresa();
+  const { empresaId } = useFilters();
+
   const load = useCallback(async () => {
+    /* undefined = ainda não sei de quem são os projetos; consultar agora
+       mostraria as duas empresas por um instante. */
+    if (projetosDaEmpresa === undefined) return;
+    let qFunis = supabase.from('funis').select('*').order('nome');
+    let qProjetos = supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').eq('ativo', true).order('nome');
+    if (projetosDaEmpresa) qFunis = qFunis.in('projeto_id', projetosDaEmpresa);
+    if (empresaId) qProjetos = qProjetos.eq('empresa_id', empresaId);
     const [f, p, fs, d, t, pf] = await Promise.all([
-      supabase.from('funis').select('*').order('nome'),
-      supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').eq('ativo', true).order('nome'),
+      qFunis,
+      qProjetos,
       supabase.from('funil_subofertas').select('*'),
       supabase.from('dominios').select('*').order('nome'),
       supabase.from('testes_funis').select('*').eq('arquivado', false).order('created_at', { ascending: false }),
@@ -74,7 +86,7 @@ export default function FunisPage() {
       perfis:          (pf.data ?? []) as PerfilSimples[],
       loading:         false,
     });
-  }, []);
+  }, [projetosDaEmpresa, empresaId]);
 
   useEffect(() => { load(); }, [load]);
 
