@@ -224,43 +224,78 @@ function porNivelDeConsciencia(a: LinhaBreakdown, b: LinhaBreakdown) {
   return grauDoNivel(a.label) - grauDoNivel(b.label) || a.label.localeCompare(b.label, "pt-BR");
 }
 
+/**
+ * As tabelas de recorte — por ângulo, por formato, por editor.
+ *
+ * ── O que estava errado (31/08/2026) ──────────────────────────────────────
+ *
+ * SCROLL DENTRO DE SCROLL. "Por ângulo" tinha `max-h-72 overflow-y-auto`, e
+ * com 20 ângulos a tabela rolava por dentro enquanto a página rolava por
+ * fora. Quem passava o mouse em cima rolava a tabela sem querer, o cabeçalho
+ * saía de vista e deixava uma faixa vazia no topo do cartão — o "espaço
+ * sobrando" era isso. Agora corta em `LIMITE` linhas com um botão para ver o
+ * resto: a página tem uma barra de rolagem só, que é a dela.
+ *
+ * SEIS COLUNAS NUMA COLUNA ESTREITA. A tabela vive num painel de ~500px e
+ * pedia ~560px, então rolava para o lado e escondia justamente a taxa, que é
+ * a coluna que se olha. Saiu "Val.+Esc.", que era `validados + escalados` —
+ * aritmética das duas células ao lado, e a taxa já a expressa em percentual.
+ *
+ * RÓTULOS CORTADOS QUE VIRAVAM O MESMO TEXTO. `truncate max-w-[160px]` fazia
+ * "Nível 2: Consciente do Problema" e "Nível 2: Consciente da Solução"
+ * aparecerem os dois como "Nível 2: Conscient…" — duas linhas diferentes,
+ * indistinguíveis. Agora quebra em duas linhas em vez de cortar.
+ *
+ * CABEÇALHO DA PRIMEIRA COLUNA TIRADO DO TÍTULO. `title.replace("Por ", "")`
+ * dava "funil de vendas" e "nível de consciência" — minúsculo e comprido, que
+ * era o que mais empurrava a largura. Agora vem por `coluna`, explícito.
+ */
+
+/** Quantas linhas antes do "ver todas". Oito cabe sem rolagem em qualquer
+ *  cartão desta tela, e é mais do que se compara de uma vez. */
+const LIMITE = 8;
+
 function BreakdownTable({
   title,
+  coluna,
   rows,
-  scrollable,
 }: {
   title: string;
-  rows: { label: string; testados: number; validados: number; escalados: number; aprovados: number }[];
-  scrollable?: boolean;
+  /** O que a primeira coluna lista — "Ângulo", "Editor". Curto: é ele que
+   *  decide a largura da tabela inteira. */
+  coluna: string;
+  rows: LinhaBreakdown[];
 }) {
+  const [verTodas, setVerTodas] = useState(false);
   if (rows.length === 0) return null;
+  const visiveis = verTodas ? rows : rows.slice(0, LIMITE);
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 border-b border-border">
         <h4 className="text-sm font-medium">{title}</h4>
       </div>
-      <div className={cn('overflow-x-auto', scrollable && 'overflow-y-auto max-h-72')}>
+      <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className={cn(scrollable && 'sticky top-0 bg-card z-10')}>
+          <thead>
             <tr className="border-b border-border text-[11px] text-muted-foreground uppercase">
-              <th className="text-left px-3 py-2">{title.replace('Por ', '')}</th>
+              <th className="text-left px-3 py-2">{coluna}</th>
               <th className="text-right px-3 py-2">Testados</th>
               <th className="text-right px-3 py-2">Validados</th>
               <th className="text-right px-3 py-2">Escalados</th>
-              <th className="text-right px-3 py-2">Val.+Esc.</th>
-              <th className="text-right px-3 py-2">Taxa valid.</th>
+              <th className="text-right px-3 py-2">Taxa</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {visiveis.map((r) => {
               const taxa = r.testados > 0 ? (r.aprovados / r.testados) * 100 : 0;
               return (
                 <tr key={r.label} className="border-b border-border/40 last:border-0">
-                  <td className="px-3 py-2 font-medium truncate max-w-[160px]">{r.label}</td>
+                  {/* Quebra em vez de cortar: dois rótulos longos que começam
+                      igual viravam a mesma reticência, e a tabela mentia. */}
+                  <td className="px-3 py-2 font-medium" title={r.label}>{r.label}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.testados}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.validados}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.escalados}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-medium">{r.aprovados}</td>
                   <td className="px-3 py-2 text-right">
                     <span className={cn(
                       'px-1.5 py-0.5 rounded text-[11px] font-medium',
@@ -277,6 +312,17 @@ function BreakdownTable({
           </tbody>
         </table>
       </div>
+
+      {rows.length > LIMITE && (
+        <button
+          onClick={() => setVerTodas(v => !v)}
+          className="w-full border-t border-border px-3 py-2 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+        >
+          {verTodas
+            ? `Mostrar só ${LIMITE}`
+            : `Ver todas as ${rows.length} · ${rows.length - LIMITE} ocultas`}
+        </button>
+      )}
     </div>
   );
 }
@@ -650,33 +696,66 @@ export function DesempenhoAdsView() {
         </div>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+      {/*
+        Os números, na ordem em que a pergunta se faz.
+
+        ── O que estava errado (31/08/2026) ─────────────────────────────────
+
+        DOIS CARTÕES COM O MESMO NÚMERO. "Val. + Esc." mostrava
+        `formatPercent(taxaAprov)` embaixo, e "Taxa de validação" mostrava
+        `formatPercent(taxaAprov)` como valor. Os dois liam 10,58% — o mesmo
+        percentual, dois nomes, um ao lado do outro. E o segundo era o único
+        cartão sem contagem, então tinha outra altura que os sete vizinhos.
+
+        SEM ORDEM. Total, ganho, ganho, subtotal, perda, pendente, sem dado e
+        taxa, nessa sequência — misturando o universo, as partes e o resumo.
+
+        ── A ordem agora ────────────────────────────────────────────────────
+
+        Primeiro o UNIVERSO e a RESPOSTA: quantos foram testados, e quantos
+        deram certo. Depois a decomposição, que soma exatamente o universo:
+
+          validados + escalados + não validados + pendentes + sem dados
+            14      +     6     +      94       +    45     +    30    = 189
+
+        Os cinco são exclusivos entre si (`avaliacao` é um valor só), então a
+        soma fechar não é coincidência — é a definição. Separar em duas faixas
+        deixa isso visível em vez de deixar o leitor descobrir.
+      */}
+      <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'ADs testados',        value: totals.testados,  sub: null,                                                                                 color: '' },
-          { label: 'Validados',           value: totals.validados, sub: formatPercent(totals.taxaValid),                                                      color: 'text-emerald-500' },
-          { label: 'Escalados',           value: totals.escalados, sub: formatPercent(totals.taxaEscal),                                                      color: 'text-blue-400' },
-          { label: 'Val. + Esc.',         value: totals.aprovados, sub: formatPercent(totals.taxaAprov),                                                      color: 'text-violet-400' },
-          { label: 'Não validados',       value: totals.naoValid,  sub: totals.testados > 0 ? formatPercent((totals.naoValid / totals.testados) * 100) : null, color: 'text-red-500' },
-          { label: 'Pendentes de avaliação', value: totals.pendentes, sub: totals.testados > 0 ? formatPercent((totals.pendentes / totals.testados) * 100) : null, color: 'text-amber-500' },
-          { label: 'Sem dados',             value: totals.semDado,   sub: totals.testados > 0 ? formatPercent((totals.semDado / totals.testados) * 100) : null,   color: 'text-muted-foreground' },
-          { label: 'Taxa de validação',   value: null,             sub: formatPercent(totals.taxaAprov),                                                      color: 'text-primary' },
+          { label: 'ADs testados', value: totals.testados,  sub: 'no período e nos filtros', color: '' },
+          { label: 'Val. + Esc.',  value: totals.aprovados, sub: formatPercent(totals.taxaAprov) + ' de validação', color: 'text-violet-400' },
         ].map(card => (
           <div key={card.label} className="bg-card border border-border rounded-lg p-4">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{card.label}</p>
-            {card.value !== null ? (
-              <>
-                <p className={cn('text-2xl font-semibold mt-1 tabular-nums', card.color)}>
-                  {loading ? '—' : formatNumber(card.value)}
-                </p>
-                {card.sub && !loading && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{card.sub}</p>
-                )}
-              </>
-            ) : (
-              <p className={cn('text-2xl font-semibold mt-1', card.color)}>
-                {loading ? '—' : card.sub}
-              </p>
+            <p className={cn('text-3xl font-semibold mt-1 tabular-nums', card.color)}>
+              {loading ? '—' : formatNumber(card.value)}
+            </p>
+            {!loading && <p className="text-xs text-muted-foreground mt-0.5">{card.sub}</p>}
+          </div>
+        ))}
+      </div>
+
+      {/* A decomposição: os cinco desfechos possíveis, que somam o total acima. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { label: 'Validados',     value: totals.validados, sub: formatPercent(totals.taxaValid),  color: 'text-emerald-500' },
+          { label: 'Escalados',     value: totals.escalados, sub: formatPercent(totals.taxaEscal),  color: 'text-blue-400' },
+          { label: 'Não validados', value: totals.naoValid,  sub: totals.testados > 0 ? formatPercent((totals.naoValid / totals.testados) * 100) : null, color: 'text-red-500' },
+          { label: 'Pendentes',     value: totals.pendentes, sub: totals.testados > 0 ? formatPercent((totals.pendentes / totals.testados) * 100) : null, color: 'text-amber-500' },
+          { label: 'Sem dados',     value: totals.semDado,   sub: totals.testados > 0 ? formatPercent((totals.semDado / totals.testados) * 100) : null,   color: 'text-muted-foreground' },
+        ].map(card => (
+          <div key={card.label} className="bg-card border border-border rounded-lg p-4">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{card.label}</p>
+            {/* O `card.value !== null ? ... : ...` que existia aqui era só para
+                o cartão "Taxa de validação", que não tinha contagem — e que saiu
+                por repetir o percentual do vizinho. Todos têm número agora. */}
+            <p className={cn('text-2xl font-semibold mt-1 tabular-nums', card.color)}>
+              {loading ? '—' : formatNumber(card.value)}
+            </p>
+            {card.sub && !loading && (
+              <p className="text-xs text-muted-foreground mt-0.5">{card.sub}</p>
             )}
           </div>
         ))}
@@ -688,7 +767,7 @@ export function DesempenhoAdsView() {
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Esquerda: funil + ângulo + nível (~710px c/ editor) */}
             <div className="flex-1 flex flex-col gap-4 min-w-0">
-              {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
+              {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" coluna="Funil" rows={porFunil} />}
 
               {/* Quanto tempo o criativo ficou no ar */}
               <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -744,14 +823,14 @@ export function DesempenhoAdsView() {
                   </>
                 )}
               </div>
-              <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} scrollable />
-              <BreakdownTable title="Por nível de consciência" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
+              <BreakdownTable title="Por ângulo" coluna="Ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} />
+              <BreakdownTable title="Por nível de consciência" coluna="Nível" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
             </div>
             {/* Direita: tipo + formato + editor + gráfico (~720px c/ editor) */}
             <div className="flex-1 flex flex-col gap-4 min-w-0">
-              <BreakdownTable title="Por tipo" rows={porTipo} />
-              <BreakdownTable title="Por formato" rows={porFormato} />
-              {porEditor.length > 0 && <BreakdownTable title="Por editor" rows={porEditor} />}
+              <BreakdownTable title="Por tipo" coluna="Tipo" rows={porTipo} />
+              <BreakdownTable title="Por formato" coluna="Formato" rows={porFormato} />
+              {porEditor.length > 0 && <BreakdownTable title="Por editor" coluna="Editor" rows={porEditor} />}
               {porEditor.length > 0 && (
                 <div className="bg-card border border-border rounded-lg p-4">
                   <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
@@ -812,7 +891,19 @@ export function DesempenhoAdsView() {
                       <th className="text-left px-3 py-2">Ângulo</th>
                       <th className="text-left px-3 py-2">Editor</th>
                       <th className="text-left px-3 py-2">Projeto</th>
-                      <th className="text-left px-3 py-2">Avaliação</th>
+                      {/*
+                        A coluna "Avaliação" saiu em 31/08/2026.
+
+                        `escaladosLista` é `filter(isEscalado)`, então TODA linha
+                        tinha o mesmo selo: "Escalado". Medido na tela — 12
+                        linhas, um valor distinto. Era o título da tabela
+                        repetido doze vezes, ocupando a largura que faltava ao
+                        Ângulo, que por sua vez truncava em 120px e transformava
+                        "A melhor forma - sabonete cacho de uva" em reticências.
+
+                        Coluna que nunca varia não informa: ela só empurra as
+                        que informam para fora.
+                      */}
                       {/*
                         O dinheiro do AD escalado.
 
@@ -846,21 +937,10 @@ export function DesempenhoAdsView() {
                         </td>
                         <td className="px-3 py-2 text-muted-foreground">{TIPO_LABEL[r.tipo] ?? r.tipo}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.formato ?? '—'}</td>
-                        <td className="px-3 py-2 text-muted-foreground max-w-[120px] truncate">{r.angulo_teste ?? '—'}</td>
+                        <td className="px-3 py-2 text-muted-foreground" title={r.angulo_teste ?? undefined}>{r.angulo_teste ?? '—'}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.responsavel?.nome ?? '—'}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.projeto?.nome ?? '—'}</td>
-                        <td className="px-3 py-2">
-                          {r.avaliacao ? (
-                            <span className={cn(
-                              'px-1.5 py-0.5 rounded text-[11px] font-medium',
-                              r.avaliacao === 'Validado'     ? 'bg-emerald-500/10 text-emerald-500'
-                              : r.avaliacao === 'Não validado' ? 'bg-red-500/10 text-red-500'
-                              : 'bg-muted/50 text-muted-foreground',
-                            )}>
-                              {r.avaliacao}
-                            </span>
-                          ) : '—'}
-                        </td>
+
                         <td className="px-3 py-2 text-right tabular-nums text-muted-foreground whitespace-nowrap">
                           {rotuloDaVida(vidas[r.id])}
                         </td>
