@@ -68,6 +68,60 @@ const GROUPS: GroupDef[] = [
 // ─── Aba Parâmetros Fiscais ───────────────────────────────────────────────────
 
 /**
+ * O que o parâmetro FOI, medido, ao lado do que ele diz que é.
+ *
+ * A segunda armadilha do CLAUDE.md: a tela de cadastro existia, a de resultado
+ * não — e sem resultado ninguém volta, então o número envelhece e vira ficção.
+ * Foi assim que o custo fixo ficou preso na retirada de R$ 12.000 dos sócios
+ * depois que ela caiu para R$ 9.000.
+ *
+ * Mostra os dois meses separados, e não só a média, de propósito: junho de 2026
+ * não teve pagamento de imposto nenhum, e uma média sozinha esconderia que
+ * metade da amostra não existe.
+ */
+interface Sugestao {
+  chave: string;
+  mes_a: string;
+  valor_a: number | null;
+  mes_b: string;
+  valor_b: number | null;
+  media: number | null;
+}
+
+/** "2026-07-01" → "jul". O ano não entra: são sempre os dois últimos meses. */
+function mesCurto(d: string) {
+  return new Date(d + "T00:00:00")
+    .toLocaleDateString("pt-BR", { month: "short" })
+    .replace(".", "");
+}
+
+function LinhaSugestao({ rotulo, s, fmt, aplicar }: {
+  rotulo?: string;
+  s?: Sugestao;
+  fmt: (v: number) => string;
+  aplicar: (v: number) => void;
+}) {
+  if (!s || s.media == null) return null;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11px] leading-tight">
+      {rotulo && <span className="w-[74px] shrink-0 text-muted-foreground/60">{rotulo}</span>}
+      <span className="text-muted-foreground/80 tabular-nums">
+        {mesCurto(s.mes_a)} {s.valor_a == null ? "—" : fmt(Number(s.valor_a))}
+        {" · "}
+        {mesCurto(s.mes_b)} {s.valor_b == null ? "—" : fmt(Number(s.valor_b))}
+      </span>
+      <button
+        type="button"
+        onClick={() => aplicar(Number(s.media))}
+        className="rounded border border-primary/40 px-1.5 py-px text-primary transition-colors hover:bg-primary/10"
+      >
+        usar {fmt(Number(s.media))}
+      </button>
+    </div>
+  );
+}
+
+/**
  * Parâmetros fiscais — da empresa escolhida no cabeçalho.
  *
  * Em "Ambas" esta tela edita a configuração GERAL, que é o valor de partida de
@@ -87,6 +141,10 @@ function FiscalTab() {
   const [loading, setLoading] = useState(true);
   /** Por chave: `propria` quando a empresa tem a sua, `herdada` quando usa a geral. */
   const [origem, setOrigem] = useState<Record<string, string>>({});
+  const [sugestoes, setSugestoes] = useState<Record<string, Sugestao>>({});
+  /** Mesma condição que `LinhaSugestao` usa para desenhar — para o rótulo acima
+      dela não ficar sozinho quando não há o que mostrar. */
+  const temSugestao = (k: string) => sugestoes[k]?.media != null;
   const [form, setForm] = useState({
     imposto_simples_nacional_pct: 0,
     imposto_meta_ads_pct: 0,
@@ -110,11 +168,12 @@ function FiscalTab() {
         .select("faturamento_bruto,taxa_plataforma,investimento_meta,reembolsos");
       if (empresaId) qFat = qFat.eq("empresa_id", empresaId);
 
-      const [r1, r2] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         empresaId
           ? supabase.from("vw_config_por_empresa").select("chave,valor,origem").eq("empresa_id", empresaId)
           : supabase.from("configuracoes").select("chave,valor").is("empresa_id", null),
         qFat,
+        supabase.rpc("fn_sugestao_parametros", { p_empresa: empresaId }),
       ]);
       const cfgMap: Record<string, number> = {};
       const orig: Record<string, string> = {};
@@ -123,6 +182,9 @@ function FiscalTab() {
         orig[row.chave] = row.origem ?? "geral";
       });
       setOrigem(orig);
+      setSugestoes(Object.fromEntries(
+        ((r3.data ?? []) as Sugestao[]).map(x => [x.chave, x]),
+      ));
       setForm({
         imposto_simples_nacional_pct: cfgMap["imposto_simples_nacional_pct"] ?? 0,
         imposto_meta_ads_pct:         cfgMap["imposto_meta_ads_pct"]         ?? 0,
@@ -246,6 +308,53 @@ function FiscalTab() {
               onChange={(e) => setForm((prev) => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))}
               className="w-full mt-1 bg-secondary border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
+
+            {/*
+              A coluna de resultado. Textos diferentes porque as duas medidas têm
+              confiabilidade diferente: o custo fixo variou 7% em seis meses e a
+              medição se sustenta sozinha; o imposto depende de quando a guia foi
+              paga e de uma alíquota que sobe com o faturamento.
+            */}
+            {key === "custo_fixo_mensal" && (
+              <div className="mt-1.5 space-y-1">
+                {/* Sem histórico não há rótulo pendurado: a Aeliss começa em
+                    01/09/2026 e vai passar meses aqui. Um cabeçalho sozinho
+                    parece medição que falhou; a frase diz o que é. */}
+                {temSugestao("custo_fixo_mensal") || temSugestao("custo_fixo_mensal_com_socios")
+                  ? <p className="text-[11px] text-muted-foreground/60">Desembolsado nos dois últimos meses fechados</p>
+                  : <p className="text-[11px] text-muted-foreground/60">Sem histórico nesta empresa ainda.</p>}
+                <LinhaSugestao rotulo="sem sócios"  s={sugestoes["custo_fixo_mensal"]}
+                  fmt={formatCurrency} aplicar={v => setForm(prev => ({ ...prev, custo_fixo_mensal: v }))} />
+                <LinhaSugestao rotulo="com sócios"  s={sugestoes["custo_fixo_mensal_com_socios"]}
+                  fmt={formatCurrency} aplicar={v => setForm(prev => ({ ...prev, custo_fixo_mensal: v }))} />
+              </div>
+            )}
+
+            {key === "imposto_simples_nacional_pct" && (
+              <div className="mt-1.5 space-y-1">
+                <p className="text-[11px] text-muted-foreground/60">
+                  {temSugestao("imposto_simples_nacional_pct")
+                    ? "Pago nos dois últimos meses fechados, sobre a receita do mês anterior"
+                    : "Sem histórico nesta empresa ainda."}
+                </p>
+                <LinhaSugestao s={sugestoes["imposto_simples_nacional_pct"]}
+                  fmt={v => `${v.toFixed(2)}%`}
+                  aplicar={v => setForm(prev => ({ ...prev, imposto_simples_nacional_pct: v }))} />
+                <p className="text-[11px] leading-snug text-muted-foreground/60">
+                  O Simples sobe com o faturamento acumulado. Se a receita cresceu,
+                  o pago no passado é menor que a alíquota que já vale — confirme com
+                  a contabilidade antes de ajustar para baixo.
+                </p>
+              </div>
+            )}
+
+            {key === "imposto_meta_ads_pct" && (
+              <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground/60">
+                Sem sugestão: o gasto de um mês é debitado no seguinte, então a
+                diferença entre o extrato e o que a Meta reporta mistura imposto com
+                atraso de cobrança. A fatura da Meta traz a linha de imposto separada.
+              </p>
+            )}
           </div>
         ))}
         <Button onClick={handleSave} className="w-full mt-4">
