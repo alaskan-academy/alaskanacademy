@@ -1,8 +1,60 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const CS_API_KEY     = Deno.env.get('CS_API_KEY')!;
-const CS_API_SECRET  = Deno.env.get('CS_API_SECRET')!;
 const CS_SYNC_SECRET = Deno.env.get('CS_SYNC_SECRET')!;
+
+/**
+ * Uma conta bancária por empresa, e o NOME do segredo diz de quem ela é.
+ *
+ *   CS_API_KEY / CS_API_SECRET                → alaskan (os que já existiam)
+ *   CS_API_KEY_<SLUG> / CS_API_SECRET_<SLUG>  → o `slug` correspondente
+ *
+ * Mesmo padrão das chaves da Payt. Empresa nova é um par de segredos novo, sem
+ * tocar em código — o contrário da lista escrita à mão que envelhece calada.
+ *
+ * POR QUE ISSO IMPORTA MAIS AQUI DO QUE PARECE
+ *
+ * `transacoes` carrega `empresa_id` carimbado, e o extrato bancário é o ÚNICO
+ * lugar que sabe de quem é a transação: não há projeto, funil nem conta de
+ * anúncio para derivar. Se esta função gravasse sem carimbo, toda madrugada
+ * nasceriam transações sem dono — e elas apareceriam nas duas empresas ou em
+ * nenhuma, conforme o filtro.
+ */
+interface ContaCS {
+  slug: string;
+  key: string;
+  secret: string;
+}
+
+const PREFIXO_KEY = 'CS_API_KEY_';
+
+function contasConfiguradas(): ContaCS[] {
+  const achadas: ContaCS[] = [];
+
+  /* A dupla histórica é lida DIRETO, e não pela varredura: se `toObject()`
+     falhasse, a lista viria vazia e o sync não faria nada em silêncio. */
+  const k = Deno.env.get('CS_API_KEY');
+  const s = Deno.env.get('CS_API_SECRET');
+  if (k && s) achadas.push({ slug: 'alaskan', key: k, secret: s });
+
+  try {
+    for (const nome of Object.keys(Deno.env.toObject())) {
+      if (!nome.startsWith(PREFIXO_KEY)) continue;
+      const sufixo = nome.slice(PREFIXO_KEY.length);
+      const chave  = Deno.env.get(nome);
+      const segredo = Deno.env.get('CS_API_SECRET_' + sufixo);
+      if (chave && segredo) {
+        achadas.push({ slug: sufixo.toLowerCase(), key: chave, secret: segredo });
+      } else {
+        /* Meia credencial é pior que nenhuma: some sem erro. */
+        console.error('[cs-sync] ' + nome + ' existe mas CS_API_SECRET_' + sufixo + ' não — conta ignorada');
+      }
+    }
+  } catch (e) {
+    console.error('[cs-sync] não consegui varrer os segredos:', e);
+  }
+
+  return achadas;
+}
 
 const CS_BASE_URL = 'https://api.contasimples.com';
 
@@ -11,8 +63,8 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-async function getAccessToken(): Promise<string> {
-  const basic = btoa(`${CS_API_KEY}:${CS_API_SECRET}`);
+async function getAccessToken(conta: ContaCS): Promise<string> {
+  const basic = btoa(`${conta.key}:${conta.secret}`);
   const res = await fetch(`${CS_BASE_URL}/oauth/v1/access-token`, {
     method: 'POST',
     headers: {
@@ -154,8 +206,53 @@ Deno.serve(async (req) => {
   start.setDate(start.getDate() - 3);
   const startDate = body.startDate ?? start.toISOString().slice(0, 10);
 
+  const contas = contasConfiguradas();
+  if (contas.length === 0) {
+    return json({
+      erro: 'nenhuma conta da Conta Simples configurada',
+      comoResolver: 'Cadastre CS_API_KEY e CS_API_SECRET nas Edge Functions. '
+        + 'Uma empresa a mais e um par a mais: CS_API_KEY_<SLUG> e CS_API_SECRET_<SLUG>, '
+        + 'com o mesmo <slug> da tabela `empresas`.',
+    }, 503);
+  }
+
+  /* slug → id da empresa. Uma consulta para todas as contas: a lista tem duas
+     linhas e vai ter três. */
+  const { data: linhasEmpresa } = await supabase.from('empresas').select('id,slug');
+  const idPorSlug = new Map(
+    (linhasEmpresa ?? []).map((e: Record<string, unknown>) => [String(e.slug), String(e.id)]),
+  );
+
+  const porConta: Record<string, unknown>[] = [];
+  const paraGravar: { ref: string; payload: unknown }[] = [];
+  let totalBanking = 0;
+  let totalCard = 0;
+
   try {
-    const token = await getAccessToken();
+  for (const conta of contas) {
+   try {
+    /*
+      Sem empresa cadastrada para este slug a transação entra SEM dono, e
+      aparece em `vw_dinheiro_sem_empresa`. Recusar o extrato inteiro por
+      causa de um cadastro faltando seria perder movimento bancário — que é
+      justamente o que não se recupera depois.
+    */
+    const empresaId = idPorSlug.get(conta.slug) ?? null;
+    if (!empresaId) {
+      console.error('[cs-sync] sem empresa com slug "' + conta.slug + '" — transações entram sem dono');
+    }
+
+    /*
+      A referência da conta histórica NÃO muda de formato.
+
+      Ela é a chave de deduplicação (`onConflict: referencia_externa`), e
+      prefixá-la agora faria as 1.238 linhas da Alaskan serem reimportadas
+      como novas. Conta nova ganha o prefixo, porque o id da Conta Simples só
+      é garantidamente único DENTRO de uma conta.
+    */
+    const ref = (bruto: string) => conta.slug === 'alaskan' ? bruto : conta.slug + '_' + bruto;
+
+    const token = await getAccessToken(conta);
 
     // ── 1. Conta corrente
     const rawBanking = await fetchBanking(token, startDate, endDate);
@@ -176,7 +273,8 @@ Deno.serve(async (req) => {
         const tx = t as Record<string, unknown>;
         const raw = buildValorBanking(tx);
         return {
-          referencia_externa: String(tx['id']),
+          referencia_externa: ref(String(tx['id'])),
+          empresa_id: empresaId,
           data: String(tx['transactionDate'] ?? '').slice(0, 10),
           descricao: buildDescricaoBanking(tx),
           valor: isDebitBanking(tx) ? -Math.abs(raw) : Math.abs(raw),
@@ -205,7 +303,8 @@ Deno.serve(async (req) => {
         const isCashOut = String(tx['operation'] ?? '') === 'CASH_OUT';
         const merchant  = String(tx['merchant'] ?? tx['description'] ?? tx['name'] ?? '').trim() || 'Cartão CS';
         return {
-          referencia_externa: `card_${String(tx['id'])}`,
+          referencia_externa: ref('card_' + String(tx['id'])),
+          empresa_id: empresaId,
           data: String(tx['transactionDate'] ?? tx['date'] ?? '').slice(0, 10),
           descricao: merchant,
           valor: isCashOut ? -Math.abs(amountBrl) : Math.abs(amountBrl),
@@ -219,16 +318,34 @@ Deno.serve(async (req) => {
     if (bankingRows.length > 0) await upsertBatch(bankingRows as Record<string, unknown>[]);
     if (cardRows.length > 0)    await upsertBatch(cardRows    as Record<string, unknown>[]);
 
+    totalBanking += bankingRows.length;
+    totalCard    += cardRows.length;
+    porConta.push({
+      conta: conta.slug,
+      empresa: empresaId ? conta.slug : null,
+      banking: bankingRows.length,
+      card: cardRows.length,
+      ...(empresaId ? {} : { aviso: 'sem empresa cadastrada para este slug' }),
+    });
+
     // ── 3b. Payload nas linhas que já existiam
     // O upsert acima usa `ignoreDuplicates`, que é o que protege
     // `status_revisao` de voltar para "pendente" em transação já revisada. O
     // efeito colateral é que linha antiga nunca recebia `payload_raw`: depois
     // do primeiro sync, 1.120 transações tinham payload em exatamente uma.
     // Esta passada escreve só aquela coluna.
-    const paraGravar = [...bankingRows, ...cardRows].map(r => ({
+    paraGravar.push(...[...bankingRows, ...cardRows].map(r => ({
       ref:     r.referencia_externa,
       payload: r.payload_raw,
-    }));
+    })));
+   } catch (e) {
+    /* Uma conta com problema não pode impedir a outra de sincronizar — mesmo
+       princípio do catch por conta no sync da Meta. */
+    console.error('[cs-sync] conta ' + conta.slug + ':', e);
+    porConta.push({ conta: conta.slug, erro: String(e) });
+   }
+  }
+
     let payloadsGravados = 0;
     for (let i = 0; i < paraGravar.length; i += 200) {
       const { data, error } = await supabase.rpc('fn_gravar_payloads', {
@@ -242,11 +359,13 @@ Deno.serve(async (req) => {
     const { data: categorized, error: catError } = await supabase.rpc('aplicar_regras_categoria');
     if (catError) console.warn('[cs-sync] Auto-categorização falhou:', catError.message);
 
-    console.log(`[cs-sync] OK: ${bankingRows.length} banking, ${cardRows.length} cartão, ${categorized ?? 0} categorizados, ${payloadsGravados} payloads`);
+    console.log('[cs-sync] OK: ' + contas.length + ' conta(s), ' + totalBanking + ' banking, '
+      + totalCard + ' cartão, ' + (categorized ?? 0) + ' categorizados, ' + payloadsGravados + ' payloads');
     return json({
       ok:          true,
-      banking:     { fetched: bankingRows.length },
-      card:        { fetched: cardRows.length },
+      contas:      porConta,
+      banking:     { fetched: totalBanking },
+      card:        { fetched: totalCard },
       categorized: categorized ?? 0,
       payloads:    payloadsGravados,
       period:      { startDate, endDate },
