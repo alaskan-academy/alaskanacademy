@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -19,7 +19,9 @@ import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES, FASES_POR_TIPO, canMoveFaseOut } from './constants';
+import { canMoveFaseOut } from './constants';
+import { useFases, fasesDoTipo } from '../useFases';
+import { usePedirMotivo } from '../usePedirMotivo';
 import { CriativoCard } from './CriativoCard';
 import { CriativoDrawer } from './CriativoDrawer';
 import { CriativoFormModal } from './CriativoFormModal';
@@ -73,6 +75,18 @@ interface Props {
 
 export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props) {
   const { toast } = useToast();
+  const { fases, carregou: fasesCarregaram } = useFases();
+  const { pedirMotivo, dialogoMotivo } = usePedirMotivo();
+
+  /* As colunas do quadro sao as fases ATIVAS da tabela, na ordem dela. Antes
+     eram a constante `FASES`, que precisava ser editada a mao toda vez que o
+     banco ganhasse uma fase — e que ja discordava dele. */
+  const colunas = useMemo(
+    () => fases
+      .filter(f => f.ativa && (!f.somente_socio || nivel === 'socio'))
+      .sort((a, b) => a.ordem - b.ordem),
+    [fases, nivel],
+  );
   const [criativos, setCriativos]         = useState<Criativo[]>([]);
   const [funis, setFunis]                 = useState<Funil[]>([]);
   const [perfis, setPerfis]               = useState<Perfil[]>([]);
@@ -175,11 +189,22 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
     const criativo = criativos.find(c => c.id === criativoId);
     if (!criativo || criativo.fase === novaFase) return;
 
-    // Valida fase para o tipo
-    const validFases = FASES_POR_TIPO[criativo.tipo];
-    if (validFases && !validFases.includes(novaFase)) {
-      toast({ title: `Fase inválida para este tipo de criativo`, variant: 'destructive' });
-      return;
+    /*
+      Valida a fase contra a TABELA, e nao contra uma lista no codigo.
+
+      A lista antiga parava no `postado`, entao arrastar um card para a coluna
+      Arquivado — que o Kanban desenhava — era recusado com "fase invalida para
+      este tipo". A coluna existia e nao aceitava ninguem.
+
+      Enquanto a tabela nao chegou, `fasesCarregaram` e falso e a validacao NAO
+      roda: recusar por lista vazia seria o mesmo defeito com outra causa.
+    */
+    if (fasesCarregaram) {
+      const validFases = fasesDoTipo(fases, criativo.tipo).map(f => f.chave);
+      if (!validFases.includes(novaFase)) {
+        toast({ title: `Fase inválida para este tipo de criativo`, variant: 'destructive' });
+        return;
+      }
     }
 
     // Valida link de vídeo editado ao sair da edição
@@ -193,6 +218,12 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       toast({ title: 'Esta fase requer aprovação de um administrador', variant: 'destructive' });
       return;
     }
+
+    /* O motivo vem ANTES da atualizacao otimista: pintar o card na coluna nova
+       e depois abrir um dialogo que pode ser cancelado faria o card pular de
+       volta sozinho. */
+    const motivo = await pedirMotivo(fases.find(f => f.chave === novaFase));
+    if (motivo === null) return;
 
     // Atualização otimista
     setCriativos(prev => prev.map(c => c.id === criativoId ? { ...c, fase: novaFase } : c));
@@ -215,6 +246,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       campo_alterado: 'fase',
       valor_anterior: criativo.fase,
       valor_novo:     novaFase,
+      motivo:         motivo || null,
     });
 
     /*
@@ -233,6 +265,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
 
   return (
     <div className="flex flex-col gap-4">
+      {dialogoMotivo}
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative">
@@ -309,7 +342,7 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
       </div>
 
       {/* Board */}
-      {loading && criativos.length === 0 ? (
+      {(loading && criativos.length === 0) || !fasesCarregaram ? (
         <div className="flex items-center justify-center h-40 text-muted-foreground text-sm gap-2">
           <Loader2 className="h-4 w-4 animate-spin" />Carregando...
         </div>
@@ -317,21 +350,21 @@ export function KanbanView({ nivel, setorId, userId, fixedResponsavelId }: Props
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="overflow-x-auto -mx-4 px-4 pb-1">
             <div className="flex gap-3 pb-4" style={{ minWidth: 'max-content' }}>
-              {FASES.filter(f => !f.somente_socio || nivel === 'socio').map(fase => {
-                const cards = displayCriativos.filter(c => c.fase === fase.key);
+              {colunas.map(fase => {
+                const cards = displayCriativos.filter(c => c.fase === fase.chave);
                 return (
-                  <div key={fase.key} className="w-52 flex-none">
+                  <div key={fase.chave} className="w-52 flex-none">
                     <div className={cn(
                       'flex items-center justify-between mb-2 px-0.5',
-                      fase.revisao ? 'text-amber-400' : 'text-muted-foreground',
+                      fase.e_revisao ? 'text-amber-400' : 'text-muted-foreground',
                     )}>
                       <span className="text-[11px] font-semibold uppercase tracking-wide truncate">
-                        {fase.label}
+                        {fase.rotulo}
                       </span>
                       <span className="text-[11px] font-medium ml-1 shrink-0">{cards.length}</span>
                     </div>
 
-                    <DroppableColumn faseKey={fase.key}>
+                    <DroppableColumn faseKey={fase.chave}>
                       {cards.length === 0 ? (
                         <div className="border border-dashed border-border/40 rounded-md h-14 flex items-center justify-center">
                           <span className="text-[10px] text-muted-foreground/30">Vazio</span>

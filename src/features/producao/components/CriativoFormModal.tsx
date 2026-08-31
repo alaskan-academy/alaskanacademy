@@ -9,7 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox';
 import { supabase, linhas, linha } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { getDefaultFase, TIPOS_LABEL, FASES_POR_TIPO, FASES_MAP } from './constants';
+import { getDefaultFase, TIPOS_LABEL } from './constants';
+import { useFases, fasesDoTipo } from '../useFases';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import type { CriativoTipo, Funil, Perfil } from './types';
 
@@ -56,6 +57,7 @@ const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
 
 export function CriativoFormModal({ open, onClose, onCreated, userId, funis: funisProp, perfis: perfisProp, defaultDate }: Props) {
   const { toast } = useToast();
+  const { fases } = useFases();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState<FormState>(makeEmpty());
   const [internalFunis, setInternalFunis] = useState<Funil[]>([]);
@@ -184,7 +186,10 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
     onClose();
   };
 
-  const fasesDisponiveis = FASES_POR_TIPO[form.tipo] ?? [];
+  /* Da tabela, e nao da constante que parava no `postado`. Um card novo pode
+     nascer em qualquer fase do tipo dele — inclusive fora do fluxo, para quem
+     esta cadastrando algo que ja morreu. */
+  const fasesDisponiveis = fasesDoTipo(fases, form.tipo);
 
   const Sel = ({ label, field, options }: { label: string; field: keyof FormState; options: string[] }) => (
     <div>
@@ -230,8 +235,8 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
               <Select value={form.fase} onValueChange={v => set('fase', v)}>
                 <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {fasesDisponiveis.map(k =>
-                    <SelectItem key={k} value={k}>{FASES_MAP[k] ?? k}</SelectItem>
+                  {fasesDisponiveis.map(f =>
+                    <SelectItem key={f.chave} value={f.chave}>{f.rotulo}</SelectItem>
                   )}
                 </SelectContent>
               </Select>

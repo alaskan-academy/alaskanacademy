@@ -1,5 +1,5 @@
 import { paraYmd } from '@/lib/datas';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -23,13 +23,15 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
+import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 import { useAusencias, pontoDoTipo, rotuloDoTipo, type Ausencia } from '@/features/producao/ausencias';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { CriativoFormModal } from './CriativoFormModal';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { registrarMudancas } from '../registrarHistorico';
+import { useFases } from '../useFases';
+import { usePedirMotivo } from '../usePedirMotivo';
 
 interface Props {
   nivel: ProducaoNivel;
@@ -309,6 +311,41 @@ function DroppableDay({ ymd, disabled, children }: { ymd: string; disabled?: boo
 
 export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis }: Props) {
   const { toast } = useToast();
+  const { fases, carregou: fasesCarregaram } = useFases();
+  const { pedirMotivo, dialogoMotivo } = usePedirMotivo();
+
+  /* As fases ATIVAS na ordem do banco. Antes isto era a constante `FASES`, que
+     precisava ser editada à mão a cada fase nova — e que já discordava dela. */
+  const fasesOrdenadas = useMemo(
+    () => fases.filter(f => f.ativa).sort((a, b) => a.ordem - b.ordem),
+    [fases],
+  );
+
+  /*
+    O calendário não desenha quem saiu do fluxo, e o filtro deixa de oferecê-los.
+
+    Arquivado e Bloqueado não têm lugar num calendário: não são um dia de
+    trabalho, são um fim de linha. A consulta sempre os excluiu — mas o filtro
+    de Fase os LISTAVA, e escolher "Arquivado" produzia duas condições que se
+    anulam (`fase=not.in.(arquivado,bloqueado)` junto de `fase=in.(arquivado)`).
+    O resultado era um mês vazio, que se lê como "não há nenhum" em vez de
+    "esta tela não mostra esses". Havia 24 arquivados na janela quando isto foi
+    encontrado.
+
+    Quem procura um card arquivado usa o "Ver arquivados" da visão por projeto.
+    A mudança em lote continua OFERECENDO Arquivado, porque ali é escrita e não
+    busca: dá para arquivar daqui, só não dá para procurar.
+  */
+  const noFluxo = useMemo(
+    () => fasesOrdenadas.filter(f => !f.fora_do_fluxo),
+    [fasesOrdenadas],
+  );
+
+  /** O que a consulta exclui, no formato do PostgREST — derivado, não escrito. */
+  const foraDoFluxoSQL = useMemo(
+    () => `(${fases.filter(f => f.fora_do_fluxo).map(f => f.chave).join(",")})`,
+    [fases],
+  );
   const confirmar = useConfirm();
   const now = new Date();
 
@@ -495,6 +532,9 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
   const loadCriativos = useCallback(async () => {
     if (projetosDaEmpresa === undefined) return;
+    /* Sem a tabela, `foraDoFluxoSQL` seria `()` — que o PostgREST recusa, e o
+       erro apareceria como calendário quebrado em vez de "ainda carregando". */
+    if (!fasesCarregaram) return;
     setLoading(true);
     const windowStart = new Date(year, month - 1, 1);
     const windowEnd   = new Date(year, month + 2, 0);
@@ -510,7 +550,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         'responsavel:perfis!responsavel_id(id,nome)',
         'especialista:perfis!especialista_id(id,nome)',
       ].join(','))
-      .not('fase', 'in', '(arquivado,bloqueado)')
+      .not('fase', 'in', foraDoFluxoSQL)
       .order('data_inicio', { nullsFirst: false })
       .limit(LIMITE_DE_CARDS);
 
@@ -567,7 +607,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     setTruncado(linhasLidas.length >= LIMITE_DE_CARDS);
     setCriativos(linhasLidas);
     setLoading(false);
-  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, toast, soAtrasados]);
+  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, toast, soAtrasados, projetosDaEmpresa, fasesCarregaram, foraDoFluxoSQL]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   // A contagem de atrasados se refaz junto: mudar fase ou data de um card
@@ -820,6 +860,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       patch.data_prazo  = bulkData.prazo;
     }
 
+    /*
+      Arquivar 40 cards de uma vez pede UM motivo para os 40 — a mesma decisao
+      explicada uma vez. Pedir 40 vezes faria a pessoa escrever "x" quarenta
+      vezes, que e o campo preenchido sem informacao nenhuma dentro.
+    */
+    const motivo = await pedirMotivo(fases.find(f => f.chave === bulkFase), ids.length);
+    if (motivo === null) return;
+
     const antesDoLote = new Map(criativos.map(c => [c.id, { ...c }]));
     setCriativos(prev => prev.map(c => ids.includes(c.id) ? { ...c, ...patch } : c));
     const { error } = await supabase.from('producoes').update(patch).in('id', ids);
@@ -828,7 +876,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       loadCriativos();
     } else {
       await registrarMudancas(
-        ids.map(id => ({ id, antes: antesDoLote.get(id) ?? {}, patch })), userId);
+        ids.map(id => ({ id, antes: antesDoLote.get(id) ?? {}, patch })), userId, motivo);
       toast({ title: `${ids.length} criativo${ids.length !== 1 ? 's' : ''} atualizado${ids.length !== 1 ? 's' : ''}` });
       limparSelecao();
       // A data mudou, então o card pode ter saído do dia em que estava
@@ -836,7 +884,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       loadCriativos();
     }
   }, [selectedIds, bulkFase, bulkResp, bulkData, toast, loadCriativos, limparSelecao,
-      criativos, userId]);
+      criativos, userId, fases, pedirMotivo]);
 
   /** Os nomes do que está prestes a sumir, para a confirmação poder mostrá-los.
    *  Corta em 8 para o diálogo não virar uma lista rolável. */
@@ -954,6 +1002,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
   return (
     <div className="flex flex-col gap-4">
+      {dialogoMotivo}
       {/* Rubber band overlay — updated imperatively to avoid re-renders */}
       <div
         ref={rubberElRef}
@@ -1057,7 +1106,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
         />
         <MultiFilter
           label="Fase"
-          options={FASES.map(f => ({ id: f.key, nome: f.label }))}
+          options={noFluxo.map(f => ({ id: f.chave, nome: f.rotulo }))}
           value={filtroFase}
           onChange={setFiltroFase}
           width="w-40"
@@ -1463,7 +1512,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
             <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Mudar fase" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="_">Fase...</SelectItem>
-              {FASES.map(f => <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>)}
+              {fasesOrdenadas.map(f => <SelectItem key={f.chave} value={f.chave}>{f.rotulo}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={bulkResp || '_'} onValueChange={v => setBulkResp(v === '_' ? '' : v)}>

@@ -50,6 +50,8 @@ export interface HistoricoEntry {
   campo_alterado: string | null;
   valor_anterior: string | null;
   valor_novo: string | null;
+  /** Por que este movimento aconteceu, quando a fase de destino exige. */
+  motivo: string | null;
   criado_em: string;
   usuario?: { nome: string } | null;
 }

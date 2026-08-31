@@ -27,6 +27,11 @@ export interface Fase {
   ativa: boolean;
   /** Prazo vencido aqui não é atraso: o trabalho terminou. */
   concluida: boolean;
+  /** A fase é uma SAÍDA, não um degrau — Bloqueado e Arquivado. Fica fora do
+   *  avançar/voltar e separada no seletor. */
+  fora_do_fluxo: boolean;
+  /** Mover um card para ca pede uma explicacao escrita — ver `usePedirMotivo`. */
+  exige_motivo: boolean;
   /** Para quais tipos de item esta fase existe. */
   tipos: string[];
 }
@@ -108,11 +113,46 @@ export function fasesConcluidas(fases: Fase[]): Set<string> {
 /** Vizinhas no fluxo daquele tipo, para os botões de avançar e voltar. */
 export function fasesVizinhas(fases: Fase[], tipo: string, atual: string) {
   const fluxo = fases
-    .filter(f => f.tipos.includes(tipo) && !['bloqueado', 'arquivado'].includes(f.chave))
+    .filter(f => f.tipos.includes(tipo) && !f.fora_do_fluxo)
     .sort((a, b) => a.ordem - b.ordem);
   const i = fluxo.findIndex(f => f.chave === atual);
   return {
     prev: i > 0 ? fluxo[i - 1].chave : null,
     next: i >= 0 && i < fluxo.length - 1 ? fluxo[i + 1].chave : null,
   };
+}
+
+/**
+ * As fases que um seletor deve oferecer para um tipo de item.
+ *
+ * Substitui `FASES_POR_TIPO`, que era a mesma lista escrita no código — e que
+ * tinha parado no `postado`. O banco ganhou Bloqueado e Arquivado para os três
+ * tipos; a lista do código não ficou sabendo, e o preço apareceu no drawer: os
+ * 741 cards arquivados abriam com o campo Fase EM BRANCO, porque a fase deles
+ * não estava entre as opções. Não havia como arquivar um card pela interface.
+ *
+ * (`KanbanView` tinha o mesmo defeito em dobro — desenhava a coluna Arquivado e
+ * recusava o card arrastado para ela. Ele está migrado aqui junto, mas hoje
+ * nenhuma rota o renderiza: é código parado, não uma tela quebrada.)
+ *
+ * `atual` entra na lista mesmo que a tabela não a ofereça — por três motivos:
+ * enquanto `useFases` carrega a lista está vazia e o seletor apareceria vazio;
+ * fases legadas (`programado`, `gravacao_concluida`) não estão na tabela; e
+ * `briefing` está inativa mas ainda pode ter card parado nela. Some do seletor
+ * é pior que aparecer: quem não vê a fase atual acha que o campo está quebrado
+ * e escolhe outra para consertar.
+ */
+export function fasesDoTipo(fases: Fase[], tipo: string, atual?: string | null): Fase[] {
+  const lista = fases
+    .filter(f => f.ativa && f.tipos.includes(tipo))
+    .sort((a, b) => a.ordem - b.ordem);
+
+  if (!atual || lista.some(f => f.chave === atual)) return lista;
+
+  const conhecida = fases.find(f => f.chave === atual);
+  return [...lista, conhecida ?? {
+    chave: atual, rotulo: atual, ordem: 9999, setor_id: null, campo_dono: null,
+    e_revisao: false, somente_socio: false, ativa: false, concluida: false,
+    fora_do_fluxo: false, exige_motivo: false, tipos: [],
+  }];
 }

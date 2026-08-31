@@ -30,11 +30,18 @@ export const FASES_MAP: Record<string, string> = {
   gravacao_concluida: 'Gravação Concluída',
 };
 
-export const FASES_POR_TIPO: Record<CriativoTipo, string[]> = {
-  criativo: ['producao_copy','revisao_copy','gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
-  vsl:      ['producao_copy','revisao_copy','gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','esteira_teste','postado'],
-  aula:     ['gravacao','revisao_gravacao','edicao','revisao_edicao','alteracao','aprovado','na_plataforma'],
-};
+/*
+  `FASES_POR_TIPO` morava aqui e saiu em 31/08/2026.
+
+  Ela parava no `postado`. O banco tinha ganhado Bloqueado e Arquivado para os
+  três tipos, e a lista do código não ficou sabendo — a terceira armadilha do
+  CLAUDE.md, exatamente como está escrita lá. O preço: 741 cards arquivados
+  abriam o drawer com o campo Fase EM BRANCO, porque a fase deles não estava
+  entre as opções, e não existia caminho na interface para arquivar um card.
+
+  Quem responde agora é `fasesDoTipo` em `../useFases`, lendo
+  `producao_fases_tipo`. Fase nova é um INSERT, não um deploy.
+*/
 
 export const TIPOS_LABEL: Record<CriativoTipo, string> = {
   criativo: 'Criativo',
@@ -145,14 +152,10 @@ export function canMoveFaseOut(currentFase: string, nivel: ProducaoNivel): boole
   return true;
 }
 
-export function getAdjacentFases(tipo: CriativoTipo, currentFase: string) {
-  const validKeys = FASES_POR_TIPO[tipo] ?? FASES.map(f => f.key);
-  const idx = validKeys.indexOf(currentFase);
-  return {
-    prev: idx > 0 ? validKeys[idx - 1] : null,
-    next: idx >= 0 && idx < validKeys.length - 1 ? validKeys[idx + 1] : null,
-  };
-}
+/* `getAdjacentFases` saiu junto: ninguém a chamava, e ela teria dado a resposta
+   errada assim que Arquivado entrasse na lista — o "próximo" de Postado viraria
+   Bloqueado. Quem responde vizinhança é `fasesVizinhas`, que pula o que a
+   tabela marca como `fora_do_fluxo`. */
 
 export function formatFieldName(campo: string): string {
   const map: Record<string, string> = {

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -24,8 +24,10 @@ import { fetchProjetos } from '@/lib/dataCache';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
-  FASES_MAP, FASES_POR_TIPO, canMoveFaseOut, formatFieldName, rotuloDoPrazo,
+  canMoveFaseOut, formatFieldName, rotuloDoPrazo,
 } from './constants';
+import { useFases, fasesDoTipo, rotuloDaFase } from '../useFases';
+import { usePedirMotivo } from '../usePedirMotivo';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { TipoBadge } from './CriativoCard';
 import { PedidoVariacaoModal } from './PedidoVariacaoModal';
@@ -53,6 +55,8 @@ interface Props {
 
 export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, funis, perfis }: Props) {
   const { toast } = useToast();
+  const { fases } = useFases();
+  const { pedirMotivo, dialogoMotivo } = usePedirMotivo();
   const [criativo, setCriativo]         = useState<Criativo | null>(null);
   const [historico, setHistorico]       = useState<HistoricoEntry[]>([]);
   const [comentarios, setComentarios]   = useState<Comentario[]>([]);
@@ -260,6 +264,17 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       toast({ title: 'Requer aprovação de um administrador', variant: 'destructive' });
       return;
     }
+
+    /*
+      Arquivar pede o porque ANTES de gravar.
+
+      Se `producao_fases.exige_motivo` for falso para o destino, `pedirMotivo`
+      devolve '' na hora e nada aparece na tela — o caminho normal nao paga
+      nada por esta regra existir.
+    */
+    const motivo = await pedirMotivo(fases.find(f => f.chave === novaFase));
+    if (motivo === null) return;   // desistiu no dialogo: o card fica onde esta
+
     setMovingFase(true);
     await supabase.from('producoes').update({ fase: novaFase }).eq('id', criativo.id);
     await supabase.from('criativo_historico').insert({
@@ -269,6 +284,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       campo_alterado: 'fase',
       valor_anterior: criativo.fase,
       valor_novo:     novaFase,
+      motivo:         motivo || null,
     });
     /*
       O aviso ao responsável não é mais escrito aqui: quem escreve é o gatilho
@@ -415,8 +431,31 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   }
 
   const canAdvance    = canMoveFaseOut(criativo.fase, nivel);
-  const isRevisaoFase = !!(FASES_POR_TIPO[criativo.tipo]?.includes(criativo.fase) &&
-    ['revisao_copy', 'revisao_edicao'].includes(criativo.fase));
+
+  /* As fases do seletor saem da tabela `producao_fases`, e nao de uma lista no
+     codigo. A fase ATUAL entra sempre — ver `fasesDoTipo`. */
+  const fasesDoCard   = fasesDoTipo(fases, criativo.tipo, criativo.fase);
+  const noFluxo       = fasesDoCard.filter(f => !f.fora_do_fluxo);
+  const saidas        = fasesDoCard.filter(f =>  f.fora_do_fluxo);
+
+  /* "Esta revisao espera aprovacao" pergunta a tabela se a fase E de revisao,
+     em vez de comparar com duas chaves escritas a mao. */
+  const isRevisaoFase = !!fasesDoCard.find(f => f.chave === criativo.fase)?.e_revisao;
+
+  /*
+    Por que este card foi parar aqui.
+
+    Pedir o motivo e nao mostra-lo em lugar nenhum seria a segunda armadilha de
+    novo — cadastro sem a coluna de resultado ao lado. Ele fica DEBAIXO do
+    campo Fase, e nao so no historico: quem abre um card arquivado quer saber
+    por que antes de decidir se reabre.
+
+    Sai do historico que ja esta carregado (ordenado do mais novo para o mais
+    velho), entao um card arquivado duas vezes mostra o motivo da ultima.
+  */
+  const motivoDaFase = historico.find(
+    h => h.campo_alterado === 'fase' && h.valor_novo === criativo.fase && h.motivo,
+  )?.motivo ?? null;
   const canEdit   = nivel === 'socio';
   const canDelete = nivel === 'socio';
 
@@ -445,16 +484,26 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {(FASES_POR_TIPO[criativo.tipo] ?? []).map(k => (
-              <SelectItem key={k} value={k}>
-                {FASES_MAP[k] ?? k}
-              </SelectItem>
+            {noFluxo.map(f => (
+              <SelectItem key={f.chave} value={f.chave}>{f.rotulo}</SelectItem>
+            ))}
+            {/* Saida nao e degrau: Arquivado logo abaixo de Postado, sem risco,
+                leria como "o passo depois de postar". Separadas, leem como o
+                que sao — fins de linha, para o card que nao chegou a rodar. */}
+            {saidas.length > 0 && <SelectSeparator />}
+            {saidas.map(f => (
+              <SelectItem key={f.chave} value={f.chave}>{f.rotulo}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         {isRevisaoFase && !canAdvance && (
           <p className={cn('text-amber-400 mt-1.5', expanded ? 'text-sm' : 'text-[11px]')}>
             Aguardando aprovação do líder ou sócio para avançar.
+          </p>
+        )}
+        {motivoDaFase && (
+          <p className={cn('text-muted-foreground mt-1.5', expanded ? 'text-sm' : 'text-[11px]')}>
+            Motivo: {motivoDaFase}
           </p>
         )}
       </div>
@@ -924,6 +973,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
 
   return (
     <>
+    {dialogoMotivo}
     <AlertDialog open={showCloseWarning} onOpenChange={setShowCloseWarning}>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -975,7 +1025,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
             <div className="flex items-center gap-1.5 mt-1.5">
               <TipoBadge tipo={criativo.tipo} />
               <Badge variant="outline" className={cn('font-normal', expanded ? 'text-xs h-5 px-2' : 'text-[10px] h-4 px-1.5')}>
-                {FASES_MAP[criativo.fase] ?? criativo.fase}
+                {rotuloDaFase(fases, criativo.fase)}
               </Badge>
             </div>
           </div>
@@ -1423,15 +1473,24 @@ function HistoricoSection({ historico }: { historico: HistoricoEntry[] }) {
 }
 
 function HistoricoText({ entry }: { entry: HistoricoEntry }) {
+  /* `useFases` guarda a lista em cache de modulo, entao chamar aqui nao custa
+     consulta — e o historico passa a mostrar o rotulo que esta no banco, e nao
+     uma copia dele escrita no codigo. */
+  const { fases } = useFases();
+
   if (entry.tipo_alteracao === 'criacao') {
     return <span>criou <span className="text-foreground">"{entry.valor_novo}"</span></span>;
   }
   if (entry.tipo_alteracao === 'fase') {
     return (
       <span>
-        moveu de <span className="text-foreground">{FASES_MAP[entry.valor_anterior ?? ''] ?? entry.valor_anterior}</span>
+        moveu de <span className="text-foreground">{rotuloDaFase(fases, entry.valor_anterior ?? '')}</span>
         {' → '}
-        <span className="text-foreground">{FASES_MAP[entry.valor_novo ?? ''] ?? entry.valor_novo}</span>
+        <span className="text-foreground">{rotuloDaFase(fases, entry.valor_novo ?? '')}</span>
+        {/* O motivo fica GRUDADO no movimento. Numa linha separada viraria
+            um comentario solto, e ninguem saberia a qual arquivamento ele se
+            refere quando o card for arquivado duas vezes. */}
+        {entry.motivo && <span className="text-muted-foreground"> — {entry.motivo}</span>}
       </span>
     );
   }

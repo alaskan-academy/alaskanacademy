@@ -44,6 +44,8 @@ export interface LinhaDeHistorico {
   campo_alterado: string;
   valor_anterior: string | null;
   valor_novo: string | null;
+  /** So a linha de FASE carrega motivo — ver `usePedirMotivo`. */
+  motivo?: string | null;
 }
 
 /**
@@ -57,7 +59,7 @@ export interface LinhaDeHistorico {
  *  · campo fora de `CAMPOS` é ignorado, mesmo vindo no patch.
  */
 export function linhasDeHistorico(
-  mudancas: MudancaDeCard[], usuarioId: string,
+  mudancas: MudancaDeCard[], usuarioId: string, motivo?: string | null,
 ): LinhaDeHistorico[] {
   return mudancas.flatMap(m =>
     CAMPOS.flatMap(campo => {
@@ -72,6 +74,10 @@ export function linhasDeHistorico(
         campo_alterado: campo,
         valor_anterior: de,
         valor_novo:     para,
+        /* O motivo explica a SAIDA do fluxo, nao a troca de responsavel que
+           veio no mesmo lote. Colar em todas as linhas encheria o historico
+           de "conta bloqueada" ao lado de uma mudanca de prazo. */
+        ...(campo === 'fase' && motivo ? { motivo } : {}),
       }];
     }),
   );
@@ -85,9 +91,9 @@ export function linhasDeHistorico(
  * arrasto não tivesse funcionado.
  */
 export async function registrarMudancas(
-  mudancas: MudancaDeCard[], usuarioId: string,
+  mudancas: MudancaDeCard[], usuarioId: string, motivo?: string | null,
 ): Promise<void> {
-  const linhas = linhasDeHistorico(mudancas, usuarioId);
+  const linhas = linhasDeHistorico(mudancas, usuarioId, motivo);
   if (!linhas.length) return;
   const { error } = await supabase.from('criativo_historico').insert(linhas);
   if (error) console.error('histórico não gravado:', error.message);
