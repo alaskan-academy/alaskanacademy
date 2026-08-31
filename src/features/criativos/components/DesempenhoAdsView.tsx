@@ -290,9 +290,21 @@ function BreakdownTable({
               const taxa = r.testados > 0 ? (r.aprovados / r.testados) * 100 : 0;
               return (
                 <tr key={r.label} className="border-b border-border/40 last:border-0">
-                  {/* Quebra em vez de cortar: dois rótulos longos que começam
-                      igual viravam a mesma reticência, e a tabela mentia. */}
-                  <td className="px-3 py-2 font-medium" title={r.label}>{r.label}</td>
+                  {/*
+                    Duas linhas: nem uma, nem quantas vierem.
+
+                    Cortar numa linha só fazia "Nível 2: Consciente do Problema"
+                    e "Nível 2: Consciente da Solução" virarem a mesma
+                    reticência — a tabela mentia. Mas deixar quebrar à vontade
+                    levou a linha a 60px+ e esticou a coluna 437px além da
+                    vizinha, abrindo um vazio ao lado.
+
+                    Duas linhas distinguem os rótulos E mantêm a linha baixa. O
+                    `title` guarda o texto inteiro para o caso que não couber.
+                  */}
+                  <td className="px-3 py-2 font-medium" title={r.label}>
+                    <span className="line-clamp-2">{r.label}</span>
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.testados}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.validados}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.escalados}</td>
@@ -738,7 +750,11 @@ export function DesempenhoAdsView() {
       </div>
 
       {/* A decomposição: os cinco desfechos possíveis, que somam o total acima. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* Cinco cartões: `sm:grid-cols-3` deixava 3 + 2 e um buraco no fim da
+          segunda fileira. Cinco só fecha em fileiras de 1 ou de 5 — no monitor
+          é uma fileira; abaixo de 768px empilha em duas colunas, onde a sobra
+          da última é o que se espera de uma grade estreita. */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Validados',     value: totals.validados, sub: formatPercent(totals.taxaValid),  color: 'text-emerald-500' },
           { label: 'Escalados',     value: totals.escalados, sub: formatPercent(totals.taxaEscal),  color: 'text-blue-400' },
@@ -763,10 +779,23 @@ export function DesempenhoAdsView() {
 
       {!loading && (
         <>
-          {/* Breakdowns — 2 colunas balanceadas por altura estimada */}
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Esquerda: funil + ângulo + nível (~710px c/ editor) */}
-            <div className="flex-1 flex flex-col gap-4 min-w-0">
+          {/*
+            As duas colunas deixaram de ser repartidas à mão.
+
+            Eram duas `<div flex-1>` com os cartões distribuídos por alguém, e
+            um comentário estimando "~710px" de um lado e "~720px" do outro. A
+            estimativa envelheceu na primeira vez que um cartão mudou de
+            tamanho: medido em 31/08/2026, 1.363px contra 926px — 437px de
+            preto ao lado da coluna mais alta. Era esse o buraco.
+
+            `columns-2` deixa o navegador distribuir: os cartões fluem e as duas
+            colunas terminam juntas, seja qual for a altura de cada um.
+            `break-inside-avoid` impede que um cartão seja partido no meio.
+
+            Some junto a decisão de QUAL cartão fica de que lado — mais uma
+            coisa que alguém teria de manter em dia sem ganhar nada com isso.
+          */}
+          <div className="lg:columns-2 lg:gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
               {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" coluna="Funil" rows={porFunil} />}
 
               {/* Quanto tempo o criativo ficou no ar */}
@@ -825,27 +854,32 @@ export function DesempenhoAdsView() {
               </div>
               <BreakdownTable title="Por ângulo" coluna="Ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} />
               <BreakdownTable title="Por nível de consciência" coluna="Nível" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
-            </div>
-            {/* Direita: tipo + formato + editor + gráfico (~720px c/ editor) */}
-            <div className="flex-1 flex flex-col gap-4 min-w-0">
+
               <BreakdownTable title="Por tipo" coluna="Tipo" rows={porTipo} />
               <BreakdownTable title="Por formato" coluna="Formato" rows={porFormato} />
               {porEditor.length > 0 && <BreakdownTable title="Por editor" coluna="Editor" rows={porEditor} />}
-              {porEditor.length > 0 && (
-                <div className="bg-card border border-border rounded-lg p-4">
-                  <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={porEditor.map(r => ({ ...r, taxa: r.testados > 0 ? (r.validados / r.testados) * 100 : 0 }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
-                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} unit="%" />
-                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatPercent(Number(v))} />
-                      <Bar dataKey="taxa" name="Taxa valid." fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </div>
+          {/*
+            O gráfico "Taxa de validação por editor" saiu em 31/08/2026.
+
+            Ele repetia a tabela logo acima — três editores, três barras — e,
+            pior, DISCORDAVA dela. A barra vinha de `validados / testados`; a
+            coluna "Taxa" da tabela vem de `aprovados / testados`, que é
+            validado MAIS escalado. Medido na tela:
+
+                              tabela     gráfico
+              Jaqueline       11,54%      8,65%
+              Jessica         10,13%      6,33%
+
+            Dois números com o mesmo nome, um embaixo do outro, sem nada
+            dizendo qual é qual. É a primeira armadilha do CLAUDE.md — e é a
+            segunda vez que ela aparece neste arquivo: o "Por ângulo" ordenava
+            por uma taxa e mostrava outra.
+
+            De quebra era o cartão mais alto da coluna da direita, e tirá-lo
+            fechou o desnível que abria o buraco preto ao lado.
+
+            Se o desenho fizer falta, ele volta — com `aprovados / testados`.
+          */}
           </div>
 
           {/* Evolução mensal */}
