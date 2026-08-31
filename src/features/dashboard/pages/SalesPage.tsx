@@ -260,7 +260,7 @@ const RESUMO_VAZIO: ResumoVendas = {
 const RESUMO_LISTA_VAZIO: ResumoDaLista = { quantidade: 0, valor: 0, base_periodo: 0 };
 
 export default function SalesPage() {
-  const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaIds, empresaId } = useFilters();
   const [salesData, setSalesData] = useState<Venda[]>([]);
   const [salesTotal, setSalesTotal] = useState(0);
   const [salesPage, setSalesPage] = useState(0);
@@ -350,6 +350,7 @@ export default function SalesPage() {
         p_busca: buscaAdiada || null,
         p_pagina: salesPage,
         p_tamanho: PAGE_SIZE,
+        p_empresa: empresaId,
       });
       if (error) console.error("fn_vendas_lista:", error.message);
       const r = (data ?? {}) as Partial<BrutoLista>;
@@ -359,7 +360,7 @@ export default function SalesPage() {
       setLoadingSales(false);
     };
     loadSales();
-  }, [salesPage, startDateStr, endDateStr, contaIds, statusFilter, buscaAdiada, startISO, endISO]);
+  }, [salesPage, startDateStr, endDateStr, contaIds, empresaId, statusFilter, buscaAdiada, startISO, endISO]);
 
 
   useEffect(() => {
@@ -378,6 +379,9 @@ export default function SalesPage() {
         .range(from, to);
       if (startISO && endDateEnd) q = q.gte("data_venda", startISO).lte("data_venda", endDateEnd);
       if (contaIds.length) q = q.in("ad_account_id", contaIds);
+      // O carimbo da venda, e não a conta: 60% das vendas não têm conta de
+      // anúncio, e por conta elas ficariam de fora de qualquer recorte.
+      if (empresaId) q = q.eq("empresa_id", empresaId);
       if (statusFilter !== "todos") q = q.eq("status", statusFilter);
 
       const { data, count } = await q;
@@ -386,7 +390,7 @@ export default function SalesPage() {
       setLoadingSales(false);
     };
     loadSales();
-  }, [salesPage, startDateStr, endDateStr, contaIds, statusFilter]);
+  }, [salesPage, startDateStr, endDateStr, contaIds, empresaId, statusFilter]);
 
   useEffect(() => {
     const load = async () => {
@@ -415,6 +419,7 @@ export default function SalesPage() {
         p_inicio: startISO || null,
         p_fim: endISO || null,
         p_contas: contaIds,
+        p_empresa: empresaId,
       });
       if (error) console.error("fn_vendas_agregado:", error.message);
 
@@ -522,7 +527,7 @@ export default function SalesPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, contaIds, startISO, endISO]);
+  }, [startDateStr, endDateStr, contaIds, empresaId, startISO, endISO]);
 
   const openDetail = async (sale: Venda) => {
     setSelectedSale(sale);

@@ -110,7 +110,7 @@ const displayUtmValue = (value: string, level: UTMLevel) => {
 };
 
 export default function UTMPage() {
-  const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaIds, empresaId } = useFilters();
   const [levelIndex, setLevelIndex] = useState(0);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [utmData, setUtmData] = useState<LinhaNivelUtm[]>([]);
@@ -148,6 +148,7 @@ export default function UTMPage() {
         p_inicio: startISO || null,
         p_fim: endISO || null,
         p_contas: contaIds,
+        p_empresa: empresaId,
       });
       if (error) console.error("fn_utm_agregado:", error.message);
 
@@ -197,7 +198,7 @@ export default function UTMPage() {
       setLoading(false);
     };
     load();
-  }, [contaIds, startDateStr, endDateStr, startISO, endISO]);
+  }, [contaIds, empresaId, startDateStr, endDateStr, startISO, endISO]);
 
   useEffect(() => {
     let rows = allUtm;

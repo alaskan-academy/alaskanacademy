@@ -332,7 +332,7 @@ function margemColor(v: number) {
 }
 
 export default function MetaAdsPage() {
-  const { startDateStr, endDateStr, contaIds } = useFilters();
+  const { startDateStr, endDateStr, contaIds, empresaId } = useFilters();
   const [allRows, setAllRows] = useState<LinhaMetricaMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -417,6 +417,7 @@ export default function MetaAdsPage() {
         p_inicio: startDateStr || null,
         p_fim: endDateStr || null,
         p_contas: contaIds,
+        p_empresa: empresaId,
       });
       // Erro tem que aparecer como erro: tela com zeros e "não consegui ler"
       // são coisas diferentes, e confundi-las é como este defeito durou tanto.
@@ -431,7 +432,7 @@ export default function MetaAdsPage() {
       setLoading(false);
     };
     load();
-  }, [startDateStr, endDateStr, contaIds]);
+  }, [startDateStr, endDateStr, contaIds, empresaId]);
 
   /*
     O vínculo anúncio → card não depende de período nem de conta: é cadastro.
@@ -472,6 +473,16 @@ export default function MetaAdsPage() {
       const PAGINA = 1000;
       const todos: EstadoDoObjeto[] = [];
       for (let de = 0; ; de += PAGINA) {
+        /*
+          Sem recorte por empresa, de propósito.
+
+          Este mapa de estados é só consultado por `nivel:objeto_id` para os
+          objetos que o agregado JÁ devolveu — e o agregado é que respeita a
+          empresa. Objeto de outra empresa entra no mapa e nunca é procurado.
+
+          Filtrar aqui exigiria `empresa_id` em `meta_objetos`, mais um lugar
+          para o carimbo divergir, sem mudar nenhum número na tela.
+        */
         let q = supabase
           .from('vw_meta_status')
           .select('nivel,objeto_id,situacao,status,effective_status,dias_sem_entregar')

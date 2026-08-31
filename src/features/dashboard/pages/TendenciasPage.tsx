@@ -482,7 +482,7 @@ function Esqueleto() {
 }
 
 export default function TendenciasPage() {
-  const { contaIds, setContaIds } = useFilters();
+  const { contaIds, setContaIds, empresaId } = useFilters();
   const [faixa, setFaixa] = useState(FAIXA_PADRAO);
   const [dados, setDados] = useState<Tendencia[]>([]);
   const [loading, setLoading] = useState(true);
@@ -502,6 +502,7 @@ export default function TendenciasPage() {
       p_ini: iso(periodo.ini),
       p_fim: iso(periodo.fim),
       p_dias_ant: escolhida.diasBase ?? null,
+      p_empresa: empresaId,
     });
     if (error) {
       console.error("fn_tendencias:", error.message);
@@ -521,23 +522,30 @@ export default function TendenciasPage() {
      * no "Desconto de Aula", só 4 com `ad_id`.
      */
     const janela = [iso(periodo.ini), iso(periodo.fim)];
-    const [semCta, totalTrafego] = await Promise.all([
-      supabase.from("vendas").select("id", { count: "exact", head: true })
-        .eq("status", "aprovada").is("ad_account_id", null).is("trafego_pago", true)
-        .gte("data_venda", `${janela[0]}T00:00:00-03:00`)
-        .lte("data_venda", `${janela[1]}T23:59:59.999-03:00`),
-      supabase.from("vendas").select("id", { count: "exact", head: true })
-        .eq("status", "aprovada").or("trafego_pago.is.true,ad_id_meta.not.is.null")
-        .gte("data_venda", `${janela[0]}T00:00:00-03:00`)
-        .lte("data_venda", `${janela[1]}T23:59:59.999-03:00`),
-    ]);
+
+    /* O recorte vale aqui também: venda órfã da Alaskan não é buraco da
+       Aeliss, e somá-las diria que a conta dela perde venda que nunca teve. */
+    let qSemConta = supabase.from("vendas").select("id", { count: "exact", head: true })
+      .eq("status", "aprovada").is("ad_account_id", null).is("trafego_pago", true)
+      .gte("data_venda", `${janela[0]}T00:00:00-03:00`)
+      .lte("data_venda", `${janela[1]}T23:59:59.999-03:00`);
+    let qTotal = supabase.from("vendas").select("id", { count: "exact", head: true })
+      .eq("status", "aprovada").or("trafego_pago.is.true,ad_id_meta.not.is.null")
+      .gte("data_venda", `${janela[0]}T00:00:00-03:00`)
+      .lte("data_venda", `${janela[1]}T23:59:59.999-03:00`);
+    if (empresaId) {
+      qSemConta = qSemConta.eq("empresa_id", empresaId);
+      qTotal    = qTotal.eq("empresa_id", empresaId);
+    }
+
+    const [semCta, totalTrafego] = await Promise.all([qSemConta, qTotal]);
     setSemConta({ vendas: semCta.count ?? 0, total: totalTrafego.count ?? 0 });
 
     setLoading(false);
     // A dependência é a faixa, não o objeto de período — ele é recriado a cada render
     // e reexecutaria o efeito em laço.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [faixa]);
+  }, [faixa, empresaId]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
