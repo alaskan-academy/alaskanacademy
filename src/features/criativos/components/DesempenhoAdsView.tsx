@@ -103,6 +103,35 @@ const semAvaliacao = (r: PostadoRow) => !r.avaliacao;
 const semDados     = (r: PostadoRow) => r.avaliacao === 'Sem dados';
 
 /**
+ * O mesmo funil escrito de três jeitos.
+ *
+ * `funil_video` é texto livre com os funis separados por vírgula, e o campo
+ * acumulou três grafias da MESMA combinação — medido em 31/08/2026 sobre os
+ * cards postados:
+ *
+ *     "TSL, VSL"   309
+ *     "TSL,VSL"     10
+ *     "VSL,TSL"      5
+ *
+ * A tabela mostrava as três como linhas separadas, e 324 cards viravam três
+ * amostras pequenas em vez de uma. Uma delas dizia 11,11% de validação sobre 9
+ * cards, o que não é taxa — é um card.
+ *
+ * Normalizar é separar, tirar espaço e ORDENAR: sem a ordenação, "TSL,VSL" e
+ * "VSL,TSL" continuariam sendo chaves diferentes.
+ *
+ * Isto conserta a LEITURA. A escrita continua livre, então a próxima grafia
+ * nova também vai cair aqui — o conserto de raiz é o campo virar uma escolha
+ * em vez de texto, e isso é decisão de quem cadastra.
+ */
+function normalizarFunil(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const partes = v.split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
+  if (partes.length === 0) return null;
+  return [...new Set(partes)].sort().join(", ");
+}
+
+/**
  * Quanto tempo o AD ficou no ar: da primeira impressão até a última.
  *
  * Vem de `fn_vida_util_ads()`, e não de uma subtração aqui, porque duas coisas
@@ -330,7 +359,7 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroFunil.length   && !filtroFunil.includes(r.funil_video ?? '')) return false;
+    if (filtroFunil.length   && !filtroFunil.includes(normalizarFunil(r.funil_video) ?? '')) return false;
     return true;
   }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
 
@@ -340,7 +369,7 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroFunil.length   && !filtroFunil.includes(r.funil_video ?? ''))      return false;
+    if (filtroFunil.length   && !filtroFunil.includes(normalizarFunil(r.funil_video) ?? '')) return false;
     return true;
   }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
 
@@ -401,14 +430,17 @@ export function DesempenhoAdsView() {
     filteredSemData.filter(isEscalado).sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')),
   [filteredSemData]);
 
+  /* Normalizado aqui também, senão a lista de filtro ofereceria "TSL,VSL" e
+     "TSL, VSL" como se fossem escolhas diferentes — e escolher uma esconderia
+     os cards da outra. */
   const opFunilVideo = useMemo(() =>
-    [...new Set(rows.map(r => r.funil_video).filter((v): v is string => Boolean(v)))].sort(),
+    [...new Set(rows.map(r => normalizarFunil(r.funil_video)).filter((v): v is string => Boolean(v)))].sort(),
   [rows]);
 
   const porFunil = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
-      const fv = r.funil_video;
+      const fv = normalizarFunil(r.funil_video);
       if (!fv) continue;
       if (!map[fv]) map[fv] = { label: fv, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
       map[fv].testados++;
