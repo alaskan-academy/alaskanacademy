@@ -181,6 +181,49 @@ function buildBreakdown(
   return Object.values(map).sort((a, b) => b.testados - a.testados);
 }
 
+type LinhaBreakdown = { label: string; testados: number; validados: number; escalados: number; aprovados: number };
+
+/**
+ * Ordena pela MESMA taxa que a tabela mostra.
+ *
+ * A coluna "Taxa valid." é `aprovados / testados` — validado MAIS escalado. O
+ * "Por ângulo" ordenava por `validados / testados`, e o resultado era uma lista
+ * que parecia desordenada: "Vender na shopee" com 40% aparecia abaixo de três
+ * ângulos com 20%, porque o escalado dele não contava na ordenação e contava na
+ * exibição.
+ *
+ * Ordenar por um número e mostrar outro é o tipo de defeito que ninguém reporta
+ * como bug — reporta como "a tela está estranha".
+ *
+ * O desempate é por amostra: entre duas taxas iguais, a de mais cards primeiro.
+ * Sem ele, 1 de 1 (100%) empataria com 8 de 8 e a ordem seria sorteio.
+ */
+function porTaxaValidacao(a: LinhaBreakdown, b: LinhaBreakdown) {
+  const ta = a.testados > 0 ? a.aprovados / a.testados : 0;
+  const tb = b.testados > 0 ? b.aprovados / b.testados : 0;
+  return tb - ta || b.testados - a.testados;
+}
+
+/**
+ * Do nível 1 para o 4, e não do mais numeroso para o menos.
+ *
+ * Nível de consciência é uma ESCALA: 1 é quem não sabe que tem o problema, 4 é
+ * quem já conhece o produto. Ordenar por volume embaralha a escala e tira a
+ * única leitura que ela oferece — onde o funil ganha e onde perde ao subir.
+ *
+ * O campo aceita combinação ("Nível 2…,Nível 3…"), então a ordem sai do PRIMEIRO
+ * número, que põe a combinação junto do nível onde ela começa. Sem número
+ * reconhecido vai para o fim: "— sem nível —" não é degrau da escala.
+ */
+function grauDoNivel(label: string): number {
+  const m = label.match(/N[íi]vel\s*(\d)/i);
+  return m ? Number(m[1]) : 99;
+}
+
+function porNivelDeConsciencia(a: LinhaBreakdown, b: LinhaBreakdown) {
+  return grauDoNivel(a.label) - grauDoNivel(b.label) || a.label.localeCompare(b.label, "pt-BR");
+}
+
 function BreakdownTable({
   title,
   rows,
@@ -398,16 +441,16 @@ export function DesempenhoAdsView() {
   }, [filtered]);
 
   const porTipo       = useMemo(() => buildBreakdown(filtered, 'tipo', v => TIPO_LABEL[v ?? ''] ?? v ?? '—'), [filtered]);
-  const porFormato    = useMemo(() => buildBreakdown(filtered, 'formato', v => v ?? '— sem formato —'), [filtered]);
-  const porAngulo     = useMemo(() => {
-    const rows = buildBreakdown(filtered, 'angulo_teste', v => v ?? '— sem ângulo —');
-    return rows.sort((a, b) => {
-      const ta = a.testados > 0 ? a.validados / a.testados : 0;
-      const tb = b.testados > 0 ? b.validados / b.testados : 0;
-      return tb - ta;
-    });
-  }, [filtered]);
-  const porNivelConsc = useMemo(() => buildBreakdown(filtered, 'nivel_consciencia', v => v ?? '— sem nível —'), [filtered]);
+  const porFormato    = useMemo(() =>
+    buildBreakdown(filtered, 'formato', v => v ?? '— sem formato —').sort(porTaxaValidacao),
+  [filtered]);
+  const porAngulo     = useMemo(() =>
+    buildBreakdown(filtered, 'angulo_teste', v => v ?? '— sem ângulo —').sort(porTaxaValidacao),
+  [filtered]);
+
+  const porNivelConsc = useMemo(() =>
+    buildBreakdown(filtered, 'nivel_consciencia', v => v ?? '— sem nível —').sort(porNivelDeConsciencia),
+  [filtered]);
   const porEditor     = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
