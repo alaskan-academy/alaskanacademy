@@ -131,10 +131,6 @@ export function fasesVizinhas(fases: Fase[], tipo: string, atual: string) {
  * 741 cards arquivados abriam com o campo Fase EM BRANCO, porque a fase deles
  * não estava entre as opções. Não havia como arquivar um card pela interface.
  *
- * (`KanbanView` tinha o mesmo defeito em dobro — desenhava a coluna Arquivado e
- * recusava o card arrastado para ela. Ele está migrado aqui junto, mas hoje
- * nenhuma rota o renderiza: é código parado, não uma tela quebrada.)
- *
  * `atual` entra na lista mesmo que a tabela não a ofereça — por três motivos:
  * enquanto `useFases` carrega a lista está vazia e o seletor apareceria vazio;
  * fases legadas (`programado`, `gravacao_concluida`) não estão na tabela; e

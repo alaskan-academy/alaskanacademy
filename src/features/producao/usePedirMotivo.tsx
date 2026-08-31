@@ -18,13 +18,17 @@ import type { Fase } from './useFases';
  *
  * ── Por que um hook e não quatro diálogos ──────────────────────────────────
  *
- * A fase é gravada em três caminhos: o seletor do drawer, a mudança em lote do
- * Calendário e o arraste do Kanban (que hoje nenhuma rota renderiza, mas que
- * grava do mesmo jeito no dia em que voltar). Escrever o diálogo em cada um
- * garantiria que eles divergissem — foi assim que nasceram as cinco listas de
- * fase que `useFases` veio substituir. Pior: pedir o motivo em dois dos três é
- * pior do que não pedir em nenhum, porque aí o campo existe, parece confiável,
- * e está vazio de vez em quando.
+ * A fase é gravada em dois caminhos: o seletor do drawer e a mudança em lote do
+ * Calendário. Escrever o diálogo em cada um garantiria que os dois divergissem
+ * — foi assim que nasceram as cinco listas de fase que `useFases` veio
+ * substituir. Pior: pedir o motivo em um dos dois é pior do que não pedir em
+ * nenhum, porque aí o campo existe, parece confiável, e está vazio de vez em
+ * quando.
+ *
+ * Um terceiro caminho existia — o arraste do Kanban — e foi apagado junto com
+ * `KanbanView` em 31/08/2026, código que estava fora de rota desde julho.
+ * Caminho novo que grave fase entra aqui, e o teste em
+ * `fases-vem-do-banco.test.ts` falha se esquecerem.
  *
  * ── Como se usa ────────────────────────────────────────────────────────────
  *

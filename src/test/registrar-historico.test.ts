@@ -53,8 +53,8 @@ describe('linhasDeHistorico', () => {
   });
 
   it('marca troca de fase como `fase`, e o resto como `campo`', () => {
-    // O drawer e o Kanban usam 'fase' para isto; o histórico ficaria com dois
-    // rótulos para o mesmo fato se aqui fosse diferente.
+    // O drawer usa 'fase' para isto; o histórico ficaria com dois rótulos para
+    // o mesmo fato se aqui fosse diferente.
     const l = linhasDeHistorico([{
       id: CARD,
       antes: { fase: 'aprovado', responsavel_id: 'a' },

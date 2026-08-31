@@ -8,9 +8,7 @@
  *
  *  · 741 cards arquivados abriam o drawer com o campo Fase EM BRANCO, porque a
  *    fase deles não estava entre as opções do seletor;
- *  · não existia caminho nenhum na interface para arquivar um card;
- *  · `KanbanView` tinha o defeito em dobro — desenhava a coluna Arquivado e
- *    recusava o card arrastado para ela —, mas nenhuma rota o renderiza hoje.
+ *  · não existia caminho nenhum na interface para arquivar um card.
  *
  * Nada disso deu erro. A lista estava sintaticamente perfeita; ela só estava
  * desatualizada. É a terceira armadilha do CLAUDE.md — lista fixa no código
@@ -20,9 +18,10 @@
  * ── E a segunda regra, sobre o motivo ──────────────────────────────────────
  *
  * Arquivar passou a pedir uma explicação escrita. Isso vale para TODO caminho
- * que grava fase — o seletor do drawer, o lote do Calendário e o arraste do
- * Kanban. Pedir em dois de três é pior que não pedir em nenhum: aí o campo
- * existe, parece confiável, e está vazio de vez em quando.
+ * que grava fase — hoje o seletor do drawer e o lote do Calendário. Pedir em
+ * um dos dois é pior que não pedir em nenhum: aí o campo existe, parece
+ * confiável, e está vazio de vez em quando. É por isto que a regra é um teste
+ * e não um combinado: o próximo caminho que alguém escrever cai aqui.
  *
  * Por isso o teste lê o CÓDIGO em vez do banco: contra o banco os dois defeitos
  * são invisíveis, porque o banco está certo nos dois casos.
