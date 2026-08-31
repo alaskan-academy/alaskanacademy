@@ -451,6 +451,48 @@ export function DesempenhoAdsView() {
     return Object.values(map).sort((a, b) => b.testados - a.testados);
   }, [filtered]);
 
+  /*
+    A vida útil dos ADs que apareceram no recorte.
+
+    Só entram os ENCERRADOS: quem ainda está ACTIVE na Meta tem a última
+    impressão ontem porque está vivo, e quem começou em 01/05/2026 tem a vida
+    cortada pelo começo da série. Somá-los responderia outra pergunta.
+
+    Os dois viram contagem no rodapé em vez de sumirem — 39 e 12 de 403 é pouco
+    para descartar em silêncio e demais para misturar.
+  */
+  const vidaUtil = useMemo(() => {
+    const dias: number[] = [];
+    let abertos = 0, truncados = 0, semDado = 0;
+
+    for (const r of filtered) {
+      const v = vidas[r.id];
+      if (!v || v.dias == null) { semDado++; continue; }
+      if (v.aberta)   { abertos++;   continue; }
+      if (v.truncada) { truncados++; continue; }
+      dias.push(v.dias);
+    }
+
+    dias.sort((a, b) => a - b);
+    const meio = dias.length ? dias[Math.floor(dias.length / 2)] : null;
+    const media = dias.length ? dias.reduce((s2, d) => s2 + d, 0) / dias.length : null;
+
+    /* Faixas, e não um histograma: a pergunta que se faz aqui é "a maioria dura
+       menos de uma semana?", e cinco linhas respondem isso melhor que barras. */
+    const faixas = [
+      { label: '1 a 3 dias',    de: 1,  ate: 3   },
+      { label: '4 a 7 dias',    de: 4,  ate: 7   },
+      { label: '8 a 14 dias',   de: 8,  ate: 14  },
+      { label: '15 a 30 dias',  de: 15, ate: 30  },
+      { label: 'mais de 30',    de: 31, ate: 1e9 },
+    ].map(f => ({
+      label: f.label,
+      qtd: dias.filter(d => d >= f.de && d <= f.ate).length,
+    }));
+
+    return { encerrados: dias.length, meio, media, maior: dias.at(-1) ?? null, faixas, abertos, truncados, semDado };
+  }, [filtered, vidas]);
+
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
     const from = format(dateRange.from, 'dd/MM/yy', { locale: ptBR });
@@ -583,6 +625,60 @@ export function DesempenhoAdsView() {
             {/* Esquerda: funil + ângulo + nível (~710px c/ editor) */}
             <div className="flex-1 flex flex-col gap-4 min-w-0">
               {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" rows={porFunil} />}
+
+              {/* Quanto tempo o criativo ficou no ar */}
+              <div className="bg-card border border-border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-border">
+                  <h4 className="text-sm font-medium">Vida útil do AD</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Da primeira impressão até parar de ter impressões
+                  </p>
+                </div>
+
+                {vidaUtil.encerrados === 0 ? (
+                  <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+                    Nenhum AD com vida encerrada no recorte.
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 border-b border-border">
+                      {[
+                        { rotulo: 'Mediana', valor: `${vidaUtil.meio} d` },
+                        { rotulo: 'Média',   valor: `${vidaUtil.media!.toFixed(1)} d` },
+                        { rotulo: 'Maior',   valor: `${vidaUtil.maior} d` },
+                      ].map(x => (
+                        <div key={x.rotulo} className="px-4 py-3">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{x.rotulo}</p>
+                          <p className="mt-0.5 text-xl font-semibold tabular-nums">{x.valor}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {vidaUtil.faixas.map(f => (
+                          <tr key={f.label} className="border-b border-border/40 last:border-0">
+                            <td className="px-4 py-1.5 text-muted-foreground">{f.label}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums w-16">{f.qtd}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums w-20 text-muted-foreground">
+                              {formatPercent((f.qtd / vidaUtil.encerrados) * 100)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* O que ficou de fora, e por quê. Sem esta linha, a mediana
+                        parece calculada sobre todos os ADs do recorte. */}
+                    <p className="px-4 py-2.5 text-[11px] leading-snug text-muted-foreground border-t border-border">
+                      Sobre {vidaUtil.encerrados} AD(s) encerrado(s).
+                      {vidaUtil.abertos > 0   && ` ${vidaUtil.abertos} ainda no ar (a vida deles não terminou).`}
+                      {vidaUtil.truncados > 0 && ` ${vidaUtil.truncados} começaram antes de 01/05/2026, quando a série começa.`}
+                      {vidaUtil.semDado > 0   && ` ${vidaUtil.semDado} sem anúncio vinculado.`}
+                    </p>
+                  </>
+                )}
+              </div>
               <BreakdownTable title="Por ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} scrollable />
               <BreakdownTable title="Por nível de consciência" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
             </div>
