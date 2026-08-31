@@ -91,7 +91,18 @@ export function DesempenhoTab() {
     setErro(null);
 
     const [eRes, dRes, pRes] = await Promise.all([
-      supabase.from('editores').select('id, nome, usuario_id').order('nome'),
+      /*
+        Só editor ATIVO. Antes vinha a tabela inteira, e o que segurava quem
+        saiu era a coincidência de `editores` ter só duas linhas, as duas
+        ativas — no dia em que uma delas fosse desligada sem apagar o
+        registro, ela voltaria a aparecer aqui.
+
+        A produção de quem saiu não some do sistema: ela continua em
+        Criativos → Desempenho, que mede o CRIATIVO. Esta tela mede a PESSOA,
+        e pessoa que não está mais na casa não entra em comparação de
+        desempenho.
+      */
+      supabase.from('editores').select('id, nome, usuario_id').eq('ativo', true).order('nome'),
       supabase.rpc('fn_desempenho_editores', { p_ini: startStr, p_fim: endStr }),
       supabase.from('ofertas_editores').select('nome').eq('ativo', true).order('nome'),
     ]);

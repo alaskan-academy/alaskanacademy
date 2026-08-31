@@ -376,16 +376,26 @@ export function DesempenhoAdsView() {
   const totals = useMemo(() => {
     const testados  = filtered.length;
     const validados = filtered.filter(isValidado).length;
-    const escalados = filteredSemData.filter(isEscalado).length;
+    /*
+      Escalados conta no MESMO recorte dos outros, e isso mudou em 31/08/2026.
+
+      Antes ele saía de `filteredSemData` — todo o histórico — enquanto os
+      vizinhos saíam do mês. Nenhum número estava errado sozinho, mas a linha
+      não fechava (14 validados + 12 escalados contra 20 de "Val.+Esc.") e o
+      percentual embaixo era 12 sobre 2.906, parecendo taxa do mês.
+
+      Quem quiser o acumulado troca o período — que é para isso que ele serve.
+    */
+    const escalados = filtered.filter(isEscalado).length;
     const aprovados = filtered.filter(isAprovado).length;
     const naoValid  = filtered.filter(r => r.avaliacao === 'Não validado').length;
     const pendentes = filtered.filter(semAvaliacao).length;
     const semDado   = filtered.filter(semDados).length;
     const taxaValid = testados > 0 ? (validados / testados) * 100 : 0;
-    const taxaEscal = filteredSemData.length > 0 ? (escalados / filteredSemData.length) * 100 : 0;
+    const taxaEscal = testados > 0 ? (escalados / testados) * 100 : 0;
     const taxaAprov = testados > 0 ? (aprovados / testados) * 100 : 0;
     return { testados, validados, escalados, aprovados, naoValid, pendentes, semDado, taxaValid, taxaEscal, taxaAprov };
-  }, [filtered, filteredSemData]);
+  }, [filtered]);
 
   const porTipo       = useMemo(() => buildBreakdown(filtered, 'tipo', v => TIPO_LABEL[v ?? ''] ?? v ?? '—'), [filtered]);
   const porFormato    = useMemo(() => buildBreakdown(filtered, 'formato', v => v ?? '— sem formato —'), [filtered]);
@@ -452,20 +462,30 @@ export function DesempenhoAdsView() {
   }, [filtered]);
 
   /*
-    A vida útil dos ADs que apareceram no recorte.
+    A vida útil IGNORA o filtro de datas, e isso não é descuido.
+
+    A primeira versão usava o mesmo recorte do resto da tela e produzia uma
+    mentira aritmética: sobre os ADs postados em agosto, o mais longevo tinha
+    25 dias — porque um AD postado em agosto não TEM COMO ter vivido mais que
+    31. Media-se o tamanho da janela, não a vida do anúncio. Sobre todos os
+    cards, o maior viveu 104 dias.
+
+    A regra que separa os dois casos: contagem de eventos aceita período
+    ("quantos escalamos em agosto"); DURAÇÃO não, porque a janela corta a
+    medida pelas duas pontas. Por isso este painel usa `filteredSemData` —
+    editor, projeto, tipo, formato e funil valem; a data, não. E o título diz
+    isso, senão vira o mesmo engano com outra roupa.
 
     Só entram os ENCERRADOS: quem ainda está ACTIVE na Meta tem a última
     impressão ontem porque está vivo, e quem começou em 01/05/2026 tem a vida
-    cortada pelo começo da série. Somá-los responderia outra pergunta.
-
-    Os dois viram contagem no rodapé em vez de sumirem — 39 e 12 de 403 é pouco
-    para descartar em silêncio e demais para misturar.
+    cortada pelo começo da série. Os dois viram contagem no rodapé em vez de
+    sumirem — é pouco para descartar em silêncio e demais para misturar.
   */
   const vidaUtil = useMemo(() => {
     const dias: number[] = [];
     let abertos = 0, truncados = 0, semDado = 0;
 
-    for (const r of filtered) {
+    for (const r of filteredSemData) {
       const v = vidas[r.id];
       if (!v || v.dias == null) { semDado++; continue; }
       if (v.aberta)   { abertos++;   continue; }
@@ -484,14 +504,15 @@ export function DesempenhoAdsView() {
       { label: '4 a 7 dias',    de: 4,  ate: 7   },
       { label: '8 a 14 dias',   de: 8,  ate: 14  },
       { label: '15 a 30 dias',  de: 15, ate: 30  },
-      { label: 'mais de 30',    de: 31, ate: 1e9 },
+      { label: '31 a 60 dias',  de: 31, ate: 60  },
+      { label: 'mais de 60',    de: 61, ate: 1e9 },
     ].map(f => ({
       label: f.label,
       qtd: dias.filter(d => d >= f.de && d <= f.ate).length,
     }));
 
     return { encerrados: dias.length, meio, media, maior: dias.at(-1) ?? null, faixas, abertos, truncados, semDado };
-  }, [filtered, vidas]);
+  }, [filteredSemData, vidas]);
 
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
@@ -631,7 +652,8 @@ export function DesempenhoAdsView() {
                 <div className="px-4 py-3 border-b border-border">
                   <h4 className="text-sm font-medium">Vida útil do AD</h4>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    Da primeira impressão até parar de ter impressões
+                    Da primeira impressão até parar de ter impressões · <strong>todo o histórico</strong>,
+                    fora do filtro de datas — a janela cortaria a vida dos ADs recentes
                   </p>
                 </div>
 
