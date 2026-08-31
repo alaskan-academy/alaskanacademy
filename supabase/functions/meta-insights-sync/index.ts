@@ -303,6 +303,9 @@ async function buscar(url: string, tentativa = 0): Promise<{ dados: Linha[]; uso
 async function descobrirContas() {
   const agora = new Date().toISOString();
   const vistos: string[] = [];
+  /* Falhas ao gravar em `ad_accounts`, para SAÍREM no resultado da rodada em vez
+     de ficarem só num log que ninguém abre. Ver o comentário junto da escrita. */
+  const erros: string[] = [];
   const porToken: Record<string, number> = {};
   /* Qual token enxerga cada conta. O PRIMEIRO que a enxerga vence: se duas BMs
      compartilham a mesma conta, tanto faz por qual delas se lê. */
@@ -360,7 +363,7 @@ async function descobrirContas() {
       moeda: String(c.currency ?? ''),
       // Nulos quando o escopo não deixa ler: melhor faltar o número do que
       // gravar zero, que a tela leria como "nada em aberto".
-      saldo_devedor: centavos(c.balance),
+      saldo_conta: centavos(c.balance),
       total_gasto: centavos(c.amount_spent),
       // 0 é "não desativada" na Meta; guardar "0" faria a tela achar que existe
       // um motivo chamado zero.
@@ -370,18 +373,35 @@ async function descobrirContas() {
       atualizado_em: agora,
     };
 
-    if (existente) {
+    /*
+      O erro da escrita é OLHADO.
+
+      Em 31/08/2026 uma migração renomeou `saldo_devedor` para `saldo_conta` e
+      este bloco continuou mandando o nome antigo. O PostgREST devolveu 400 em
+      todos os PATCH, e como ninguém lia o retorno, `ad_accounts` ficou parada
+      seis horas — status, saldo e gasto total congelados — enquanto o painel de
+      saúde mostrava o retrato das 08:48 com cara de agora.
+
+      As métricas continuaram entrando o tempo todo, então nada na tela ficou
+      obviamente quebrado. É esse o problema: falha silenciosa em escrita não se
+      denuncia sozinha, e a única testemunha era um log que ninguém abriu.
+    */
+    const escrita = existente
       // Não mexe em `ativo`, `funil_id` nem `produto_payt`: são decisão de quem
       // configurou, não da API.
-      await supabase.from('ad_accounts').update(campos).eq('id', existente.id);
-    } else {
-      await supabase.from('ad_accounts').insert({ ...campos, descoberto_em: agora, ativo: true });
+      ? await supabase.from('ad_accounts').update(campos).eq('id', existente.id)
+      : await supabase.from('ad_accounts').insert({ ...campos, descoberto_em: agora, ativo: true });
+
+    if (escrita.error) {
+      console.error(`ad_accounts ${accountId}: ${escrita.error.message}`);
+      erros.push(`${accountId}: ${escrita.error.message}`);
     }
   }
 
   return {
     contas_na_api: dados.length, ids: vistos, por_token: porToken,
     campos_de_cobranca: comFaturamento ? 'lidos' : 'sem acesso no escopo do token',
+    erros_ao_gravar: erros,
     tokenDaConta,
   };
 }

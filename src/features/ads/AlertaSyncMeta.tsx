@@ -115,7 +115,12 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
     void (async () => {
       const [{ data: saude }, { data: cfg }] = await Promise.all([
         supabase.from('vw_meta_sync_saude').select('*'),
-        supabase.from('configuracoes').select('valor').eq('chave', 'imposto_meta_ads_pct').maybeSingle(),
+        /* `is('empresa_id', null)` pega a linha GERAL. Desde que o parâmetro pode
+           variar por empresa, `chave` sozinha devolve mais de uma linha, e
+           `maybeSingle()` deixa de ser "talvez uma" para virar erro. Este aviso
+           soma as contas de todas as empresas, então a geral é a certa aqui. */
+        supabase.from('configuracoes').select('valor')
+          .eq('chave', 'imposto_meta_ads_pct').is('empresa_id', null).maybeSingle(),
       ]);
       /* O imposto sai da tabela, nunca da constante: `imposto_meta_ads_pct` é
          parâmetro que muda em Configurações, e um número fixo aqui discordaria

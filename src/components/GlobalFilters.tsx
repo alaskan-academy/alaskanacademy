@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useFilters } from "@/contexts/FilterContext";
 import { subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Check, ChevronDown, Megaphone } from "lucide-react";
+import { Building2, CalendarIcon, Check, ChevronDown, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { daYMD } from "@/lib/recorrencia";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -16,6 +16,11 @@ interface Conta {
   nome: string;
   produto: string | null;
   investimento: number;
+}
+
+interface Empresa {
+  id: string;
+  nome: string;
 }
 
 const DATE_OPTIONS = [
@@ -32,6 +37,7 @@ export default function GlobalFilters() {
   const {
     datePreset, setDatePreset, setCustomRange, startDateStr, endDateStr,
     contaIds, setContaIds,
+    empresaId, setEmpresaId,
   } = useFilters();
   const [dateOpen, setDateOpen] = useState(false);
   const [customMode, setCustomMode] = useState(false);
@@ -39,6 +45,29 @@ export default function GlobalFilters() {
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
   const [contas, setContas] = useState<Conta[]>([]);
   const [contaOpen, setContaOpen] = useState(false);
+  const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [empresaOpen, setEmpresaOpen] = useState(false);
+
+  /*
+    As empresas ativas.
+
+    Buscadas da tabela, e não escritas aqui: uma lista no código envelheceria
+    calada na primeira empresa nova — e este projeto já perdeu R$ 10.065 num
+    DRE por causa de uma lista assim.
+  */
+  useEffect(() => {
+    let ativo = true;
+    supabase.from("empresas").select("id,nome").eq("ativo", true).order("nome")
+      .then(({ data }) => { if (ativo) setEmpresas((data as Empresa[]) ?? []); });
+    return () => { ativo = false; };
+  }, []);
+
+  /* Empresa que deixou de existir (ou de estar ativa) não pode continuar
+     filtrando em silêncio: a tela ficaria vazia sem dizer por quê. */
+  useEffect(() => {
+    if (!empresaId || empresas.length === 0) return;
+    if (!empresas.some(e => e.id === empresaId)) setEmpresaId(null);
+  }, [empresas, empresaId, setEmpresaId]);
 
   /**
    * Só as contas que gastaram no período escolhido.
@@ -51,10 +80,16 @@ export default function GlobalFilters() {
   useEffect(() => {
     let ativo = true;
     supabase
-      .rpc("fn_contas_com_gasto", { p_inicio: startDateStr, p_fim: endDateStr })
+      .rpc("fn_contas_com_gasto", {
+        p_inicio: startDateStr,
+        p_fim: endDateStr,
+        // Em cascata: escolhida a empresa, só as contas dela aparecem. Oferecer
+        // conta de outra empresa seria oferecer um recorte que devolve zero.
+        p_empresa: empresaId,
+      })
       .then(({ data }) => { if (ativo) setContas((data as Conta[]) ?? []); });
     return () => { ativo = false; };
-  }, [startDateStr, endDateStr]);
+  }, [startDateStr, endDateStr, empresaId]);
 
   // Mudar o período pode deixar contas escolhidas sem gasto nenhum. Elas caem
   // fora — manter um recorte que resulta em tela vazia é pior do que soltá-lo.
@@ -74,6 +109,16 @@ export default function GlobalFilters() {
    * Uma conta mostra o nome; várias mostram a contagem, porque cinco nomes
    * não cabem e um nome sozinho mentiria sobre as outras quatro.
    */
+  /*
+    Nunca "Todas as empresas": o rótulo diz AMBAS.
+
+    "Todas" soa como ausência de filtro — o mesmo que "Todas as contas" logo ao
+    lado. "Ambas" avisa que há mais de uma operação ali dentro, que é o que
+    importa antes de olhar um número somado.
+  */
+  const rotuloDaEmpresa =
+    empresaId ? (empresas.find(e => e.id === empresaId)?.nome ?? "Empresa") : "Ambas";
+
   const rotuloDasContas =
     contaIds.length === 0 ? 'Todas as contas'
     : contaIds.length === 1 ? (contas.find(c => c.id === contaIds[0])?.nome ?? '1 conta')
@@ -138,6 +183,61 @@ export default function GlobalFilters() {
 
   return (
     <div className="flex items-center gap-2">
+      {/*
+        A empresa vem PRIMEIRO porque é o corte mais largo: ela mudaria a lista
+        de contas ao lado, e um filtro que altera outro precisa ser lido antes.
+
+        Só aparece com mais de uma empresa ativa. Com uma só, um seletor de uma
+        opção é ruído que ocupa o lugar de um controle útil.
+
+        Sem cor: a identidade visual da Aeliss ainda não existe, e inventar uma
+        é pior do que ficar no nome. Quando ela existir, entram dois tokens em
+        `index.css` — nunca hex aqui dentro.
+      */}
+      {empresas.length > 1 && (
+        <Popover open={empresaOpen} onOpenChange={setEmpresaOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("h-8 gap-1.5 text-xs font-medium", empresaId && "border-primary/50 text-primary")}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              <span className="max-w-[160px] truncate">{rotuloDaEmpresa}</span>
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto min-w-[200px] p-0" align="end">
+            <button
+              onClick={() => { setEmpresaId(null); setEmpresaOpen(false); }}
+              className={cn(
+                "flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent",
+                !empresaId && "bg-accent font-semibold text-accent-foreground",
+              )}
+            >
+              <Check className={cn("h-3.5 w-3.5", empresaId && "invisible")} />
+              Ambas
+            </button>
+
+            {/* Uma linha por empresa, e a escolha é única: dinheiro de duas
+                empresas somado num número só não é um total, é um erro. */}
+            {empresas.map(e => (
+              <button
+                key={e.id}
+                onClick={() => { setEmpresaId(e.id); setEmpresaOpen(false); }}
+                className={cn(
+                  "flex w-full items-center gap-2 border-t border-border/40 px-3 py-2 text-left text-xs hover:bg-accent",
+                  empresaId === e.id && "bg-accent font-semibold text-accent-foreground",
+                )}
+              >
+                <Check className={cn("h-3.5 w-3.5", empresaId !== e.id && "invisible")} />
+                <span className="truncate">{e.nome}</span>
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
+
       {/* Conta de anúncio. Só aparece quando há alguma com gasto — sem investimento
           no período, o seletor não teria o que oferecer e viraria ruído. */}
       {contas.length > 0 && (

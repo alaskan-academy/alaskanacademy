@@ -82,7 +82,10 @@ function FiscalTab() {
     const load = async () => {
       setLoading(true);
       const [r1, r2] = await Promise.all([
-        supabase.from("configuracoes").select("chave,valor"),
+        /* Só as linhas GERAIS. Um parâmetro pode ter uma linha por empresa desde
+           que a Aeliss existe; sem este filtro o mapa por `chave` ficaria com a
+           última linha que chegasse — e qual é a última é sorteio do Postgres. */
+        supabase.from("configuracoes").select("chave,valor").is("empresa_id", null),
         supabase.from("vw_faturamento_liquido").select("faturamento_bruto,taxa_plataforma,investimento_meta,reembolsos"),
       ]);
       const cfgMap: Record<string, number> = {};
@@ -117,6 +120,18 @@ function FiscalTab() {
         .from("configuracoes")
         .update({ valor: u.valor })
         .eq("chave", u.chave)
+        /*
+          O filtro que impede o pior erro desta tela.
+
+          Sem ele, o UPDATE alcança TODAS as linhas da chave — a geral e a de
+          cada empresa. Alguém ajustando a alíquota aqui sobrescreveria em
+          silêncio a alíquota própria da Aeliss, e o DRE dela mudaria sem que
+          ninguém tivesse mexido nela.
+
+          Esta tela edita a configuração GERAL. O valor próprio de uma empresa
+          se vê em `vw_config_por_empresa` e ainda não tem tela para editar.
+        */
+        .is("empresa_id", null)
         .select("chave");
 
       if (error) {

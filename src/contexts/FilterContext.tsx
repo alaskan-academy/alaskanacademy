@@ -28,6 +28,30 @@ interface FilterContextType {
    */
   contaIds: string[];
   setContaIds: (ids: string[]) => void;
+  /**
+   * A empresa em foco. `null` quer dizer AMBAS.
+   *
+   * Diferente das contas e do período, esta escolha **sobrevive ao recarregar**.
+   * Período é uma pergunta ("como foi a semana?"); empresa é onde a pessoa está
+   * trabalhando. Perder isso a cada F5 faria alguém abrir o dashboard achando
+   * que olha a Aeliss e ler os números da Alaskan.
+   */
+  empresaId: string | null;
+  setEmpresaId: (id: string | null) => void;
+}
+
+/* Guardada por fora do React porque precisa existir antes do primeiro render:
+   um piscar de "Ambas" antes de assumir a empresa certa é a mesma confusão que
+   a persistência existe para evitar. */
+const CHAVE_EMPRESA = 'alaskan:empresa';
+
+function empresaGuardada(): string | null {
+  try {
+    return localStorage.getItem(CHAVE_EMPRESA) || null;
+  } catch {
+    // Aba anônima, cookies bloqueados: segue em "Ambas", que é o padrão honesto.
+    return null;
+  }
 }
 
 const FilterContext = createContext<FilterContextType | null>(null);
@@ -43,6 +67,20 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
   const [customStart, setCustomStart] = useState<Date>(subDays(new Date(), 30));
   const [customEnd, setCustomEnd] = useState<Date>(new Date());
   const [contaIds, setContaIds] = useState<string[]>([]);
+  const [empresaId, setEmpresaIdState] = useState<string | null>(empresaGuardada);
+
+  const setEmpresaId = useCallback((id: string | null) => {
+    setEmpresaIdState(id);
+    try {
+      if (id) localStorage.setItem(CHAVE_EMPRESA, id);
+      else localStorage.removeItem(CHAVE_EMPRESA);
+    } catch { /* sem armazenamento: a escolha vale só nesta aba */ }
+
+    /* Conta escolhida é conta DE uma empresa. Trocar de empresa mantendo o
+       recorte anterior mostraria "1 conta" no botão e nada na tela — e o
+       usuário procuraria o defeito nos dados, não no filtro. */
+    setContaIds([]);
+  }, []);
 
   const { start, end } = useMemo(() => {
     const now = new Date();
@@ -87,7 +125,10 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
     endISO,
     contaIds,
     setContaIds,
-  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, contaIds, setDatePreset, setCustomRange]);
+    empresaId,
+    setEmpresaId,
+  }), [datePreset, start, end, startDateStr, endDateStr, startISO, endISO, contaIds,
+       empresaId, setEmpresaId, setDatePreset, setCustomRange]);
 
   return (
     <FilterContext.Provider value={value}>

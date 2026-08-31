@@ -221,7 +221,7 @@ function Tabela({ colunas, linhas, vazio }: { colunas: string[]; linhas: ReactNo
 }
 
 export default function OverviewPage() {
-  const { startDateStr, endDateStr, startISO, endISO, contaIds } = useFilters();
+  const { startDateStr, endDateStr, startISO, endISO, contaIds, empresaId } = useFilters();
   const [segmento, setSegmento] = useState<Segmento>("misto");
   const [abaOp, setAbaOp] = useState<AbaOperacional>("trafego");
   const [kpis, setKpis] = useState<any>({});
@@ -267,7 +267,16 @@ export default function OverviewPage() {
 
       Do lado do banco, nulo e vazio significam a mesma coisa: todas as contas.
     */
-    const argsBase = { p_segmento: segmento, p_contas: contaIds };
+    /*
+      `p_empresa` recorta as três pontas do resultado pela fonte certa de cada
+      uma: a venda pelo carimbo da Payt que recebeu, a mídia pelo carimbo da
+      conta de anúncio, e a alíquota com o custo fixo por `fn_config`.
+
+      Nulo é "Ambas", e soma tudo — o que o Resumo sempre fez. A soma só é
+      honesta enquanto o rótulo no cabeçalho disser "Ambas": um número que
+      mistura duas empresas sem avisar deixa de ser um total.
+    */
+    const argsBase = { p_segmento: segmento, p_contas: contaIds, p_empresa: empresaId };
 
     const [atual, anterior] = await Promise.all([
       supabase.rpc("fn_overview", { ...argsBase, p_inicio: startISO, p_fim: endISO }),
@@ -534,7 +543,7 @@ export default function OverviewPage() {
 
     setLastUpdate(new Date());
     setLoading(false);
-  }, [startDateStr, endDateStr, startISO, endISO, contaIds, segmento]);
+  }, [startDateStr, endDateStr, startISO, endISO, contaIds, empresaId, segmento]);
 
   useEffect(() => {
     fetchData();
