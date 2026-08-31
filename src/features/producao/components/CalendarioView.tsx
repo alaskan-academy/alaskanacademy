@@ -25,6 +25,7 @@ import { useConfirm } from '@/hooks/use-confirm';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
 import { FASES_MAP, TIPO_COR, FASES, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
+import { useAusencias, pontoDoTipo, rotuloDoTipo, type Ausencia } from '@/features/producao/ausencias';
 import { CriativoFormModal } from './CriativoFormModal';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { registrarMudancas } from '../registrarHistorico';
@@ -223,6 +224,68 @@ function DraggableCalCard({
         onPointerDown={handleResizePointerDown}
         onPointerUp={handleResizePointerUp}
       />
+    </div>
+  );
+}
+
+/**
+ * A tira de ausências de um dia.
+ *
+ * Compacta de propósito: a célula do dia é pequena e o que manda nela são os
+ * cards. Feriado e recesso viram uma faixa com o nome, porque valem para todo
+ * mundo; folga vira o primeiro nome da pessoa, que é o que se procura ao
+ * escolher em quem encostar trabalho.
+ *
+ * Passando de três, o resto vira "+N" — com todos os nomes no `title`. Uma
+ * célula de calendário com sete nomes empilhados deixa de mostrar o calendário.
+ */
+function TiraDeAusencias({ ausencias, perfis }: {
+  ausencias?: Ausencia[];
+  perfis: Perfil[];
+}) {
+  if (!ausencias?.length) return null;
+
+  const nomeDe = (id: string | null) => {
+    if (!id) return null;
+    const p = perfis.find(x => x.id === id);
+    // Primeiro nome: "Jaqueline Coelho" não cabe numa célula de calendário, e
+    // quem lê já sabe de quem se trata pelo primeiro.
+    return p?.nome?.split(' ')[0] ?? null;
+  };
+
+  /* O que para todo mundo vem primeiro: muda o dia inteiro, não só o de uma
+     pessoa. */
+  const ordenadas = [...ausencias].sort((a, b) => Number(b.paraTodos) - Number(a.paraTodos));
+  const mostrar = ordenadas.slice(0, 3);
+  const resto   = ordenadas.length - mostrar.length;
+
+  const descricao = ordenadas
+    .map(a => a.paraTodos
+      ? `${rotuloDoTipo(a.tipo)}: ${a.titulo}`
+      : `${rotuloDoTipo(a.tipo)} — ${nomeDe(a.pessoa_id) ?? a.titulo}`)
+    .join(' · ');
+
+  return (
+    <div className="mb-1 flex flex-col gap-0.5" title={descricao}>
+      {mostrar.map(a => (
+        <span
+          key={a.id}
+          className={cn(
+            'flex items-center gap-1 rounded px-1 py-px text-[9px] leading-tight',
+            a.paraTodos
+              ? 'bg-muted text-muted-foreground'
+              : 'bg-teal-500/10 text-teal-300',
+          )}
+        >
+          <span className={cn('h-1 w-1 shrink-0 rounded-full', pontoDoTipo(a.tipo))} />
+          <span className="truncate">
+            {a.paraTodos ? a.titulo : (nomeDe(a.pessoa_id) ?? a.titulo)}
+          </span>
+        </span>
+      ))}
+      {resto > 0 && (
+        <span className="px-1 text-[9px] leading-tight text-muted-foreground/60">+{resto}</span>
+      )}
     </div>
   );
 }
@@ -764,6 +827,18 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
+  /*
+    Quem não estará, nos dias em que não estará.
+
+    A janela é a da GRADE, e não a do mês: a primeira e a última semana mostram
+    dias do mês vizinho, e uma folga cair justo ali é o caso mais fácil de
+    esquecer — é a virada do mês, quando ninguém confere.
+  */
+  const ausenciasPorDia = useAusencias(
+    days.length ? toYMD(days[0]) : '',
+    days.length ? toYMD(days[days.length - 1]) : '',
+  );
+
   const activeCriativo = activeId
     ? criativos.find(c => c.id === activeId.replace('cal-', ''))
     : null;
@@ -1227,6 +1302,18 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                 </button>
                               )}
                             </div>
+
+                            {/*
+                              Quem não trabalha neste dia — antes dos cards, e
+                              não depois, porque é uma condição do DIA: ela vale
+                              para tudo que estiver embaixo. Depois da lista,
+                              seria uma nota de rodapé que ninguém lê antes de
+                              arrastar um card para cá.
+                            */}
+                            <TiraDeAusencias
+                              ausencias={ausenciasPorDia.get(ymd)}
+                              perfis={perfis}
+                            />
 
                             {/* O lugar que as barras de período ocupam nesta
                                 semana. Vazio quando não há nenhuma. */}
