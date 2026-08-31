@@ -29,7 +29,7 @@ import {
 import { useFases, fasesDoTipo, rotuloDaFase } from '../useFases';
 import { usePedirMotivo } from '../usePedirMotivo';
 import { SeletorDePrazo } from './SeletorDePrazo';
-import { TipoBadge } from './CriativoCard';
+import { TipoBadge } from './TipoBadge';
 import { PedidoVariacaoModal } from './PedidoVariacaoModal';
 import { GerenciarOpcoesPopover } from './GerenciarOpcoesPopover';
 import type { Criativo, HistoricoEntry, Comentario, ProducaoNivel, Funil, Perfil, CriativoTipo } from './types';

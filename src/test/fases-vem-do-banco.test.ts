@@ -66,26 +66,23 @@ describe('a lista de fases não volta para o código', () => {
     'postado', 'na_plataforma', 'bloqueado', 'arquivado',
   ];
 
-  /**
-   * As duas que sobraram, declaradas em vez de escondidas.
-   *
-   * `FASES_CONCLUIDAS` duplica a coluna `producao_fases.concluida` e
-   * `FASES_REQUER_LINK` é uma propriedade que a tabela ainda não tem. As duas
-   * são lidas por `CriativoCard`, que é folha e aparece 2.000 vezes numa tela
-   * do Calendário — puxar o hook ali custa mais hoje do que a divergência que
-   * evita, e passar por prop atravessaria cinco componentes.
-   *
-   * Ficam AQUI, com nome e motivo, e não fora do alcance do teste. A diferença
-   * importa: assim a próxima lista nova falha, e estas duas continuam visíveis
-   * como dívida em vez de virarem precedente silencioso.
-   *
-   * O conserto quando chegar a vez: `concluida` já existe na tabela, e
-   * `requer_link` seria uma coluna nova ao lado dela.
-   */
-  const DIVIDA_CONHECIDA = [
-    'constants.ts',      // FASES_CONCLUIDAS
-    'CriativoCard.tsx',  // FASES_REQUER_LINK
-  ];
+  /*
+    Aqui existiu um `DIVIDA_CONHECIDA` com duas exceções, e ele durou meio dia.
+
+    Eram `FASES_CONCLUIDAS` e `FASES_REQUER_LINK`. Eu as declarei como dívida
+    porque as duas eram lidas por `CriativoCard`, e achei que puxar o hook num
+    componente-folha renderizado centenas de vezes custaria mais do que a
+    divergência que evitava.
+
+    A premissa estava errada, e só apareceu quando fui consertar: `CriativoCard`
+    era renderizado apenas pelo Kanban, que já estava fora de rota desde julho e
+    foi apagado. Ninguém o renderizava — nem centenas de vezes, nem uma. O peso
+    que justificava a exceção não existia.
+
+    Fica o registro porque a lição não é sobre estas duas listas: uma exceção
+    baseada em custo que ninguém mediu é palpite com aparência de decisão. Se
+    outra precisar entrar aqui, que venha com o número junto.
+  */
 
   it('nenhum arquivo escreve um fluxo de fases à mão', () => {
     const culpados: string[] = [];
@@ -97,7 +94,6 @@ describe('a lista de fases não volta para o código', () => {
       for (const [literal] of limpo.matchAll(/\[[^[\]]{0,400}?\]/g)) {
         const quantas = CHAVES.filter(c => literal.includes(`'${c}'`) || literal.includes(`"${c}"`)).length;
         if (quantas < 3) continue;
-        if (DIVIDA_CONHECIDA.some(d => arquivo.endsWith(d))) continue;
         culpados.push(`${arquivo}: ${literal.slice(0, 90)}`);
       }
     }

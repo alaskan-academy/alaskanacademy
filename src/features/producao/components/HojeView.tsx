@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Loader2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { supabase, linhas, linha } from '@/lib/supabase';
@@ -6,7 +6,8 @@ import { fetchFunis, fetchPerfis } from '@/lib/dataCache';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { cn } from '@/lib/utils';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
+import { FASES_MAP, TIPO_COR, getUrgency } from './constants';
+import { useFases, fasesConcluidas } from '../useFases';
 import { CriativoDrawer } from './CriativoDrawer';
 
 interface Props {
@@ -23,6 +24,12 @@ function toYMD(d: Date) {
 }
 
 export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedValue, fases }: Props) {
+  /* `fases` já é o nome da prop que recorta esta tela por fase, então o
+     catálogo do banco entra com outro nome. As duas coisas são diferentes:
+     a prop diz o que MOSTRAR, o catálogo diz o que cada fase É. */
+  const { fases: catalogoDeFases } = useFases();
+  const concluidas = useMemo(() => fasesConcluidas(catalogoDeFases), [catalogoDeFases]);
+
   const [criativos, setCriativos] = useState<Criativo[]>([]);
   const [funis, setFunis]         = useState<Funil[]>([]);
   const [perfis, setPerfis]       = useState<Perfil[]>([]);
@@ -127,13 +134,13 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
         const editor  = c.responsavel?.nome ?? c.editor_nome_historico;
         const tipoCor = TIPO_COR[c.tipo] ?? 'bg-primary/10 text-primary border-primary/20';
         const isSpan  = c.data_inicio && c.data_prazo && c.data_inicio !== c.data_prazo;
-        // Terceira cópia do mesmo `(data_prazo ?? '') < hoje` — e o mesmo erro:
-        // sem prazo, a comparação com string vazia dava atrasado sempre. Aqui
-        // doía mais, porque a consulta q3 traz de propósito os cards que só têm
-        // data_inicio: eram exatamente os que apareciam vermelhos sem motivo.
-        const prazo   = prazoEfetivo(c.data_prazo, c.data_inicio);
-        const isPast  = !!prazo && prazo < today;
-        const isLate  = isPast && !FASES_CONCLUIDAS.has(c.fase);
+        // Esta foi a terceira cópia do mesmo `(data_prazo ?? '') < hoje`, e
+        // repetia o mesmo erro: sem prazo, a comparação com string vazia dava
+        // atrasado sempre. Aqui doía mais, porque a consulta q3 traz de
+        // propósito os cards que só têm data_inicio — eram exatamente os que
+        // apareciam vermelhos sem motivo. Agora chama a regra em vez de
+        // reescrevê-la.
+        const isLate  = getUrgency(concluidas, c.data_prazo, c.fase, c.data_inicio) === 'late';
         const cor     = isLate ? 'bg-red-500/20 text-red-300 border-red-500/30' : tipoCor;
 
         return (

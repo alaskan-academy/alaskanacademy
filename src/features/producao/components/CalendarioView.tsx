@@ -23,14 +23,14 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import type { Criativo, ProducaoNivel, Funil, Perfil } from './types';
-import { FASES_MAP, TIPO_COR, FASES_CONCLUIDAS, prazoEfetivo } from './constants';
+import { FASES_MAP, TIPO_COR, prazoEfetivo, getUrgency } from './constants';
 import { CriativoDrawer } from './CriativoDrawer';
 import { useAusencias, pontoDoTipo, rotuloDoTipo, type Ausencia } from '@/features/producao/ausencias';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { CriativoFormModal } from './CriativoFormModal';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { registrarMudancas } from '../registrarHistorico';
-import { useFases } from '../useFases';
+import { useFases, fasesConcluidas } from '../useFases';
 import { usePedirMotivo } from '../usePedirMotivo';
 
 interface Props {
@@ -54,10 +54,9 @@ const LIMITE_DE_CARDS = 2000;
  *  passarem por cima da data. */
 const ALTURA_DO_CABECALHO = 30;
 
-/** As fases que não atrasam, no formato que o PostgREST espera.
- *  Derivado de `FASES_CONCLUIDAS` e não escrito à mão: uma fase nova entra
- *  aqui sozinha, em vez de ficar de fora em silêncio. */
-const FASES_ENCERRADAS_SQL = `(${[...FASES_CONCLUIDAS, 'bloqueado'].join(',')})`;
+/* As fases que não atrasam saíram daqui: elas vinham de `FASES_CONCLUIDAS`,
+   que era uma cópia da coluna `producao_fases.concluida`. Agora a lista é
+   montada dentro do componente, a partir da tabela — ver `encerradasSQL`. */
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
@@ -141,10 +140,13 @@ function getSpanningForWeek(weekDays: Date[], spanning: Criativo[], previewMap: 
 // ── DraggableCalCard ──────────────────────────────────────────────────────────
 
 function DraggableCalCard({
-  criativo, todayYMD, selecionando, isSelected, onOpen, onToggle, onResizeRight,
+  criativo, todayYMD, concluidas, selecionando, isSelected, onOpen, onToggle, onResizeRight,
 }: {
   criativo: Criativo;
   todayYMD: string;
+  /* Vem de cima, como `todayYMD`: é a mesma resposta para todos os cards da
+     tela, e calcular por card seria repetir a leitura centenas de vezes. */
+  concluidas: Set<string>;
   selecionando: boolean;
   isSelected: boolean;
   onOpen: () => void;
@@ -156,12 +158,15 @@ function DraggableCalCard({
     data: { criativo },
   });
 
-  // `(data_prazo ?? '') < todayYMD` dizia que TODO card sem prazo estava
-  // atrasado: string vazia é menor que qualquer data. Como só 4,9% dos cards
-  // têm prazo, o vermelho de atraso cobria quase o calendário inteiro — e um
-  // aviso que aparece sempre é um aviso que ninguém lê.
-  const prazo   = prazoEfetivo(criativo.data_prazo, criativo.data_inicio);
-  const isLate  = !!prazo && prazo < todayYMD && !FASES_CONCLUIDAS.has(criativo.fase);
+  /*
+    A regra do atraso mora em `getUrgency`, e esta tela chama em vez de
+    reescrever. Ela já foi escrita aqui à mão duas vezes, e as duas erraram do
+    mesmo jeito: `(data_prazo ?? '') < todayYMD` dizia que TODO card sem prazo
+    estava atrasado, porque string vazia é menor que qualquer data. Como só
+    4,9% dos cards têm prazo, o vermelho cobria quase o calendário inteiro — e
+    um aviso que aparece sempre é um aviso que ninguém lê.
+  */
+  const isLate  = getUrgency(concluidas, criativo.data_prazo, criativo.fase, criativo.data_inicio) === 'late';
   const tipoCor = isLate
     ? 'bg-red-500/20 text-red-300 border-red-500/30'
     : (TIPO_COR[criativo.tipo] ?? 'bg-primary/10 text-primary border-primary/20');
@@ -346,6 +351,23 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     () => `(${fases.filter(f => f.fora_do_fluxo).map(f => f.chave).join(",")})`,
     [fases],
   );
+
+  /** As fases em que prazo vencido NÃO é atraso, direto da coluna `concluida`. */
+  const concluidas = useMemo(() => fasesConcluidas(fases), [fases]);
+
+  /*
+    Quem não conta para a fila de atrasados: terminou, ou saiu do fluxo.
+
+    Antes era `FASES_CONCLUIDAS` mais a string "bloqueado" grudada no fim —
+    e o "bloqueado" ali era a mesma lista à mão que este arquivo agora deixou
+    de ter em três lugares. Derivado, o conjunto continua idêntico ao antigo
+    (aprovado, esteira de teste, postado, na plataforma, arquivado, bloqueado)
+    e passa a acompanhar a tabela sozinho.
+  */
+  const encerradasSQL = useMemo(
+    () => `(${fases.filter(f => f.concluida || f.fora_do_fluxo).map(f => f.chave).join(",")})`,
+    [fases],
+  );
   const confirmar = useConfirm();
   const now = new Date();
 
@@ -512,12 +534,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
      mostraria as duas empresas por um instante — e num painel de produção
      esse instante basta para alguém mexer no card errado. */
     if (projetosDaEmpresa === undefined) return;
+    /* `encerradasSQL` seria `()` sem a tabela, e o PostgREST recusa. */
+    if (!fasesCarregaram) return;
     const hoje = toYMD(new Date());
     let q = supabase
       .from('producoes')
       .select('id', { count: 'exact', head: true })
       .or(`data_prazo.lt.${hoje},and(data_prazo.is.null,data_inicio.lt.${hoje})`)
-      .not('fase', 'in', FASES_ENCERRADAS_SQL);
+      .not('fase', 'in', encerradasSQL);
 
     // O mesmo recorte de acesso da lista: quem só vê o próprio trabalho não
     // pode receber a contagem do trabalho dos outros.
@@ -528,7 +552,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
     const { count } = await q;
     setAtrasados(count ?? 0);
-  }, [fixedField, fixedValue, nivel, userId, fasesVisiveis, projetosDaEmpresa]);
+  }, [fixedField, fixedValue, nivel, userId, fasesVisiveis, projetosDaEmpresa, fasesCarregaram, encerradasSQL]);
 
   const loadCriativos = useCallback(async () => {
     if (projetosDaEmpresa === undefined) return;
@@ -561,7 +585,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       // que `prazoEfetivo` faz na tela, escrito como o PostgREST entende.
       q = q
         .or(`data_prazo.lt.${hoje},and(data_prazo.is.null,data_inicio.lt.${hoje})`)
-        .not('fase', 'in', FASES_ENCERRADAS_SQL);
+        .not('fase', 'in', encerradasSQL);
     } else {
       q = q
         .or(`data_prazo.gte.${fmt(windowStart)},and(data_prazo.is.null,data_inicio.gte.${fmt(windowStart)})`)
@@ -607,7 +631,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     setTruncado(linhasLidas.length >= LIMITE_DE_CARDS);
     setCriativos(linhasLidas);
     setLoading(false);
-  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, toast, soAtrasados, projetosDaEmpresa, fasesCarregaram, foraDoFluxoSQL]);
+  }, [nivel, setorId, userId, somenteSetor, fixedField, fixedValue, fasesVisiveis, year, month, filtroProjeto, filtroTipo, filtroFase, filtroResp, filtroAval, filtroFormato, filtroStatus, toast, soAtrasados, projetosDaEmpresa, fasesCarregaram, foraDoFluxoSQL, encerradasSQL]);
 
   useEffect(() => { loadAux(); }, [loadAux]);
   // A contagem de atrasados se refaz junto: mudar fase ou data de um card
@@ -1284,7 +1308,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                           const pm       = previewMap[e.criativo.id] ?? {};
                           const effPrazo  = pm.data_prazo  ?? e.criativo.data_prazo!;
                           const effInicio = pm.data_inicio ?? e.criativo.data_inicio!;
-                          const isLate   = effPrazo < todayYMD && !FASES_CONCLUIDAS.has(e.criativo.fase);
+                          const isLate   = getUrgency(concluidas, e.criativo.data_prazo, e.criativo.fase, e.criativo.data_inicio) === 'late';
                           const tipoCor  = isLate
                             ? 'bg-red-500/20 text-red-300 border-red-500/30'
                             : (TIPO_COR[e.criativo.tipo] ?? 'bg-primary/10 text-primary border-primary/20');
@@ -1461,6 +1485,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                   key={c.id}
                                   criativo={c}
                                   todayYMD={todayYMD}
+                                  concluidas={concluidas}
                                   selecionando={selecionando}
                                   isSelected={selectedIds.has(c.id)}
                                   onOpen={() => setSelectedId(c.id)}

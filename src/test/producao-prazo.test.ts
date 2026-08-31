@@ -47,29 +47,49 @@ describe('prazoEfetivo', () => {
 });
 
 describe('getUrgency', () => {
+  /**
+   * As fases concluídas chegam por PARÂMETRO desde 31/08/2026.
+   *
+   * Antes a função lia uma constante do próprio módulo, que era uma cópia da
+   * coluna `producao_fases.concluida` — dois lugares dizendo a mesma coisa. A
+   * cópia saiu; quem chama passa o conjunto que leu do banco.
+   *
+   * Aqui a lista é escrita à mão de propósito: num teste, o valor esperado
+   * PRECISA ser explícito. Derivá-lo da mesma fonte que o código usa seria um
+   * teste que concorda consigo mesmo.
+   */
+  const CONCLUIDAS = new Set(['aprovado', 'esteira_teste', 'postado', 'na_plataforma', 'arquivado']);
+
   it('sem prazo e sem início, não opina', () => {
-    expect(getUrgency(null, 'edicao', null)).toBeNull();
+    expect(getUrgency(CONCLUIDAS, null, 'edicao', null)).toBeNull();
   });
 
   it('sem prazo, julga pelo início — o caso dos 41 cards', () => {
-    expect(getUrgency(null, 'edicao', emDias(-5))).toBe('late');
-    expect(getUrgency(null, 'edicao', emDias(1))).toBe('warn');
-    expect(getUrgency(null, 'edicao', emDias(30))).toBe('ok');
+    expect(getUrgency(CONCLUIDAS, null, 'edicao', emDias(-5))).toBe('late');
+    expect(getUrgency(CONCLUIDAS, null, 'edicao', emDias(1))).toBe('warn');
+    expect(getUrgency(CONCLUIDAS, null, 'edicao', emDias(30))).toBe('ok');
   });
 
   it('início de hoje é aviso, não atraso', () => {
-    expect(getUrgency(null, 'edicao', hoje())).toBe('warn');
+    expect(getUrgency(CONCLUIDAS, null, 'edicao', hoje())).toBe('warn');
   });
 
   it('fase concluída não atrasa, mesmo com data velha', () => {
-    for (const fase of ['aprovado', 'esteira_teste', 'postado', 'na_plataforma', 'arquivado']) {
-      expect(getUrgency(null, fase, emDias(-90))).toBeNull();
-      expect(getUrgency(emDias(-90), fase, null)).toBeNull();
+    for (const fase of CONCLUIDAS) {
+      expect(getUrgency(CONCLUIDAS, null, fase, emDias(-90))).toBeNull();
+      expect(getUrgency(CONCLUIDAS, emDias(-90), fase, null)).toBeNull();
     }
+  });
+
+  it('fase que o banco NÃO marca como concluída continua atrasando', () => {
+    // O ponto da mudança: a resposta passou a vir de fora. Um conjunto vazio
+    // faz até o "postado" atrasar — e é assim que se vê que a função deixou
+    // mesmo de ter opinião própria sobre quais fases terminaram.
+    expect(getUrgency(new Set(), null, 'postado', emDias(-90))).toBe('late');
   });
 
   it('o prazo preenchido tem a palavra final sobre o início', () => {
     // Começou há muito tempo, mas o prazo é longe: não está atrasado.
-    expect(getUrgency(emDias(30), 'edicao', emDias(-60))).toBe('ok');
+    expect(getUrgency(CONCLUIDAS, emDias(30), 'edicao', emDias(-60))).toBe('ok');
   });
 });

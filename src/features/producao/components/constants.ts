@@ -86,10 +86,21 @@ export function getDefaultFase(tipo: CriativoTipo): string {
   return tipo === 'aula' ? 'gravacao' : 'producao_copy';
 }
 
-// Fases consideradas "concluídas" — prazo vencido não conta como atraso
-export const FASES_CONCLUIDAS = new Set([
-  'aprovado', 'esteira_teste', 'postado', 'na_plataforma', 'arquivado',
-]);
+/*
+  `FASES_CONCLUIDAS` morava aqui e saiu em 31/08/2026.
+
+  Ela copiava a coluna `producao_fases.concluida`, que já existia — dois
+  lugares dizendo a mesma coisa, a primeira armadilha do CLAUDE.md. Enquanto
+  as duas concordassem, ninguém notaria; no dia em que alguém marcasse uma
+  fase nova como concluída no banco, ela continuaria pintada de vermelho na
+  tela por prazo vencido, e o defeito não teria nome nem erro.
+
+  Quem responde agora é `fasesConcluidas(fases)` em `../useFases`, que lê a
+  coluna. Ela é passada para `getUrgency`, em vez de lida lá dentro: uma
+  função pura que consulta o banco por baixo não dá para testar sem banco, e
+  o teste desta regra (`producao-prazo.test.ts`) é o que garante que ela não
+  se perca de novo.
+*/
 
 /**
  * O prazo que vale, quando `data_prazo` está vazio.
@@ -129,14 +140,27 @@ export function rotuloDoPrazo(inicio: string | null, prazo: string | null): stri
   return `${dia(de)} → ${diaComAno(ate)}`;
 }
 
+/**
+ * Atrasado, atenção, ou no prazo — a ÚNICA casa desta regra.
+ *
+ * O calendário e o Hoje escreviam `prazo < hoje && !concluidas.has(fase)` cada
+ * um por conta própria, com esta função ao lado sem ser chamada. Eram três
+ * cópias da mesma decisão, e o comentário no topo de `producao-prazo.test.ts`
+ * já dizia que essa duplicação tinha custado caro uma vez.
+ *
+ * `concluidas` chega por parâmetro, e não de um `import`, porque a resposta
+ * mora em `producao_fases.concluida`: quem chama já tem a lista carregada, e
+ * assim a função continua pura e testável sem banco.
+ */
 export function getUrgency(
+  concluidas: Set<string>,
   data_prazo: string | null,
   fase?: string,
   data_inicio?: string | null,
 ): 'ok' | 'warn' | 'late' | null {
   const efetivo = prazoEfetivo(data_prazo, data_inicio);
   if (!efetivo) return null;
-  if (fase && FASES_CONCLUIDAS.has(fase)) return null;
+  if (fase && concluidas.has(fase)) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const prazo = new Date(efetivo + 'T00:00:00');
