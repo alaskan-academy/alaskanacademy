@@ -369,6 +369,76 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
+  /*
+    A grade do mês e quem falta nela — declaradas AQUI, e não junto do resto do
+    render, porque o arrasto precisa consultá-las antes de mover o card.
+
+    A janela é a da GRADE e não a do mês: a primeira e a última semana mostram
+    dias do mês vizinho, e uma folga cair justo ali é o caso mais fácil de
+    esquecer — é a virada do mês, quando ninguém confere.
+  */
+  const days = buildCalendarGrid(year, month);
+  const ausenciasPorDia = useAusencias(toYMD(days[0]), toYMD(days[days.length - 1]));
+
+  /**
+   * O que impede alguém de trabalhar num dia: a folga DELE, ou um dia em que a
+   * empresa inteira para.
+   *
+   * A folga de outra pessoa não entra — é informação da tira, não motivo de
+   * aviso. Perguntar por folga alheia treinaria a pessoa a clicar "sim" sem
+   * ler, e aí o aviso que importa passa junto.
+   */
+  const impedimentosNoDia = useCallback((ymd: string, responsavelId?: string | null) => {
+    const doDia = ausenciasPorDia.get(ymd) ?? [];
+    return doDia.filter(a => a.paraTodos || (responsavelId && a.pessoa_id === responsavelId));
+  }, [ausenciasPorDia]);
+
+  /**
+   * Pergunta antes de largar trabalho num dia em que ele não vai ser feito.
+   *
+   * PERGUNTA, e não impede: às vezes é de propósito — a pessoa volta e pega, ou
+   * o feriado não vale para quem está naquele card. Bloquear obrigaria a mover
+   * duas vezes, ou a mexer na folga para conseguir mexer no card.
+   *
+   * Devolve verdadeiro quando pode seguir.
+   */
+  const podeSoltarNoDia = useCallback(async (
+    alvos: { nome: string; ymd: string; responsavelId?: string | null }[],
+  ) => {
+    const conflitos = alvos
+      .map(a => ({ ...a, impedimentos: impedimentosNoDia(a.ymd, a.responsavelId) }))
+      .filter(a => a.impedimentos.length > 0);
+
+    if (conflitos.length === 0) return true;
+
+    const dia = (ymd: string) =>
+      new Date(ymd + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+    /* Os três primeiros por extenso e o resto contado: a lista inteira de um
+       lote de vinte viraria um diálogo rolável que ninguém lê. */
+    const linhas = conflitos.slice(0, 3).map(c => {
+      const motivos = c.impedimentos
+        .map(i => i.paraTodos ? `${rotuloDoTipo(i.tipo)}: ${i.titulo}` : rotuloDoTipo(i.tipo))
+        .join(' e ');
+      return `${c.nome} → ${dia(c.ymd)} (${motivos})`;
+    });
+    const resto = conflitos.length - linhas.length;
+
+    return confirmar({
+      title: conflitos.length === 1
+        ? 'Esse dia não é de trabalho'
+        : `${conflitos.length} cards caem em dia sem trabalho`,
+      description: linhas.join(' · ') + (resto > 0 ? ` e mais ${resto}` : '')
+        + '. Mover mesmo assim?',
+      confirmText: 'Mover',
+      /* O padrao do `useConfirm` e destrutivo -- `destructive !== false` --, e
+         o botao saia vermelho. Mover card para dia de folga nao destroi nada:
+         e uma escolha, as vezes proposital. Vermelho aqui gastaria o sinal que
+         a exclusao precisa ter. */
+      destructive: false,
+    });
+  }, [impedimentosNoDia, confirmar]);
+
   // ── Data loading ─────────────────────────────────────────────────────────
 
   const loadAux = useCallback(async () => {
@@ -521,6 +591,17 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
     // Bulk move: drag a selected card → move all selected by the same delta
     if (selecionando && selectedIds.has(criativoId)) {
+      /* Cada card do lote vai para o SEU dia — o delta é o mesmo, o destino
+         não. Conferir só o dia onde o mouse soltou deixaria passar os outros. */
+      const alvos = criativos
+        .filter(c => selectedIds.has(c.id) && (c.data_prazo || c.data_inicio))
+        .map(c => ({
+          nome: c.nome,
+          ymd: addDays((c.data_prazo ?? c.data_inicio)!, delta),
+          responsavelId: c.responsavel?.id ?? null,
+        }));
+      if (!(await podeSoltarNoDia(alvos))) return;
+
       const patches = criativos
         .filter(c => selectedIds.has(c.id) && (c.data_prazo || c.data_inicio))
         .map(c => {
@@ -547,6 +628,12 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       return;
     }
 
+    if (!(await podeSoltarNoDia([{
+      nome: criativo.nome,
+      ymd: targetYmd,
+      responsavelId: criativo.responsavel?.id ?? null,
+    }]))) return;
+
     // Single card move — only update the field(s) that already exist
     const patch: Record<string, string> = {};
     if (criativo.data_prazo) {
@@ -566,7 +653,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
       return;
     }
     await registrarMudancas([{ id: criativoId, antes: { ...criativo }, patch }], userId);
-  }, [criativos, selecionando, selectedIds, toast, userId]);
+  }, [criativos, selecionando, selectedIds, toast, userId, podeSoltarNoDia]);
 
   // ── Resize: spanning bars ─────────────────────────────────────────────────
 
@@ -799,7 +886,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
 
   // ── Calendar data ─────────────────────────────────────────────────────────
 
-  const days     = buildCalendarGrid(year, month);
   const todayYMD = toYMD(now);
 
   const buscaLower = busca.toLowerCase();
@@ -827,17 +913,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
-  /*
-    Quem não estará, nos dias em que não estará.
-
-    A janela é a da GRADE, e não a do mês: a primeira e a última semana mostram
-    dias do mês vizinho, e uma folga cair justo ali é o caso mais fácil de
-    esquecer — é a virada do mês, quando ninguém confere.
-  */
-  const ausenciasPorDia = useAusencias(
-    days.length ? toYMD(days[0]) : '',
-    days.length ? toYMD(days[days.length - 1]) : '',
-  );
 
   const activeCriativo = activeId
     ? criativos.find(c => c.id === activeId.replace('cal-', ''))
