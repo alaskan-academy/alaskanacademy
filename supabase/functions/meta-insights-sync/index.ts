@@ -186,8 +186,26 @@ const TIPOS_PAGINA   = ['landing_page_view', 'omni_landing_page_view'];
 
 const num = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v));
 
-/** Orçamento: a Meta devolve em centavos, como string. */
+/** Orçamento e saldo: a Meta devolve em centavos, como string. */
 const centavos = (v: unknown) => (v === undefined || v === null || v === '' ? null : Number(v) / 100);
+
+/**
+ * Os campos da conta, em duas versões.
+ *
+ * "Cobrança recusada" não diz QUANTO, e sem o valor em aberto a única saída é
+ * abrir o Gerenciador de Anúncios — foi o que ela teve que fazer quando a
+ * "Workshop Buquê - TSL" entrou em carência.
+ *
+ * `balance` (o que está em aberto), `amount_spent` e `disable_reason` são
+ * pedidos JUNTO com o resto, e a versão básica é o socorro: se o escopo
+ * `ads_read` não der acesso a eles, a Meta recusa a CHAMADA INTEIRA com 400 —
+ * não devolve o resto sem o campo. Foi assim que `business` derrubou o
+ * diagnóstico na primeira tentativa do `quemsou`.
+ *
+ * Um campo de faturamento não pode custar a leitura de métrica.
+ */
+const CAMPOS_CONTA_BASE  = 'account_id,name,account_status,currency';
+const CAMPOS_CONTA_RICOS = `${CAMPOS_CONTA_BASE},balance,amount_spent,disable_reason`;
 
 /**
  * Os códigos da Meta que MELHORAM se a chamada for repetida.
@@ -291,13 +309,27 @@ async function descobrirContas() {
   const tokenDaConta = new Map<string, string>();
 
   const dados: Linha[] = [];
+  /* Se algum token não puder ler os campos de cobrança, o resultado DIZ isso —
+     em vez de os valores virem nulos sem explicação. */
+  let comFaturamento = true;
+
   for (let i = 0; i < TOKENS.length; i++) {
     const tk = TOKENS[i];
     const rotulo = i === 0 ? 'META_ACCESS_TOKEN' : `META_ACCESS_TOKEN_${i + 1}`;
     try {
-      const r = await buscar(
-        `${BASE}/me/adaccounts?fields=account_id,name,account_status,currency&limit=200&access_token=${tk}`,
+      const lista = (campos: string) => buscar(
+        `${BASE}/me/adaccounts?fields=${campos}&limit=200&access_token=${tk}`,
       );
+      let r;
+      try {
+        r = await lista(CAMPOS_CONTA_RICOS);
+      } catch (e) {
+        // A recusa pode ser do CAMPO, não do token. Tentar o básico separa as
+        // duas coisas: se o básico passa, o que faltou era o de faturamento.
+        comFaturamento = false;
+        console.error(`${rotulo}: sem acesso aos campos de cobrança — ${e instanceof Error ? e.message : String(e)}`);
+        r = await lista(CAMPOS_CONTA_BASE);
+      }
       porToken[rotulo] = r.dados.length;
       for (const c of r.dados) {
         const id = `act_${c.account_id}`;
@@ -326,6 +358,14 @@ async function descobrirContas() {
       nome: String(c.name ?? accountId),
       status_meta: String(c.account_status ?? ''),
       moeda: String(c.currency ?? ''),
+      // Nulos quando o escopo não deixa ler: melhor faltar o número do que
+      // gravar zero, que a tela leria como "nada em aberto".
+      saldo_devedor: centavos(c.balance),
+      total_gasto: centavos(c.amount_spent),
+      // 0 é "não desativada" na Meta; guardar "0" faria a tela achar que existe
+      // um motivo chamado zero.
+      motivo_desativacao: c.disable_reason && Number(c.disable_reason) !== 0
+        ? String(c.disable_reason) : null,
       visto_em: agora,
       atualizado_em: agora,
     };
@@ -339,7 +379,11 @@ async function descobrirContas() {
     }
   }
 
-  return { contas_na_api: dados.length, ids: vistos, por_token: porToken, tokenDaConta };
+  return {
+    contas_na_api: dados.length, ids: vistos, por_token: porToken,
+    campos_de_cobranca: comFaturamento ? 'lidos' : 'sem acesso no escopo do token',
+    tokenDaConta,
+  };
 }
 
 /**
@@ -594,7 +638,10 @@ Deno.serve(async (req) => {
 
   try {
     if (modo === 'descobrir') {
-      return json({ ok: true, ...(await descobrirContas()) });
+      // O mapa fica de fora da resposta: um Map vira `{}` em JSON e apareceria
+      // como um campo vazio sem significado nenhum.
+      const { tokenDaConta: _mapa, ...resto } = await descobrirContas();
+      return json({ ok: true, ...resto });
     }
 
     if (modo === 'quemsou') {
@@ -626,7 +673,7 @@ Deno.serve(async (req) => {
       sem o mapa não há como saber com qual credencial ler cada conta. São
       TOKENS.length chamadas por rodada — o preço de suportar várias BMs.
     */
-    const { tokenDaConta } = await descobrirContas();
+    const { tokenDaConta, campos_de_cobranca } = await descobrirContas();
 
     // Só sincroniza conta que a descoberta confirmou existir (`visto_em`). As 10
     // cadastradas à mão antes deste sync não pertencem mais ao portfólio e
@@ -727,7 +774,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ ok: true, modo, periodo: { desde, ate }, contas: resultado });
+    return json({ ok: true, modo, periodo: { desde, ate }, campos_de_cobranca, contas: resultado });
   } catch (e) {
     return json({ erro: e instanceof Error ? e.message : String(e) }, 500);
   }

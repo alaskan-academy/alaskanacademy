@@ -43,6 +43,11 @@ interface Saude {
   mensagem_erro: string | null;
   status_meta: string | null;
   cobranca_com_problema: boolean;
+  /* O `balance` da Meta: gasto acumulado ainda NÃO cobrado. Conta saudável
+     também tem — a Desafios na Sala tem R$ 1.314,99 com status 1. Não é dívida,
+     e por isso o número aparece ao lado do status, nunca sozinho. */
+  saldo_conta: number | null;
+  status_ha_dias: number | null;
 }
 
 /**
@@ -220,9 +225,24 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
                   <> · gasta {formatCurrency(p.gasto_medio_dia)}/dia</>
                 )}
                 {p.cobranca_com_problema && (
-                  <> · <span className="font-medium text-destructive">
-                    conta {STATUS_CONTA[p.status_meta ?? ''] ?? `com status ${p.status_meta}`}
-                  </span></>
+                  <>
+                    <> · <span className="font-medium text-destructive">
+                      conta {STATUS_CONTA[p.status_meta ?? ''] ?? `com status ${p.status_meta}`}
+                    </span></>
+                    {/*
+                      Ha quantos dias, porque muda o que fazer: um dia e a
+                      cobranca ainda rodando; tres dias com pagamento feito e
+                      caso de suporte. Sem a data, ela perguntou "ja foi pago,
+                      por que nao atualizou" e a resposta so existia porque
+                      alguem tinha acompanhado ao vivo.
+                    */}
+                    {p.status_ha_dias != null && p.status_ha_dias > 0 && (
+                      <> · assim há {p.status_ha_dias} {p.status_ha_dias === 1 ? 'dia' : 'dias'}</>
+                    )}
+                    {p.saldo_conta != null && p.saldo_conta > 0 && (
+                      <> · {formatCurrency(p.saldo_conta)} em aberto na conta</>
+                    )}
+                  </>
                 )}
                 {p.saude !== 'ok' && (
                   <span className="block text-muted-foreground/60">{motivo(p)}</span>
@@ -263,6 +283,15 @@ export function AlertaSyncMeta({ className }: { className?: string }) {
               Cobrança se resolve no Gerenciador de Anúncios, em Configurações de pagamento —
               não no Business Manager e não no sync. Enquanto a carência dura os anúncios
               continuam rodando; quando ela acaba, a Meta desativa a conta.
+              {/*
+                O valor em aberto é lido da própria Meta, e é o que permite
+                conferir se o pagamento cobriu. Vale dizer que ele sobe sozinho:
+                senão, quem pagou vê um número diferente do que pagou e conclui
+                que o dashboard está errado.
+              */}
+              {' '}O valor em aberto vem da Meta e continua subindo com o gasto do dia — pagar
+              não o zera enquanto a conta estiver rodando. Se ele já foi quitado e o status
+              não voltou para ativa em algumas horas, é caso de suporte da Meta.
             </p>
           )}
         </div>
