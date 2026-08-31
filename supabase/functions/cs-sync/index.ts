@@ -320,6 +320,24 @@ Deno.serve(async (req) => {
 
     totalBanking += bankingRows.length;
     totalCard    += cardRows.length;
+
+    /*
+      O estado da conta fica REGISTRADO, e não só no retorno desta chamada.
+
+      Credencial recusada não produz dado velho — produz dado NENHUM, e
+      ausência não dispara alarme de defasagem. Foi assim que o 401 da Aeliss
+      ficou invisível para o painel de saúde, que só olhava a idade do que
+      existe. `cs_sync_estado` é o espelho de `meta_sync_estado`, e é dele que
+      `vw_ingest_health` tira a resposta para "a credencial funciona?".
+    */
+    await supabase.from('cs_sync_estado').upsert({
+      slug: conta.slug,
+      empresa_id: empresaId,
+      ultimo_sucesso: new Date().toISOString(),
+      mensagem_erro: null,
+      linhas_ultima_execucao: bankingRows.length + cardRows.length,
+      atualizado_em: new Date().toISOString(),
+    }, { onConflict: 'slug' });
     porConta.push({
       conta: conta.slug,
       empresa: empresaId ? conta.slug : null,
@@ -342,6 +360,16 @@ Deno.serve(async (req) => {
     /* Uma conta com problema não pode impedir a outra de sincronizar — mesmo
        princípio do catch por conta no sync da Meta. */
     console.error('[cs-sync] conta ' + conta.slug + ':', e);
+    /* `ultimo_sucesso` fica FORA deste upsert: sobrescrevê-lo apagaria a
+       memória de quando a conta funcionou pela última vez, que é o que separa
+       "quebrou agora" de "nunca funcionou". */
+    await supabase.from('cs_sync_estado').upsert({
+      slug: conta.slug,
+      empresa_id: idPorSlug.get(conta.slug) ?? null,
+      ultimo_erro: new Date().toISOString(),
+      mensagem_erro: String(e),
+      atualizado_em: new Date().toISOString(),
+    }, { onConflict: 'slug' });
     porConta.push({ conta: conta.slug, erro: String(e) });
    }
   }
