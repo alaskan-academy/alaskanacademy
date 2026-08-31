@@ -1,13 +1,13 @@
 # CLAUDE.md — Módulo Financeiro
 
-Contexto específico do módulo de automação financeira da Alaskan Academy.
+Contexto específico do módulo de automação financeira. Desde 01/09/2026 ele atende DUAS empresas — Alaskan Academy e Aeliss Ltda — com contas bancárias, NFs e conciliação separadas.
 PRD completo: `C:\Users\Jessica Veiga\Downloads\PRD_Financeiro_Alaskan.md`
 
 ---
 
 ## O que este módulo faz
 
-Automatiza o fechamento financeiro mensal da Alaskan Academy, que hoje leva ~4h/mês de trabalho manual. O sistema:
+Automatiza o fechamento financeiro mensal, que antes levava ~4h/mês de trabalho manual. O sistema:
 
 1. Recebe vendas em tempo real via webhook da Payt
 2. Importa custos de campanha via UTMify MCP
@@ -30,12 +30,14 @@ Automatiza o fechamento financeiro mensal da Alaskan Academy, que hoje leva ~4h/
 
 ## Tabelas no Supabase
 
-- `transacoes` — extrato bancário categorizado (Conta Simples)
+- `transacoes` — extrato bancário categorizado (Conta Simples). Carrega `empresa_id`, **carimbado na importação**: cada empresa tem a sua conta bancária
 - `regras_categoria` — padrões de texto → categoria (geradas do histórico + aprendidas)
 - `vendas_payt` — vendas recebidas via webhook
 - `metricas_diarias` — gasto/CPL/leads por dia/produto (UTMify)
 - `ferramentas_saas` — lista de ferramentas e assinaturas recorrentes
 - `notas_fiscais` — controle de NFs por ferramenta/mês
+- `documentos_fiscais` — as NFs em si, com `empresa_id`: NF e conciliação são separadas por empresa para a contabilidade
+- `caixa_config` — saldo inicial da Reserva, um por empresa (é de uma conta bancária)
 
 ---
 
@@ -76,12 +78,35 @@ Coprodução | Produtos | Serviços | Receita Financeira
 | `FinanceiroFechamentoPage` | `/financeiro/fechamento` | Tela 2 — fechamento mensal com KPIs |
 | `FinanceiroConciliacaoPage` | `/financeiro/conciliacao` | Tela 3 — extrato categorizado completo |
 | `FinanceiroNotasFiscaisPage` | `/financeiro/notas-fiscais` | Tela 4 — controle de NFs e ferramentas |
+| `FinanceiroCaixaPage` | `/financeiro/caixa` | Reserva de Caixa e DRE |
+| `FinanceiroGastosPage` | `/financeiro/gastos` | Gastos |
 
 A exportação do pacote mensal (Tela 5) é uma ação/botão dentro do fechamento, não uma rota separada.
 
 ---
 
 ## Regras importantes
+
+- **Ler pode somar; gravar exige empresa escolhida.** Em "Ambas" as telas somam
+  as duas operações para olhar, o que é legítimo. Mas importar extrato, lançar
+  manualmente e editar o saldo da Reserva **recusam** sem empresa selecionada: um
+  extrato é de UMA conta bancária, e transação sem dono aparece nas duas telas ou
+  em nenhuma, conforme o filtro — erro que só sai na conciliação do contador.
+  Na Reserva a mesma regra tem outra forma: em "Ambas" o saldo mostrado é a SOMA
+  dos saldos iniciais, e o `id` vai vazio de propósito para nenhuma gravação
+  acertar a conta errada.
+- **Parâmetros fiscais são por empresa.** `configuracoes` tem uma linha por
+  (chave, empresa); nulo é a geral, que vale para quem não tem a sua. Ler sempre
+  por `fn_config(chave, empresa)`. Um `UPDATE` sem `.is('empresa_id', null)`
+  sobrescreve a alíquota de TODAS as empresas e devolve sucesso — há um teste que
+  lê o código-fonte para impedir isso.
+- **O imposto do Simples é pago sobre a receita do mês ANTERIOR.** Dividir o
+  imposto pago pela receita do mesmo mês dá quase metade do real (4,23% contra
+  7,84% em jul/ago 2026) e convidaria a baixar a alíquota e inflar o lucro.
+- **A diferença entre o extrato e o que a Meta reporta não é percentual de
+  imposto.** O gasto de um mês é debitado no seguinte, então aquele número
+  mistura imposto com atraso de cobrança. A fonte para a alíquota de mídia é a
+  fatura da Meta, que traz a linha de imposto separada.
 
 - **Nunca usar UTMify para vendas** — duplicaria com Payt. UTMify = custo e campanha apenas.
 - **Idempotência no webhook** — `payt_transaction_id` é chave única. Reenvio não duplica.

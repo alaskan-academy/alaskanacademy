@@ -24,15 +24,40 @@ import { Button } from '@/components/ui/button';
  *
  * Com uma só, um seletor de uma opção é ruído ocupando a barra.
  *
- * SEM COR
+ * A COR
  *
- * A identidade visual da Aeliss ainda não existe, e inventar uma é pior do que
- * ficar no nome. Quando existir, entram tokens em `index.css` — nunca hex aqui.
+ * Cada empresa tem um ponto de 6px com a cor da marca dela, e é o único lugar
+ * do painel onde essas duas cores aparecem. O nome continua escrito ao lado: a
+ * cor não substitui a leitura, ela evita ter que ler toda vez.
+ *
+ * Os valores vivem em `--empresa-<slug>` no `index.css`, com o porquê de o
+ * vermelho da Alaskan ser a exceção da regra de cores. Aqui dentro não há hex.
  */
 
 interface Empresa {
   id: string;
   nome: string;
+  /** Escolhe o token de cor em index.css: `--empresa-<slug>`. */
+  slug: string | null;
+}
+
+/**
+ * O ponto da empresa.
+ *
+ * A cor vem de `--empresa-<slug>` em index.css — nunca de hex aqui dentro. O
+ * `var()` leva FALLBACK: empresa nova sem token cadastrado ganha um ponto
+ * neutro em vez de um ponto invisível, e sem precisar de uma lista de slugs
+ * conhecidos no código, que é o tipo de lista que envelhece calada.
+ */
+function PontoDaEmpresa({ slug }: { slug: string | null }) {
+  if (!slug) return null;
+  return (
+    <span
+      aria-hidden
+      className="h-1.5 w-1.5 shrink-0 rounded-full"
+      style={{ backgroundColor: `hsl(var(--empresa-${slug}, var(--muted-foreground)))` }}
+    />
+  );
 }
 
 export function SeletorEmpresa() {
@@ -45,7 +70,7 @@ export function SeletorEmpresa() {
      DRE por causa de uma. */
   useEffect(() => {
     let ativo = true;
-    supabase.from('empresas').select('id,nome').eq('ativo', true).order('nome')
+    supabase.from('empresas').select('id,nome,slug').eq('ativo', true).order('nome')
       .then(({ data }) => { if (ativo) setEmpresas((data as Empresa[]) ?? []); });
     return () => { ativo = false; };
   }, []);
@@ -62,9 +87,8 @@ export function SeletorEmpresa() {
   /* "Ambas", nunca "Todas": "todas" soa como ausência de filtro. "Ambas" avisa
      que há mais de uma operação ali dentro, que é o que importa saber antes de
      olhar um número somado. */
-  const rotulo = empresaId
-    ? (empresas.find(e => e.id === empresaId)?.nome ?? 'Empresa')
-    : 'Ambas';
+  const atual = empresaId ? empresas.find(e => e.id === empresaId) : undefined;
+  const rotulo = empresaId ? (atual?.nome ?? "Empresa") : "Ambas";
 
   return (
     <Popover open={aberto} onOpenChange={setAberto}>
@@ -77,7 +101,10 @@ export function SeletorEmpresa() {
             empresaId && 'border-primary/50 text-primary',
           )}
         >
-          <Building2 className="h-3.5 w-3.5" />
+          {/* O ponto SUBSTITUI o ícone quando há empresa escolhida: dois
+              símbolos lado a lado no mesmo chip seria um a mais do que a
+              pergunta tem resposta. */}
+          {atual ? <PontoDaEmpresa slug={atual.slug} /> : <Building2 className="h-3.5 w-3.5" />}
           {/* No celular fica só o ícone: a barra tem 14 de altura e já carrega
               busca, sino e conta. O nome volta a partir de `sm`. */}
           <span className="hidden max-w-[150px] truncate sm:inline">{rotulo}</span>
@@ -108,7 +135,8 @@ export function SeletorEmpresa() {
               empresaId === e.id && 'bg-accent font-semibold text-accent-foreground',
             )}
           >
-            <Check className={cn('h-3.5 w-3.5', empresaId !== e.id && 'invisible')} />
+            <Check className={cn("h-3.5 w-3.5", empresaId !== e.id && "invisible")} />
+            <PontoDaEmpresa slug={e.slug} />
             <span className="truncate">{e.nome}</span>
           </button>
         ))}

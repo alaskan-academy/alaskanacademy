@@ -30,7 +30,7 @@ This is a **React + TypeScript + Vite** dashboard (Alaskan) for an e-commerce bu
 
 Two contexts wrap the entire app (`src/App.tsx`):
 
-- **`FilterContext`** (`src/contexts/FilterContext.tsx`) — holds the active date range (`startDateStr`/`endDateStr` as `yyyy-MM-dd` strings) and `funilId` (selected funnel). Every page reads `useFilters()` and passes these values to Supabase queries to filter data.
+- **`FilterContext`** (`src/contexts/FilterContext.tsx`) — holds the active date range (`startDateStr`/`endDateStr` as `yyyy-MM-dd` strings), `contaIds` (contas de anúncio escolhidas; vazio = todas) e `empresaId` (empresa em foco; `null` = **Ambas**). Every page reads `useFilters()` and passes these values to Supabase queries to filter data. `empresaId` **sobrevive ao recarregar** (localStorage), diferente do período e das contas — ver a seção "Duas empresas" abaixo.
 - **`SidebarContext`** (`src/contexts/SidebarContext.tsx`) — tracks sidebar collapsed/mobile state.
 
 ### Page + layout pattern
@@ -74,7 +74,11 @@ The sidebar (`AppSidebar`) lists funnels fetched from the `funis` table. Selecti
 - `vw_reembolsos` — view with refund and chargeback totals
 - `funis` — funnel definitions (id, nome, produto, ativo)
 - `ofertas` — offer definitions with `tipo` (e.g. `upsell`, `orderbump`)
-- `configuracoes` — key/value table for fiscal params (`imposto_simples_nacional_pct`, `imposto_meta_ads_pct`, `custo_fixo_mensal`)
+- `configuracoes` — key/value for fiscal params (`imposto_simples_nacional_pct`, `imposto_meta_ads_pct`, `custo_fixo_mensal`). **Uma linha por (chave, empresa)**: nulo é a geral. Ler por `fn_config(chave, empresa)`; `vw_config_por_empresa` diz se o número é próprio ou herdado
+- `empresas` — Alaskan Academy · Aeliss Ltda · Ravenna (inativa). `slug` escolhe o token de cor em `index.css` (`--empresa-<slug>`); **nunca guardar hex aqui**
+- `ofertas_editores` — é a tabela de **PROJETOS**, apesar do nome (dívida antiga). `producoes`, `funis`, `ad_accounts` e `utm_links` apontam para ela por `projeto_id`, e é dela que sai `empresa_id`
+- `vw_dinheiro_sem_empresa` — vendas, transações e métricas que nasceram sem dono. Deve ficar em zero
+- `fn_sugestao_parametros(empresa)` — o que os parâmetros fiscais foram DE VERDADE nos dois últimos meses fechados. O imposto sai sobre a receita do mês **anterior**, que é a base legal do Simples: sobre o mês corrente o número dá quase metade
 - `editores`, `avaliacoes_criativos`, `empresas`, `ofertas_editores` — editor performance module
 
 ### Utilities
@@ -99,6 +103,49 @@ Tab-based page at `/editores` with sub-components in `src/components/editores/`:
 - `DesempenhoTab` — performance charts
 - `ConfiguracaoTab` — evaluation criteria
 - `EmpresasOfertasTab` — companies and offers config
+
+## Duas empresas: o que CARIMBA e o que DERIVA
+
+Desde 01/09/2026 o painel atende duas operações — **Alaskan Academy** e
+**Aeliss Ltda** — e a regra que separa as duas cabe numa linha:
+
+> **Quem escreve dinheiro CARIMBA a empresa. O resto DERIVA do projeto.**
+
+| | de onde vem | comportamento |
+|---|---|---|
+| `vendas` / `vendas_payt` | **qual Payt recebeu** (a chave de integração) | carimbada, imutável |
+| `transacoes` | **qual conta bancária** (carimbada na importação) | carimbada, imutável |
+| `metricas_meta` | conta → projeto, **carimbada no INSERT** | passado congela sozinho |
+| `documentos_fiscais`, `caixa_config` | a empresa dona da NF / da conta | carimbada |
+| produção, criativos, funis, UTM, radar | `ofertas_editores.empresa_id`, lido AGORA | **acompanha** o projeto |
+
+O motivo de serem dois mecanismos: faturamento **congela** porque quem recebeu
+recebeu — quando um projeto troca de empresa, as vendas passadas continuam de
+quem as recebeu. Trabalho **acompanha**, porque quando o Desafios virou Aeliss os
+289 cards dele viraram junto.
+
+**Nunca dar `empresa_id` a `producoes`.** Seria espelho precisando de gatilho —
+a quarta armadilha logo abaixo. A empresa de um card sai de
+`useProjetosDaEmpresa()` (`src/hooks/use-projetos-da-empresa.ts`), que tem três
+estados e o terceiro importa: `undefined` = ainda não sei, **quem chama espera**.
+Sem ele a primeira busca sai sem filtro e a tela mostra as duas empresas por um
+instante — o suficiente para alguém mexer no card errado.
+
+**Ler pode somar; gravar exige empresa escolhida.** Em "Ambas" os números
+aparecem lado a lado ou somados com o rótulo dizendo isso, mas importação de
+extrato, lançamento manual e edição do saldo da Reserva **recusam** sem uma
+empresa selecionada: um extrato é de uma conta bancária, e gravar num limbo não
+é o mesmo que somar para olhar.
+
+**Nunca casar dinheiro por `produto`.** `produto` é rótulo, não dono: `velas`
+existe nas duas empresas. `vw_faturamento_liquido` e `vw_conciliacao_meta` levam
+a empresa na chave do casamento desde 31/08/2026.
+
+**`configuracoes` deixou de ter uma linha por chave.** `empresa_id` nulo é a
+geral; preenchido sobrepõe. Ler sempre por `fn_config(chave, empresa)`, nunca
+direto da tabela — e um `UPDATE` sem `.is('empresa_id', null)` sobrescreve a
+alíquota de todas as empresas devolvendo sucesso. Há um teste que lê o
+código-fonte para impedir isso (`src/test/configuracoes-por-empresa.test.ts`).
 
 ## Quatro armadilhas que já custaram caro neste projeto
 
@@ -167,7 +214,7 @@ está.** Conferir contra uma segunda fonte antes de explicá-lo.
 - **Sidebar stays flat**: a feature with multiple sub-pages gets exactly ONE top-level sidebar entry (same as every other item, no chevron/expand-in-sidebar). Sub-page switching happens *inside* the feature's pages via an in-page nav rendered at the top of `DashboardLayout`'s content — see `FinanceiroNav.tsx` (pill-style `NavLink` row) used by all `src/features/financeiro/pages/*`. Do not nest sub-items inside the sidebar itself — **nem para o seletor de dashboard, que deixou de existir**: o grupo "Geral" que aninhava Resumo/Meta Ads/Vendas/UTM/Tendências foi desfeito quando os funis saíram da barra e o recorte por conta virou filtro do cabeçalho. Hoje a sidebar não tem exceção: nenhum item abre.
 - **A identidade da Alaskan vive nos tokens de `src/index.css`** — nunca em hex escrito dentro de componente. O manual tem quatro cores (`#BD1218` vermelho · `#004283` azul · `#19255A` marinho · `#BEB9B0` cinza), todas pensadas para impresso: o que se ajusta para tela escura é a **luminosidade**, matiz e saturação continuam sendo os do Pantone. A regra que organiza tudo: **vermelho é a MARCA (`--marca`, só o símbolo) e o que se PERDE (`--destructive`); azul (`--primary`) é o que se clica.** Se o vermelho virar cor de interface, o número negativo perde o único sinal que tem. Vermelho também fica fora das séries de gráfico (`--chart-*`) pelo mesmo motivo. Verde e âmbar não vêm da marca porque não podem: "deu certo" e "atenção" são convenções que o olho traz de fora.
 - **Inter para a interface, Poppins (`font-display`) para a marca e títulos**: o manual especifica Poppins para a assinatura, não para corpo de texto — ela é larga e perde legibilidade em tabela de 11px.
-- **Sidebar = onde eu vou; cabeçalho = quem eu sou e o que é meu**: controle global (busca, notificações, conta) vive na faixa fixa do `DashboardLayout`, nunca na sidebar. Ela lista lugares; sino e conta não são lugares, e no rodapé eles dividiam uma coluna de ícones com o recolher — três classes de ação desenhadas igual, sendo que uma encerrava a sessão num clique. O recolher ficou na sidebar, no topo ao lado da marca, porque é propriedade da barra e não da pessoa.
+- **Sidebar = onde eu vou; cabeçalho = quem eu sou e o que é meu**: controle global (busca, **empresa**, notificações, conta) vive na faixa fixa do `DashboardLayout`, nunca na sidebar. O **seletor de empresa** mora ali e não na fila de filtros por essa mesma regra — filtro recorta o conteúdo abaixo, empresa troca a operação inteira —, e também por uma razão prática: o Financeiro passa `hideFilters`, e lá embaixo o seletor sumiria justo na área onde a separação mais importa. Ele só aparece com mais de uma empresa ativa, e cada uma leva um ponto de 6px com a cor da marca (`--empresa-<slug>`). Ela lista lugares; sino e conta não são lugares, e no rodapé eles dividiam uma coluna de ícones com o recolher — três classes de ação desenhadas igual, sendo que uma encerrava a sessão num clique. O recolher ficou na sidebar, no topo ao lado da marca, porque é propriedade da barra e não da pessoa.
 - **Os grupos da sidebar são perguntas, não tipos de conteúdo**: `Resultado` (quanto entrou e sobrou) · `Aquisição` (de onde vêm as vendas e o que a mídia faz) · `Operação` (o trabalho do dia) · `Estrutura` (cadastro, acesso, parâmetro). Página nova entra pelo motivo de abrir, não pelo que ela tem dentro — "é número" não é critério, senão Financeiro e Meta Ads voltam para a mesma gaveta.
 - **Consistency over novelty**: new pages reuse existing visual patterns (summary cards row → toolbar/filter row → table or content) rather than inventing new layouts. Check a sibling page (e.g. `EditorsPage`, `ProcessosPage`) before designing a new screen.
 - **Status/state always has a visual cue**: pending/auto/confirmed-style states use colored badges (see `STATUS_LABEL` pattern in `FinanceiroRevisaoPage.tsx`), not just text.

@@ -68,6 +68,29 @@
     /* O símbolo. Não usar em mais nada — a marca não é uma cor de estado. */
     --marca: 358 83% 45%;
 
+    /*
+      DE QUAL EMPRESA É ESTA TELA
+
+      Desde 01/09/2026 o painel atende duas operações, e o cabeçalho precisa
+      dizer em qual você está sem obrigar a ler o nome toda vez. É o único lugar
+      onde estas duas cores aparecem: um ponto de 6px dentro do seletor.
+
+      `--empresa-alaskan` é o mesmo vermelho de `--marca`, e isso é a ÚNICA
+      exceção à regra logo acima. A razão é que aqui o vermelho está fazendo
+      exatamente o que a regra reserva para ele — identificar a marca —, e não
+      virando cor de interface. Um ponto ao lado do nome "Alaskan Academy" não
+      compete com um número negativo; um menu vermelho competiria.
+
+      Se algum dia isto escapar do seletor, a regra volta a valer inteira: o
+      vermelho fora da marca tira do prejuízo o único sinal que ele tem.
+
+      `--empresa-aeliss` é o roxo do manual da Aeliss (#907CED). Roxo estava
+      livre: não é estado, não é fonte de dado, não é série de gráfico. Foi
+      escolhido pela marca, e coube por sorte.
+    */
+    --empresa-alaskan: 358 83% 45%;
+    --empresa-aeliss: 250 76% 71%;
+
     --background: 228 24% 5%;
     --foreground: 36 14% 92%;
 
