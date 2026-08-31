@@ -16,11 +16,20 @@
 -- `prazoEfetivo = data_prazo ?? data_inicio`, então esses 29 também estavam
 -- sendo pintados como ATRASADOS — prazo em agosto, início hoje.
 --
--- O caminho exato que gravou não foi identificado no código. O histórico mostra
--- dois lotes hoje: às 07:32 dez cards receberam `data_prazo → null` (o caminho
--- do seletor funcionando certo, dia único grava prazo nulo), e às 09:08 os 29
--- receberam só `fase` e `data_inicio`. Por isso a garantia foi para o BANCO:
--- ela vale para qualquer tela, inclusive a que eu não encontrei.
+-- O CAMINHO: `fn_enviar_para_esteira`
+--
+-- É o "Enviar para a esteira" do painel do gestor de tráfego — e é uma função
+-- do BANCO, por isso nenhum grep no TypeScript a encontrava. Ela faz:
+--
+--     UPDATE producoes SET fase = 'esteira_teste', data_inicio = p_data
+--
+-- `fase` e `data_inicio`, sem tocar no prazo: o par exato que o histórico
+-- registrou às 09:08.
+--
+-- O corpo dela NÃO foi alterado. Período coerente é regra da TABELA, e mantê-la
+-- aqui no gatilho vale para todos os caminhos de escrita — inclusive os que
+-- ninguém lembrou de conferir. Repetir a regra dentro da função seria a mesma
+-- regra em dois lugares, que é como elas passam a discordar.
 
 -- ── 1. O conserto dos 29 ─────────────────────────────────────────────────────
 --
