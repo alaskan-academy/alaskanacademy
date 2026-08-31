@@ -1,0 +1,43 @@
+-- Bloqueado sai das fases: é status de veiculação, não degrau de produção.
+--
+-- ── A medida que decidiu ───────────────────────────────────────────────────
+--
+-- Os 16 ADs bloqueados estavam gravados de DUAS maneiras:
+--
+--     fase=postado    + status=Bloqueado    7
+--     fase=bloqueado  + status=Bloqueado    9   ← os dois campos repetindo
+--
+-- Nos nove, os dois campos dizem exatamente a mesma coisa. É a primeira
+-- armadilha do CLAUDE.md ao vivo — e aqui ela nem esperou divergir: metade da
+-- base já registra o mesmo fato de um jeito e metade do outro.
+--
+-- ── Por que Arquivado fica e Bloqueado não ─────────────────────────────────
+--
+-- Arquivado é fase porque pode acontecer em QUALQUER ponto, inclusive antes de
+-- existir anúncio: "tem ad que nem chega a ser postado e é arquivado".
+--
+-- Bloqueado não pode acontecer antes de existir anúncio. Para ser bloqueado o
+-- anúncio precisa ter sido postado — logo a produção terminou em Postado, e o
+-- que aconteceu depois é veiculação. `criativo_campos_opcoes` já tem Bloqueado
+-- como status (ordem 3), então nada se perde: o estado tem casa própria.
+--
+-- ── Desativa, não apaga ────────────────────────────────────────────────────
+--
+-- `ativa = false` some do seletor mas mantém o RÓTULO. Os 9 cards que ainda
+-- estão nesta fase continuam mostrando "Bloqueado" pelo caminho `atual` de
+-- `fasesDoTipo`, e as linhas de histórico que a citam continuam legíveis.
+-- Apagar a linha faria os nove exibirem a chave crua.
+--
+-- `fora_do_fluxo` continua true de propósito: o calendário monta a exclusão a
+-- partir dele SEM olhar `ativa`, então os nove seguem fora do calendário como
+-- sempre estiveram. Desativar a fase não muda o que a tela mostra.
+--
+-- ── O que ficou pendente ───────────────────────────────────────────────────
+--
+-- Os 9 cards continuam em `fase=bloqueado`. Mover para `postado` alinharia com
+-- os 7 irmãos e não perderia nada (o status já diz Bloqueado), mas não há como
+-- provar que foram postados: zero anúncios ligados, sem vídeo, e data de 2025
+-- — antes de `metricas_meta` existir. Afirmar postagem que não se pode
+-- verificar é trocar um registro ambíguo por um errado. Fica para ela decidir.
+
+update producao_fases set ativa = false where chave = 'bloqueado';
