@@ -80,13 +80,28 @@ export interface LinhaTransacao {
  * dinheiro da adquirente: ~R$ 408 a mais só em agosto.
  */
 export interface Competencia {
-  /** `valor_total`: o que saiu do bolso do cliente, juros inclusos. Só exibido. */
+  /**
+   * TUDO que saiu do bolso dos clientes no mês: vendas aprovadas com juros,
+   * MAIS o que depois voltou atrás.
+   *
+   * A soma das perdas é deliberada. `faturamento_bruto` da view só conta status
+   * `aprovada`, então a venda reembolsada simplesmente some — e a cascata que
+   * começasse ali teria de descontar a perda de uma base que nunca a continha,
+   * punindo o mesmo evento duas vezes (R$ 2.815,24 em agosto/2026).
+   *
+   * Somando de volta, o primeiro número é de verdade tudo que entrou, e cada
+   * perda desce UMA vez, com o nome dela. É o que permite ler de onde o
+   * dinheiro está escapando, que é para o que a tela existe.
+   */
   pagoPelosClientes: number;
+  /** Cliente desistiu. Mexe em oferta, promessa, entrega. */
+  perdaReembolso: number;
+  /** Cliente contestou na operadora. Mexe em cobrança, fatura, suporte. */
+  perdaChargeback: number;
   juros: number;
   /** `receita_tributavel`. É esta que a conta usa, do imposto à margem. */
   receita: number;
   taxaPayt: number;
-  reembolsos: number;
   investMeta: number;
   impostoMeta: number;
 }
@@ -284,10 +299,13 @@ export function simplesDoMes(
 export interface Resultado {
   mes: string;
   pagoPelosClientes: number;
+  perdaReembolso: number;
+  perdaChargeback: number;
+  /** As duas somadas — a linha que fecha o bloco de perdas. */
+  perdas: number;
   juros: number;
   receita: number;
   taxaPayt: number;
-  reembolsos: number;
   investMeta: number;
   impostoMeta: number;
   simples: Simples;
@@ -339,25 +357,33 @@ export function montarResultado(
   historicoDeMeses: string[],
 ): Resultado {
   const c = competencia.get(mes)
-    ?? { pagoPelosClientes: 0, juros: 0, receita: 0,
-         taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0 };
+    ?? { pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
+         juros: 0, receita: 0,
+         taxaPayt: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
     ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
   const simples = simplesDoMes(mes, caixa, competencia, historicoDeMeses);
 
   /* Parte da RECEITA, não do que o cliente pagou: os juros já são da
      adquirente antes de a empresa ver o dinheiro. */
+  /* A cadeia: do que entrou até o que sobra, cada perda descendo UMA vez.
+       pago − perdas − juros = receita   (nem as perdas nem os juros foram da operação)
+       receita − impostos e taxas = sobra
+       sobra − anúncio − custos = resultado */
+  const perdas = c.perdaReembolso + c.perdaChargeback;
   const impostosETaxas = c.taxaPayt + c.impostoMeta + simples.valor;
   const sobraAposImpostos = c.receita - impostosETaxas;
-  const resultado = sobraAposImpostos - c.reembolsos - c.investMeta - k.custosPagos;
+  const resultado = sobraAposImpostos - c.investMeta - k.custosPagos;
 
   return {
     mes,
     pagoPelosClientes: c.pagoPelosClientes,
+    perdaReembolso: c.perdaReembolso,
+    perdaChargeback: c.perdaChargeback,
+    perdas,
     juros: c.juros,
     receita: c.receita,
     taxaPayt: c.taxaPayt,
-    reembolsos: c.reembolsos,
     investMeta: c.investMeta,
     impostoMeta: c.impostoMeta,
     simples,

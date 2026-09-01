@@ -96,13 +96,18 @@ export function ratearCustoFixo(mensal: number, dias: number): number {
  * Serve para ratear o que só existe no total — imposto, reembolso, custo fixo —
  * quando a tela mostra só um segmento ou um funil.
  *
- * Quando o total é zero mas a parte não é, devolve 1: significa que não há
- * denominador confiável e o recorte responde por tudo que se sabe. Devolver 0 aí
- * zeraria os custos e mostraria lucro onde não há.
+ * Sem denominador confiável — total zero —, devolve 1: o recorte responde por
+ * tudo que se sabe. Devolver 0 aí zeraria os custos e mostraria lucro onde não há.
+ *
+ * Isso vale INCLUSIVE quando a parte também é zero, que era o caso de fora e
+ * custou o custo fixo da Aeliss: empresa nova, sem venda nenhuma no período,
+ * recebia rateio 0 e o cartão "depois do custo fixo" simplesmente sumia da tela.
+ * Custo fixo existe independentemente de ter havido venda — é isso que o torna
+ * fixo. Zerá-lo justamente no mês em que não entrou nada é o pior momento.
  */
 export function participacao(parte: number, total: number): number {
   if (total > 0) return Math.min(parte / total, 1);
-  return parte > 0 ? 1 : 0;
+  return 1;
 }
 
 /** Receita média por venda aprovada, sem juros. */

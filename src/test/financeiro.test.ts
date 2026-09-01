@@ -160,8 +160,13 @@ describe('participação do recorte no total', () => {
     expect(participacao(100, 0)).toBe(1);
   });
 
-  it('devolve zero quando não há nem parte nem total', () => {
-    expect(participacao(0, 0)).toBe(0);
+  it('assume tudo tambem quando nao ha parte NEM total', () => {
+    /* Este caso devolvia 0 e custou o custo fixo da Aeliss: empresa nova, sem
+       venda nenhuma no periodo, recebia rateio zero — e o cartao "depois do
+       custo fixo" sumia da tela, com R$ 5.000/mes configurados em
+       Configuracoes. Custo fixo existe tenha havido venda ou nao; e isso que o
+       torna fixo. */
+    expect(participacao(0, 0)).toBe(1);
   });
 });
 

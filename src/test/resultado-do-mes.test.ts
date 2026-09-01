@@ -17,8 +17,9 @@ import {
  *  tudo. `pagoPelosClientes` so e exibido, entao os casos aqui o deixam igual a
  *  receita, menos onde o juros e o proprio assunto. */
 const comp = (receita: number, resto: Partial<Competencia> = {}): Competencia => ({
-  pagoPelosClientes: receita, juros: 0, receita,
-  taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0, ...resto,
+  pagoPelosClientes: receita, perdaReembolso: 0, perdaChargeback: 0,
+  juros: 0, receita,
+  taxaPayt: 0, investMeta: 0, impostoMeta: 0, ...resto,
 });
 
 describe('janela de meses', () => {
@@ -158,7 +159,7 @@ describe('a cascata', () => {
   const competencia = new Map<string, Competencia>([
     ['2026-07', comp(116_968.43)],
     ['2026-08', comp(204_254.92, {
-      taxaPayt: 10_000, reembolsos: 2_000, investMeta: 60_000, impostoMeta: 8_400,
+      taxaPayt: 10_000, investMeta: 60_000, impostoMeta: 8_400,
     })],
   ]);
   const caixa = agruparCaixa([
@@ -182,15 +183,15 @@ describe('a cascata', () => {
   });
 
   it('desce de faturamento a resultado subtraindo cada linha uma vez', () => {
-    // 204.254,92 − 10.000 − 2.000 − 60.000 − 8.400 − 9.000 − 1.200
-    expect(r.resultado).toBeCloseTo(113_654.92, 2);
+    // 204.254,92 − 10.000 − 60.000 − 8.400 − 9.000 − 1.200
+    expect(r.resultado).toBeCloseTo(115_654.92, 2);
   });
 
   it('a retirada de sócio fica FORA do resultado e entra depois dele', () => {
     expect(r.retiradasSocios).toBe(7_000);
-    expect(r.sobrouDepoisDasRetiradas).toBeCloseTo(113_654.92 - 7_000, 2);
+    expect(r.sobrouDepoisDasRetiradas).toBeCloseTo(115_654.92 - 7_000, 2);
     // a margem não muda com o que os sócios sacaram
-    expect(r.margem).toBeCloseTo((113_654.92 / 204_254.92) * 100, 2);
+    expect(r.margem).toBeCloseTo((115_654.92 / 204_254.92) * 100, 2);
   });
 
   it('mês sem nada não quebra e não divide por zero', () => {
@@ -212,8 +213,9 @@ describe('a cadeia de saldos', () => {
   const competencia = new Map<string, Competencia>([
     ['2026-07', comp(114_554.38)],
     ['2026-08', {
-      pagoPelosClientes: 204_254.92, juros: 5_403.26, receita: 198_851.66,
-      taxaPayt: 12_380.57, reembolsos: 2_815.24,
+      pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
+      juros: 5_403.26, receita: 198_851.66,
+      taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
     }],
   ]);
@@ -224,8 +226,25 @@ describe('a cadeia de saldos', () => {
   ]);
   const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
 
-  it('pago menos juros da a receita', () => {
-    expect(r.pagoPelosClientes - r.juros).toBeCloseTo(r.receita, 2);
+  it('pago menos perdas menos juros da a receita', () => {
+    expect(r.pagoPelosClientes - r.perdas - r.juros).toBeCloseTo(r.receita, 2);
+  });
+
+  it('as perdas sao reembolso MAIS chargeback, separados', () => {
+    // Somados, a tela diria "1,4% voltou atras" sem dizer o que fazer: as duas
+    // causas sao diferentes. Em agosto/2026 foram 23 reembolsos e 2 chargebacks.
+    expect(r.perdaReembolso).toBe(2_415.28);
+    expect(r.perdaChargeback).toBe(399.96);
+    expect(r.perdas).toBeCloseTo(2_815.24, 2);
+  });
+
+  it('a perda desce UMA vez: nao e descontada de novo da receita', () => {
+    /* receita_tributavel da view so soma status aprovada, entao a venda que
+       voltou atras nunca esteve nela. Ela e somada de volta ao topo e descontada
+       ali — descontar tambem depois puniria o mesmo evento duas vezes. */
+    expect(r.receita).toBe(198_851.66);
+    expect(r.sobraAposImpostos - r.investMeta - r.custosPagos - r.perdas)
+      .not.toBeCloseTo(r.resultado, 2);
   });
 
   it('impostos e taxas soma as TRES parcelas, e nada mais', () => {
@@ -233,11 +252,11 @@ describe('a cadeia de saldos', () => {
       .toBeCloseTo(r.taxaPayt + r.impostoMeta + r.simples.valor, 2);
   });
 
-  it('reembolso NAO entra em impostos e taxas', () => {
+  it('perda NAO entra em impostos e taxas', () => {
     // Se entrasse, o indicador misturaria venda que voltou atras com tributo.
     expect(r.impostosETaxas).not.toBeCloseTo(
-      r.taxaPayt + r.impostoMeta + r.simples.valor + r.reembolsos, 2);
-    expect(r.reembolsos).toBeGreaterThan(0);
+      r.taxaPayt + r.impostoMeta + r.simples.valor + r.perdas, 2);
+    expect(r.perdas).toBeGreaterThan(0);
   });
 
   it('receita menos impostos e taxas da a sobra', () => {
@@ -245,7 +264,7 @@ describe('a cadeia de saldos', () => {
   });
 
   it('a sobra menos o bloco de operacao da o resultado', () => {
-    expect(r.sobraAposImpostos - r.reembolsos - r.investMeta - r.custosPagos)
+    expect(r.sobraAposImpostos - r.investMeta - r.custosPagos)
       .toBeCloseTo(r.resultado, 2);
   });
 
@@ -261,8 +280,9 @@ describe('os juros de parcelamento', () => {
   const competencia = new Map<string, Competencia>([
     ['2026-07', comp(114_554.38)],
     ['2026-08', {
-      pagoPelosClientes: 204_254.92, juros: 5_403.26, receita: 198_851.66,
-      taxaPayt: 12_380.57, reembolsos: 2_815.24,
+      pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
+      juros: 5_403.26, receita: 198_851.66,
+      taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
     }],
   ]);
@@ -273,8 +293,8 @@ describe('os juros de parcelamento', () => {
   const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
 
   it('nao entram no resultado: nunca foram da operacao', () => {
-    // 198.851,66 (e nao 204.254,92) menos cada linha
-    const semImposto = 198_851.66 - 12_380.57 - 2_815.24 - 118_939.04 - 16_651.48 - 12_372.86;
+    // parte de 198.851,66, e nao dos 207.070,16 que o cliente pagou
+    const semImposto = 198_851.66 - 12_380.57 - 118_939.04 - 16_651.48 - 12_372.86;
     expect(r.resultado).toBeCloseTo(semImposto - r.simples.valor, 2);
   });
 
@@ -292,10 +312,10 @@ describe('os juros de parcelamento', () => {
     expect(204_254.92 * pct - r.simples.valor).toBeCloseTo(5_403.26 * pct, 2);
   });
 
-  it('os dois valores continuam visiveis, para ninguem perder o de cima', () => {
-    expect(r.pagoPelosClientes).toBe(204_254.92);
+  it('os valores continuam visiveis, para ninguem perder o de cima', () => {
+    expect(r.pagoPelosClientes).toBe(207_070.16);
     expect(r.juros).toBe(5_403.26);
-    expect(r.pagoPelosClientes - r.juros).toBeCloseTo(r.receita, 2);
+    expect(r.pagoPelosClientes - r.perdas - r.juros).toBeCloseTo(r.receita, 2);
   });
 });
 

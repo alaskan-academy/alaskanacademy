@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine,
 } from 'recharts';
 import { Download, Info } from 'lucide-react';
 import { ehCustoOperacional, CAT_ANUNCIOS, CAT_IMPOSTOS } from '@/features/financeiro/constants';
@@ -104,10 +104,11 @@ export default function FinanceiroResultadoPage() {
     const [fat, trans] = await Promise.all([
       buscarTudo<{ data: string; faturamento_bruto: number; juros_parcelamento: number;
                    receita_tributavel: number; taxa_plataforma: number;
-                   reembolsos: number; investimento_meta: number; imposto_meta_ads: number }>(
+                   perda_reembolso: number; perda_chargeback: number;
+                   investimento_meta: number; imposto_meta_ads: number }>(
         (de, ate) => {
           let q = supabase.from('vw_faturamento_liquido')
-            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,reembolsos,investimento_meta,imposto_meta_ads')
+            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,perda_reembolso,perda_chargeback,investimento_meta,imposto_meta_ads')
             .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
           if (empresaId) q = q.eq('empresa_id', empresaId);
           return q;
@@ -130,14 +131,20 @@ export default function FinanceiroResultadoPage() {
     for (const r of fat.linhas) {
       const k = String(r.data).slice(0, 7);
       const c = competencia.get(k) ?? {
-        pagoPelosClientes: 0, juros: 0, receita: 0,
-        taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0,
+        pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
+        juros: 0, receita: 0, taxaPayt: 0, investMeta: 0, impostoMeta: 0,
       };
-      c.pagoPelosClientes += Number(r.faturamento_bruto ?? 0);
+      /* `faturamento_bruto` da view so conta `aprovada`, entao a venda que voltou
+         atras nao esta nele. Somando as perdas de volta, o topo da cascata passa
+         a ser TUDO que entrou, e cada perda desce uma vez so, com nome. */
+      c.perdaReembolso    += Number(r.perda_reembolso ?? 0);
+      c.perdaChargeback   += Number(r.perda_chargeback ?? 0);
+      c.pagoPelosClientes += Number(r.faturamento_bruto ?? 0)
+                           + Number(r.perda_reembolso ?? 0)
+                           + Number(r.perda_chargeback ?? 0);
       c.juros             += Number(r.juros_parcelamento ?? 0);
       c.receita           += Number(r.receita_tributavel ?? 0);
       c.taxaPayt += Number(r.taxa_plataforma ?? 0);
-      c.reembolsos += Number(r.reembolsos ?? 0);
       c.investMeta += Number(r.investimento_meta ?? 0);
       c.impostoMeta += Number(r.imposto_meta_ads ?? 0);
       competencia.set(k, c);
@@ -187,13 +194,13 @@ export default function FinanceiroResultadoPage() {
 
   function exportar() {
     if (!linhas.length) return;
-    const cab = ['Mês', 'Pago pelos clientes', 'Juros', 'Receita', 'Taxa Payt', 'Reembolsos',
+    const cab = ['Mês', 'Pago pelos clientes', 'Reembolsos', 'Chargebacks', 'Juros', 'Receita', 'Taxa Payt',
       'Investimento Meta', 'Imposto Meta', 'Simples', 'Simples previsto',
       'Custos pagos', 'Resultado', 'Margem %', 'Retiradas dos socios',
       'Sobrou depois das retiradas', 'Impostos e taxas', 'Sem dados do Meta'];
     const corpo = linhas.map(l => [
-      l.mes, l.pagoPelosClientes, l.juros, l.receita,
-      l.taxaPayt, l.reembolsos, l.investMeta, l.impostoMeta,
+      l.mes, l.pagoPelosClientes, l.perdaReembolso, l.perdaChargeback, l.juros, l.receita,
+      l.taxaPayt, l.investMeta, l.impostoMeta,
       l.simples.valor, l.simples.presumido ? 'sim' : 'não',
       l.custosPagos, l.resultado, l.margem.toFixed(2),
       l.retiradasSocios, l.sobrouDepoisDasRetiradas, l.impostosETaxas,
@@ -319,11 +326,22 @@ export default function FinanceiroResultadoPage() {
                 aconteceu no mês; imposto e custo pelo que saiu da conta.
               </p>
 
-              <Linha rotulo="Pago pelos clientes" valor={atual.pagoPelosClientes} fonte="Payt"
-                     nota="vendas aprovadas no mês, com juros de parcelamento" />
-              <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt" dentro
-                     nota="do comprador para a adquirente — nunca foi da operação"
-                     negativo />
+              <Linha rotulo="Pago pelos clientes" valor={atual.pagoPelosClientes} fonte="Payt" pct
+                     nota="tudo que entrou no mês, inclusive o que depois voltou atrás" />
+
+              {/* Reembolso e chargeback separados de proposito: sao perdas com
+                  causas diferentes. Reembolso e o cliente desistindo — mexe em
+                  oferta, promessa, entrega. Chargeback e o cliente contestando na
+                  operadora — mexe em cobranca, fatura, suporte. Somados, a tela
+                  diz "1,4% voltou atras" e nao diz o que fazer. */}
+              <Linha rotulo="Reembolsos" valor={atual.perdaReembolso} fonte="Payt" dentro negativo pct
+                     nota="o cliente desistiu" />
+              <Linha rotulo="Chargebacks" valor={atual.perdaChargeback} fonte="Payt" dentro negativo pct
+                     nota="o cliente contestou na operadora" />
+              <Linha rotulo="Vendas que voltaram atrás" valor={atual.perdas} subtotal negativo pct />
+
+              <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt" dentro negativo pct
+                     nota="do comprador para a adquirente — nunca foi da operação" />
               <Linha rotulo="Receita" valor={atual.receita} subtotal
                      nota="é sobre ela que incide o imposto, e é ela o denominador de tudo abaixo" />
 
@@ -355,8 +373,6 @@ export default function FinanceiroResultadoPage() {
               <Linha rotulo="Sobra depois de impostos e taxas"
                      valor={atual.sobraAposImpostos} subtotal />
 
-              <Linha rotulo="Reembolsos" valor={atual.reembolsos} fonte="Payt" dentro negativo pct
-                     nota="venda que voltou atrás" />
               <Linha rotulo="Investimento em anúncios" valor={atual.investMeta} fonte="Meta" dentro
                      nota={atual.semDadosDeAnuncio
                        ? <span className="text-destructive">sem dados do Meta neste mês — falta aqui</span>
@@ -449,6 +465,18 @@ export default function FinanceiroResultadoPage() {
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               {MESES_HISTORICO} meses
             </p>
+            {/*
+              Mês no vermelho tem de SALTAR aos olhos.
+
+              Medido: com receita de R$ 204 mil e resultado de −R$ 2.013 na mesma
+              escala, a barra negativa de junho tinha 2 pixels — ela estava no
+              lugar certo, abaixo do zero, e ninguém a via. Posição não bastava;
+              o que faltava era COR.
+
+              `--destructive` é o vermelho do que se perde, pela regra do
+              CLAUDE.md. E a linha do zero deixa de ser implícita: com barras de
+              2 px, ter de adivinhar onde fica o zero é o mesmo que não ver.
+            */}
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={linhas.map(l => ({
                 label: rotuloMes(l.mes), Receita: l.receita, Resultado: l.resultado,
@@ -457,8 +485,14 @@ export default function FinanceiroResultadoPage() {
                 <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
+                <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
                 <Bar dataKey="Receita" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Resultado" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Resultado" radius={[4, 4, 0, 0]}>
+                  {linhas.map(l => (
+                    <Cell key={l.mes}
+                          fill={l.resultado < 0 ? 'hsl(var(--destructive))' : 'hsl(var(--chart-2))'} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
