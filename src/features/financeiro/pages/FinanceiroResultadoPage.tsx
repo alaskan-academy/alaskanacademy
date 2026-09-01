@@ -190,13 +190,13 @@ export default function FinanceiroResultadoPage() {
     const cab = ['Mês', 'Pago pelos clientes', 'Juros', 'Receita', 'Taxa Payt', 'Reembolsos',
       'Investimento Meta', 'Imposto Meta', 'Simples', 'Simples previsto',
       'Custos pagos', 'Resultado', 'Margem %', 'Retiradas dos socios',
-      'Sobrou depois das retiradas', 'Sem dados do Meta'];
+      'Sobrou depois das retiradas', 'Impostos e taxas', 'Sem dados do Meta'];
     const corpo = linhas.map(l => [
       l.mes, l.pagoPelosClientes, l.juros, l.receita,
       l.taxaPayt, l.reembolsos, l.investMeta, l.impostoMeta,
       l.simples.valor, l.simples.presumido ? 'sim' : 'não',
       l.custosPagos, l.resultado, l.margem.toFixed(2),
-      l.retiradasSocios, l.sobrouDepoisDasRetiradas,
+      l.retiradasSocios, l.sobrouDepoisDasRetiradas, l.impostosETaxas,
       l.semDadosDeAnuncio ? 'sim' : 'nao',
     ]);
     const csv = [cab, ...corpo].map(r => r.join(';')).join('\n');
@@ -220,14 +220,19 @@ export default function FinanceiroResultadoPage() {
    *  os percentuais de um jeito que cresce com o parcelamento: R$ 547 em maio,
    *  R$ 5.403 em agosto. Sempre o MESMO denominador em todas as linhas, senão a
    *  coluna deixa de servir para comparar, que é para o que ela existe. */
-  const Linha = ({ rotulo, valor, fonte, nota, negativo, total, pct, subtotal }: {
+  const Linha = ({ rotulo, valor, fonte, nota, negativo, total, pct, subtotal, dentro }: {
     rotulo: string; valor: number; fonte?: string; nota?: React.ReactNode;
     negativo?: boolean; total?: boolean; pct?: boolean; subtotal?: boolean;
+    /** Linha que pertence a um bloco: recua, para o saldo do bloco ficar alinhado
+     *  com os outros saldos e a cadeia poder ser lida de cima a baixo pela
+     *  coluna da esquerda. */
+    dentro?: boolean;
   }) => {
     const fatia = pct && atual && atual.receita > 0 ? (valor / atual.receita) * 100 : null;
     return (
       <div className={cn(
-        'flex items-baseline justify-between gap-4 py-2.5',
+        'flex items-baseline justify-between gap-4',
+        dentro ? 'py-2 pl-4' : 'py-2.5',
         total ? 'border-t-2 border-border mt-1 pt-3'
               : subtotal ? 'border-t border-b border-border/70 bg-muted/20 -mx-2 px-2'
               : 'border-b border-border/40',
@@ -316,44 +321,56 @@ export default function FinanceiroResultadoPage() {
 
               <Linha rotulo="Pago pelos clientes" valor={atual.pagoPelosClientes} fonte="Payt"
                      nota="vendas aprovadas no mês, com juros de parcelamento" />
-              <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt"
+              <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt" dentro
                      nota="do comprador para a adquirente — nunca foi da operação"
                      negativo />
               <Linha rotulo="Receita" valor={atual.receita} subtotal
                      nota="é sobre ela que incide o imposto, e é ela o denominador de tudo abaixo" />
-              <Linha rotulo="Taxa da Payt" valor={atual.taxaPayt} fonte="Payt"
+
+              {/* O bloco de impostos e taxas fica JUNTO, para o total ter
+                  sentido. Antes o investimento em anúncio ficava no meio deles,
+                  e somar linhas separadas por uma grandeza de outra natureza é
+                  o tipo de total que ninguém confere. */}
+              <Linha rotulo="Taxa da Payt" valor={atual.taxaPayt} fonte="Payt" dentro negativo
                      nota={atual.receita > 0
                        ? `${((atual.taxaPayt / atual.receita) * 100).toFixed(2)}% efetivo`
-                       : undefined} negativo />
-              <Linha rotulo="Reembolsos" valor={atual.reembolsos} fonte="Payt" negativo pct />
-              <Linha rotulo="Investimento em anúncios" valor={atual.investMeta} fonte="Meta"
-                     nota={atual.semDadosDeAnuncio
-                       ? <span className="text-destructive">sem dados do Meta neste mês — falta aqui</span>
-                       : 'o cartão mistura meses; aqui é o gasto do mês'} negativo pct />
-              <Linha rotulo="Imposto sobre o anúncio" valor={atual.impostoMeta} fonte="Meta × alíquota"
-                     nota="só existe dentro da fatura do cartão" negativo pct />
+                       : undefined} />
+              <Linha rotulo="Imposto sobre o anúncio" valor={atual.impostoMeta} dentro negativo pct
+                     fonte="Meta × alíquota" nota="só existe dentro da fatura do cartão" />
               <Linha
                 rotulo="Simples sobre a receita deste mês"
                 valor={atual.simples.valor}
                 fonte={atual.simples.presumido ? 'previsto' : 'extrato'}
-                negativo pct
+                dentro negativo pct
                 nota={atual.simples.presumido
                   ? (atual.simples.pct === null
                       ? 'vence no mês que vem e não há base para estimar'
                       : <>vence em {rotuloMes(mesSeguinte(mesAlvo))} · estimado a {atual.simples.pct.toFixed(2)}%,
                          que foi a alíquota real de {atual.simples.baseMeses.map(rotuloMes).join(' e ')}</>)
                   : <>pago em {rotuloMes(mesSeguinte(mesAlvo))}, que é quando vence</>} />
-              <Linha rotulo="Demais custos" valor={atual.custosPagos} fonte="extrato"
-                     nota="sem anúncio, sem imposto, sem retirada de sócio e sem transferência entre contas próprias"
-                     negativo />
+              {/* Total de DEDUCOES, nao saldo. Leva o sinal para nao ser lido como
+                  o que sobrou — ele fica logo acima de um saldo, com o mesmo peso. */}
+              <Linha rotulo="Impostos e taxas" valor={atual.impostosETaxas} subtotal pct negativo
+                     nota="taxa da Payt + imposto do anúncio + Simples · reembolso não entra: não é taxa" />
+              <Linha rotulo="Sobra depois de impostos e taxas"
+                     valor={atual.sobraAposImpostos} subtotal />
+
+              <Linha rotulo="Reembolsos" valor={atual.reembolsos} fonte="Payt" dentro negativo pct
+                     nota="venda que voltou atrás" />
+              <Linha rotulo="Investimento em anúncios" valor={atual.investMeta} fonte="Meta" dentro
+                     nota={atual.semDadosDeAnuncio
+                       ? <span className="text-destructive">sem dados do Meta neste mês — falta aqui</span>
+                       : 'o cartão mistura meses; aqui é o gasto do mês'} negativo pct />
+              <Linha rotulo="Demais custos" valor={atual.custosPagos} fonte="extrato" dentro negativo pct
+                     nota="sem anúncio, sem imposto, sem retirada de sócio e sem transferência entre contas próprias" />
               <Linha rotulo="Resultado" valor={atual.resultado} total />
 
               {/* Retirada não é custo da operação: é distribuição do que ela
                   produziu. Fica ABAIXO do resultado para a margem do mês não
                   passar a depender de quanto os sócios sacaram. */}
               <Linha rotulo="Retiradas dos sócios" valor={atual.retiradasSocios} fonte="extrato"
-                     nota="pró-labore e retirada de lucro — não é custo, é distribuição"
-                     negativo pct />
+                     dentro negativo pct
+                     nota="pró-labore e retirada de lucro — não é custo, é distribuição" />
               <Linha rotulo="Sobrou depois das retiradas"
                      valor={atual.sobrouDepoisDasRetiradas} total />
 

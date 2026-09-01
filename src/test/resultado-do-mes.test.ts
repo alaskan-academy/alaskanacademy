@@ -205,6 +205,55 @@ describe('a cascata', () => {
   });
 });
 
+describe('a cadeia de saldos', () => {
+  /* Agosto/2026 real. A cadeia so serve se os elos FECHAREM: cada saldo tem de
+     ser o anterior menos o que foi deduzido no bloco. Um total decorativo, que
+     nao bate com as parcelas acima dele, e pior que total nenhum. */
+  const competencia = new Map<string, Competencia>([
+    ['2026-07', comp(114_554.38)],
+    ['2026-08', {
+      pagoPelosClientes: 204_254.92, juros: 5_403.26, receita: 198_851.66,
+      taxaPayt: 12_380.57, reembolsos: 2_815.24,
+      investMeta: 118_939.04, impostoMeta: 16_651.48,
+    }],
+  ]);
+  const caixa = agruparCaixa([
+    { data: '2026-08-10', valor: -12_372.86, categoria: 'Aplicativos e Ferramentas' },
+    { data: '2026-08-11', valor:  -9_000.00, categoria: 'Retirada de Lucro' },
+    { data: '2026-07-20', valor:  -8_486.88, categoria: 'Impostos e Tributos' },
+  ]);
+  const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
+
+  it('pago menos juros da a receita', () => {
+    expect(r.pagoPelosClientes - r.juros).toBeCloseTo(r.receita, 2);
+  });
+
+  it('impostos e taxas soma as TRES parcelas, e nada mais', () => {
+    expect(r.impostosETaxas)
+      .toBeCloseTo(r.taxaPayt + r.impostoMeta + r.simples.valor, 2);
+  });
+
+  it('reembolso NAO entra em impostos e taxas', () => {
+    // Se entrasse, o indicador misturaria venda que voltou atras com tributo.
+    expect(r.impostosETaxas).not.toBeCloseTo(
+      r.taxaPayt + r.impostoMeta + r.simples.valor + r.reembolsos, 2);
+    expect(r.reembolsos).toBeGreaterThan(0);
+  });
+
+  it('receita menos impostos e taxas da a sobra', () => {
+    expect(r.receita - r.impostosETaxas).toBeCloseTo(r.sobraAposImpostos, 2);
+  });
+
+  it('a sobra menos o bloco de operacao da o resultado', () => {
+    expect(r.sobraAposImpostos - r.reembolsos - r.investMeta - r.custosPagos)
+      .toBeCloseTo(r.resultado, 2);
+  });
+
+  it('o resultado menos as retiradas fecha a cadeia', () => {
+    expect(r.resultado - r.retiradasSocios).toBeCloseTo(r.sobrouDepoisDasRetiradas, 2);
+  });
+});
+
 describe('os juros de parcelamento', () => {
   /* Agosto/2026 real: o cliente pagou R$ 204.254,92 e a empresa faturou
      R$ 198.851,66. Os R$ 5.403,26 de diferença sao da adquirente, e a serie

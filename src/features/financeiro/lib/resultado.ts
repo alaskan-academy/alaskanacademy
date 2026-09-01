@@ -294,6 +294,21 @@ export interface Resultado {
   custosPagos: number;
   resultado: number;
   margem: number;
+  /**
+   * Taxa da Payt + imposto sobre o anúncio + Simples.
+   *
+   * Existe porque a soma responde uma pergunta que nenhuma das três responde
+   * sozinha: quanto da receita vai embora antes de a operação começar. Em
+   * agosto/2026 foram R$ 44.329,89 — 22,3% da receita, mais que o dobro do
+   * resultado do mês.
+   *
+   * Reembolso fica FORA: não é taxa nem imposto, é venda que voltou atrás.
+   * Somá-lo aqui inflaria o indicador com uma grandeza de outra natureza, e a
+   * pessoa que olhasse "22,3% de imposto e taxa" estaria lendo errado.
+   */
+  impostosETaxas: number;
+  /** Saldo corrente logo após o bloco de impostos e taxas. */
+  sobraAposImpostos: number;
   retiradasSocios: number;
   /** O que sobrou DEPOIS de os sócios tirarem. Ver `Caixa.retiradasSocios`. */
   sobrouDepoisDasRetiradas: number;
@@ -332,10 +347,9 @@ export function montarResultado(
 
   /* Parte da RECEITA, não do que o cliente pagou: os juros já são da
      adquirente antes de a empresa ver o dinheiro. */
-  const resultado =
-    c.receita - c.taxaPayt - c.reembolsos
-    - c.investMeta - c.impostoMeta
-    - simples.valor - k.custosPagos;
+  const impostosETaxas = c.taxaPayt + c.impostoMeta + simples.valor;
+  const sobraAposImpostos = c.receita - impostosETaxas;
+  const resultado = sobraAposImpostos - c.reembolsos - c.investMeta - k.custosPagos;
 
   return {
     mes,
@@ -350,6 +364,8 @@ export function montarResultado(
     custosPagos: k.custosPagos,
     resultado,
     margem: c.receita > 0 ? (resultado / c.receita) * 100 : 0,
+    impostosETaxas,
+    sobraAposImpostos,
     retiradasSocios: k.retiradasSocios,
     sobrouDepoisDasRetiradas: resultado - k.retiradasSocios,
     caixaEntrou: k.entrou,
