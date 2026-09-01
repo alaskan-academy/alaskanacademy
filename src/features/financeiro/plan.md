@@ -201,3 +201,65 @@ Criar Supabase Edge Function `payt-webhook`:
 2. **Fase 1.2** — schema Supabase (hoje, requer aprovação do SQL)
 3. **Fase 2** — Tela de Revisão (primeira implementação real)
 4. **Fase 3** → **Fase 4** → **Fase 5** → **Fase 6**
+
+---
+
+# Fase 7 — Resultado por projeto
+
+A tela `/financeiro/resultado` responde "quanto sobrou este mês" para a empresa
+inteira. O recorte por projeto é o passo seguinte, e **não** é a mesma tela com
+um filtro: há dois problemas de fundo que precisam ser resolvidos antes, senão
+o número sai estruturalmente errado.
+
+## 7.1 — A chave: `ofertas.projeto_id`
+
+Hoje a venda vira projeto pelo NOME DO PRODUTO, e o nome não é dono:
+`velas` aponta para três projetos diferentes (Desafios, Velas Lembrancinhas,
+Workshop Buquê) em mais de mil vendas.
+
+Medido em 01/09/2026:
+
+    receita atribuível a um projeto     65,5%
+    gasto do Meta atribuível             99,7%
+
+Com essa diferença, o lucro por projeto sai negativo por construção — 34% da
+receita fica de fora enquanto quase todo o custo entra. **Nenhuma tela conserta
+isso**; é a chave que está errada.
+
+O conserto é uma coluna `projeto_id` em `ofertas` (57 linhas, 47 com categoria),
+e a atribuição passa a sair dela em vez do texto. Enquanto isso não existir, a
+Fase 7.2 não deve ser construída.
+
+Junto: `vw_faturamento_liquido` e `vw_conciliacao_meta` já levam a empresa na
+chave do casamento; o projeto entra do mesmo jeito.
+
+## 7.2 — A diluição do custo da empresa
+
+O custo que não é de nenhum projeto (contabilidade, jurídico, ferramentas)
+precisa ser rateado. Duas decisões, e as duas são ESCOLHA e não fato — então a
+régua fica visível na tela, não escondida na fórmula.
+
+**Quem entra no rateio.** "Projeto ativo vendendo agora" precisa de definição.
+Proposta: teve venda aprovada no período OU teve gasto de anúncio no período.
+Só `ofertas_editores.ativo` não serve — projeto pode estar ativo no cadastro e
+parado há meses.
+
+**Como se divide.** Por fatia da receita, não por partes iguais. Partes iguais
+fazem um projeto pequeno carregar o mesmo peso de um grande, e a conclusão se
+inverte. O filtro da tela mostra qual régua está em uso.
+
+**A armadilha da diluição:** projeto que não vendeu no mês recebe zero de custo
+fixo e aparece melhor do que é. Se o rateio for por receita, isso é inevitável
+— então a tela precisa dizer quantos projetos entraram no rateio naquele mês.
+
+## 7.3 — O que NÃO muda
+
+A cascata é a mesma, com as mesmas fontes e as mesmas etiquetas. O imposto
+continua vindo do extrato (ou presumido), e imposto não tem projeto: ele é da
+empresa e entra no rateio junto com o custo da empresa.
+
+## Ordem
+
+1. **7.1** `ofertas.projeto_id` + migração da atribuição — bloqueia o resto
+2. medir de novo os 65,5%: só seguir quando estiver perto dos 99,7%
+3. **7.2** filtro de projeto na tela de Resultado, com a régua do rateio visível

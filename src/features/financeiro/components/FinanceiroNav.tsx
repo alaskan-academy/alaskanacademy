@@ -6,7 +6,7 @@ const ITEMS = [
   { path: '/financeiro/revisao',       label: 'Revisão',       icon: ClipboardList },
   { path: '/financeiro/caixa',         label: 'Caixa & DRE',   icon: Wallet },
   { path: '/financeiro/gastos',        label: 'Gastos',        icon: PieChart },
-  { path: '/financeiro/fechamento',    label: 'Fechamento',    icon: TrendingUp },
+  { path: '/financeiro/resultado',     label: 'Resultado',     icon: TrendingUp },
   { path: '/financeiro/conciliacao',   label: 'Conciliação',   icon: ArrowLeftRight },
   { path: '/financeiro/notas-fiscais', label: 'Notas Fiscais', icon: FileText },
 ];

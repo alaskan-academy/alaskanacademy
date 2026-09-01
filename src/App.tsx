@@ -29,7 +29,7 @@ const ProcessosPage            = lazy(() => import("./features/processos/pages/P
 const ProcessosCategoriaPage   = lazy(() => import("./features/processos/pages/ProcessosCategoriaPage"));
 const ProcessosArtigoPage      = lazy(() => import("./features/processos/pages/ProcessosArtigoPage"));
 const FinanceiroRevisaoPage    = lazy(() => import("./features/financeiro/pages/FinanceiroRevisaoPage"));
-const FinanceiroFechamentoPage = lazy(() => import("./features/financeiro/pages/FinanceiroFechamentoPage"));
+const FinanceiroResultadoPage  = lazy(() => import("./features/financeiro/pages/FinanceiroResultadoPage"));
 const FinanceiroConciliacaoPage = lazy(() => import("./features/financeiro/pages/FinanceiroConciliacaoPage"));
 const FinanceiroNotasFiscaisPage = lazy(() => import("./features/financeiro/pages/FinanceiroNotasFiscaisPage"));
 const FinanceiroCaixaPage      = lazy(() => import("./features/financeiro/pages/FinanceiroCaixaPage"));
@@ -113,7 +113,15 @@ const App = () => (
                     <Route path="/processos/:artigoId" element={<ProtectedRoute pageKey="processos"><ProcessosArtigoPage /></ProtectedRoute>} />
                     <Route path="/financeiro" element={<ProtectedRoute pageKey="financeiro"><FinanceiroRevisaoPage /></ProtectedRoute>} />
                     <Route path="/financeiro/revisao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroRevisaoPage /></ProtectedRoute>} />
-                    <Route path="/financeiro/fechamento" element={<ProtectedRoute pageKey="financeiro"><FinanceiroFechamentoPage /></ProtectedRoute>} />
+                    <Route path="/financeiro/resultado" element={<ProtectedRoute pageKey="financeiro"><FinanceiroResultadoPage /></ProtectedRoute>} />
+                    {/* O Fechamento foi ABSORVIDO, não movido. Ele chamava de
+                        "receita bruta" o repasse da Payt, que é venda do mês
+                        passado chegando agora — a mesma base que o Resultado
+                        desqualifica. O que ele respondia bem ("quanto entrou e
+                        saiu da conta") virou a tira de conciliação lá dentro.
+                        Duas telas dizendo como foi o mês discordariam, e
+                        ninguém saberia em qual acreditar. */}
+                    <Route path="/financeiro/fechamento" element={<Navigate to="/financeiro/resultado" replace />} />
                     <Route path="/financeiro/conciliacao" element={<ProtectedRoute pageKey="financeiro"><FinanceiroConciliacaoPage /></ProtectedRoute>} />
                     <Route path="/financeiro/notas-fiscais" element={<ProtectedRoute pageKey="financeiro"><FinanceiroNotasFiscaisPage /></ProtectedRoute>} />
                     <Route path="/financeiro/caixa" element={<ProtectedRoute pageKey="financeiro"><FinanceiroCaixaPage /></ProtectedRoute>} />

@@ -75,7 +75,7 @@ Coprodução | Produtos | Serviços | Receita Financeira
 | Arquivo | Rota | Descrição |
 |---|---|---|
 | `FinanceiroRevisaoPage` | `/financeiro/revisao` | Tela 1 — transações pendentes de categorização |
-| `FinanceiroFechamentoPage` | `/financeiro/fechamento` | Tela 2 — fechamento mensal com KPIs |
+| `FinanceiroResultadoPage` | `/financeiro/resultado` | Tela 2 — o resultado real do mês. **Absorveu o Fechamento** em 01/09/2026; `/financeiro/fechamento` redireciona |
 | `FinanceiroConciliacaoPage` | `/financeiro/conciliacao` | Tela 3 — extrato categorizado completo |
 | `FinanceiroNotasFiscaisPage` | `/financeiro/notas-fiscais` | Tela 4 — controle de NFs e ferramentas |
 | `FinanceiroCaixaPage` | `/financeiro/caixa` | Reserva de Caixa e DRE |
@@ -103,6 +103,18 @@ A exportação do pacote mensal (Tela 5) é uma ação/botão dentro do fechamen
 - **O imposto do Simples é pago sobre a receita do mês ANTERIOR.** Dividir o
   imposto pago pela receita do mesmo mês dá quase metade do real (4,23% contra
   7,84% em jul/ago 2026) e convidaria a baixar a alíquota e inflar o lucro.
+- **Cada linha de dinheiro vem de UMA fonte, e a tela diz qual.** Venda, taxa e
+  reembolso pela Payt; anúncio pelo Meta; imposto e custo pelo extrato. Misturar
+  bases não é o erro — misturar SEM DIZER é: foi assim que o Fechamento antigo
+  mostrou 57,1% de margem contra 3,2% no extrato, em agosto/2026.
+- **A fatura do cartão da Meta sai dos custos do extrato.** `ehCustoOperacional`
+  é aberta ("toda saída é custo, exceto sócio e reserva"), então a fatura está
+  lá. Somada à linha do Meta, o anúncio entraria duas vezes e em dois meses
+  diferentes. Mesma coisa com `Impostos e Tributos`, que vira linha própria.
+- **`metricas_meta` começa em 01/05/2026.** Mês anterior a isso tem fatura de
+  anúncio no extrato e zero dado do Meta — a maior saída fica de fora e a margem
+  parece ótima (abril dava 65,6%). O Resultado detecta isso por derivação
+  (`semDadosDeAnuncio`) e recusa a margem em vez de exibir ficção.
 - **A diferença entre o extrato e o que a Meta reporta não é percentual de
   imposto.** O gasto de um mês é debitado no seguinte, então aquele número
   mistura imposto com atraso de cobrança. A fonte para a alíquota de mídia é a

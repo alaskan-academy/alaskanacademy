@@ -91,6 +91,17 @@ export const CAT_RESERVA = ['Reserva de Caixa', 'Retirada do Caixa', 'Investimen
 export const CAT_ANUNCIOS = 'Anúncios (Facebook ADs)';
 
 /**
+ * A categoria de imposto pago, INTEIRA — federal e municipal juntos.
+ *
+ * Não é só o Simples: `MINISTERIO DA FAZENDA` convive aqui com
+ * `MUNICIPIO DE GUARATUBA`. Separar os dois exigiria uma regra lendo a
+ * descrição do banco, que é a terceira armadilha do CLAUDE.md — lista no código
+ * que envelhece calada. Na cascata do Resultado a categoria toda vira uma linha
+ * só, então nada duplica e nada some sem que exista regra para manter.
+ */
+export const CAT_IMPOSTOS = 'Impostos e Tributos';
+
+/**
  * É custo operacional?
  *
  * A lista `CAT_CUSTOS_OPERACIONAIS` é fechada, e por isso vazava: um lançamento
