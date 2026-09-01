@@ -13,8 +13,12 @@ import {
   type Competencia, type LinhaTransacao,
 } from '@/features/financeiro/lib/resultado';
 
-const comp = (fatBruto: number, resto: Partial<Competencia> = {}): Competencia => ({
-  fatBruto, taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0, ...resto,
+/** Atalho dos testes: o valor passado e a RECEITA (sem juros), que e a base de
+ *  tudo. `pagoPelosClientes` so e exibido, entao os casos aqui o deixam igual a
+ *  receita, menos onde o juros e o proprio assunto. */
+const comp = (receita: number, resto: Partial<Competencia> = {}): Competencia => ({
+  pagoPelosClientes: receita, juros: 0, receita,
+  taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0, ...resto,
 });
 
 describe('janela de meses', () => {
@@ -198,6 +202,51 @@ describe('a cascata', () => {
 
   it('não marca falta de dado quando o Meta respondeu', () => {
     expect(r.semDadosDeAnuncio).toBe(false);
+  });
+});
+
+describe('os juros de parcelamento', () => {
+  /* Agosto/2026 real: o cliente pagou R$ 204.254,92 e a empresa faturou
+     R$ 198.851,66. Os R$ 5.403,26 de diferença sao da adquirente, e a serie
+     cresce com o parcelamento: 547,88 em maio, 2.414,05 em julho. */
+  const competencia = new Map<string, Competencia>([
+    ['2026-07', comp(114_554.38)],
+    ['2026-08', {
+      pagoPelosClientes: 204_254.92, juros: 5_403.26, receita: 198_851.66,
+      taxaPayt: 12_380.57, reembolsos: 2_815.24,
+      investMeta: 118_939.04, impostoMeta: 16_651.48,
+    }],
+  ]);
+  const caixa = agruparCaixa([
+    { data: '2026-08-10', valor: -12_372.86, categoria: 'Aplicativos e Ferramentas' },
+    { data: '2026-07-20', valor:  -8_486.88, categoria: 'Impostos e Tributos' },
+  ]);
+  const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
+
+  it('nao entram no resultado: nunca foram da operacao', () => {
+    // 198.851,66 (e nao 204.254,92) menos cada linha
+    const semImposto = 198_851.66 - 12_380.57 - 2_815.24 - 118_939.04 - 16_651.48 - 12_372.86;
+    expect(r.resultado).toBeCloseTo(semImposto - r.simples.valor, 2);
+  });
+
+  it('a margem e sobre a receita, nao sobre o que o cliente pagou', () => {
+    expect(r.margem).toBeCloseTo((r.resultado / 198_851.66) * 100, 6);
+    // se fosse sobre o pago, daria menos — e a diferenca cresce com o parcelamento
+    expect(r.margem).toBeGreaterThan((r.resultado / 204_254.92) * 100);
+  });
+
+  it('o imposto estimado incide sobre a receita, nao sobre o pago', () => {
+    expect(r.simples.presumido).toBe(true);
+    const pct = r.simples.pct! / 100;
+    expect(r.simples.valor).toBeCloseTo(198_851.66 * pct, 2);
+    // a diferenca que o defeito causava: imposto sobre dinheiro da adquirente
+    expect(204_254.92 * pct - r.simples.valor).toBeCloseTo(5_403.26 * pct, 2);
+  });
+
+  it('os dois valores continuam visiveis, para ninguem perder o de cima', () => {
+    expect(r.pagoPelosClientes).toBe(204_254.92);
+    expect(r.juros).toBe(5_403.26);
+    expect(r.pagoPelosClientes - r.juros).toBeCloseTo(r.receita, 2);
   });
 });
 

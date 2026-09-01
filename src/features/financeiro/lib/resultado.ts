@@ -58,9 +58,33 @@ export interface LinhaTransacao {
   categoria: string | null;
 }
 
-/** O que a Payt e o Meta dizem sobre o mês. Um registro por mês `yyyy-MM`. */
+/**
+ * O que a Payt e o Meta dizem sobre o mês. Um registro por mês `yyyy-MM`.
+ *
+ * ── Por que existem TRÊS valores de faturamento ─────────────────────────
+ *
+ * O cliente paga R$ 204.254,92; a empresa fatura R$ 198.851,66. A diferença
+ * são os juros de parcelamento — dinheiro que o comprador paga à adquirente
+ * pelo crédito, e que nunca foi da operação. Em agosto/2026 foram R$ 5.403,26,
+ * e a série cresce: 547,88 em maio, 692,64 em junho, 2.414,05 em julho.
+ *
+ * `receita` é o que vale para conta: é sobre ela que o Simples incide, e é ela
+ * o denominador da margem e de todo percentual da tela. É a mesma convenção de
+ * `vw_faturamento_liquido`, que usa `receita_tributavel` em TODOS os cálculos
+ * e só exibe o bruto, e a do `/resumo`, que mostra "Pago pelos clientes",
+ * desconta os juros e chama o resto de "Receita".
+ *
+ * A primeira versão desta tela usou o valor COM juros como base do imposto e
+ * como denominador dos percentuais. Nada dava erro — o número só ficava maior
+ * do que a empresa faturou, e a estimativa de Simples cobrava imposto sobre
+ * dinheiro da adquirente: ~R$ 408 a mais só em agosto.
+ */
 export interface Competencia {
-  fatBruto: number;
+  /** `valor_total`: o que saiu do bolso do cliente, juros inclusos. Só exibido. */
+  pagoPelosClientes: number;
+  juros: number;
+  /** `receita_tributavel`. É esta que a conta usa, do imposto à margem. */
+  receita: number;
   taxaPayt: number;
   reembolsos: number;
   investMeta: number;
@@ -241,7 +265,7 @@ export function simplesDoMes(
   for (const m of anteriores) {
     if (base.length === 2) break;
     const p = caixa.get(mesSeguinte(m))?.impostosPagos ?? 0;
-    const r = competencia.get(m)?.fatBruto ?? 0;
+    const r = competencia.get(m)?.receita ?? 0;
     if (p <= 0 || r <= 0) continue;
     base.unshift(m);
     somaPago += p;
@@ -253,13 +277,15 @@ export function simplesDoMes(
   }
 
   const pct = somaPago / somaReceita;
-  const receitaBase = competencia.get(mes)?.fatBruto ?? 0;
+  const receitaBase = competencia.get(mes)?.receita ?? 0;
   return { valor: pct * receitaBase, presumido: true, pct: pct * 100, baseMeses: base };
 }
 
 export interface Resultado {
   mes: string;
-  fatBruto: number;
+  pagoPelosClientes: number;
+  juros: number;
+  receita: number;
   taxaPayt: number;
   reembolsos: number;
   investMeta: number;
@@ -298,19 +324,24 @@ export function montarResultado(
   historicoDeMeses: string[],
 ): Resultado {
   const c = competencia.get(mes)
-    ?? { fatBruto: 0, taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0 };
+    ?? { pagoPelosClientes: 0, juros: 0, receita: 0,
+         taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
     ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
   const simples = simplesDoMes(mes, caixa, competencia, historicoDeMeses);
 
+  /* Parte da RECEITA, não do que o cliente pagou: os juros já são da
+     adquirente antes de a empresa ver o dinheiro. */
   const resultado =
-    c.fatBruto - c.taxaPayt - c.reembolsos
+    c.receita - c.taxaPayt - c.reembolsos
     - c.investMeta - c.impostoMeta
     - simples.valor - k.custosPagos;
 
   return {
     mes,
-    fatBruto: c.fatBruto,
+    pagoPelosClientes: c.pagoPelosClientes,
+    juros: c.juros,
+    receita: c.receita,
     taxaPayt: c.taxaPayt,
     reembolsos: c.reembolsos,
     investMeta: c.investMeta,
@@ -318,7 +349,7 @@ export function montarResultado(
     simples,
     custosPagos: k.custosPagos,
     resultado,
-    margem: c.fatBruto > 0 ? (resultado / c.fatBruto) * 100 : 0,
+    margem: c.receita > 0 ? (resultado / c.receita) * 100 : 0,
     retiradasSocios: k.retiradasSocios,
     sobrouDepoisDasRetiradas: resultado - k.retiradasSocios,
     caixaEntrou: k.entrou,

@@ -102,11 +102,12 @@ export default function FinanceiroResultadoPage() {
     const fimExtrato = ultimoDia(mesSeguinte(mesAlvo));
 
     const [fat, trans] = await Promise.all([
-      buscarTudo<{ data: string; faturamento_bruto: number; taxa_plataforma: number;
+      buscarTudo<{ data: string; faturamento_bruto: number; juros_parcelamento: number;
+                   receita_tributavel: number; taxa_plataforma: number;
                    reembolsos: number; investimento_meta: number; imposto_meta_ads: number }>(
         (de, ate) => {
           let q = supabase.from('vw_faturamento_liquido')
-            .select('data,faturamento_bruto,taxa_plataforma,reembolsos,investimento_meta,imposto_meta_ads')
+            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,reembolsos,investimento_meta,imposto_meta_ads')
             .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
           if (empresaId) q = q.eq('empresa_id', empresaId);
           return q;
@@ -129,9 +130,12 @@ export default function FinanceiroResultadoPage() {
     for (const r of fat.linhas) {
       const k = String(r.data).slice(0, 7);
       const c = competencia.get(k) ?? {
-        fatBruto: 0, taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0,
+        pagoPelosClientes: 0, juros: 0, receita: 0,
+        taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0,
       };
-      c.fatBruto += Number(r.faturamento_bruto ?? 0);
+      c.pagoPelosClientes += Number(r.faturamento_bruto ?? 0);
+      c.juros             += Number(r.juros_parcelamento ?? 0);
+      c.receita           += Number(r.receita_tributavel ?? 0);
       c.taxaPayt += Number(r.taxa_plataforma ?? 0);
       c.reembolsos += Number(r.reembolsos ?? 0);
       c.investMeta += Number(r.investimento_meta ?? 0);
@@ -183,12 +187,13 @@ export default function FinanceiroResultadoPage() {
 
   function exportar() {
     if (!linhas.length) return;
-    const cab = ['Mês', 'Faturamento bruto', 'Taxa Payt', 'Reembolsos',
+    const cab = ['Mês', 'Pago pelos clientes', 'Juros', 'Receita', 'Taxa Payt', 'Reembolsos',
       'Investimento Meta', 'Imposto Meta', 'Simples', 'Simples previsto',
       'Custos pagos', 'Resultado', 'Margem %', 'Retiradas dos socios',
       'Sobrou depois das retiradas', 'Sem dados do Meta'];
     const corpo = linhas.map(l => [
-      l.mes, l.fatBruto, l.taxaPayt, l.reembolsos, l.investMeta, l.impostoMeta,
+      l.mes, l.pagoPelosClientes, l.juros, l.receita,
+      l.taxaPayt, l.reembolsos, l.investMeta, l.impostoMeta,
       l.simples.valor, l.simples.presumido ? 'sim' : 'não',
       l.custosPagos, l.resultado, l.margem.toFixed(2),
       l.retiradasSocios, l.sobrouDepoisDasRetiradas,
@@ -210,22 +215,25 @@ export default function FinanceiroResultadoPage() {
   /** Uma linha da cascata. `fonte` não é enfeite: é o que torna a mistura
    *  legível, e a falta dela foi o defeito da tela antiga.
    *
-   *  `pct` é a fatia do FATURAMENTO BRUTO — sempre o mesmo denominador, em
-   *  todas as linhas. Percentuais com denominadores diferentes na mesma coluna
-   *  não podem ser comparados entre si, que é justamente para o que uma coluna
-   *  de percentual serve. */
-  const Linha = ({ rotulo, valor, fonte, nota, negativo, total, pct }: {
+   *  `pct` é a fatia da RECEITA — nunca do que o cliente pagou. Juros de
+   *  parcelamento são da adquirente, e usá-los no denominador achataria todos
+   *  os percentuais de um jeito que cresce com o parcelamento: R$ 547 em maio,
+   *  R$ 5.403 em agosto. Sempre o MESMO denominador em todas as linhas, senão a
+   *  coluna deixa de servir para comparar, que é para o que ela existe. */
+  const Linha = ({ rotulo, valor, fonte, nota, negativo, total, pct, subtotal }: {
     rotulo: string; valor: number; fonte?: string; nota?: React.ReactNode;
-    negativo?: boolean; total?: boolean; pct?: boolean;
+    negativo?: boolean; total?: boolean; pct?: boolean; subtotal?: boolean;
   }) => {
-    const fatia = pct && atual && atual.fatBruto > 0 ? (valor / atual.fatBruto) * 100 : null;
+    const fatia = pct && atual && atual.receita > 0 ? (valor / atual.receita) * 100 : null;
     return (
       <div className={cn(
         'flex items-baseline justify-between gap-4 py-2.5',
-        total ? 'border-t-2 border-border mt-1 pt-3' : 'border-b border-border/40',
+        total ? 'border-t-2 border-border mt-1 pt-3'
+              : subtotal ? 'border-t border-b border-border/70 bg-muted/20 -mx-2 px-2'
+              : 'border-b border-border/40',
       )}>
         <div className="min-w-0">
-          <p className={cn('text-sm', total && 'font-semibold')}>
+          <p className={cn('text-sm', (total || subtotal) && 'font-semibold')}>
             {negativo && <span className="text-muted-foreground mr-1">−</span>}
             {rotulo}
           </p>
@@ -240,13 +248,13 @@ export default function FinanceiroResultadoPage() {
         <div className="text-right shrink-0">
           <p className={cn(
             'tabular-nums whitespace-nowrap',
-            total ? 'text-xl font-bold' : 'text-sm',
+            total ? 'text-xl font-bold' : subtotal ? 'text-sm font-semibold' : 'text-sm',
             total && valor < 0 && 'text-destructive',
             total && valor > 0 && 'text-green-400',
           )}>{formatCurrency(valor)}</p>
           {fatia !== null && (
             <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
-              {fatia.toFixed(1)}% do faturamento
+              {fatia.toFixed(1)}% da receita
             </p>
           )}
         </div>
@@ -306,11 +314,16 @@ export default function FinanceiroResultadoPage() {
                 aconteceu no mês; imposto e custo pelo que saiu da conta.
               </p>
 
-              <Linha rotulo="Faturamento bruto" valor={atual.fatBruto} fonte="Payt"
-                     nota="vendas aprovadas no mês" />
+              <Linha rotulo="Pago pelos clientes" valor={atual.pagoPelosClientes} fonte="Payt"
+                     nota="vendas aprovadas no mês, com juros de parcelamento" />
+              <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt"
+                     nota="do comprador para a adquirente — nunca foi da operação"
+                     negativo />
+              <Linha rotulo="Receita" valor={atual.receita} subtotal
+                     nota="é sobre ela que incide o imposto, e é ela o denominador de tudo abaixo" />
               <Linha rotulo="Taxa da Payt" valor={atual.taxaPayt} fonte="Payt"
-                     nota={atual.fatBruto > 0
-                       ? `${((atual.taxaPayt / atual.fatBruto) * 100).toFixed(2)}% efetivo`
+                     nota={atual.receita > 0
+                       ? `${((atual.taxaPayt / atual.receita) * 100).toFixed(2)}% efetivo`
                        : undefined} negativo />
               <Linha rotulo="Reembolsos" valor={atual.reembolsos} fonte="Payt" negativo pct />
               <Linha rotulo="Investimento em anúncios" valor={atual.investMeta} fonte="Meta"
@@ -421,13 +434,13 @@ export default function FinanceiroResultadoPage() {
             </p>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={linhas.map(l => ({
-                label: rotuloMes(l.mes), Faturamento: l.fatBruto, Resultado: l.resultado,
+                label: rotuloMes(l.mes), Receita: l.receita, Resultado: l.resultado,
               }))}>
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} />
                 <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
                 <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Faturamento" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Receita" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Resultado" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -437,7 +450,7 @@ export default function FinanceiroResultadoPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted/40 border-b border-border">
-                  {['Mês', 'Faturamento', 'Anúncio', 'Imposto', 'Custos', 'Resultado', 'Margem'].map((h, i) => (
+                  {['Mês', 'Receita', 'Anúncio', 'Imposto', 'Custos', 'Resultado', 'Margem'].map((h, i) => (
                     <th key={h} className={cn(
                       'px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider',
                       i === 0 ? 'text-left' : 'text-right',
@@ -452,7 +465,7 @@ export default function FinanceiroResultadoPage() {
                     l.mes === mesAlvo && 'font-semibold bg-muted/10',
                   )}>
                     <td className="px-4 py-3 capitalize">{rotuloMes(l.mes)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(l.fatBruto)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(l.receita)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {l.semDadosDeAnuncio
                         ? <span className="text-destructive" title="Sem dados do Meta neste mês">sem dado</span>
