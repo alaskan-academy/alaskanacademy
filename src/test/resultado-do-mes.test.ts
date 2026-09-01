@@ -8,7 +8,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  agruparCaixa, simplesDoMes, montarResultado, janelaDeMeses, mesAnterior,
+  agruparCaixa, simplesDoMes, montarResultado, janelaDeMeses,
+  mesAnterior, mesSeguinte,
   type Competencia, type LinhaTransacao,
 } from '@/features/financeiro/lib/resultado';
 
@@ -17,8 +18,9 @@ const comp = (fatBruto: number, resto: Partial<Competencia> = {}): Competencia =
 });
 
 describe('janela de meses', () => {
-  it('vira o ano para trás', () => {
+  it('vira o ano nos dois sentidos', () => {
     expect(mesAnterior('2026-01')).toBe('2025-12');
+    expect(mesSeguinte('2026-12')).toBe('2027-01');
     expect(janelaDeMeses('2026-02', 4)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
   });
 });
@@ -29,6 +31,7 @@ describe('agrupamento do extrato', () => {
     { data: '2026-08-20', valor:  -8_486, categoria: 'Impostos e Tributos' },
     { data: '2026-08-10', valor:  -1_200, categoria: 'Aplicativos e Ferramentas' },
     { data: '2026-08-11', valor:  -2_000, categoria: 'Retirada de Lucro' },
+    { data: '2026-08-15', valor:  -3_500, categoria: 'Pró-labore' },
     { data: '2026-08-12', valor: -10_000, categoria: 'Reserva de Caixa' },
     { data: '2026-08-13', valor:  30_000, categoria: 'Produtos' },
     { data: '2026-08-14', valor:  10_000, categoria: 'Retirada do Caixa' },
@@ -44,19 +47,36 @@ describe('agrupamento do extrato', () => {
     expect(ago.impostosPagos).toBe(8_486);
   });
 
-  it('não conta retirada de sócio nem transferência entre contas próprias', () => {
-    // 50.000 + 8.486 + 1.200, sem os 2.000 de sócio e sem os 10.000 de reserva.
+  it('soma as retiradas de sócio, que `ehCustoOperacional` recusa', () => {
+    // 2.000 de retirada de lucro + 3.500 de pró-labore
+    expect(ago.retiradasSocios).toBe(5_500);
+    // e elas não vazam para os custos operacionais
+    expect(ago.custosPagos).toBe(1_200);
+  });
+
+  it('não conta retirada de sócio nem transferência entre contas próprias na saída de caixa', () => {
+    // 50.000 + 8.486 + 1.200, sem os 5.500 de sócio e sem os 10.000 de reserva.
     expect(ago.saiu).toBe(59_686);
   });
 
   it('não conta a volta da reserva como receita', () => {
     expect(ago.entrou).toBe(30_000);
   });
+
+  it('aporte de sócio não vira receita nem reduz retirada', () => {
+    const comAporte = agruparCaixa([
+      ...linhas,
+      { data: '2026-08-18', valor: 2_000, categoria: 'Aporte de Sócio' },
+    ]).get('2026-08')!;
+    expect(comAporte.retiradasSocios).toBe(5_500);
+    expect(comAporte.entrou).toBe(30_000);
+  });
 });
 
 describe('o Simples do mês', () => {
-  /* A série real: junho sem pagamento, e janeiro com receita pequena demais
-     para a sua própria razão significar alguma coisa. */
+  /* A série real. O pagamento de um mês cobre a receita do mês ANTERIOR, então
+     o imposto de julho sai em agosto. Junho não teve pagamento nenhum — o que
+     deixa MAIO sem valor real. */
   const competencia = new Map<string, Competencia>([
     ['2025-12', comp(20_000)],
     ['2026-01', comp(7_822.19)],
@@ -73,53 +93,57 @@ describe('o Simples do mês', () => {
     { data: '2026-03-20', valor: -2_867.06, categoria: 'Impostos e Tributos' },
     { data: '2026-04-20', valor: -6_014.57, categoria: 'Impostos e Tributos' },
     { data: '2026-05-20', valor: -4_729.02, categoria: 'Impostos e Tributos' },
-    // junho: nada
+    // junho: nada — logo MAIO fica sem imposto pago
     { data: '2026-07-20', valor: -4_756.25, categoria: 'Impostos e Tributos' },
     { data: '2026-08-20', valor: -8_486.88, categoria: 'Impostos e Tributos' },
   ];
   const caixa = agruparCaixa(pagamentos);
-  const meses = janelaDeMeses('2026-09', 12);
+  const meses = janelaDeMeses('2026-09', 14);
 
-  it('usa o pagamento quando ele existe, sem estimar nada', () => {
-    const s = simplesDoMes('2026-08', caixa, competencia, meses);
-    expect(s.presumido).toBe(false);
-    expect(s.valor).toBe(8_486.88);
-    expect(s.pct).toBeNull();
+  it('o imposto do mês é o pago no mês SEGUINTE, não o pago dentro dele', () => {
+    // Julho: R$ 8.486,88 saiu em agosto. O que saiu em julho (4.756,25) é de junho.
+    const jul = simplesDoMes('2026-07', caixa, competencia, meses);
+    expect(jul.presumido).toBe(false);
+    expect(jul.valor).toBe(8_486.88);
+
+    const jun = simplesDoMes('2026-06', caixa, competencia, meses);
+    expect(jun.valor).toBe(4_756.25);
   });
 
-  it('presume quando o mês ainda não pagou, e diz que presumiu', () => {
-    const s = simplesDoMes('2026-09', caixa, competencia, meses);
+  it('agosto fica PREVISTO: só vence em setembro', () => {
+    const s = simplesDoMes('2026-08', caixa, competencia, meses);
     expect(s.presumido).toBe(true);
     // (4.756,25 + 8.486,88) / (58.281,43 + 116.968,43) = 7,5567%
     expect(s.pct).toBeCloseTo(7.5567, 3);
-    expect(s.baseMeses).toEqual(['2026-07', '2026-08']);
-    // aplicado sobre a receita de agosto, que é a base legal do pagamento de setembro
+    expect(s.baseMeses).toEqual(['2026-06', '2026-07']);
+    // e incide sobre a receita de AGOSTO, não sobre a de julho
     expect(s.valor).toBeCloseTo(204_254.92 * 0.075567, 0);
   });
 
   it('pula o mês sem pagamento em vez de deixá-lo zerar a média', () => {
-    // Julho não pagou nada em junho; a base tem de saltar para maio e abril.
-    const s = simplesDoMes('2026-06', caixa, competencia, meses);
-    expect(s.baseMeses).toEqual(['2026-04', '2026-05']);
-    expect(s.pct).toBeGreaterThan(0);
+    // Maio não tem imposto pago (junho não pagou nada), então cai na estimativa
+    // e a base precisa saltar por cima dele.
+    const s = simplesDoMes('2026-05', caixa, competencia, meses);
+    expect(s.presumido).toBe(true);
+    expect(s.baseMeses).toEqual(['2026-03', '2026-04']);
   });
 
   it('a ponderação impede o mês pequeno de explodir a alíquota', () => {
-    /* O 48% real é o pagamento de FEVEREIRO (R$ 3.754,71) sobre a receita de
-       JANEIRO (R$ 7.822,19) — um mês pequeno demais para a própria razão
-       significar algo. Aqui só fevereiro e março pagaram, e abril pergunta. */
+    /* O 48% real é o imposto de JANEIRO (R$ 3.754,71, pago em fevereiro) sobre
+       uma receita de R$ 7.822,19 — pequena demais para a razão significar algo.
+       Aqui só jan e fev têm imposto pago, e março pergunta. */
     const soPequenos = agruparCaixa(pagamentos.filter(p => p.data < '2026-04'));
-    const s = simplesDoMes('2026-04', soPequenos, competencia, meses);
+    const s = simplesDoMes('2026-03', soPequenos, competencia, meses);
 
     expect(s.presumido).toBe(true);
-    expect(s.baseMeses).toEqual(['2026-02', '2026-03']);
+    expect(s.baseMeses).toEqual(['2026-01', '2026-02']);
     // média simples de 48,00% e 5,64% daria 26,8%; a ponderada dá 11,28%
     // (3.754,71 + 2.867,06) / (7.822,19 + 50.872,58)
     expect(s.pct).toBeCloseTo(11.2818, 3);
   });
 
-  it('sem nenhuma base, devolve zero dizendo que é presumido — não inventa alíquota', () => {
-    const s = simplesDoMes('2026-01', caixa, competencia, meses);
+  it('sem nenhuma base, devolve zero dizendo que é previsto — não inventa alíquota', () => {
+    const s = simplesDoMes('2025-12', caixa, competencia, meses);
     expect(s.presumido).toBe(true);
     expect(s.pct).toBeNull();
     expect(s.valor).toBe(0);
@@ -135,8 +159,9 @@ describe('a cascata', () => {
   ]);
   const caixa = agruparCaixa([
     { data: '2026-08-05', valor: -55_000, categoria: 'Anúncios (Facebook ADs)' },
-    { data: '2026-08-20', valor:  -8_486.88, categoria: 'Impostos e Tributos' },
+    { data: '2026-09-20', valor:  -9_000, categoria: 'Impostos e Tributos' },
     { data: '2026-08-10', valor:  -1_200, categoria: 'Aplicativos e Ferramentas' },
+    { data: '2026-08-11', valor:  -7_000, categoria: 'Retirada de Lucro' },
   ]);
   const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
 
@@ -147,19 +172,28 @@ describe('a cascata', () => {
     expect(r.investMeta).toBe(60_000);
   });
 
-  it('desce de faturamento a resultado subtraindo cada linha uma vez', () => {
-    // 204.254,92 − 10.000 − 2.000 − 60.000 − 8.400 − 8.486,88 − 1.200
-    expect(r.resultado).toBeCloseTo(114_168.04, 2);
+  it('usa o imposto pago em setembro, que é o de agosto', () => {
+    expect(r.simples.presumido).toBe(false);
+    expect(r.simples.valor).toBe(9_000);
   });
 
-  it('a margem é sobre o faturamento da Payt, não sobre o que entrou na conta', () => {
-    expect(r.margem).toBeCloseTo((114_168.04 / 204_254.92) * 100, 2);
+  it('desce de faturamento a resultado subtraindo cada linha uma vez', () => {
+    // 204.254,92 − 10.000 − 2.000 − 60.000 − 8.400 − 9.000 − 1.200
+    expect(r.resultado).toBeCloseTo(113_654.92, 2);
+  });
+
+  it('a retirada de sócio fica FORA do resultado e entra depois dele', () => {
+    expect(r.retiradasSocios).toBe(7_000);
+    expect(r.sobrouDepoisDasRetiradas).toBeCloseTo(113_654.92 - 7_000, 2);
+    // a margem não muda com o que os sócios sacaram
+    expect(r.margem).toBeCloseTo((113_654.92 / 204_254.92) * 100, 2);
   });
 
   it('mês sem nada não quebra e não divide por zero', () => {
     const vazio = montarResultado('2026-01', new Map(), new Map(), ['2026-01']);
     expect(vazio.resultado).toBe(0);
     expect(vazio.margem).toBe(0);
+    expect(vazio.sobrouDepoisDasRetiradas).toBe(0);
   });
 
   it('não marca falta de dado quando o Meta respondeu', () => {
@@ -174,7 +208,7 @@ describe('mês sem dado do Meta', () => {
   const competencia = new Map<string, Competencia>([['2026-04', comp(73_569.72)]]);
   const caixa = agruparCaixa([
     { data: '2026-04-10', valor: -43_685.98, categoria: 'Anúncios (Facebook ADs)' },
-    { data: '2026-04-20', valor:  -6_014.57, categoria: 'Impostos e Tributos' },
+    { data: '2026-05-20', valor:  -4_729.02, categoria: 'Impostos e Tributos' },
   ]);
   const r = montarResultado('2026-04', competencia, caixa, ['2026-04']);
 
@@ -188,7 +222,7 @@ describe('mês sem dado do Meta', () => {
     // que faltar. É isso que faz a bandeira sumir sozinha quando a base ganhar
     // cobertura, em vez de precisar de manutenção.
     const semAnuncio = agruparCaixa([
-      { data: '2026-04-20', valor: -6_014.57, categoria: 'Impostos e Tributos' },
+      { data: '2026-05-20', valor: -4_729.02, categoria: 'Impostos e Tributos' },
     ]);
     expect(montarResultado('2026-04', competencia, semAnuncio, ['2026-04']).semDadosDeAnuncio)
       .toBe(false);

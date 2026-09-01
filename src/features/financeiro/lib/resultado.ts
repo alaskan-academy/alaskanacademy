@@ -48,7 +48,9 @@
  * desaparece, e não há regra para manter.
  */
 
-import { ehCustoOperacional, ehReceita, CAT_ANUNCIOS, CAT_IMPOSTOS } from '../constants';
+import {
+  ehCustoOperacional, ehReceita, CAT_ANUNCIOS, CAT_IMPOSTOS, CAT_SOCIOS,
+} from '../constants';
 
 export interface LinhaTransacao {
   data: string;
@@ -75,6 +77,18 @@ export interface Caixa {
    * `semDadosDeAnuncio`.
    */
   anunciosPagos: number;
+  /**
+   * Pró-labore, retirada de lucro e afins — o que os sócios tiraram no mês.
+   *
+   * `ehCustoOperacional` exclui essas categorias de propósito, e está certo:
+   * retirada não é custo da operação, é distribuição do que ela produziu. Por
+   * isso a linha aparece DEPOIS do resultado operacional, e não dentro dele —
+   * senão a margem do mês passaria a depender de quanto os sócios sacaram.
+   *
+   * Só as SAÍDAS. Aporte é capital entrando, não receita: ele tem lugar no DRE
+   * do Caixa, abaixo do resultado, e entrar aqui inflaria o mês.
+   */
+  retiradasSocios: number;
   /** Custo do extrato JÁ sem anúncio e sem imposto: os dois têm linha própria. */
   custosPagos: number;
   /** Para a tira de conciliação: o mês em caixa puro, sem nenhuma exclusão. */
@@ -98,6 +112,11 @@ export function mesAnterior(mes: string): string {
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
+export function mesSeguinte(mes: string): string {
+  const [y, m] = mes.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
 /** Os N meses terminando em `mes`, do mais antigo para o mais novo. */
 export function janelaDeMeses(mes: string, n: number): string[] {
   const saida: string[] = [];
@@ -119,7 +138,7 @@ export function agruparCaixa(linhas: LinhaTransacao[]): Map<string, Caixa> {
   const pega = (mes: string): Caixa => {
     let c = mapa.get(mes);
     if (!c) {
-      c = { impostosPagos: 0, anunciosPagos: 0, custosPagos: 0, entrou: 0, saiu: 0 };
+      c = { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
       mapa.set(mes, c);
     }
     return c;
@@ -130,6 +149,14 @@ export function agruparCaixa(linhas: LinhaTransacao[]): Map<string, Caixa> {
     const abs = Math.abs(Number(t.valor));
 
     if (ehReceita(t)) c.entrou += abs;
+
+    /* Retirada de sócio: saída que `ehCustoOperacional` recusa de propósito.
+       Precisa ser somada ANTES do `continue` dele, senão nunca é vista. */
+    if (t.valor < 0 && (CAT_SOCIOS as readonly string[]).includes(t.categoria ?? '')) {
+      c.retiradasSocios += abs;
+      continue;
+    }
+
     if (!ehCustoOperacional(t)) continue;
 
     c.saiu += abs;
@@ -141,7 +168,26 @@ export function agruparCaixa(linhas: LinhaTransacao[]): Map<string, Caixa> {
 }
 
 /**
- * O Simples do mês: o que foi pago, ou uma estimativa dizendo que é estimativa.
+ * O imposto que ESTE mês gerou — não o que foi pago dentro dele.
+ *
+ * ── A diferença, e por que ela importa ──────────────────────────────────
+ *
+ * O Simples de um mês é pago no mês SEGUINTE. Havia duas leituras possíveis:
+ *
+ *   (a) o pagamento que saiu no mês   → agosto mostraria R$ 8.486,88, que é o
+ *                                       imposto de JULHO
+ *   (b) o imposto que a receita do mês gerou → agosto mostra o que a receita de
+ *                                       agosto deve, pago ou não
+ *
+ * A (a) foi a primeira versão e está errada para "quanto sobrou este mês": num
+ * negócio que cresce, cada mês é debitado com o imposto de um mês menor, e
+ * TODO mês parece melhor do que foi. Agosto faturou R$ 204.254,92 e carregava
+ * o imposto de julho, que faturou R$ 116.968,43 — quase metade.
+ *
+ * Agora é a (b): procura o pagamento no mês seguinte e, se ele ainda não
+ * existe, presume. Como efeito colateral bom, o mês corrente para de nascer
+ * com o imposto inteiro do mês anterior no dia 1 — a estimativa acompanha a
+ * receita que for entrando.
  *
  * ── Por que uma média móvel e não a alíquota configurada ────────────────
  *
@@ -167,13 +213,13 @@ export function agruparCaixa(linhas: LinhaTransacao[]): Map<string, Caixa> {
  *
  * ── Meses sem pagamento nenhum ──────────────────────────────────────────
  *
- * Junho/2026 não teve nenhum lançamento de imposto. Isso acontece com mês
- * fechado, não só com o mês corrente — então a busca pula meses vazios em vez
- * de assumir que os dois anteriores servem.
+ * Junho/2026 não teve nenhum lançamento de imposto — então maio, cujo imposto
+ * sairia ali, fica sem valor real e cai na estimativa. Isso acontece com mês
+ * FECHADO, não só com o corrente, e por isso a busca pula os vazios em vez de
+ * assumir que os dois anteriores servem.
  *
- * O pagamento de um mês é sobre a receita do mês ANTERIOR: é a base legal do
- * Simples, e é por isso que a razão usa `fatBruto` do mês anterior ao do
- * pagamento, tanto para medir quanto para aplicar.
+ * `baseMeses` nomeia os meses da RECEITA que formaram a alíquota, não os do
+ * pagamento: é sobre a receita que a tela vai falar com quem lê.
  */
 export function simplesDoMes(
   mes: string,
@@ -181,12 +227,12 @@ export function simplesDoMes(
   competencia: Map<string, Competencia>,
   historicoDeMeses: string[],
 ): Simples {
-  const pago = caixa.get(mes)?.impostosPagos ?? 0;
+  /* O imposto DESTE mês sai no mês seguinte. Se já saiu, é fato e acabou. */
+  const pago = caixa.get(mesSeguinte(mes))?.impostosPagos ?? 0;
   if (pago > 0) return { valor: pago, presumido: false, pct: null, baseMeses: [] };
 
-  /* Os dois meses mais recentes ANTES deste que tiveram pagamento e que têm
-     receita conhecida no mês anterior a eles — sem os dois lados a razão não
-     significa nada. */
+  /* Senão, a alíquota vem dos dois meses de receita mais recentes cujo imposto
+     JÁ saiu — precisa dos dois lados do par, senão a razão não significa nada. */
   const anteriores = historicoDeMeses.filter(m => m < mes).reverse();
   const base: string[] = [];
   let somaPago = 0;
@@ -194,8 +240,8 @@ export function simplesDoMes(
 
   for (const m of anteriores) {
     if (base.length === 2) break;
-    const p = caixa.get(m)?.impostosPagos ?? 0;
-    const r = competencia.get(mesAnterior(m))?.fatBruto ?? 0;
+    const p = caixa.get(mesSeguinte(m))?.impostosPagos ?? 0;
+    const r = competencia.get(m)?.fatBruto ?? 0;
     if (p <= 0 || r <= 0) continue;
     base.unshift(m);
     somaPago += p;
@@ -207,7 +253,7 @@ export function simplesDoMes(
   }
 
   const pct = somaPago / somaReceita;
-  const receitaBase = competencia.get(mesAnterior(mes))?.fatBruto ?? 0;
+  const receitaBase = competencia.get(mes)?.fatBruto ?? 0;
   return { valor: pct * receitaBase, presumido: true, pct: pct * 100, baseMeses: base };
 }
 
@@ -222,6 +268,9 @@ export interface Resultado {
   custosPagos: number;
   resultado: number;
   margem: number;
+  retiradasSocios: number;
+  /** O que sobrou DEPOIS de os sócios tirarem. Ver `Caixa.retiradasSocios`. */
+  sobrouDepoisDasRetiradas: number;
   /** O mesmo mês em caixa puro, para a tira de conciliação. */
   caixaEntrou: number;
   caixaSaiu: number;
@@ -251,7 +300,7 @@ export function montarResultado(
   const c = competencia.get(mes)
     ?? { fatBruto: 0, taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
-    ?? { impostosPagos: 0, anunciosPagos: 0, custosPagos: 0, entrou: 0, saiu: 0 };
+    ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
   const simples = simplesDoMes(mes, caixa, competencia, historicoDeMeses);
 
   const resultado =
@@ -270,6 +319,8 @@ export function montarResultado(
     custosPagos: k.custosPagos,
     resultado,
     margem: c.fatBruto > 0 ? (resultado / c.fatBruto) * 100 : 0,
+    retiradasSocios: k.retiradasSocios,
+    sobrouDepoisDasRetiradas: resultado - k.retiradasSocios,
     caixaEntrou: k.entrou,
     caixaSaiu: k.saiu,
     semDadosDeAnuncio: c.investMeta === 0 && k.anunciosPagos > 0,

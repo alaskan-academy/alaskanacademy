@@ -29,21 +29,48 @@ import {
 import { Download, Info } from 'lucide-react';
 import { ehCustoOperacional, CAT_ANUNCIOS, CAT_IMPOSTOS } from '@/features/financeiro/constants';
 import {
-  agruparCaixa, montarResultado, janelaDeMeses, mesAnterior,
+  agruparCaixa, montarResultado, janelaDeMeses, mesSeguinte,
   type Caixa, type Competencia, type LinhaTransacao, type Resultado,
 } from '@/features/financeiro/lib/resultado';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const MESES_HISTORICO = 6;
-/** Um a mais que o histórico: a alíquota presumida olha o mês ANTERIOR ao mais
- *  antigo da janela, e sem ele o mês da ponta ficaria sem base. */
+/** Maior que o histórico: a alíquota estimada precisa de meses ANTERIORES ao
+ *  mais antigo da janela para achar dois pares (receita, imposto já pago). */
 const MESES_BUSCA = MESES_HISTORICO + 3;
 
 function rotuloMes(mes: string) {
   const [y, m] = mes.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 }
+/**
+ * Busca TODAS as linhas, em páginas.
+ *
+ * O PostgREST corta a resposta num teto de linhas e **não avisa**: devolve 200
+ * com menos dados. A janela desta tela tem 9 meses de extrato — 1.248 linhas em
+ * 01/09/2026 —, e o corte comeu as transações mais antigas: março e abril
+ * apareciam com R$ 0,00 de anúncio e margem de 78,5%, exatamente o defeito que
+ * a bandeira `semDadosDeAnuncio` existe para denunciar. Ela não denunciou
+ * porque as linhas de anúncio também tinham sumido.
+ *
+ * A ordem explícita não é enfeite: sem ela o corte escolhe quais linhas trazer,
+ * e a resposta muda de execução para execução.
+ */
+async function buscarTudo<T>(
+  pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<{ linhas: T[]; erro: unknown }> {
+  const TAMANHO = 1000;
+  const linhas: T[] = [];
+  for (let i = 0; ; i++) {
+    const { data, error } = await pagina(i * TAMANHO, (i + 1) * TAMANHO - 1);
+    if (error) return { linhas, erro: error };
+    const lote = data ?? [];
+    linhas.push(...lote);
+    if (lote.length < TAMANHO) return { linhas, erro: null };
+  }
+}
+
 function primeiroDia(mes: string) { return `${mes}-01`; }
 function ultimoDia(mes: string) {
   const [y, m] = mes.split('-').map(Number);
@@ -70,28 +97,36 @@ export default function FinanceiroResultadoPage() {
     const janela = janelaDeMeses(mesAlvo, MESES_BUSCA);
     const inicio = primeiroDia(janela[0]);
     const fim = ultimoDia(mesAlvo);
+    /* O imposto DESTE mes sai no mes que vem, entao o extrato precisa ir um mes
+       alem — senao um mes ja pago apareceria eternamente como previsto. */
+    const fimExtrato = ultimoDia(mesSeguinte(mesAlvo));
 
-    let qFat = supabase
-      .from('vw_faturamento_liquido')
-      .select('data,faturamento_bruto,taxa_plataforma,reembolsos,investimento_meta,imposto_meta_ads')
-      .gte('data', inicio).lte('data', fim);
-    let qTrans = supabase
-      .from('transacoes').select('data,valor,categoria')
-      .gte('data', inicio).lte('data', fim);
-    if (empresaId) {
-      qFat = qFat.eq('empresa_id', empresaId);
-      qTrans = qTrans.eq('empresa_id', empresaId);
-    }
-
-    const [fat, trans] = await Promise.all([qFat, qTrans]);
-    if (fat.error || trans.error) {
+    const [fat, trans] = await Promise.all([
+      buscarTudo<{ data: string; faturamento_bruto: number; taxa_plataforma: number;
+                   reembolsos: number; investimento_meta: number; imposto_meta_ads: number }>(
+        (de, ate) => {
+          let q = supabase.from('vw_faturamento_liquido')
+            .select('data,faturamento_bruto,taxa_plataforma,reembolsos,investimento_meta,imposto_meta_ads')
+            .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
+          if (empresaId) q = q.eq('empresa_id', empresaId);
+          return q;
+        }),
+      buscarTudo<LinhaTransacao>((de, ate) => {
+        let q = supabase.from('transacoes').select('data,valor,categoria')
+          .gte('data', inicio).lte('data', fimExtrato)
+          .order('data').order('id').range(de, ate);
+        if (empresaId) q = q.eq('empresa_id', empresaId);
+        return q;
+      }),
+    ]);
+    if (fat.erro || trans.erro) {
       toast({ title: 'Erro ao carregar dados', variant: 'destructive' });
       setLoading(false);
       return;
     }
 
     const competencia = new Map<string, Competencia>();
-    for (const r of fat.data ?? []) {
+    for (const r of fat.linhas) {
       const k = String(r.data).slice(0, 7);
       const c = competencia.get(k) ?? {
         fatBruto: 0, taxaPayt: 0, reembolsos: 0, investMeta: 0, impostoMeta: 0,
@@ -104,7 +139,7 @@ export default function FinanceiroResultadoPage() {
       competencia.set(k, c);
     }
 
-    const transacoes = (trans.data ?? []) as LinhaTransacao[];
+    const transacoes = trans.linhas;
     const caixa: Map<string, Caixa> = agruparCaixa(transacoes);
 
     const doHistorico = janelaDeMeses(mesAlvo, MESES_HISTORICO);
@@ -132,10 +167,9 @@ export default function FinanceiroResultadoPage() {
   useEffect(() => { load(); }, [load]);
 
   const atual = linhas.find(l => l.mes === mesAlvo) ?? null;
-  /* O mês corrente é parcial dos DOIS lados, e é assimétrico: a receita entra
-     dia a dia, mas o imposto presumido chega inteiro no dia 1 — ele é sobre o
-     mês anterior, que já fechou. Sem dizer isso, o dia 1 de setembro parece
-     catástrofe. */
+  /* O mês corrente é parcial: faltam dias de venda e de gasto. O imposto
+     estimado acompanha sozinho, porque incide sobre a receita DESTE mês — mas
+     o resultado ainda é retrato no meio do caminho, e a tela diz isso. */
   const emAndamento = mesAlvo === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const mesOpts = useMemo(() => Array.from({ length: 12 }, (_, i) => ({
@@ -150,12 +184,15 @@ export default function FinanceiroResultadoPage() {
   function exportar() {
     if (!linhas.length) return;
     const cab = ['Mês', 'Faturamento bruto', 'Taxa Payt', 'Reembolsos',
-      'Investimento Meta', 'Imposto Meta', 'Simples', 'Simples presumido',
-      'Custos pagos', 'Resultado', 'Margem %'];
+      'Investimento Meta', 'Imposto Meta', 'Simples', 'Simples previsto',
+      'Custos pagos', 'Resultado', 'Margem %', 'Retiradas dos socios',
+      'Sobrou depois das retiradas', 'Sem dados do Meta'];
     const corpo = linhas.map(l => [
       l.mes, l.fatBruto, l.taxaPayt, l.reembolsos, l.investMeta, l.impostoMeta,
       l.simples.valor, l.simples.presumido ? 'sim' : 'não',
       l.custosPagos, l.resultado, l.margem.toFixed(2),
+      l.retiradasSocios, l.sobrouDepoisDasRetiradas,
+      l.semDadosDeAnuncio ? 'sim' : 'nao',
     ]);
     const csv = [cab, ...corpo].map(r => r.join(';')).join('\n');
     /* O BOM vai como escape: escrito como caractere, o eslint o acusa de
@@ -171,36 +208,51 @@ export default function FinanceiroResultadoPage() {
   // ─── render ───────────────────────────────────────────────────────────────
 
   /** Uma linha da cascata. `fonte` não é enfeite: é o que torna a mistura
-   *  legível, e a falta dela foi o defeito da tela antiga. */
-  const Linha = ({ rotulo, valor, fonte, nota, negativo, total }: {
+   *  legível, e a falta dela foi o defeito da tela antiga.
+   *
+   *  `pct` é a fatia do FATURAMENTO BRUTO — sempre o mesmo denominador, em
+   *  todas as linhas. Percentuais com denominadores diferentes na mesma coluna
+   *  não podem ser comparados entre si, que é justamente para o que uma coluna
+   *  de percentual serve. */
+  const Linha = ({ rotulo, valor, fonte, nota, negativo, total, pct }: {
     rotulo: string; valor: number; fonte?: string; nota?: React.ReactNode;
-    negativo?: boolean; total?: boolean;
-  }) => (
-    <div className={cn(
-      'flex items-baseline justify-between gap-4 py-2.5',
-      total ? 'border-t-2 border-border mt-1 pt-3' : 'border-b border-border/40',
-    )}>
-      <div className="min-w-0">
-        <p className={cn('text-sm', total && 'font-semibold')}>
-          {negativo && <span className="text-muted-foreground mr-1">−</span>}
-          {rotulo}
-        </p>
-        {(fonte || nota) && (
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
-            {fonte && <span className="uppercase tracking-wide">{fonte}</span>}
-            {fonte && nota && <span className="mx-1.5">·</span>}
-            {nota}
+    negativo?: boolean; total?: boolean; pct?: boolean;
+  }) => {
+    const fatia = pct && atual && atual.fatBruto > 0 ? (valor / atual.fatBruto) * 100 : null;
+    return (
+      <div className={cn(
+        'flex items-baseline justify-between gap-4 py-2.5',
+        total ? 'border-t-2 border-border mt-1 pt-3' : 'border-b border-border/40',
+      )}>
+        <div className="min-w-0">
+          <p className={cn('text-sm', total && 'font-semibold')}>
+            {negativo && <span className="text-muted-foreground mr-1">−</span>}
+            {rotulo}
           </p>
-        )}
+          {(fonte || nota) && (
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
+              {fonte && <span className="uppercase tracking-wide">{fonte}</span>}
+              {fonte && nota && <span className="mx-1.5">·</span>}
+              {nota}
+            </p>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <p className={cn(
+            'tabular-nums whitespace-nowrap',
+            total ? 'text-xl font-bold' : 'text-sm',
+            total && valor < 0 && 'text-destructive',
+            total && valor > 0 && 'text-green-400',
+          )}>{formatCurrency(valor)}</p>
+          {fatia !== null && (
+            <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
+              {fatia.toFixed(1)}% do faturamento
+            </p>
+          )}
+        </div>
       </div>
-      <p className={cn(
-        'tabular-nums whitespace-nowrap shrink-0',
-        total ? 'text-xl font-bold' : 'text-sm',
-        total && valor < 0 && 'text-destructive',
-        total && valor > 0 && 'text-green-400',
-      )}>{formatCurrency(valor)}</p>
-    </div>
-  );
+    );
+  };
 
   return (
     <DashboardLayout title="Financeiro" hideFilters hideTitle>
@@ -260,28 +312,37 @@ export default function FinanceiroResultadoPage() {
                      nota={atual.fatBruto > 0
                        ? `${((atual.taxaPayt / atual.fatBruto) * 100).toFixed(2)}% efetivo`
                        : undefined} negativo />
-              <Linha rotulo="Reembolsos" valor={atual.reembolsos} fonte="Payt" negativo />
+              <Linha rotulo="Reembolsos" valor={atual.reembolsos} fonte="Payt" negativo pct />
               <Linha rotulo="Investimento em anúncios" valor={atual.investMeta} fonte="Meta"
                      nota={atual.semDadosDeAnuncio
                        ? <span className="text-destructive">sem dados do Meta neste mês — falta aqui</span>
-                       : 'o cartão mistura meses; aqui é o gasto do mês'} negativo />
+                       : 'o cartão mistura meses; aqui é o gasto do mês'} negativo pct />
               <Linha rotulo="Imposto sobre o anúncio" valor={atual.impostoMeta} fonte="Meta × alíquota"
-                     nota="só existe dentro da fatura do cartão" negativo />
+                     nota="só existe dentro da fatura do cartão" negativo pct />
               <Linha
-                rotulo="Impostos"
+                rotulo="Simples sobre a receita deste mês"
                 valor={atual.simples.valor}
-                fonte={atual.simples.presumido ? 'presumido' : 'extrato'}
-                negativo
+                fonte={atual.simples.presumido ? 'previsto' : 'extrato'}
+                negativo pct
                 nota={atual.simples.presumido
                   ? (atual.simples.pct === null
-                      ? 'ainda não pago e sem base para estimar'
-                      : <>ainda não pago · {atual.simples.pct.toFixed(2)}% sobre {rotuloMes(mesAnterior(mesAlvo))},
-                         média de {atual.simples.baseMeses.map(rotuloMes).join(' e ')}</>)
-                  : 'pago no mês, sobre a receita do anterior'} />
+                      ? 'vence no mês que vem e não há base para estimar'
+                      : <>vence em {rotuloMes(mesSeguinte(mesAlvo))} · estimado a {atual.simples.pct.toFixed(2)}%,
+                         que foi a alíquota real de {atual.simples.baseMeses.map(rotuloMes).join(' e ')}</>)
+                  : <>pago em {rotuloMes(mesSeguinte(mesAlvo))}, que é quando vence</>} />
               <Linha rotulo="Demais custos" valor={atual.custosPagos} fonte="extrato"
-                     nota="sem anúncio, sem imposto e sem transferência entre contas próprias"
+                     nota="sem anúncio, sem imposto, sem retirada de sócio e sem transferência entre contas próprias"
                      negativo />
               <Linha rotulo="Resultado" valor={atual.resultado} total />
+
+              {/* Retirada não é custo da operação: é distribuição do que ela
+                  produziu. Fica ABAIXO do resultado para a margem do mês não
+                  passar a depender de quanto os sócios sacaram. */}
+              <Linha rotulo="Retiradas dos sócios" valor={atual.retiradasSocios} fonte="extrato"
+                     nota="pró-labore e retirada de lucro — não é custo, é distribuição"
+                     negativo pct />
+              <Linha rotulo="Sobrou depois das retiradas"
+                     valor={atual.sobrouDepoisDasRetiradas} total />
 
               {atual.semDadosDeAnuncio && (
                 <div className="flex gap-2 mt-3 p-2.5 rounded-lg bg-destructive/10 border border-destructive/30">

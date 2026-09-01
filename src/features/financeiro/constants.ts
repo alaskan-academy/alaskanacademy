@@ -75,8 +75,24 @@ export const CAT_CUSTOS_OPERACIONAIS = [
   'Recarga e Chip', 'Doações', 'Outros',
 ] as const;
 
-/** Retirada e aporte de sócio não são custo operacional nem receita. */
-export const CAT_SOCIOS = ['Pró-labore', 'Retirada de Lucro', 'Sócios'] as const;
+/**
+ * Retirada e aporte de sócio não são custo operacional nem receita.
+ *
+ * `Aporte de Sócio` entrou em 01/09/2026, com a migração 20260901b — e ficou
+ * FORA desta lista por três semanas de código, o tempo entre criar a categoria
+ * no banco e alguém somar. Enquanto isso, `ehReceita` contava os R$ 2.000 de
+ * capitalização da Aeliss como faturamento: dinheiro de sócio entrando como se
+ * a operação tivesse vendido.
+ *
+ * É a terceira armadilha do CLAUDE.md — lista no código que envelhece calada —
+ * e a lista tem de existir aqui porque a classificação roda sem ir ao banco.
+ * O que impede a próxima é o teste `categorias-socio-batem-com-o-banco`, que lê
+ * as migrações e falha quando nasce uma categoria `tipo = 'socio'` que esta
+ * lista não conhece.
+ */
+export const CAT_SOCIOS = [
+  'Pró-labore', 'Retirada de Lucro', 'Sócios', 'Aporte de Sócio',
+] as const;
 
 /**
  * Transferência entre contas próprias — não é resultado, é caixa mudando de
