@@ -198,10 +198,22 @@ type LinhaBreakdown = { label: string; testados: number; validados: number; esca
  * O desempate é por amostra: entre duas taxas iguais, a de mais cards primeiro.
  * Sem ele, 1 de 1 (100%) empataria com 8 de 8 e a ordem seria sorteio.
  */
+/**
+ * A taxa que a tela chama de "validação", num lugar só.
+ *
+ * Ela vive em três desenhos — a coluna "Taxa" das tabelas, a ordenação e o
+ * gráfico por editor — e já divergiu nos três. Enquanto cada um fizesse a
+ * própria conta, "corrigir" significava lembrar dos outros dois.
+ *
+ * `aprovados` é validado MAIS escalado: escalar é o desfecho melhor, e deixá-lo
+ * de fora fazia a taxa punir justamente o AD que deu mais certo.
+ */
+export function taxaDeValidacao(r: { testados: number; aprovados: number }): number {
+  return r.testados > 0 ? (r.aprovados / r.testados) * 100 : 0;
+}
+
 function porTaxaValidacao(a: LinhaBreakdown, b: LinhaBreakdown) {
-  const ta = a.testados > 0 ? a.aprovados / a.testados : 0;
-  const tb = b.testados > 0 ? b.aprovados / b.testados : 0;
-  return tb - ta || b.testados - a.testados;
+  return taxaDeValidacao(b) - taxaDeValidacao(a) || b.testados - a.testados;
 }
 
 /**
@@ -287,7 +299,7 @@ function BreakdownTable({
           </thead>
           <tbody>
             {visiveis.map((r) => {
-              const taxa = r.testados > 0 ? (r.aprovados / r.testados) * 100 : 0;
+              const taxa = taxaDeValidacao(r);
               return (
                 <tr key={r.label} className="border-b border-border/40 last:border-0">
                   {/*
@@ -494,7 +506,9 @@ export function DesempenhoAdsView() {
     const semDado   = filtered.filter(semDados).length;
     const taxaValid = testados > 0 ? (validados / testados) * 100 : 0;
     const taxaEscal = testados > 0 ? (escalados / testados) * 100 : 0;
-    const taxaAprov = testados > 0 ? (aprovados / testados) * 100 : 0;
+    /* A MESMA funcao do grafico e das tabelas: a taxa da tela grande nao
+       pode discordar da taxa de cada recorte. */
+    const taxaAprov = taxaDeValidacao({ testados, aprovados });
     return { testados, validados, escalados, aprovados, naoValid, pendentes, semDado, taxaValid, taxaEscal, taxaAprov };
   }, [filtered]);
 
@@ -859,27 +873,39 @@ export function DesempenhoAdsView() {
               <BreakdownTable title="Por formato" coluna="Formato" rows={porFormato} />
               {porEditor.length > 0 && <BreakdownTable title="Por editor" coluna="Editor" rows={porEditor} />}
           {/*
-            O gráfico "Taxa de validação por editor" saiu em 31/08/2026.
+            O gráfico saiu e voltou no mesmo dia — mas com a conta certa.
 
-            Ele repetia a tabela logo acima — três editores, três barras — e,
-            pior, DISCORDAVA dela. A barra vinha de `validados / testados`; a
-            coluna "Taxa" da tabela vem de `aprovados / testados`, que é
-            validado MAIS escalado. Medido na tela:
+            Ele desenhava `validados / testados` sob o título "Taxa de
+            validação", enquanto a coluna "Taxa" da tabela logo acima usa
+            `aprovados / testados` — validado MAIS escalado. Medido na tela:
 
                               tabela     gráfico
               Jaqueline       11,54%      8,65%
               Jessica         10,13%      6,33%
 
-            Dois números com o mesmo nome, um embaixo do outro, sem nada
-            dizendo qual é qual. É a primeira armadilha do CLAUDE.md — e é a
-            segunda vez que ela aparece neste arquivo: o "Por ângulo" ordenava
-            por uma taxa e mostrava outra.
+            Dois números com o mesmo nome, um embaixo do outro. É a primeira
+            armadilha do CLAUDE.md, e foi a segunda vez que ela apareceu neste
+            arquivo no mesmo dia — de manhã o "Por ângulo" ordenava por uma
+            taxa e mostrava outra.
 
-            De quebra era o cartão mais alto da coluna da direita, e tirá-lo
-            fechou o desnível que abria o buraco preto ao lado.
-
-            Se o desenho fizer falta, ele volta — com `aprovados / testados`.
+            Agora o gráfico chama `taxaDeValidacao`, a MESMA função que a
+            tabela usa. Não é economia de linha: é a única forma de os dois não
+            voltarem a divergir, porque não há mais duas contas para divergir.
           */}
+              {porEditor.length > 0 && (
+                <div className="bg-card border border-border rounded-lg p-4">
+                  <h4 className="text-sm font-medium mb-3">Taxa de validação por editor</h4>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={porEditor.map(r => ({ ...r, taxa: taxaDeValidacao(r) }))}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="label" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} unit="%" />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => formatPercent(Number(v))} />
+                      <Bar dataKey="taxa" name="Taxa valid." fill={CHART_COLORS.primary} radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
           </div>
 
           {/* Evolução mensal */}
