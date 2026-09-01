@@ -13,6 +13,7 @@ import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { RecorrentesAVencer } from '@/features/financeiro/components/RecorrentesAVencer';
 import { ehCustoOperacional } from '@/features/financeiro/constants';
+import { buscarTudo } from '@/features/financeiro/lib/buscar';
 import { cn } from '@/lib/utils';
 
 // ─── Grupos do DRE ────────────────────────────────────────────────────────────
@@ -178,13 +179,22 @@ export default function FinanceiroCaixaPage() {
 
   useEffect(() => {
     async function load() {
-      let q = supabase
-        .from('transacoes')
-        .select('categoria, valor')
-        .gte('data', dataInicio)
-        .lte('data', dataFim);
-      if (empresaId) q = q.eq('empresa_id', empresaId);
-      const { data, error } = await q;
+      /* Pagina porque esta consulta SOMA: em modo YTD ela alcancava 1.174
+         transacoes em 01/09/2026 e recebia 1.000, sem erro nenhum. O corte nao
+         deixava linhas de fora da tela — deixava os totais por categoria
+         errados. Ver o comentario em `lib/buscar`. */
+      const { linhas: data, erro: error } = await buscarTudo<{ categoria: string | null; valor: number }>(
+        (de, ate) => {
+          let q = supabase
+            .from('transacoes')
+            .select('categoria, valor')
+            .gte('data', dataInicio)
+            .lte('data', dataFim)
+            .order('data').order('id')
+            .range(de, ate);
+          if (empresaId) q = q.eq('empresa_id', empresaId);
+          return q;
+        });
         // Conta também o que foi auto-categorizado. Antes esta tela exigia
         // `confirmado`/`revisado`, e como julho e agosto inteiros (440
         // lançamentos) estavam em `auto_categorizado`, os dois meses mais
@@ -192,7 +202,10 @@ export default function FinanceiroCaixaPage() {
         // projetar o próximo. Auto-categorizado já TEM categoria: o que falta é
         // o olho humano, e o `AvisoRevisao` logo acima diz quantos são.
 
-      if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
+      if (error) {
+        toast({ title: 'Erro', description: String((error as { message?: string }).message ?? error), variant: 'destructive' });
+        return;
+      }
 
       const map = new Map<string, number>();
       const mapSociosPos = new Map<string, number>();
@@ -259,15 +272,22 @@ export default function FinanceiroCaixaPage() {
       const cats = plano.filter(c => c.tipo === 'reserva').map(c => c.categoria);
       if (cats.length === 0) return;
 
-      let qMov = supabase
-        .from('transacoes')
-        .select('id, data, descricao, valor')
-        .in('categoria', cats)
-        .order('data', { ascending: false });
-      if (empresaId) qMov = qMov.eq('empresa_id', empresaId);
-      const { data: mov } = await qMov;
+      /* Sem filtro de data nenhum: esta lista e o historico inteiro da Reserva,
+         e cresce para sempre. Eram 31 linhas em 01/09/2026 — longe do teto, mas
+         o dia em que passar nao daria erro, so pararia de mostrar as antigas. */
+      const { linhas: mov } = await buscarTudo<MovimentoReserva>(
+        (de, ate) => {
+          let q = supabase
+            .from('transacoes')
+            .select('id, data, descricao, valor')
+            .in('categoria', cats)
+            .order('data', { ascending: false }).order('id')
+            .range(de, ate);
+          if (empresaId) q = q.eq('empresa_id', empresaId);
+          return q;
+        });
 
-      setMovimentos((mov ?? []) as MovimentoReserva[]);
+      setMovimentos(mov);
     }
     load();
   }, [plano, empresaId]);

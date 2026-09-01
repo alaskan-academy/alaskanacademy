@@ -28,6 +28,7 @@ import {
 } from 'recharts';
 import { Download, Info } from 'lucide-react';
 import { ehCustoOperacional, CAT_ANUNCIOS, CAT_IMPOSTOS } from '@/features/financeiro/constants';
+import { buscarTudo } from '@/features/financeiro/lib/buscar';
 import {
   agruparCaixa, montarResultado, janelaDeMeses, mesSeguinte,
   type Caixa, type Competencia, type LinhaTransacao, type Resultado,
@@ -44,33 +45,6 @@ function rotuloMes(mes: string) {
   const [y, m] = mes.split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 }
-/**
- * Busca TODAS as linhas, em páginas.
- *
- * O PostgREST corta a resposta num teto de linhas e **não avisa**: devolve 200
- * com menos dados. A janela desta tela tem 9 meses de extrato — 1.248 linhas em
- * 01/09/2026 —, e o corte comeu as transações mais antigas: março e abril
- * apareciam com R$ 0,00 de anúncio e margem de 78,5%, exatamente o defeito que
- * a bandeira `semDadosDeAnuncio` existe para denunciar. Ela não denunciou
- * porque as linhas de anúncio também tinham sumido.
- *
- * A ordem explícita não é enfeite: sem ela o corte escolhe quais linhas trazer,
- * e a resposta muda de execução para execução.
- */
-async function buscarTudo<T>(
-  pagina: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
-): Promise<{ linhas: T[]; erro: unknown }> {
-  const TAMANHO = 1000;
-  const linhas: T[] = [];
-  for (let i = 0; ; i++) {
-    const { data, error } = await pagina(i * TAMANHO, (i + 1) * TAMANHO - 1);
-    if (error) return { linhas, erro: error };
-    const lote = data ?? [];
-    linhas.push(...lote);
-    if (lote.length < TAMANHO) return { linhas, erro: null };
-  }
-}
-
 function primeiroDia(mes: string) { return `${mes}-01`; }
 function ultimoDia(mes: string) {
   const [y, m] = mes.split('-').map(Number);

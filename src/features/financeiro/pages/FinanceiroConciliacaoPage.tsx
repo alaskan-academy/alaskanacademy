@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowDownCircle, ArrowUpCircle, Scale, X, Download } from 'lucide-react';
 import { CATEGORIAS, CENTROS_CUSTO } from '@/features/financeiro/constants';
+import { buscarTudo } from '@/features/financeiro/lib/buscar';
 
 interface Transacao {
   id: string;
@@ -57,21 +58,28 @@ export default function FinanceiroConciliacaoPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    let query = supabase
-      .from('vw_conciliacao')
-      .select('id,data,nome,descricao_original,meio_pagamento,valor,categoria,grupo,status_revisao')
-      .gte('data', dataInicio)
-      .lte('data', dataFim)
-      .order('data', { ascending: false });
+    /* O `.limit(1000)` que havia aqui era um teto escrito no codigo, e ele ja
+       tinha envelhecido: em 01/09/2026 o periodo YTD alcancava 1.174 linhas e a
+       tela mostrava 1.000, sem dizer que faltavam 174. Esta e a tela do extrato
+       COMPLETO — o nome dela promete justamente o que o teto tirava. */
+    const { linhas: data, erro: error } = await buscarTudo<Transacao>(
+      (de, ate) => {
+        let query = supabase
+          .from('vw_conciliacao')
+          .select('id,data,nome,descricao_original,meio_pagamento,valor,categoria,grupo,status_revisao')
+          .gte('data', dataInicio)
+          .lte('data', dataFim)
+          .order('data', { ascending: false }).order('id')
+          .range(de, ate);
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
-    if (fCategoria !== TODOS) query = query.eq('categoria', fCategoria);
-    if (fCentro    !== TODOS) query = query.eq('grupo', fCentro);
-    if (fStatus    !== TODOS) query = query.eq('status_revisao', fStatus);
-
-    const { data, error } = await query.limit(1000);
+        if (empresaId) query = query.eq('empresa_id', empresaId);
+        if (fCategoria !== TODOS) query = query.eq('categoria', fCategoria);
+        if (fCentro    !== TODOS) query = query.eq('grupo', fCentro);
+        if (fStatus    !== TODOS) query = query.eq('status_revisao', fStatus);
+        return query;
+      });
     if (error) toast({ title: 'Erro ao carregar extrato', variant: 'destructive' });
-    setTransacoes(data || []);
+    setTransacoes(data);
     setLoading(false);
   }, [dataInicio, dataFim, fCategoria, fCentro, fStatus, empresaId]);
 
