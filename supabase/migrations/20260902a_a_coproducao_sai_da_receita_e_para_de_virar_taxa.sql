@@ -127,6 +127,12 @@ BEGIN
     FROM jsonb_array_elements(p_payload->'commission') AS c(v)
    WHERE c.v->>'type' = 'coproducer';
 
+  /* POR DIFERENCA, e nao somando a linha `platform` do array. A Payt parou de
+     declarar a taxa inteira ali: no cartao a linha caiu de 6,26% (mai/2026)
+     para 1,04% (set/2026) enquanto o TOTAL RETIDO ficou parado em ~6%. So em
+     agosto seriam R$ 2.990 de taxa somindo e virando lucro no painel.
+     A diferenca nao depende de a Payt manter o nome das linhas — so de o
+     dinheiro fechar. Travado em src/test/taxa-payt-e-por-diferenca.test.ts. */
   v_taxa := GREATEST(v_sem_juros - v_produtor - v_copro, 0);
 
   UPDATE vendas
