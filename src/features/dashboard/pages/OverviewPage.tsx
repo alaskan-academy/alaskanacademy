@@ -32,6 +32,7 @@ import {
   roas,
   cpa,
   taxaPlataformaPct,
+  coproducaoNaoAtribuida,
 } from "@/lib/financeiro";
 import { impostoSobre, diasDoCustoFixo, lucroPorDia } from "@/lib/resumo";
 import { LembreteConferencia } from "@/features/dashboard/components/LembreteConferencia";
@@ -465,6 +466,17 @@ export default function OverviewPage() {
         vendas_aprovadas: num(p.vendas),
         faturamento_principal: num(p.faturamento_principal),
         ticket_medio: num(p.ticket_medio),
+        /* Quanto do que este produto vendeu foi direto para o dono do curso. A
+           cascata acima mostra o total do mês; aqui é DE QUEM ele é — sem isso
+           o campo existiria sem nenhuma tela dizendo o resultado. */
+        coproducao: num(p.coproducao),
+        sem_dado_copro: num(p.sem_dado_copro),
+        /* A base do repasse é a venda SEM JUROS, não `faturamento_principal`:
+           este último exclui order bump, e a Payt divide sobre a venda inteira.
+           Com o denominador errado o Desafios aparecia com 10,35% quando o
+           combinado com a coprodutora é 9,18% — número errado que pareceria
+           bug de contrato. */
+        base_copro: num(p.base_copro),
       })),
     );
 
@@ -1243,6 +1255,23 @@ export default function OverviewPage() {
                           <div className="mt-0.5 text-xs text-muted-foreground">
                             {formatNumber(r.vendas_aprovadas)} vendas · TM {formatCurrency(r.ticket_medio || 0)}
                           </div>
+                          {/* Coprodução: só aparece em quem TEM coprodutor, porque
+                              uma linha "R$ 0,00" em 33 produtos não informa nada.
+                              Fica em cinza, não em vermelho: o vermelho é o que se
+                              PERDE, e este dinheiro nunca foi da operação. */}
+                          {(r.coproducao || 0) > 0 && (
+                            <div className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                              − coprodução {formatCurrency(r.coproducao)}
+                              {(r.base_copro || 0) > 0 &&
+                                ` · ${formatPercent((r.coproducao / r.base_copro) * 100)} da venda`}
+                            </div>
+                          )}
+                          {(r.sem_dado_copro || 0) > 0 && (
+                            <div className="mt-0.5 text-xs text-warning">
+                              {formatNumber(r.sem_dado_copro)} venda(s) sem o dado de coprodução — a Payt
+                              só passou a mandá-lo em mai. de 26
+                            </div>
+                          )}
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-semibold tabular-nums text-foreground">
@@ -1252,6 +1281,17 @@ export default function OverviewPage() {
                         </div>
                       </div>
                     ))
+                  )}
+                  {/* O ESPELHO SE DENUNCIA. A soma por produto exclui upsell e venda
+                      sem oferta principal; hoje isso zera, mas um upsell de produto
+                      coproduzido faria a coluna divergir da cascata em silêncio.
+                      Derivar a sobra custa uma subtração e nunca envelhece. */}
+                  {coproducaoNaoAtribuida(kpis.coproducao || 0, prodData) !== 0 && (
+                    <div className="mt-2 border-t border-border/50 pt-2 text-xs text-warning">
+                      {formatCurrency(coproducaoNaoAtribuida(kpis.coproducao || 0, prodData))} de
+                      coprodução não caiu em nenhum produto acima — veio de upsell ou de venda sem
+                      oferta principal, que esta lista não conta.
+                    </div>
                   )}
                 </div>
               </Painel>

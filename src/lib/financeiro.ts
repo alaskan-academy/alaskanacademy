@@ -134,3 +134,29 @@ export function cpa(investimento: number, vendas: number): number {
 export function taxaPlataformaPct(taxa: number, receita: number): number {
   return razao(taxa, receita) * 100;
 }
+
+/**
+ * A coprodução do mês que não caiu em nenhum produto da lista.
+ *
+ * A lista por produto do `/resumo` exclui upsell e venda sem oferta principal —
+ * ela responde "quanto cada produto vendeu", e nesse recorte upsell tem painel
+ * próprio. Mas a coprodução é da VENDA, não da oferta principal dela: no dia em
+ * que um produto coproduzido for vendido como upsell, a soma das linhas passa a
+ * ser menor que o total do mês, e nada na tela denunciaria.
+ *
+ * Hoje a sobra é R$ 0,00 — as 14 vendas com coprodutor são todas oferta
+ * principal. Derivar mesmo assim é o que separa esta lista de um retrato único
+ * que envelhece: a subtração continua valendo quando o dado mudar, e uma
+ * verificação feita uma vez, não.
+ *
+ * Devolve 0 abaixo de um centavo, porque diferença de ponto flutuante não é
+ * dinheiro e um aviso de "R$ 0,00 não atribuído" é pior que aviso nenhum.
+ */
+export function coproducaoNaoAtribuida(
+  totalDoMes: number,
+  porProduto: readonly { coproducao?: number }[],
+): number {
+  const somado = porProduto.reduce((s, r) => s + (r.coproducao ?? 0), 0);
+  const sobra = (totalDoMes || 0) - somado;
+  return Math.abs(sobra) < 0.01 ? 0 : sobra;
+}

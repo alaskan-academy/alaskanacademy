@@ -7,6 +7,7 @@ import {
   roas,
   cpa,
   taxaPlataformaPct,
+  coproducaoNaoAtribuida,
 } from '@/lib/financeiro';
 
 describe('cascata do pago ao lucro', () => {
@@ -249,5 +250,44 @@ describe('regressão: agosto/2026, 01 a 20', () => {
 
   it('confere o ROAS do período', () => {
     expect(roas(agosto.receita, agosto.investimento)).toBeCloseTo(1.7437, 3);
+  });
+});
+
+describe('a coprodução que não caiu em nenhum produto', () => {
+  /* A lista por produto do /resumo exclui upsell e venda sem oferta principal.
+     A coprodução é da VENDA, não da oferta principal dela — então os dois
+     recortes podem divergir, e é a subtração que denuncia quando divergem. */
+
+  it('agosto/2026 da Alaskan fecha: nada sobra', () => {
+    // 13 vendas do Desafios, todas oferta principal. Números reais.
+    const linhas = [
+      { produto: 'Curso Saponaria Brasil', coproducao: 0 },
+      { produto: 'Workshop Desafios na Sala de Aula', coproducao: 377.5 },
+      { produto: 'Fábrica das Velas de Lembrancinha', coproducao: 0 },
+    ];
+    expect(coproducaoNaoAtribuida(377.5, linhas)).toBe(0);
+  });
+
+  it('denuncia o upsell de produto coproduzido', () => {
+    /* O dia em que o Desafios for vendido como upsell: a cascata conta a
+       coprodução dele, a lista por produto não. Sem esta conta, R$ 90,00
+       sumiriam da tela sem nenhum aviso. */
+    const linhas = [{ produto: 'Workshop Desafios na Sala de Aula', coproducao: 377.5 }];
+    expect(coproducaoNaoAtribuida(467.5, linhas)).toBeCloseTo(90, 2);
+  });
+
+  it('não confunde ruído de ponto flutuante com dinheiro', () => {
+    const linhas = [{ coproducao: 0.1 }, { coproducao: 0.2 }];
+    // 0.1 + 0.2 = 0.30000000000000004 em ponto flutuante.
+    expect(coproducaoNaoAtribuida(0.3, linhas)).toBe(0);
+  });
+
+  it('lista vazia devolve o total inteiro, não zero', () => {
+    // Mês com coprodução e sem nenhum produto listado é anomalia, não silêncio.
+    expect(coproducaoNaoAtribuida(377.5, [])).toBeCloseTo(377.5, 2);
+  });
+
+  it('aguenta linha sem o campo', () => {
+    expect(coproducaoNaoAtribuida(0, [{ produto: 'x' } as { coproducao?: number }])).toBe(0);
   });
 });
