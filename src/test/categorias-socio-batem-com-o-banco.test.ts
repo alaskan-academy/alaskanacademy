@@ -32,9 +32,18 @@ const DIR = join(process.cwd(), 'supabase', 'migrations');
 /**
  * Toda categoria inserida em `categorias_centro` com o tipo pedido.
  *
- * Casa a forma usada nas migrações:
- *   values ('Aporte de Sócio', 'Sócios', 85, 'socio', true)
- * O tipo é o quarto campo; a categoria é o primeiro.
+ * LÊ A LISTA DE COLUNAS DO PRÓPRIO INSERT, não uma ordem fixa.
+ *
+ * A primeira versão casava a posição: categoria no 1º campo, tipo no 4º —
+ * a ordem que a migração `20260901b` usou. Em 02/09/2026 a `20260902g`
+ * declarou 'Pagamento de Fatura' com (categoria, centro, TIPO, ORDEM, ativo),
+ * que é SQL igualmente válido, e a regex simplesmente não casou. O teste
+ * passou, a categoria ficou fora de `CAT_RESERVA`, e o pagamento de fatura
+ * teria voltado a contar como custo.
+ *
+ * Ou seja: a trava contra "lista fixa que envelhece em silêncio" tinha, ela
+ * mesma, uma lista fixa que envelheceu em silêncio. Agora ela lê os nomes das
+ * colunas e mapeia por nome — a ordem deixa de importar.
  */
 function categoriasDoTipo(tipo: string): string[] {
   const achadas = new Set<string>();
@@ -43,11 +52,29 @@ function categoriasDoTipo(tipo: string): string[] {
     const texto = readFileSync(join(DIR, arquivo), 'utf8');
     if (!texto.includes('categorias_centro')) continue;
 
-    const linhas = texto.matchAll(
-      /\(\s*'([^']+)'\s*,\s*'[^']*'\s*,\s*\d+\s*,\s*'([a-z_]+)'\s*,\s*(?:true|false)\s*\)/gi,
+    /* Cada `insert into categorias_centro (colunas) values (tuplas)`. O corpo
+       vai até o `;` — basta para as formas usadas aqui, e um INSERT ... SELECT
+       não casa (não tem `values`), que é o correto: não há literais para ler. */
+    const inserts = texto.matchAll(
+      /insert\s+into\s+(?:public\.)?categorias_centro\s*\(([^)]*)\)\s*values([\s\S]*?);/gi,
     );
-    for (const m of linhas) {
-      if (m[2].toLowerCase() === tipo) achadas.add(m[1]);
+
+    for (const ins of inserts) {
+      const colunas = ins[1].split(',').map(c => c.trim().toLowerCase().replace(/"/g, ''));
+      const iCat = colunas.indexOf('categoria');
+      const iTipo = colunas.indexOf('tipo');
+      if (iCat < 0 || iTipo < 0) continue;
+
+      for (const tupla of ins[2].matchAll(/\(([^()]*)\)/g)) {
+        /* Divide só nas vírgulas de fora das aspas: uma categoria pode conter
+           vírgula, e partir por `,` cru deslocaria todas as posições. */
+        const campos = tupla[1].match(/'(?:[^']|'')*'|[^,]+/g)?.map(c => c.trim()) ?? [];
+        const limpo = (v?: string) =>
+          v?.startsWith("'") ? v.slice(1, -1).replace(/''/g, "'") : v?.trim();
+        const cat = limpo(campos[iCat]);
+        const tp = limpo(campos[iTipo])?.toLowerCase();
+        if (cat && tp === tipo) achadas.add(cat);
+      }
     }
   }
   return [...achadas];
@@ -74,10 +101,25 @@ describe('as categorias de sócio', () => {
 describe('as categorias de reserva', () => {
   const noBanco = categoriasDoTipo('reserva');
 
-  it('todas estão em CAT_RESERVA quando as migrações as declaram', () => {
-    // Pode ser vazio: as três de reserva são anteriores ao versionamento atual.
-    // O que não pode é existir uma declarada que o código ignore.
+  it('as migrações declaram alguma — senão o teste não prova nada', () => {
+    /* Deixou de poder ser vazio quando a `20260902g` declarou 'Pagamento de
+       Fatura'. Daqui em diante, conjunto vazio quer dizer regex quebrada, não
+       "nenhuma categoria nova" — e é essa confusão que faz um teste destes
+       passar para sempre sem olhar nada. */
+    expect(noBanco.length).toBeGreaterThan(0);
+    expect(noBanco).toContain('Pagamento de Fatura');
+  });
+
+  it('todas estão em CAT_RESERVA', () => {
     const faltando = noBanco.filter(c => !(CAT_RESERVA as readonly string[]).includes(c));
-    expect(faltando, `categoria(s) de reserva fora do código: ${faltando.join(', ')}`).toEqual([]);
+    expect(faltando, `categoria(s) de reserva fora do código: ${faltando.join(', ')}. `
+      + 'Sem elas, ehCustoOperacional conta transferencia entre contas como custo.').toEqual([]);
+  });
+
+  it('lê a coluna pelo NOME, não pela posição', () => {
+    /* As duas migrações usam ordens diferentes de coluna. Achar as duas prova
+       que o mapeamento é por nome; se voltar a ser posicional, uma some. */
+    expect(noBanco).toContain('Pagamento de Fatura');
+    expect(categoriasDoTipo('socio')).toContain('Aporte de Sócio');
   });
 });

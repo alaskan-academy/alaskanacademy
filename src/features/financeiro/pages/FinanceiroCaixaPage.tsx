@@ -324,7 +324,10 @@ export default function FinanceiroCaixaPage() {
               <LinhaTotalDRE label="= Resultado Líquido" valor={resultadoLiquido} destaque />
 
               <LinhasDRE label="Aportes de Sócios" totais={totaisSociosPos} cats={SOCIOS} cor="text-blue-400" />
-              <LinhasDRE label="Movimentos de Reserva" totais={totais} cats={RESERVA_CAT} />
+              {/* O rotulo fala em "entre contas" e nao so em reserva: desde 02/09 esta
+                  classe carrega tambem o pagamento de fatura, que nao e reserva
+                  nenhuma — e dinheiro saindo para quitar custo ja contado. */}
+              <LinhasDRE label="Movimentos entre Contas" totais={totais} cats={RESERVA_CAT} />
               <LinhaTotalDRE label="= Posição de Caixa do Período" valor={posicaoCaixa} destaque />
 
               {semCategoria !== 0 && (

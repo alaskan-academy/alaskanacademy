@@ -102,7 +102,9 @@ export const CAT_SOCIOS = [
  * A volta precisa estar aqui, senão `ehReceita` a conta como faturamento e o
  * Fechamento infla a receita com o próprio caixa da empresa.
  */
-export const CAT_RESERVA = ['Reserva de Caixa', 'Retirada do Caixa', 'Investimentos Futuros'] as const;
+export const CAT_RESERVA = [
+  'Reserva de Caixa', 'Retirada do Caixa', 'Investimentos Futuros', 'Pagamento de Fatura',
+] as const;
 
 export const CAT_ANUNCIOS = 'Anúncios (Facebook ADs)';
 
