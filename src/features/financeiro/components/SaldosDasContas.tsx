@@ -13,9 +13,21 @@
  *
  * AS DUAS CLASSES
  *
- *   fluxo   o dinheiro que gira — Conta Simples (conta e cartão são a MESMA
- *           conta: na CS o cartão debita o saldo, não gera fatura a pagar)
+ *   fluxo   o dinheiro que gira — Conta Simples
  *   caixa   o dinheiro parado — C6 e Inter
+ *
+ * NA CONTA SIMPLES, O "LIMITE DOS CARTÕES" É DINHEIRO DELA
+ *
+ * Não é linha de crédito: é saldo da conta já carregado nos cartões. O app
+ * mostra os dois separados (R$ 1.578,42 na conta, R$ 6.069,28 nos cartões) e
+ * os dois são caixa. A soma do extrato inteiro decide a questão:
+ *
+ *   histórico somado          R$ 7.844,09
+ *   contra a conta sozinha    erra por R$ 6.265,67
+ *   contra conta + cartões    erra por R$   196,39
+ *
+ * Por isso a foto da conta é a SOMA dos dois, e as duas fontes
+ * (`conta_simples` e `conta_simples_cartao`) alimentam o mesmo saldo.
  *
  * A soma é por `tipo`, não por nome: banco novo entra escolhendo o lado, sem
  * lista escrita aqui dentro.
@@ -40,6 +52,9 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { ArrowLeftRight, Pencil, PiggyBank, Wallet } from 'lucide-react';
 
 export interface SaldoConta {
@@ -352,37 +367,47 @@ export function SaldosDasContas({
             como custo nem como receita: o dinheiro só mudou de lugar.
           </p>
           <div className="space-y-3">
-            {(['origem', 'destino'] as const).map(lado => (
-              <div key={lado}>
-                <Label>{lado === 'origem' ? 'Sai de' : 'Entra em'}</Label>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {contas.map(c => {
-                    const escolhida = (lado === 'origem' ? origem : destino) === c.id;
-                    const oOutroLado = lado === 'origem' ? destino : origem;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        disabled={oOutroLado === c.id}
-                        onClick={() => (lado === 'origem' ? setOrigem(c.id) : setDestino(c.id))}
-                        className={cn(
-                          'rounded-lg border px-3 py-1.5 text-sm transition-colors',
-                          escolhida
-                            ? 'border-primary bg-primary/15 text-foreground'
-                            : 'border-border text-muted-foreground hover:text-foreground',
-                          oOutroLado === c.id && 'opacity-30',
-                        )}
-                      >
-                        {c.nome}
-                        {mostrarEmpresa && (
-                          <span className="ml-1.5 text-xs text-muted-foreground">{c.empresa_nome}</span>
-                        )}
-                      </button>
-                    );
-                  })}
+            {/* Lista suspensa, não os botões todos abertos: com quatro contas eram
+                oito botões ocupando o diálogo inteiro, e cresceria com cada banco
+                novo. A conta já escolhida do outro lado some da lista — não dá
+                para transferir de uma conta para ela mesma. */}
+            {(['origem', 'destino'] as const).map(lado => {
+              const escolhida = lado === 'origem' ? origem : destino;
+              const oOutroLado = lado === 'origem' ? destino : origem;
+              const definir = lado === 'origem' ? setOrigem : setDestino;
+              return (
+                <div key={lado}>
+                  <Label>{lado === 'origem' ? 'Sai de' : 'Entra em'}</Label>
+                  <Select value={escolhida} onValueChange={definir}>
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Escolha a conta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contas.filter(c => c.id !== oOutroLado).map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          <span className="flex items-center gap-1.5">
+                            {mostrarEmpresa && (
+                              <span
+                                className="h-1.5 w-1.5 shrink-0 rounded-full"
+                                style={{ background: `hsl(var(--empresa-${c.empresa_slug}))` }}
+                                aria-hidden
+                              />
+                            )}
+                            {c.nome}
+                            {mostrarEmpresa && (
+                              <span className="text-xs text-muted-foreground">{c.empresa_nome}</span>
+                            )}
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              · {formatCurrency(c.saldo)}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="valor-transf">Valor</Label>
