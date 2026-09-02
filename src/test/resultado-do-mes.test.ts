@@ -18,7 +18,7 @@ import {
  *  receita, menos onde o juros e o proprio assunto. */
 const comp = (receita: number, resto: Partial<Competencia> = {}): Competencia => ({
   pagoPelosClientes: receita, perdaReembolso: 0, perdaChargeback: 0,
-  coproducao: 0, vendasSemDadoCoproducao: 0,
+  coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 1,
   juros: 0, receita,
   taxaPayt: 0, investMeta: 0, impostoMeta: 0, ...resto,
 });
@@ -215,7 +215,7 @@ describe('a cadeia de saldos', () => {
     ['2026-07', comp(114_554.38)],
     ['2026-08', {
       pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
-      coproducao: 0, vendasSemDadoCoproducao: 0,
+      coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 2_094,
       juros: 5_403.26, receita: 198_851.66,
       taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
@@ -283,7 +283,7 @@ describe('os juros de parcelamento', () => {
     ['2026-07', comp(114_554.38)],
     ['2026-08', {
       pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
-      coproducao: 0, vendasSemDadoCoproducao: 0,
+      coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 2_094,
       juros: 5_403.26, receita: 198_851.66,
       taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
@@ -330,7 +330,7 @@ describe('a coprodução', () => {
     ['2026-07', comp(3_000)],
     ['2026-08', {
       pagoPelosClientes: 4_176.66, perdaReembolso: 0, perdaChargeback: 0,
-      coproducao: 377.50, vendasSemDadoCoproducao: 0,
+      coproducao: 377.50, vendasSemDadoCoproducao: 0, vendas: 13,
       juros: 0, receita: 3_799.16,
       taxaPayt: 211.93,
       investMeta: 3_370.51, impostoMeta: 471.87,
@@ -381,7 +381,7 @@ describe('a coprodução', () => {
        coproducao zero — tem coproducao ignorada, e exibir R$ 0,00 ali seria
        afirmar o que nao se sabe. */
     const antigo = new Map<string, Competencia>([
-      ['2026-03', comp(50_000, { vendasSemDadoCoproducao: 412 })],
+      ['2026-03', comp(50_000, { vendasSemDadoCoproducao: 412, vendas: 412 })],
     ]);
     const velho = montarResultado('2026-03', antigo, new Map(), ['2026-03']);
     expect(velho.coproducao).toBe(0);

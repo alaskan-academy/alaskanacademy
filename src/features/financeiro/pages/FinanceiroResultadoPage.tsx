@@ -19,6 +19,7 @@ import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { supabase } from '@/lib/supabase';
 import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
+import { avisoDeCoproducao } from '@/lib/financeiro';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -79,11 +80,11 @@ export default function FinanceiroResultadoPage() {
       buscarTudo<{ data: string; faturamento_bruto: number; juros_parcelamento: number;
                    receita_tributavel: number; taxa_plataforma: number;
                    perda_reembolso: number; perda_chargeback: number;
-                   coproducao: number; vendas_sem_dado_coproducao: number;
+                   coproducao: number; vendas_sem_dado_coproducao: number; vendas_aprovadas: number;
                    investimento_meta: number; imposto_meta_ads: number }>(
         (de, ate) => {
           let q = supabase.from('vw_faturamento_liquido')
-            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,perda_reembolso,perda_chargeback,coproducao,vendas_sem_dado_coproducao,investimento_meta,imposto_meta_ads')
+            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,perda_reembolso,perda_chargeback,coproducao,vendas_sem_dado_coproducao,vendas_aprovadas,investimento_meta,imposto_meta_ads')
             .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
           if (empresaId) q = q.eq('empresa_id', empresaId);
           return q;
@@ -107,7 +108,7 @@ export default function FinanceiroResultadoPage() {
       const k = String(r.data).slice(0, 7);
       const c = competencia.get(k) ?? {
         pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
-        coproducao: 0, vendasSemDadoCoproducao: 0,
+        coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 0,
         juros: 0, receita: 0, taxaPayt: 0, investMeta: 0, impostoMeta: 0,
       };
       /* `faturamento_bruto` da view so conta `aprovada`, entao a venda que voltou
@@ -117,6 +118,7 @@ export default function FinanceiroResultadoPage() {
       c.perdaChargeback   += Number(r.perda_chargeback ?? 0);
       c.coproducao        += Number(r.coproducao ?? 0);
       c.vendasSemDadoCoproducao += Number(r.vendas_sem_dado_coproducao ?? 0);
+      c.vendas            += Number(r.vendas_aprovadas ?? 0);
       /* `faturamento_bruto` e `valor_total`, que ja inclui a coproducao — ela sai
          na linha propria, abaixo. So as perdas precisam ser somadas de volta,
          porque a view as exclui do bruto ao filtrar por status. */
@@ -321,15 +323,24 @@ export default function FinanceiroResultadoPage() {
                      nota="o cliente contestou na operadora" />
               <Linha rotulo="Vendas que voltaram atrás" valor={atual.perdas} subtotal negativo pct />
 
-              {(atual.coproducao > 0 || atual.vendasSemDadoCoproducao > 0) && (
-                <Linha rotulo="Coprodução" valor={atual.coproducao} fonte="Payt" dentro negativo pct
-                       nota={atual.vendasSemDadoCoproducao > 0
-                         ? <span className="text-destructive">
-                             {atual.vendasSemDadoCoproducao} venda(s) do mês sem esse dado — a Payt
-                             só informa desde maio de 2026
-                           </span>
-                         : 'a Payt paga direto ao coprodutor do curso; nunca passa pela conta'} />
-              )}
+              {/* O aviso de "sem esse dado" só sai quando pode mover o número —
+                  mesma regra do /resumo, uma função só, para as duas telas não
+                  discordarem sobre o mesmo fato. Âmbar e não vermelho: vermelho
+                  é o que se PERDE, e isto é o que não se sabe. */}
+              {(() => {
+                const aviso = avisoDeCoproducao(atual.vendas, atual.vendasSemDadoCoproducao);
+                if (atual.coproducao <= 0 && aviso === 'nenhum') return null;
+                return (
+                  <Linha rotulo="Coprodução" valor={atual.coproducao} fonte="Payt" dentro negativo pct
+                         nota={aviso === 'nenhum'
+                           ? 'a Payt paga direto ao coprodutor do curso; nunca passa pela conta'
+                           : <span className="text-warning">
+                               {aviso === 'tudo-desconhecido'
+                                 ? 'nenhuma venda do mês traz esse dado — a Payt só informa desde maio de 2026'
+                                 : `${atual.vendasSemDadoCoproducao} venda(s) do mês sem esse dado — o valor é piso`}
+                             </span>} />
+                );
+              })()}
               <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt" dentro negativo pct
                      nota="do comprador para a adquirente — nunca foi da operação" />
               <Linha rotulo="Receita" valor={atual.receita} subtotal

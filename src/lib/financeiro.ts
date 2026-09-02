@@ -160,3 +160,40 @@ export function coproducaoNaoAtribuida(
   const sobra = (totalDoMes || 0) - somado;
   return Math.abs(sobra) < 0.01 ? 0 : sobra;
 }
+
+/** O que dizer sobre as vendas de um produto que chegaram sem o dado de coprodução. */
+export type AvisoCoproducao = 'nenhum' | 'tudo-desconhecido' | 'pode-subestimar';
+
+/**
+ * Um aviso só vale quando pode mudar o número que está na tela.
+ *
+ * `valor_coproducao` nulo quer dizer "não sei", e isso é diferente de zero —
+ * por isso a coluna existe. Mas num produto com 1.395 vendas dizendo ZERO e
+ * uma dizendo "não sei", a que não sabe não muda nada: o produto não tem
+ * coprodutor. Avisar ali treina a pessoa a ignorar o aviso, e foi o que
+ * aconteceu com o Curso Saponaria Brasil, que nunca teve coprodução e mesmo
+ * assim ganhou tarja amarela em agosto de 2026.
+ *
+ * QUEM FILTRA O QUÊ
+ *
+ * O corte "esse desconhecido pode importar?" é do BANCO, não daqui:
+ * `vendas_sem_dado_coproducao` já exclui os produtos provados sem coprodutor
+ * (`vw_produto_sem_coprodutor` — quem tem venda confirmada em zero e nenhuma
+ * positiva). Tem de ser lá porque o Financeiro não carrega lista de produto, e
+ * duas telas discordando sobre o mesmo mês é pior que as duas erradas.
+ *
+ * Aqui só se escolhe a FRASE, e ela muda com a proporção:
+ *
+ * - **nenhuma venda tem o dado** — a Payt só manda `commission` desde mai/2026.
+ *   Mês anterior não tem coprodução zero, tem coprodução ignorada, e exibir
+ *   R$ 0,00 ali seria afirmar o que não se sabe.
+ * - **sobrou venda sem o dado** — o valor mostrado é piso, não total. Vale
+ *   mesmo com coprodução zerada: zero também pode estar subestimado.
+ *
+ * Nada disso é lista escrita no código — um produto que ganhar coprodutor
+ * amanhã sai de `vw_produto_sem_coprodutor` sozinho.
+ */
+export function avisoDeCoproducao(vendas: number, semDado: number): AvisoCoproducao {
+  if (semDado <= 0) return 'nenhum';
+  return semDado >= vendas ? 'tudo-desconhecido' : 'pode-subestimar';
+}

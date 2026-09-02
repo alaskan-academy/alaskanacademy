@@ -33,6 +33,7 @@ import {
   cpa,
   taxaPlataformaPct,
   coproducaoNaoAtribuida,
+  avisoDeCoproducao,
 } from "@/lib/financeiro";
 import { impostoSobre, diasDoCustoFixo, lucroPorDia } from "@/lib/resumo";
 import { LembreteConferencia } from "@/features/dashboard/components/LembreteConferencia";
@@ -876,9 +877,11 @@ export default function OverviewPage() {
                     receita abaixo ja e liquida dela. */}
                 {((kpis.coproducao || 0) > 0 || (kpis.semDadoCopro || 0) > 0) && (
                   <Linha
-                    rotulo={(kpis.semDadoCopro || 0) > 0
-                      ? 'Coprodução (' + kpis.semDadoCopro + ' venda(s) sem esse dado)'
-                      : 'Coprodução'}
+                    rotulo={{
+                      'nenhum': 'Coprodução',
+                      'tudo-desconhecido': 'Coprodução (nenhuma venda do período traz esse dado)',
+                      'pode-subestimar': `Coprodução (${kpis.semDadoCopro} venda(s) sem esse dado)`,
+                    }[avisoDeCoproducao(kpis.qtdAprov || 0, kpis.semDadoCopro || 0)]}
                     valor={formatCurrency(kpis.coproducao || 0)}
                     pct={pctReceita(kpis.coproducao)}
                     negativo
@@ -1266,12 +1269,24 @@ export default function OverviewPage() {
                                 ` · ${formatPercent((r.coproducao / r.base_copro) * 100)} da venda`}
                             </div>
                           )}
-                          {(r.sem_dado_copro || 0) > 0 && (
-                            <div className="mt-0.5 text-xs text-warning">
-                              {formatNumber(r.sem_dado_copro)} venda(s) sem o dado de coprodução — a Payt
-                              só passou a mandá-lo em mai. de 26
-                            </div>
-                          )}
+                          {/* O aviso só aparece quando pode mudar o número acima —
+                              ver `avisoDeCoproducao`. Num produto sem coprodutor,
+                              uma venda "não sei" no meio de 1.395 confirmadas em
+                              zero não muda nada, e tarja que não muda nada ensina
+                              a ignorar tarja. */}
+                          {(() => {
+                            const aviso = avisoDeCoproducao(
+                              r.vendas_aprovadas || 0, r.sem_dado_copro || 0,
+                            );
+                            if (aviso === 'nenhum') return null;
+                            return (
+                              <div className="mt-0.5 text-xs text-warning">
+                                {aviso === 'tudo-desconhecido'
+                                  ? `sem o dado de coprodução — a Payt só passou a mandá-lo em mai. de 26`
+                                  : `${formatNumber(r.sem_dado_copro)} venda(s) sem esse dado — o valor acima é piso`}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-semibold tabular-nums text-foreground">

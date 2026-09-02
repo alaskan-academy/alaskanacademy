@@ -123,6 +123,15 @@ export interface Competencia {
    * sabe. Mesmo princípio de `semDadosDeAnuncio`.
    */
   vendasSemDadoCoproducao: number;
+  /**
+   * Vendas aprovadas do mês.
+   *
+   * Só existe para o aviso de coprodução saber se o desconhecido é TUDO ou é
+   * uma sobra: uma venda "não sei" entre 2.093 confirmadas em zero não muda
+   * número nenhum, e tarja que não muda nada ensina a ignorar tarja. Ver
+   * `avisoDeCoproducao` em `src/lib/financeiro.ts`.
+   */
+  vendas: number;
   juros: number;
   /** `receita_tributavel`. É esta que a conta usa, do imposto à margem. */
   receita: number;
@@ -330,6 +339,7 @@ export interface Resultado {
   perdas: number;
   coproducao: number;
   vendasSemDadoCoproducao: number;
+  vendas: number;
   juros: number;
   receita: number;
   taxaPayt: number;
@@ -385,7 +395,7 @@ export function montarResultado(
 ): Resultado {
   const c = competencia.get(mes)
     ?? { pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
-         coproducao: 0, vendasSemDadoCoproducao: 0, juros: 0, receita: 0,
+         coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 0, juros: 0, receita: 0,
          taxaPayt: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
     ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
@@ -410,6 +420,7 @@ export function montarResultado(
     perdas,
     coproducao: c.coproducao,
     vendasSemDadoCoproducao: c.vendasSemDadoCoproducao,
+    vendas: c.vendas,
     juros: c.juros,
     receita: c.receita,
     taxaPayt: c.taxaPayt,

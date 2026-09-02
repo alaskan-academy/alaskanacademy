@@ -8,6 +8,7 @@ import {
   cpa,
   taxaPlataformaPct,
   coproducaoNaoAtribuida,
+  avisoDeCoproducao,
 } from '@/lib/financeiro';
 
 describe('cascata do pago ao lucro', () => {
@@ -289,5 +290,43 @@ describe('a coprodução que não caiu em nenhum produto', () => {
 
   it('aguenta linha sem o campo', () => {
     expect(coproducaoNaoAtribuida(0, [{ produto: 'x' } as { coproducao?: number }])).toBe(0);
+  });
+});
+
+describe('quando avisar que falta o dado de coprodução', () => {
+  /* O aviso nasceu berrando em todo produto com uma venda antiga sem o dado.
+     Ela apontou: "Curso Saponaria Brasil — este curso nunca teve coprodução".
+     Estava certa: 1.395 vendas dizendo ZERO e uma dizendo "não sei" não é
+     incerteza, é ruído — e tarja que não muda nada ensina a ignorar tarja.
+
+     O corte de QUAL desconhecido importa ficou no banco (`vw_produto_sem_
+     coprodutor`), porque o Financeiro não carrega lista de produto e as duas
+     telas não podem discordar sobre o mesmo mês. Aqui escolhe-se só a frase. */
+
+  it('cala quando nada ficou em aberto', () => {
+    // Saponaria em agosto/2026 depois do filtro do banco: 1.396 vendas, 0 em aberto.
+    expect(avisoDeCoproducao(1396, 0)).toBe('nenhum');
+  });
+
+  it('diz TUDO quando nenhuma venda traz o dado', () => {
+    /* Janeiro/2026: a Payt não mandava `commission`. R$ 0,00 ali não é zero,
+       é ignorância, e é a única hora em que a tela precisa dizer isso. */
+    expect(avisoDeCoproducao(189, 189)).toBe('tudo-desconhecido');
+  });
+
+  it('diz PISO quando sobrou parte em aberto', () => {
+    expect(avisoDeCoproducao(1458, 8)).toBe('pode-subestimar');
+  });
+
+  it('avisa mesmo com coprodução zerada — zero também pode estar subestimado', () => {
+    /* Março/2026 tem coprodução R$ 0,00 e 8 vendas de produtos nunca
+       confirmados. Calar aí afirmaria zero sem base. */
+    expect(avisoDeCoproducao(1458, 8)).not.toBe('nenhum');
+  });
+
+  it('não engasga com contagem inconsistente', () => {
+    // `semDado` maior que `vendas` não deveria acontecer; se acontecer, o
+    // conservador é dizer que não se sabe nada, nunca calar.
+    expect(avisoDeCoproducao(0, 3)).toBe('tudo-desconhecido');
   });
 });
