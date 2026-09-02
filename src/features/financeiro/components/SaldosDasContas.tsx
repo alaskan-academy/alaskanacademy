@@ -40,7 +40,7 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Pencil, PiggyBank, Wallet } from 'lucide-react';
+import { ArrowLeftRight, Pencil, PiggyBank, Wallet } from 'lucide-react';
 
 export interface SaldoConta {
   id: string;
@@ -93,6 +93,11 @@ export function SaldosDasContas({
   const [novoSaldo, setNovoSaldo] = useState('');
   const [novaData, setNovaData] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [transferindo, setTransferindo] = useState(false);
+  const [origem, setOrigem] = useState('');
+  const [destino, setDestino] = useState('');
+  const [valorTransf, setValorTransf] = useState('');
+  const [dataTransf, setDataTransf] = useState(new Date().toISOString().slice(0, 10));
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -146,6 +151,82 @@ export function SaldosDasContas({
     }
     toast({ title: `${editando.nome} atualizada` });
     setEditando(null);
+    carregar();
+    aoMudar?.();
+  }
+
+
+  /**
+   * Transferir entre contas: UM evento, DOIS lados.
+   *
+   * O dinheiro sai de uma conta e entra na outra. Lançar isso à mão seriam dois
+   * lançamentos, e esquecer um faz os dois saldos mentirem em direções opostas
+   * sem nada denunciar — a origem parece mais rica, o destino mais pobre, e as
+   * duas continuam com cara de número certo.
+   *
+   * As duas linhas dividem a MESMA `referencia_externa`. Dá para fazer porque a
+   * chave única é (fonte, referência) e as fontes são diferentes: o par fica
+   * encontrável sem coluna nova, e a deduplicação continua valendo dentro de
+   * cada conta.
+   *
+   * As categorias são as de reserva, que `ehCustoOperacional` e `ehReceita`
+   * excluem as duas. Transferir dinheiro de bolso não é custo nem receita, e
+   * contar como qualquer um dos dois inventaria movimento que não houve.
+   */
+  async function transferir() {
+    const valor = parseFloat(valorTransf.replace(/\./g, '').replace(',', '.'));
+    if (!origem || !destino) {
+      toast({ title: 'Escolha as duas contas', variant: 'destructive' });
+      return;
+    }
+    if (origem === destino) {
+      toast({ title: 'Origem e destino são a mesma conta', variant: 'destructive' });
+      return;
+    }
+    if (isNaN(valor) || valor <= 0) {
+      toast({ title: 'Valor inválido', variant: 'destructive' });
+      return;
+    }
+
+    const de = contas.find(c => c.id === origem);
+    const para = contas.find(c => c.id === destino);
+    if (!de || !para) return;
+
+    /* A fonte PRINCIPAL de cada conta — na Conta Simples isso é a conta, nunca
+       o cartão. Ver `conta_fontes.principal`. */
+    const { data: fontes, error: erroFontes } = await supabase
+      .from('conta_fontes').select('conta_id, fonte')
+      .eq('principal', true).in('conta_id', [origem, destino]);
+    const fonteDe = fontes?.find(f => f.conta_id === origem)?.fonte;
+    const fontePara = fontes?.find(f => f.conta_id === destino)?.fonte;
+    if (erroFontes || !fonteDe || !fontePara) {
+      toast({ title: 'Não achei a fonte de uma das contas', variant: 'destructive' });
+      return;
+    }
+
+    setSalvando(true);
+    const ref = `transf_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const descricao = `Transferência ${de.nome} → ${para.nome}`;
+    const { error } = await supabase.from('transacoes').insert([
+      {
+        referencia_externa: ref, data: dataTransf, descricao,
+        valor: -Math.abs(valor), categoria: 'Reserva de Caixa',
+        status_revisao: 'confirmado', fonte: fonteDe, empresa_id: de.empresa_id,
+      },
+      {
+        referencia_externa: ref, data: dataTransf, descricao,
+        valor: Math.abs(valor), categoria: 'Retirada do Caixa',
+        status_revisao: 'confirmado', fonte: fontePara, empresa_id: para.empresa_id,
+      },
+    ]);
+    setSalvando(false);
+    if (error) {
+      toast({ title: 'Erro ao transferir', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: `${formatCurrency(valor)} de ${de.nome} para ${para.nome}` });
+    setTransferindo(false);
+    setValorTransf(''); setOrigem(''); setDestino('');
     carregar();
     aoMudar?.();
   }
@@ -250,6 +331,83 @@ export function SaldosDasContas({
           </div>
         );
       })}
+
+      {/* Uma transferencia move dinheiro sem criar nem destruir: o total de
+          Caixa + Fluxo nao muda, so a distribuicao. Por isso ela e uma acao
+          propria e nao dois lancamentos. */}
+      {contas.length > 1 && (
+        <Button variant="outline" size="sm" className="w-full" onClick={() => setTransferindo(true)}>
+          <ArrowLeftRight className="mr-2 h-3.5 w-3.5" />
+          Transferir entre contas
+        </Button>
+      )}
+
+      <Dialog open={transferindo} onOpenChange={o => !o && setTransferindo(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transferir entre contas</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Lança os dois lados de uma vez — sai de uma conta e entra na outra. Não conta
+            como custo nem como receita: o dinheiro só mudou de lugar.
+          </p>
+          <div className="space-y-3">
+            {(['origem', 'destino'] as const).map(lado => (
+              <div key={lado}>
+                <Label>{lado === 'origem' ? 'Sai de' : 'Entra em'}</Label>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {contas.map(c => {
+                    const escolhida = (lado === 'origem' ? origem : destino) === c.id;
+                    const oOutroLado = lado === 'origem' ? destino : origem;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={oOutroLado === c.id}
+                        onClick={() => (lado === 'origem' ? setOrigem(c.id) : setDestino(c.id))}
+                        className={cn(
+                          'rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                          escolhida
+                            ? 'border-primary bg-primary/15 text-foreground'
+                            : 'border-border text-muted-foreground hover:text-foreground',
+                          oOutroLado === c.id && 'opacity-30',
+                        )}
+                      >
+                        {c.nome}
+                        {mostrarEmpresa && (
+                          <span className="ml-1.5 text-xs text-muted-foreground">{c.empresa_nome}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="valor-transf">Valor</Label>
+                <Input
+                  id="valor-transf" inputMode="decimal" value={valorTransf}
+                  onChange={e => setValorTransf(e.target.value)} placeholder="1500,00"
+                />
+              </div>
+              <div>
+                <Label htmlFor="data-transf">Data</Label>
+                <Input
+                  id="data-transf" type="date" value={dataTransf}
+                  onChange={e => setDataTransf(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTransferindo(false)}>Cancelar</Button>
+            <Button onClick={transferir} disabled={salvando}>
+              {salvando ? 'Lançando…' : 'Transferir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editando} onOpenChange={o => !o && setEditando(null)}>
         <DialogContent>
