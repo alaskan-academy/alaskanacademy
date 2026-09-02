@@ -84,14 +84,14 @@ function LinhasDRE({ label, totais, cats, cor }: {
         <tr key={l.cat} className="hover:bg-white/5 transition-colors">
           <td className="py-1 pl-4 text-sm text-muted-foreground">{l.cat}</td>
           <td className={cn('py-1 text-right text-sm tabular-nums', l.val >= 0 ? 'text-green-400' : 'text-red-400')}>
-            {l.val < 0 ? `(${formatCurrency(Math.abs(l.val))})` : formatCurrency(l.val)}
+            {formatCurrency(l.val)}
           </td>
         </tr>
       ))}
       <tr className="border-t border-white/10">
         <td className={cn('py-1.5 pl-2 text-sm font-semibold', cor)}>Total {label}</td>
         <td className={cn('py-1.5 text-right text-sm font-semibold tabular-nums', cor ?? (soma >= 0 ? 'text-green-400' : 'text-red-400'))}>
-          {soma < 0 ? `(${formatCurrency(Math.abs(soma))})` : formatCurrency(soma)}
+          {formatCurrency(soma)}
         </td>
       </tr>
     </>
@@ -107,7 +107,7 @@ function LinhaTotalDRE({ label, valor, destaque }: { label: string; valor: numbe
         destaque ? 'text-base' : 'text-sm',
         valor >= 0 ? 'text-green-400' : 'text-red-400'
       )}>
-        {valor < 0 ? `(${formatCurrency(Math.abs(valor))})` : formatCurrency(valor)}
+        {formatCurrency(valor)}
       </td>
     </tr>
   );
@@ -287,7 +287,11 @@ export default function FinanceiroCaixaPage() {
           /* Era "Saldo da Reserva", deduzido do extrato da Conta Simples — dizia
              R$ 33.881,27 quando C6 e Inter somados tinham R$ 28.692,61. Agora e a
              soma dos saldos das contas de tipo `caixa`, medidos. */
-          { label: 'Caixa (C6 + Inter)', valor: saldos.caixa, icon: PiggyBank, cor: 'text-blue-400' },
+          /* O rotulo NAO lista os bancos: a soma e por `tipo`, e uma lista escrita
+             aqui envelheceria na primeira conta nova — foi o que aconteceu quando
+             a garantia do C6 e os fundos do Inter entraram e o rotulo continuou
+             dizendo 'C6 + Inter'. Quais contas somam esta ali embaixo. */
+          { label: 'Caixa', valor: saldos.caixa, icon: PiggyBank, cor: 'text-blue-400' },
         ].map(k => (
           <div key={k.label} className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
@@ -295,7 +299,7 @@ export default function FinanceiroCaixaPage() {
               <k.icon className={cn('h-4 w-4', k.cor)} />
             </div>
             <div className={cn('text-xl font-bold tabular-nums', k.cor)}>
-              {k.valor < 0 ? `(${formatCurrency(Math.abs(k.valor))})` : formatCurrency(k.valor)}
+              {formatCurrency(k.valor)}
             </div>
           </div>
         ))}
@@ -329,7 +333,7 @@ export default function FinanceiroCaixaPage() {
                   <tr>
                     <td className="py-1 pl-4 text-sm text-yellow-400">Transações não categorizadas</td>
                     <td className={cn('py-1 text-right text-sm tabular-nums', semCategoria >= 0 ? 'text-green-400' : 'text-red-400')}>
-                      {semCategoria < 0 ? `(${formatCurrency(Math.abs(semCategoria))})` : formatCurrency(semCategoria)}
+                      {formatCurrency(semCategoria)}
                     </td>
                   </tr>
                 </>
