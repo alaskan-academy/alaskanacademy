@@ -7,7 +7,11 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    /* 8080 continua sendo o padrão do `npm run dev` — é a porta que todo mundo
+       tem no navegador. `PORT` só entra quando alguém a define, que é o caso de
+       uma segunda instância subindo ao lado da que já está rodando: sem isso ela
+       morre com "porta em uso" em vez de escolher outra. */
+    port: Number(process.env.PORT) || 8080,
     hmr: {
       overlay: false,
     },
