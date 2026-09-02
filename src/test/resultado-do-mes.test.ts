@@ -18,6 +18,7 @@ import {
  *  receita, menos onde o juros e o proprio assunto. */
 const comp = (receita: number, resto: Partial<Competencia> = {}): Competencia => ({
   pagoPelosClientes: receita, perdaReembolso: 0, perdaChargeback: 0,
+  coproducao: 0, vendasSemDadoCoproducao: 0,
   juros: 0, receita,
   taxaPayt: 0, investMeta: 0, impostoMeta: 0, ...resto,
 });
@@ -214,6 +215,7 @@ describe('a cadeia de saldos', () => {
     ['2026-07', comp(114_554.38)],
     ['2026-08', {
       pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
+      coproducao: 0, vendasSemDadoCoproducao: 0,
       juros: 5_403.26, receita: 198_851.66,
       taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
@@ -281,6 +283,7 @@ describe('os juros de parcelamento', () => {
     ['2026-07', comp(114_554.38)],
     ['2026-08', {
       pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
+      coproducao: 0, vendasSemDadoCoproducao: 0,
       juros: 5_403.26, receita: 198_851.66,
       taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
@@ -316,6 +319,73 @@ describe('os juros de parcelamento', () => {
     expect(r.pagoPelosClientes).toBe(207_070.16);
     expect(r.juros).toBe(5_403.26);
     expect(r.pagoPelosClientes - r.perdas - r.juros).toBeCloseTo(r.receita, 2);
+  });
+});
+
+describe('a coprodução', () => {
+  /* Numeros reais de agosto/2026: o Desafios tem coprodutora (Helena) levando
+     9,18%. Antes disso ficar visivel, a fatia dela era contada como TAXA DA
+     PAYT — o produto aparecia com 14,78% de taxa contra 6,13% dos outros. */
+  const competencia = new Map<string, Competencia>([
+    ['2026-07', comp(3_000)],
+    ['2026-08', {
+      pagoPelosClientes: 4_176.66, perdaReembolso: 0, perdaChargeback: 0,
+      coproducao: 377.50, vendasSemDadoCoproducao: 0,
+      juros: 0, receita: 3_799.16,
+      taxaPayt: 211.93,
+      investMeta: 3_370.51, impostoMeta: 471.87,
+    }],
+  ]);
+  const caixa = agruparCaixa([
+    { data: '2026-09-20', valor: -280.00, categoria: 'Impostos e Tributos' },
+  ]);
+  const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
+
+  it('desce UMA vez, entre o que o cliente pagou e a receita', () => {
+    expect(r.pagoPelosClientes - r.perdas - r.coproducao - r.juros)
+      .toBeCloseTo(r.receita, 2);
+  });
+
+  it('nao entra na performance: a margem e sobre a receita LIQUIDA', () => {
+    /* O dinheiro do coprodutor nunca passa pela conta da empresa. Medir a
+       margem sobre o bruto seria dar credito por faturamento de terceiro. */
+    expect(r.margem).toBeCloseTo((r.resultado / 3_799.16) * 100, 6);
+    /* E NAO sobre os 4.176,66 que o cliente pagou. A desigualdade nao serve
+       aqui porque ela se inverte quando o resultado e negativo — o que basta
+       provar e que o denominador e outro. */
+    expect(r.margem).not.toBeCloseTo((r.resultado / 4_176.66) * 100, 6);
+  });
+
+  it('nao e custo — nao aparece depois da receita', () => {
+    // resultado = receita - impostos e taxas - anuncio - custos, sem coproducao
+    expect(r.sobraAposImpostos - r.investMeta - r.custosPagos)
+      .toBeCloseTo(r.resultado, 2);
+    expect(r.sobraAposImpostos - r.investMeta - r.custosPagos - r.coproducao)
+      .not.toBeCloseTo(r.resultado, 2);
+  });
+
+  it('nao entra em impostos e taxas', () => {
+    // Ela chegou a ser contada como taxa da Payt; o total nao pode reabsorve-la.
+    expect(r.impostosETaxas).toBeCloseTo(r.taxaPayt + r.impostoMeta + r.simples.valor, 2);
+  });
+
+  it('mes sem coprodutor mostra zero, e o elo continua fechando', () => {
+    const semCopro = montarResultado('2026-07', competencia, caixa, janelaDeMeses('2026-07', 12));
+    expect(semCopro.coproducao).toBe(0);
+    expect(semCopro.pagoPelosClientes - semCopro.perdas - semCopro.coproducao - semCopro.juros)
+      .toBeCloseTo(semCopro.receita, 2);
+  });
+
+  it('separa DESCONHECIDO de zero', () => {
+    /* A Payt so manda `commission` desde maio/2026. Mes anterior nao tem
+       coproducao zero — tem coproducao ignorada, e exibir R$ 0,00 ali seria
+       afirmar o que nao se sabe. */
+    const antigo = new Map<string, Competencia>([
+      ['2026-03', comp(50_000, { vendasSemDadoCoproducao: 412 })],
+    ]);
+    const velho = montarResultado('2026-03', antigo, new Map(), ['2026-03']);
+    expect(velho.coproducao).toBe(0);
+    expect(velho.vendasSemDadoCoproducao).toBe(412);
   });
 });
 

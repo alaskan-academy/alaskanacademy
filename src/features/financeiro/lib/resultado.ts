@@ -98,6 +98,31 @@ export interface Competencia {
   perdaReembolso: number;
   /** Cliente contestou na operadora. Mexe em cobrança, fatura, suporte. */
   perdaChargeback: number;
+  /**
+   * Fatia que a Payt paga direto ao COPRODUTOR do curso.
+   *
+   * Sai da receita no topo, como os juros: a Payt divide na origem e esse
+   * dinheiro nunca passa pela conta da empresa. Não é custo — nunca foi seu.
+   *
+   * Em 02/09/2026 só dois produtos têm coprodutor, ambos de professoras e
+   * ambos com a Helena: Workshop Desafios (9,18%) e Guia do Comportamento
+   * (9,39%). Os outros 32 produtos têm zero.
+   *
+   * Consequência de ter ficado escondido: `taxa_plataforma_valor` era calculada
+   * como "tudo que não é do produtor", então engolia a coprodução — o Desafios
+   * aparecia com 14,78% de taxa da Payt contra 6,13% dos outros produtos, e a
+   * diferença era a Helena.
+   */
+  coproducao: number;
+  /**
+   * Vendas do mês em que a coprodução é DESCONHECIDA, não zero.
+   *
+   * A Payt só passou a mandar `commission` em maio/2026, com cobertura de 100%
+   * a partir de julho. Mês anterior a isso não tem coprodução zero — tem
+   * coprodução ignorada, e exibir R$ 0,00 ali seria afirmar algo que não se
+   * sabe. Mesmo princípio de `semDadosDeAnuncio`.
+   */
+  vendasSemDadoCoproducao: number;
   juros: number;
   /** `receita_tributavel`. É esta que a conta usa, do imposto à margem. */
   receita: number;
@@ -303,6 +328,8 @@ export interface Resultado {
   perdaChargeback: number;
   /** As duas somadas — a linha que fecha o bloco de perdas. */
   perdas: number;
+  coproducao: number;
+  vendasSemDadoCoproducao: number;
   juros: number;
   receita: number;
   taxaPayt: number;
@@ -358,7 +385,7 @@ export function montarResultado(
 ): Resultado {
   const c = competencia.get(mes)
     ?? { pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
-         juros: 0, receita: 0,
+         coproducao: 0, vendasSemDadoCoproducao: 0, juros: 0, receita: 0,
          taxaPayt: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
     ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
@@ -367,7 +394,7 @@ export function montarResultado(
   /* Parte da RECEITA, não do que o cliente pagou: os juros já são da
      adquirente antes de a empresa ver o dinheiro. */
   /* A cadeia: do que entrou até o que sobra, cada perda descendo UMA vez.
-       pago − perdas − juros = receita   (nem as perdas nem os juros foram da operação)
+       pago − perdas − coprodução − juros = receita   (nada disso foi da operação)
        receita − impostos e taxas = sobra
        sobra − anúncio − custos = resultado */
   const perdas = c.perdaReembolso + c.perdaChargeback;
@@ -381,6 +408,8 @@ export function montarResultado(
     perdaReembolso: c.perdaReembolso,
     perdaChargeback: c.perdaChargeback,
     perdas,
+    coproducao: c.coproducao,
+    vendasSemDadoCoproducao: c.vendasSemDadoCoproducao,
     juros: c.juros,
     receita: c.receita,
     taxaPayt: c.taxaPayt,

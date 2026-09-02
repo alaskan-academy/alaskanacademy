@@ -305,6 +305,13 @@ export default function OverviewPage() {
 
     const fatBruto = num(d.fat_bruto);
     const juros = num(d.juros);
+    /* A Payt paga o coprodutor DIRETO: esse dinheiro nunca passa pela conta da
+       empresa, entao ele sai da receita junto com os juros — nao e custo, nunca
+       foi nosso. `receita` ja vem liquida do banco; a linha existe so para
+       DISCRIMINAR, e a performance (margem, imposto, percentuais) e medida
+       sobre o liquido. Ver a migracao 20260902a. */
+    const coproducao = num(d.coproducao);
+    const semDadoCopro = num(d.vendas_sem_dado_coproducao);
     const receita = num(d.receita);
     const taxaPlat = num(d.taxa_plataforma);
     const taxaPlatPct = taxaPlataformaPct(taxaPlat, receita);
@@ -514,7 +521,7 @@ export default function OverviewPage() {
     );
 
     setKpis({
-      juros, receita, fatBruto, fatLiquido, lucro, lucroCC,
+      juros, coproducao, semDadoCopro, receita, fatBruto, fatLiquido, lucro, lucroCC,
       cpa: cpaPeriodo, roas: roasPeriodo, roasSemUpsell, ticketMedio: ticketMedioPeriodo,
       taxaPlat, taxaPlatPct, impSimples, impMeta,
       investimento, custoFixo, custoMensal,
@@ -846,13 +853,27 @@ export default function OverviewPage() {
                   forte
                 />
                 {(kpis.juros || 0) > 0 && (
+                  <Linha
+                    rotulo="Juros de parcelamento"
+                    valor={formatCurrency(kpis.juros)}
+                    pct={pctReceita(kpis.juros)}
+                    negativo
+                  />
+                )}
+                {/* Coproducao: discriminada, nunca somada a performance. A
+                    receita abaixo ja e liquida dela. */}
+                {((kpis.coproducao || 0) > 0 || (kpis.semDadoCopro || 0) > 0) && (
+                  <Linha
+                    rotulo={(kpis.semDadoCopro || 0) > 0
+                      ? 'Coprodução (' + kpis.semDadoCopro + ' venda(s) sem esse dado)'
+                      : 'Coprodução'}
+                    valor={formatCurrency(kpis.coproducao || 0)}
+                    pct={pctReceita(kpis.coproducao)}
+                    negativo
+                  />
+                )}
+                {((kpis.juros || 0) > 0 || (kpis.coproducao || 0) > 0) && (
                   <>
-                    <Linha
-                      rotulo="Juros de parcelamento"
-                      valor={formatCurrency(kpis.juros)}
-                      pct={pctReceita(kpis.juros)}
-                      negativo
-                    />
                     <div className="border-t border-border/60 pt-1.5">
                       <Linha
                         rotulo="Receita"

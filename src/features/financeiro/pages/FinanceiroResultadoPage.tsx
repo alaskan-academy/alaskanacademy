@@ -79,10 +79,11 @@ export default function FinanceiroResultadoPage() {
       buscarTudo<{ data: string; faturamento_bruto: number; juros_parcelamento: number;
                    receita_tributavel: number; taxa_plataforma: number;
                    perda_reembolso: number; perda_chargeback: number;
+                   coproducao: number; vendas_sem_dado_coproducao: number;
                    investimento_meta: number; imposto_meta_ads: number }>(
         (de, ate) => {
           let q = supabase.from('vw_faturamento_liquido')
-            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,perda_reembolso,perda_chargeback,investimento_meta,imposto_meta_ads')
+            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,perda_reembolso,perda_chargeback,coproducao,vendas_sem_dado_coproducao,investimento_meta,imposto_meta_ads')
             .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
           if (empresaId) q = q.eq('empresa_id', empresaId);
           return q;
@@ -106,6 +107,7 @@ export default function FinanceiroResultadoPage() {
       const k = String(r.data).slice(0, 7);
       const c = competencia.get(k) ?? {
         pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
+        coproducao: 0, vendasSemDadoCoproducao: 0,
         juros: 0, receita: 0, taxaPayt: 0, investMeta: 0, impostoMeta: 0,
       };
       /* `faturamento_bruto` da view so conta `aprovada`, entao a venda que voltou
@@ -113,6 +115,11 @@ export default function FinanceiroResultadoPage() {
          a ser TUDO que entrou, e cada perda desce uma vez so, com nome. */
       c.perdaReembolso    += Number(r.perda_reembolso ?? 0);
       c.perdaChargeback   += Number(r.perda_chargeback ?? 0);
+      c.coproducao        += Number(r.coproducao ?? 0);
+      c.vendasSemDadoCoproducao += Number(r.vendas_sem_dado_coproducao ?? 0);
+      /* `faturamento_bruto` e `valor_total`, que ja inclui a coproducao — ela sai
+         na linha propria, abaixo. So as perdas precisam ser somadas de volta,
+         porque a view as exclui do bruto ao filtrar por status. */
       c.pagoPelosClientes += Number(r.faturamento_bruto ?? 0)
                            + Number(r.perda_reembolso ?? 0)
                            + Number(r.perda_chargeback ?? 0);
@@ -168,12 +175,12 @@ export default function FinanceiroResultadoPage() {
 
   function exportar() {
     if (!linhas.length) return;
-    const cab = ['Mês', 'Pago pelos clientes', 'Reembolsos', 'Chargebacks', 'Juros', 'Receita', 'Taxa Payt',
+    const cab = ['Mês', 'Pago pelos clientes', 'Reembolsos', 'Chargebacks', 'Coproducao', 'Juros', 'Receita', 'Taxa Payt',
       'Investimento Meta', 'Imposto Meta', 'Simples', 'Simples previsto',
       'Custos pagos', 'Resultado', 'Margem %', 'Retiradas dos socios',
       'Sobrou depois das retiradas', 'Impostos e taxas', 'Sem dados do Meta'];
     const corpo = linhas.map(l => [
-      l.mes, l.pagoPelosClientes, l.perdaReembolso, l.perdaChargeback, l.juros, l.receita,
+      l.mes, l.pagoPelosClientes, l.perdaReembolso, l.perdaChargeback, l.coproducao, l.juros, l.receita,
       l.taxaPayt, l.investMeta, l.impostoMeta,
       l.simples.valor, l.simples.presumido ? 'sim' : 'não',
       l.custosPagos, l.resultado, l.margem.toFixed(2),
@@ -314,6 +321,15 @@ export default function FinanceiroResultadoPage() {
                      nota="o cliente contestou na operadora" />
               <Linha rotulo="Vendas que voltaram atrás" valor={atual.perdas} subtotal negativo pct />
 
+              {(atual.coproducao > 0 || atual.vendasSemDadoCoproducao > 0) && (
+                <Linha rotulo="Coprodução" valor={atual.coproducao} fonte="Payt" dentro negativo pct
+                       nota={atual.vendasSemDadoCoproducao > 0
+                         ? <span className="text-destructive">
+                             {atual.vendasSemDadoCoproducao} venda(s) do mês sem esse dado — a Payt
+                             só informa desde maio de 2026
+                           </span>
+                         : 'a Payt paga direto ao coprodutor do curso; nunca passa pela conta'} />
+              )}
               <Linha rotulo="Juros de parcelamento" valor={atual.juros} fonte="Payt" dentro negativo pct
                      nota="do comprador para a adquirente — nunca foi da operação" />
               <Linha rotulo="Receita" valor={atual.receita} subtotal
