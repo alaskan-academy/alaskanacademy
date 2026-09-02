@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet, PiggyBank,
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { AvisoRevisao } from '@/features/financeiro/components/AvisoRevisao';
 import { RecorrentesAVencer } from '@/features/financeiro/components/RecorrentesAVencer';
+import { SaldosDasContas } from '@/features/financeiro/components/SaldosDasContas';
 import { ehCustoOperacional } from '@/features/financeiro/constants';
 import { buscarTudo } from '@/features/financeiro/lib/buscar';
 import { cn } from '@/lib/utils';
@@ -124,13 +125,11 @@ export default function FinanceiroCaixaPage() {
   const [totaisSociosPos, setTotaisSociosPos] = useState<TotalCategoria[]>([]);
   const [totaisSociosNeg, setTotaisSociosNeg] = useState<TotalCategoria[]>([]);
   const [semCategoria, setSemCategoria] = useState(0);
-  const [config, setConfig] = useState<CaixaConfig | null>(null);
-  const [movimentos, setMovimentos] = useState<MovimentoReserva[]>([]);
+  /* Os saldos vem do painel de contas, que ja consulta `vw_saldo_contas`.
+     Consultar de novo aqui seria a mesma pergunta em dois lugares — e dois
+     numeros diferentes para o mesmo dinheiro na mesma tela. */
+  const [saldos, setSaldos] = useState({ caixa: 0, fluxo: 0 });
   const [plano, setPlano] = useState<Conta[]>([]);
-
-  const [editando, setEditando] = useState(false);
-  const [novoSaldo, setNovoSaldo] = useState('');
-  const [novaData, setNovaData] = useState('');
 
   // ── Navegar mês ──
   function avancar() {
@@ -231,66 +230,6 @@ export default function FinanceiroCaixaPage() {
     load();
   }, [dataInicio, dataFim, SOCIOS, empresaId]);
 
-  // ── Buscar config da reserva e movimentos históricos ──
-  useEffect(() => {
-    async function load() {
-      /*
-        Ler pode somar; gravar exige uma empresa escolhida.
-
-        O saldo inicial é de uma CONTA BANCÁRIA, e agora há uma por empresa. Em
-        "Ambas" a reserva mostrada é a soma das duas — o que é verdade —, mas não
-        existe uma linha única para editar.
-
-        Por isso o `id` vai vazio ali: é o que impede uma gravação de acertar a
-        conta errada, sem depender de alguém lembrar de conferir antes de salvar.
-      */
-      let qCfg = supabase.from('caixa_config').select('*');
-      if (empresaId) qCfg = qCfg.eq('empresa_id', empresaId);
-      const { data: cfgs } = await qCfg;
-      const linhas = (cfgs ?? []) as CaixaConfig[];
-      if (linhas.length > 0) {
-        setConfig({
-          id: empresaId ? linhas[0].id : '',
-          saldo_inicial: linhas.reduce((s, l) => s + Number(l.saldo_inicial ?? 0), 0),
-          data_referencia: linhas[0].data_referencia,
-        });
-      }
-
-      // Sem filtro de status, igual ao resto da tela. O que importa é que seja
-      // a MESMA regra em todo lugar: quando esta seção e o DRE usavam critérios
-      // diferentes, em 24/08 o DRE mostrava R$ 0,00 enquanto a reserva mostrava
-      // −R$ 1.559,21 com movimentos de agosto, e nada na tela explicava por quê.
-      // As DUAS pontas do movimento, não só a ida.
-      //
-      // Era `.eq('categoria', 'Reserva de Caixa')`, que pega apenas o dinheiro
-      // saindo da conta para a reserva. As voltas — "Retirada do Caixa" — não
-      // entravam, então a lista só tinha negativos e o saldo da reserva ficava
-      // maior do que é: somava tudo que entrou e nada do que saiu de lá.
-      //
-      // O filtro vem do plano de contas: toda categoria de tipo `reserva`.
-      // Categoria nova de reserva criada no campo entra sozinha.
-      const cats = plano.filter(c => c.tipo === 'reserva').map(c => c.categoria);
-      if (cats.length === 0) return;
-
-      /* Sem filtro de data nenhum: esta lista e o historico inteiro da Reserva,
-         e cresce para sempre. Eram 31 linhas em 01/09/2026 — longe do teto, mas
-         o dia em que passar nao daria erro, so pararia de mostrar as antigas. */
-      const { linhas: mov } = await buscarTudo<MovimentoReserva>(
-        (de, ate) => {
-          let q = supabase
-            .from('transacoes')
-            .select('id, data, descricao, valor')
-            .in('categoria', cats)
-            .order('data', { ascending: false }).order('id')
-            .range(de, ate);
-          if (empresaId) q = q.eq('empresa_id', empresaId);
-          return q;
-        });
-
-      setMovimentos(mov);
-    }
-    load();
-  }, [plano, empresaId]);
 
   // ── KPIs ──
   const totalReceitas = totais
@@ -313,83 +252,6 @@ export default function FinanceiroCaixaPage() {
   const resultadoOperacional = totalReceitas + totalCustos;
   const resultadoLiquido     = resultadoOperacional + totalSociosRetiradas;
   const posicaoCaixa         = resultadoLiquido + totalSociosAportes + totalReserva;
-
-  // ── Saldo da reserva ──
-  // ── Saldo da reserva ──
-  //
-  // Só os movimentos POSTERIORES à data de referência.
-  //
-  // O saldo base é uma foto: "em 25/08 a reserva tinha R$ 32.381,27". Os
-  // movimentos anteriores a essa data são justamente o que PRODUZIU esse
-  // número — somá-los de novo conta a mesma coisa duas vezes.
-  //
-  // Era `movimentos.reduce(...)` sobre a lista inteira, e o efeito aparecia na
-  // cara: ela informava o saldo real de hoje e a tela devolvia R$ 2.559,21 a
-  // menos, descontando aportes de janeiro que já estavam embutidos na foto.
-  /*
-    O SINAL VISTO PELA RESERVA É O INVERSO DO VISTO PELA CONTA.
-
-    `transacoes.valor` é sempre do ponto de vista da conta operacional, porque é
-    de lá que o extrato vem. Uma transferência de R$ 1.500 para a reserva é
-    −1.500 no extrato: saiu de lá. Mas ela ENTROU aqui.
-
-    A tela somava esse −1.500 ao saldo base e mostrava a reserva encolhendo
-    quando ela tinha acabado de crescer — erro de R$ 3.000 no caso dela, o dobro
-    do movimento, porque subtrai o que devia somar.
-
-    Confere nos dois sentidos, e é a mesma inversão:
-
-      "Reserva de Caixa"    16 movimentos, todos negativos (−R$ 36.000)
-                            dinheiro saindo da conta PARA a reserva → entra aqui
-      "Retirada do Caixa"   15 movimentos, todos positivos (+R$ 31.940,79)
-                            dinheiro voltando da reserva PARA a conta → sai daqui
-
-    O dado não muda: continua sendo uma saída da conta operacional, e é assim
-    que o DRE e o resto da tela devem tratá-lo. O que muda é só o ponto de vista
-    deste bloco, que é o da reserva.
-  */
-  const paraAReserva = (valorNaConta: number) => -valorNaConta;
-
-  const movHistorico = movimentos
-    .filter(m => !config?.data_referencia || m.data > config.data_referencia)
-    .reduce((a, m) => a + paraAReserva(m.valor), 0);
-  const saldoReserva = (config?.saldo_inicial ?? 0) + movHistorico;
-
-  // ── Salvar config ──
-  async function salvarConfig() {
-    if (!config) return;
-
-    /* Em "Ambas" o saldo na tela é a soma de duas contas bancárias, e não há
-       linha única para gravar. O `id` vazio é o que segura — ver o comentário
-       na leitura, logo acima. */
-    if (!config.id) {
-      toast({
-        title: 'Escolha uma empresa',
-        description: 'A reserva é de uma conta bancária. Em "Ambas" o saldo mostrado é a soma das duas, e não pode ser editado.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    const val = parseFloat(novoSaldo.replace(',', '.'));
-    if (isNaN(val)) return;
-
-    // O `.select()` devolve as linhas afetadas. Sem ele, um UPDATE barrado por RLS
-    // retorna 200 com zero linhas e o código dá sucesso sobre nada.
-    const { data, error } = await supabase
-      .from('caixa_config')
-      .update({ saldo_inicial: val, data_referencia: novaData || config.data_referencia, updated_at: new Date().toISOString() })
-      .eq('id', config.id)
-      .select('id');
-
-    if (error) { toast({ title: 'Erro', description: error.message, variant: 'destructive' }); return; }
-    if (!data || data.length === 0) {
-      toast({ title: 'Nada foi salvo', description: 'Nenhuma linha alterada — verifique permissão.', variant: 'destructive' });
-      return;
-    }
-    setConfig(c => c ? { ...c, saldo_inicial: val, data_referencia: novaData || c.data_referencia } : c);
-    setEditando(false);
-    toast({ title: 'Reserva atualizada' });
-  }
 
   return (
     <DashboardLayout title="Caixa" hideFilters hideTitle>
@@ -422,7 +284,10 @@ export default function FinanceiroCaixaPage() {
           { label: 'Receitas', valor: totalReceitas, icon: TrendingUp, cor: 'text-green-400' },
           { label: 'Despesas', valor: totalCustos, icon: TrendingDown, cor: 'text-red-400' },
           { label: 'Resultado Líquido', valor: resultadoLiquido, icon: Wallet, cor: resultadoLiquido >= 0 ? 'text-green-400' : 'text-red-400' },
-          { label: 'Saldo da Reserva', valor: saldoReserva, icon: PiggyBank, cor: 'text-blue-400' },
+          /* Era "Saldo da Reserva", deduzido do extrato da Conta Simples — dizia
+             R$ 33.881,27 quando C6 e Inter somados tinham R$ 28.692,61. Agora e a
+             soma dos saldos das contas de tipo `caixa`, medidos. */
+          { label: 'Caixa (C6 + Inter)', valor: saldos.caixa, icon: PiggyBank, cor: 'text-blue-400' },
         ].map(k => (
           <div key={k.label} className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
@@ -473,82 +338,12 @@ export default function FinanceiroCaixaPage() {
           </table>
         </div>
 
-        {/* Reserva de Caixa */}
-        <div className="space-y-4">
-          <div className="bg-card border border-border rounded-lg p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Reserva de Caixa</h2>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
-                setNovoSaldo(String(config?.saldo_inicial ?? 0));
-                setNovaData(config?.data_referencia ?? '');
-                setEditando(true);
-              }}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-muted-foreground">
-                <span>Saldo base ({config?.data_referencia ?? '—'})</span>
-                <span className="tabular-nums">{formatCurrency(config?.saldo_inicial ?? 0)}</span>
-              </div>
-              {/* "Movimentos históricos" dizia que somava tudo, e era isso que
-                  fazia — inclusive o que já estava dentro do saldo base. O
-                  rótulo agora nomeia o recorte, para ninguém precisar adivinhar
-                  de onde sai o número. */}
-              <div className="flex justify-between text-muted-foreground">
-                <span>Movimentos desde então</span>
-                <span className={cn('tabular-nums', movHistorico >= 0 ? 'text-green-400' : 'text-red-400')}>
-                  {movHistorico < 0 ? `(${formatCurrency(Math.abs(movHistorico))})` : `+${formatCurrency(movHistorico)}`}
-                </span>
-              </div>
-              <div className="flex justify-between font-bold border-t border-border pt-2">
-                <span>Saldo atual</span>
-                <span className={cn('tabular-nums text-blue-400 text-base')}>{formatCurrency(saldoReserva)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Histórico de movimentos da reserva */}
-          <div className="bg-card border border-border rounded-lg p-5">
-            {/* O rótulo diz de quem é o sinal. Sem isso, quem cruzar esta lista
-                com o extrato vai achar que uma das duas está errada — as duas
-                estão certas, olhando de lados opostos do mesmo movimento. */}
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Movimentos da Reserva</h2>
-            <p className="mb-3 text-[11px] normal-case tracking-normal text-muted-foreground/60">
-              Do ponto de vista da reserva: <span className="text-green-400">+</span> é dinheiro que
-              entrou nela, e no extrato da conta aparece como saída.
-            </p>
-            {movimentos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhum movimento.</p>
-            ) : (
-              <div className="space-y-1 max-h-80 overflow-y-auto">
-                {movimentos.map(m => {
-                  /*
-                    A lista fala pela reserva, igual ao saldo acima dela.
-
-                    Mostrava todos os aportes em vermelho e entre parênteses —
-                    dinheiro ENTRANDO na reserva pintado como perda, e a soma
-                    logo acima dizendo o contrário do que a lista dizia. Duas
-                    leituras do mesmo movimento na mesma tela.
-                  */
-                  const v = paraAReserva(m.valor);
-                  return (
-                    <div key={m.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
-                      <div>
-                        <div className="text-xs text-muted-foreground">{m.data}</div>
-                        <div className="text-sm">{m.descricao}</div>
-                      </div>
-                      <span className={cn('text-sm font-medium tabular-nums', v >= 0 ? 'text-green-400' : 'text-red-400')}>
-                        {v < 0 ? `(${formatCurrency(Math.abs(v))})` : `+${formatCurrency(v)}`}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Onde o dinheiro está.
+            Substituiu o bloco "Reserva de Caixa", que sabia de um saldo só por
+            empresa e o DEDUZIA do extrato da Conta Simples. Com C6 e Inter, o
+            saldo de um banco passaria a depender do extrato de outro — e a
+            dedução já errava: dizia R$ 33.881,27 contra R$ 28.692,61 reais. */}
+        <SaldosDasContas aoTotalizar={setSaldos} />
       </div>
 
       {/* Só o que olha para frente. O mapa de custos e o previsto x realizado
@@ -559,39 +354,6 @@ export default function FinanceiroCaixaPage() {
         <RecorrentesAVencer ano={ano} mes={mes} />
       </div>
 
-      {/* Modal editar saldo base */}
-      <Dialog open={editando} onOpenChange={setEditando}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Atualizar Saldo Base da Reserva</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Saldo atual da reserva (R$)</Label>
-              <Input
-                value={novoSaldo}
-                onChange={e => setNovoSaldo(e.target.value)}
-                placeholder="0,00"
-                type="number"
-                step="0.01"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Data de referência</Label>
-              <Input
-                value={novaData}
-                onChange={e => setNovaData(e.target.value)}
-                type="date"
-              />
-              <p className="text-xs text-muted-foreground">
-                Os movimentos ALASKAN ACADEMY após esta data são somados automaticamente.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditando(false)}>Cancelar</Button>
-            <Button onClick={salvarConfig}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardLayout>
   );
 }

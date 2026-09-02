@@ -161,6 +161,14 @@ export default function FinanceiroRevisaoPage() {
   const [criarRegra,   setCriarRegra]  = useState(true);
   const [padraoRegra,  setPadraoRegra] = useState('');
 
+  /* Em qual CONTA o lançamento cai.
+     Antes gravava `fonte: 'manual'` fixo, que não pertence a conta nenhuma:
+     o dinheiro entrava no DRE mas o saldo do banco não se mexia. Cada conta
+     tem uma fonte principal (`conta_fontes.principal`), e é ela que vai para
+     `transacoes.fonte` — na Conta Simples isso é a conta, não o cartão. */
+  const [contasDaEmpresa, setContasDaEmpresa] = useState<{ conta_id: string; nome: string; fonte: string }[]>([]);
+  const [novaConta, setNovaConta] = useState('');
+
   // form state — novo lançamento manual
   const [novoModal,   setNovoModal]   = useState(false);
   const [novoData,    setNovoData]    = useState(hoje());
@@ -228,6 +236,29 @@ export default function FinanceiroRevisaoPage() {
   }, [filtro, anoRev, mesRev, empresaId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /* As contas da empresa, para o lançamento manual saber onde cair. Vem de
+     `conta_fontes` porque é lá que mora a fonte principal de cada conta. */
+  useEffect(() => {
+    (async () => {
+      let q = supabase.from('conta_fontes')
+        .select('conta_id, fonte, contas!inner(nome, ordem, ativo, empresa_id)')
+        .eq('principal', true);
+      if (empresaId) q = q.eq('empresa_id', empresaId);
+      const { data } = await q;
+      const linhas = (data ?? [])
+        .map((l: Record<string, unknown>) => {
+          const c = l.contas as { nome: string; ordem: number; ativo: boolean };
+          return { conta_id: String(l.conta_id), fonte: String(l.fonte), nome: c.nome, ordem: c.ordem, ativo: c.ativo };
+        })
+        .filter(l => l.ativo)
+        .sort((a, b) => a.ordem - b.ordem);
+      setContasDaEmpresa(linhas);
+      /* Uma conta só: escolhe sozinha. Obrigar a clicar no único item de uma
+         lista de um é atrito sem informação. */
+      setNovaConta(linhas.length === 1 ? linhas[0].conta_id : '');
+    })();
+  }, [empresaId]);
 
   const openModal = (t: Transacao) => {
     setSelected(t);
@@ -410,6 +441,7 @@ export default function FinanceiroRevisaoPage() {
 
   const criarLancamento = async () => {
     if (!novoDesc.trim() || !novoCateg || !novoValor) return;
+    if (!novaConta) { toast({ title: 'Escolha a conta', variant: 'destructive' }); return; }
     if (!exigeEmpresa()) return;
     setCriandoNovo(true);
     try {
@@ -425,7 +457,7 @@ export default function FinanceiroRevisaoPage() {
         categoria: novoCateg,
         centro_custo: novoCentro || null,
         status_revisao: 'confirmado',
-        fonte: 'manual',
+        fonte: contasDaEmpresa.find(c => c.conta_id === novaConta)?.fonte ?? 'manual',
         empresa_id: empresaId,
       });
       if (error) throw error;
@@ -976,6 +1008,35 @@ export default function FinanceiroRevisaoPage() {
                   {tipo === 'saida' ? '↓ Saída' : '↑ Entrada'}
                 </button>
               ))}
+            </div>
+
+            {/* EM QUAL CONTA. Sem isto o lançamento entra no DRE e o saldo do
+                banco não se mexe — que é justamente o que a tela agora promete. */}
+            <div className="space-y-1.5">
+              <Label>Conta</Label>
+              {contasDaEmpresa.length === 0 ? (
+                <p className="text-xs text-destructive">
+                  Nenhuma conta cadastrada{empresaId ? ' para esta empresa' : ''}. Escolha uma empresa no cabeçalho.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {contasDaEmpresa.map(c => (
+                    <button
+                      key={c.conta_id}
+                      type="button"
+                      onClick={() => setNovaConta(c.conta_id)}
+                      className={cn(
+                        'rounded-lg border px-3 py-1.5 text-sm transition-colors',
+                        novaConta === c.conta_id
+                          ? 'border-primary bg-primary/15 text-foreground'
+                          : 'border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {c.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
