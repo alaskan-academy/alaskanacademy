@@ -186,7 +186,12 @@ async function upsertBatch(rows: Record<string, unknown>[]): Promise<void> {
     const chunk = rows.slice(i, i + CHUNK);
     const { error } = await supabase
       .from('transacoes')
-      .upsert(chunk, { onConflict: 'referencia_externa', ignoreDuplicates: true });
+      /* A chave e (fonte, referencia_externa), e nao a referencia sozinha: o id
+         externo so e unico DENTRO do banco que o emitiu. Com contas do Inter e
+         do C6 entrando, um id numerico coincidente com um da Conta Simples faria
+         o `ignoreDuplicates` descartar a transacao em silencio — sem erro, sem
+         linha, e o DRE fechando com um numero plausivel. Ver 20260901j. */
+      .upsert(chunk, { onConflict: 'fonte,referencia_externa', ignoreDuplicates: true });
     if (error) throw new Error(`DB upsert error: ${error.message}`);
   }
 }
@@ -245,7 +250,7 @@ Deno.serve(async (req) => {
     /*
       A referência da conta histórica NÃO muda de formato.
 
-      Ela é a chave de deduplicação (`onConflict: referencia_externa`), e
+      Ela é PARTE da chave de deduplicação (`onConflict: fonte,referencia_externa`), e
       prefixá-la agora faria as 1.238 linhas da Alaskan serem reimportadas
       como novas. Conta nova ganha o prefixo, porque o id da Conta Simples só
       é garantidamente único DENTRO de uma conta.
