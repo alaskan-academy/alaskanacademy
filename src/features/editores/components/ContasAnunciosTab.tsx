@@ -82,10 +82,15 @@ export function ContasAnunciosTab() {
   const load = async () => {
     setLoading(true);
     const [{ data }, { data: sug }, { data: der }] = await Promise.all([
+      /* De `vw_ad_accounts`, nao de `ad_accounts`: o nome vem com a BM na
+         frente. Duas contas se chamam "Guia do Comportamento - TSL" em BMs
+         diferentes, e duas linhas identicas numa tela de midia sao convite
+         para pausar a campanha errada. A gravacao continua indo para a tabela;
+         so a LEITURA passa pela view. */
       supabase
-        .from('ad_accounts')
-        .select('id, account_id, nome, ativo, roas_meta, cpa_meta')
-        .order('nome'),
+        .from('vw_ad_accounts')
+        .select('id, account_id, nome:nome_exibicao, ativo, roas_meta, cpa_meta')
+        .order('nome_exibicao'),
       supabase.rpc('fn_metas_sugeridas', { p_dias: 30, p_margem: 0.3 }),
       supabase.rpc('fn_produto_derivado', { p_dias: 60 }),
     ]);
