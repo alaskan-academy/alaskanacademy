@@ -158,6 +158,11 @@ export default function FinanceiroRevisaoPage() {
   const [formCateg,    setFormCateg]   = useState('');
   const [formCentro,   setFormCentro]  = useState('');
   const [formNome,     setFormNome]    = useState('');
+  /* O nome vale so para ESTE lancamento, ou para todos do fornecedor?
+     Ate 04/09/2026 so existia a segunda opcao, e ela usava o campo como memo
+     da transacao — 13 nomes concorrentes acumulados em 4 pagadores provam
+     isso. 'este' e o padrao porque e o uso que ela de fato faz. */
+  const [nomeVale,     setNomeVale]    = useState<'este' | 'todos'>('este');
   const [criarRegra,   setCriarRegra]  = useState(true);
   const [padraoRegra,  setPadraoRegra] = useState('');
 
@@ -274,6 +279,7 @@ export default function FinanceiroRevisaoPage() {
     // Vale o resolvido: é o que o relatório soma.
     setFormCentro(t.grupo || t.centro_custo || '');
     setFormNome(t.fornecedor);
+    setNomeVale('este');
     setCriarRegra(true);
     // O padrão do apelido, não o descritor inteiro. Com o descritor, cada
     // cobrança do Facebook geraria uma regra própria e inútil — e um clique
@@ -302,12 +308,31 @@ export default function FinanceiroRevisaoPage() {
         })
         .eq('id', selected.id);
 
-      // O nome é do FORNECEDOR, não desta linha: renomear aqui arruma o
-      // histórico inteiro dele e todas as cobranças futuras. Editar a descrição
-      // da transação seria adulterar o que o banco mandou, e consertaria uma
-      // linha só — as outras 106 do Facebook continuariam ilegíveis.
+      /*
+        O nome tem DOIS escopos, e a escolha e dela.
+
+        "Todos" grava em `fornecedores` e arruma o historico inteiro daquele
+        pagador — e o que resolve as 106 linhas do Facebook de uma vez.
+
+        "Este" grava `transacoes.apelido`, que so vale para esta linha. Existe
+        porque tres PIX para a mesma pessoa podem ser aporte, retirada e recarga
+        de chip, e ate 04/09/2026 nao havia onde dizer isso: ela escrevia o
+        proposito no nome do fornecedor e cada tentativa criava uma linha nova
+        competindo com a anterior — 5 so para JESSICA GAVAZZA PEISINO.
+
+        Nao adultera o extrato: `descricao` continua sendo o que o banco mandou,
+        e as duas telas mostram os dois nomes, um sobre o outro.
+      */
       const nome = formNome.trim();
-      if (nome && nome !== selected.fornecedor) {
+      const mudou = nome && nome !== selected.fornecedor;
+
+      if (mudou && nomeVale === 'este') {
+        const { error } = await supabase.from('transacoes')
+          .update({ apelido: nome }).eq('id', selected.id);
+        if (error) throw error;
+      }
+
+      if (mudou && nomeVale === 'todos') {
         const { error } = await supabase.from('fornecedores').upsert({
           nome,
           padrao: padraoRegra.trim() || selected.descricao,
@@ -926,8 +951,33 @@ export default function FinanceiroRevisaoPage() {
                   onChange={e => setFormNome(e.target.value)}
                   placeholder={selected.fornecedor}
                 />
+                {/* A escolha do escopo. Antes so existia "todos", e o aviso
+                    abaixo dizia isso — mas quem precisa nomear UM lancamento
+                    lia o aviso e renomeava assim mesmo, criando concorrente. */}
+                <div className="flex gap-2">
+                  {([
+                    ['este',  'Só este lançamento'],
+                    ['todos', 'Todos deste fornecedor'],
+                  ] as const).map(([valor, rotulo]) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      onClick={() => setNomeVale(valor)}
+                      className={cn(
+                        'flex-1 rounded-lg border px-3 py-1.5 text-xs transition-colors',
+                        nomeVale === valor
+                          ? 'border-primary bg-primary/15 text-foreground'
+                          : 'border-border text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Vale para todas as cobranças que casam com o padrão abaixo, passadas e futuras.
+                  {nomeVale === 'este'
+                    ? 'Fica só nesta linha. O extrato original continua visível embaixo.'
+                    : 'Vale para todas as cobranças que casam com o padrão abaixo, passadas e futuras.'}
                 </p>
               </div>
 
