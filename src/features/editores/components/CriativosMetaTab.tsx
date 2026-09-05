@@ -1196,6 +1196,12 @@ interface Card {
   id: string; nome: string; criado_em: string;
   responsavel: { nome: string } | null;
   avaliacao: string | null; status_veiculacao: string | null;
+  /* De qual projeto o card é. É o que separa homônimos: "AD 012 H01 V01"
+     existe em vários projetos ao mesmo tempo, e sem isto a lista de busca
+     mostrava cinco linhas idênticas — mesmo nome, mesma data, às vezes o
+     mesmo responsável. A lista de PARECIDOS já mostrava o projeto; a de
+     busca, que é a mais usada, não. */
+  projeto: { nome: string } | null;
 }
 
 /** Uma sugestão de `fn_cards_parecidos`: card postado com nome próximo. */
@@ -1252,7 +1258,9 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
      */
     const { data, error } = await supabase
       .from('producoes')
-      .select('id, nome, criado_em, avaliacao, status_veiculacao, responsavel:perfis!responsavel_id(nome)')
+      .select('id, nome, criado_em, avaliacao, status_veiculacao, '
+            + 'responsavel:perfis!responsavel_id(nome), '
+            + 'projeto:ofertas_editores!criativos_projeto_id_fkey(nome)')
       .eq('fase', 'postado').eq('tipo', 'criativo')
       .ilike('nome', `%${t.trim()}%`)
       .order('criado_em', { ascending: false })
@@ -1398,6 +1406,11 @@ function ModalVinculo({ anuncio, podeEditar, onFechar, onSalvo }: {
                   <div className="truncate text-xs text-foreground">{c.nome}</div>
                   <div className="text-[10px] text-muted-foreground">
                     {c.responsavel?.nome ?? 'sem responsável'}
+                    {/* O projeto vem logo depois do responsável, na mesma ordem
+                        da lista de parecidos ali em cima: duas listas que
+                        respondem a mesma pergunta não podem se ler diferente. */}
+                    {' · '}
+                    <span className="text-foreground">{c.projeto?.nome ?? 'sem projeto'}</span>
                     {c.avaliacao && ` · ${c.avaliacao}`}
                     {c.status_veiculacao && ` · ${c.status_veiculacao}`}
                     {' · '}{new Date(c.criado_em).toLocaleDateString('pt-BR')}
