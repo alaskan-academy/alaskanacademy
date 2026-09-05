@@ -205,6 +205,10 @@ export function AvaliacaoView({ userId }: Props) {
   const [comPedido, setComPedido]       = useState<Set<string>>(new Set());
   const [pedindo, setPedindo]           = useState<{ id: string; nome: string } | null>(null);
   const [somentePendentes, setSomentePendentes] = useState(false);
+  /* Só os cards em que a marcação dela contradiz a Meta. São 53 hoje, e o
+     lado caro são os 24 marcados "Encerrado" que gastaram R$ 5.691,62 em
+     sete dias. Sem este filtro eles ficam espalhados entre 2.837 linhas. */
+  const [somenteContradicao, setSomenteContradicao] = useState(false);
   const [mostrarInativos, setMostrarInativos]   = useState(false);
 
   /*
@@ -382,7 +386,13 @@ export function AvaliacaoView({ userId }: Props) {
     }
   };
 
-  const displayCriativos = useMemo(() => {
+  /* A lista com TODOS os filtros menos o de contradição. É sobre ela que o
+     contador do botão é medido — um contador tem de prometer o que entrega.
+
+     Na primeira versão eu contei sobre a lista inteira: o botão dizia "(60)" e
+     clicar não mostrava nada, porque os contraditórios são de agosto e o
+     período aberto era setembro. */
+  const baseCriativos = useMemo(() => {
     const buscaLower = busca.toLowerCase();
     return criativos.filter(c => {
       if (!c.data_ref) return false; // sem data de início nem de postagem: ocultar
@@ -394,6 +404,18 @@ export function AvaliacaoView({ userId }: Props) {
       return true;
     });
   }, [criativos, dateStart, dateEnd, somentePendentes, busca, filtroFunil]);
+
+  const qtdContradicao = useMemo(
+    () => baseCriativos.filter(c => contradiz(c.status_veiculacao, c.estado_ads)).length,
+    [baseCriativos],
+  );
+
+  const displayCriativos = useMemo(
+    () => somenteContradicao
+      ? baseCriativos.filter(c => contradiz(c.status_veiculacao, c.estado_ads))
+      : baseCriativos,
+    [baseCriativos, somenteContradicao],
+  );
 
   const total        = displayCriativos.length;
   const pendentes    = displayCriativos.filter(isPendente).length;
@@ -529,6 +551,21 @@ export function AvaliacaoView({ userId }: Props) {
             )}
           >
             Só pendentes
+          </button>
+          {/* Ao lado de "Só pendentes" porque é a mesma classe de pergunta:
+              "o que eu preciso olhar agora?". O contador vai no rótulo — um
+              filtro que pode devolver zero deve dizer isso ANTES do clique. */}
+          <button
+            onClick={() => setSomenteContradicao(v => !v)}
+            title="Cards em que o status marcado contradiz o que a Meta diz dos anúncios"
+            className={cn(
+              'h-8 px-3 rounded-md border text-xs transition-colors',
+              somenteContradicao
+                ? 'bg-warning/10 border-warning/30 text-warning'
+                : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50',
+            )}
+          >
+            ⚠ Só contraditórios{qtdContradicao > 0 && ` (${qtdContradicao})`}
           </button>
           <button
             onClick={() => setMostrarInativos(v => !v)}
