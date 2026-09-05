@@ -175,8 +175,13 @@ function DialogoConferencia({ aberto, setAberto, aoSalvar, ultima, cadencia }: {
     }
     const d = data as Record<string, unknown>;
     setNosso({
-      // `fat_bruto` é o valor com juros de parcelamento — a mesma base que a Payt
-      // reporta. Comparar contra a receita sem juros acusaria divergência todo dia.
+      // `fat_bruto` é a mesma base da coluna "Valor da Venda" da Payt: a venda SEM
+      // os juros do parcelamento, que ficam com a adquirente e nunca chegam na conta.
+      //
+      // Até 05/09/2026 este comentário dizia o contrário — que a Payt reportava COM
+      // juros — e por isso ninguém desconfiou dos 2,98% que a conferência daquele dia
+      // achou. A suposição errada aqui foi o que desligou a comparação que teria
+      // pegado o problema. Ver docs/conferencias/2026-09-05-payt.md.
       receita: Number(d?.fat_bruto ?? 0),
       vendas: Number(d?.qtd_aprovadas ?? 0),
     });
