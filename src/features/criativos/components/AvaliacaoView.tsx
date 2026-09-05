@@ -72,6 +72,14 @@ interface CriativoPostado {
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
   data_postagem: string | null;
+  /* O que o META diz dos anuncios deste card — nao o que alguem marcou.
+     Ver `vw_producao_estado_ads` e o bloco ESTADO_ADS abaixo. */
+  estado_ads: string | null;
+  /* O ultimo dia em que algum anuncio do card realmente GASTOU. E o fato;
+     o estado acima e o que a Meta reporta AGORA. Os dois respondem coisas
+     diferentes — "esta ligado?" e "quando parou?" — e se confirmam: dos 62
+     cards no ar, 54 gastaram ontem ou hoje; dos 342 parados, 1. */
+  ultimo_gasto: string | null;
   data_ref: string | null;
 }
 
@@ -95,6 +103,51 @@ const STATUS_COR: Record<string, string> = {
   'Bloqueado': 'bg-red-500/10 text-red-400 border-red-500/20',
   'Arquivado': 'bg-muted/40 text-muted-foreground/60 border-border/50',
 };
+
+/**
+ * O que o Meta diz dos anúncios do card, e como isso aparece.
+ *
+ * `status_veiculacao` — a coluna ao lado — é o que ELA marcou. Este é o fato.
+ * Os dois divergem, e a divergência é cara:
+ *
+ *   marcado "Encerrado", ativo no Meta   24 cards, R$ 5.691,62 em 7 dias
+ *   marcado "Rodando", pausado no Meta   29 cards, R$   652,52 em 7 dias
+ *
+ * O primeiro é dinheiro saindo num criativo que ela considera encerrado. Sem
+ * esta coluna não havia como ver isso sem abrir o Business Manager.
+ *
+ * Vem de `effective_status` e nunca de `status`: o segundo é só o botão do
+ * anúncio e ignora campanha ou conjunto pausados — divergem em 4.825 dos 8.123
+ * anúncios, e usar o errado mostraria quase tudo como ativo.
+ */
+const ESTADO_ADS: Record<string, { rotulo: string; cor: string; titulo: string }> = {
+  ativo:        { rotulo: 'no ar',       cor: 'text-emerald-400',
+                  titulo: 'Pelo menos um anúncio deste card está entregando agora' },
+  pausado:      { rotulo: 'parado',      cor: 'text-muted-foreground',
+                  titulo: 'Todos os anúncios estão pausados — no anúncio, no conjunto ou na campanha' },
+  reprovado:    { rotulo: 'reprovado',   cor: 'text-destructive',
+                  titulo: 'A Meta recusou o anúncio' },
+  com_problema: { rotulo: 'com problema', cor: 'text-warning',
+                  titulo: 'A Meta sinalizou problema no anúncio' },
+  sem_anuncio:  { rotulo: 'sem anúncio', cor: 'text-muted-foreground/50',
+                  titulo: 'Nenhum anúncio ligado a este card, ou o anúncio sumiu da API' },
+};
+
+/** Data curta para caber na célula: "05/09". Ano só quando não é o atual. */
+function diaCurto(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  const esteAno = String(new Date().getFullYear());
+  return a === esteAno ? `${d}/${m}` : `${d}/${m}/${a.slice(2)}`;
+}
+
+/** A marcação dela contradiz o Meta? É o caso que custa dinheiro. */
+function contradiz(marcado: string | null, estado: string | null): boolean {
+  if (!marcado || !estado) return false;
+  if (marcado === 'Rodando')   return estado === 'pausado' || estado === 'sem_anuncio';
+  if (marcado === 'Encerrado') return estado === 'ativo';
+  if (marcado === 'Pausado')   return estado === 'ativo';
+  return false;
+}
 
 const AVAL_COR: Record<string, string> = {
   'Validado':     'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
@@ -263,6 +316,23 @@ export function AvaliacaoView({ userId }: Props) {
     );
     const hist = histResults.flatMap(r => r.data ?? []);
 
+    /* O estado dos anúncios, em blocos pelo mesmo motivo do histórico: uma URL
+       com 2.837 ids não passa. */
+    const estadoResults = await Promise.all(
+      Array.from({ length: Math.ceil(ids.length / CHUNK) }, (_, i) =>
+        supabase.from('vw_producao_estado_ads')
+          .select('producao_id,estado,ultimo_gasto')
+          .in('producao_id', ids.slice(i * CHUNK, (i + 1) * CHUNK)),
+      ),
+    );
+    const estadoMap: Record<string, { estado: string; ultimo_gasto: string | null }> = {};
+    for (const r of estadoResults) {
+      for (const e of (r.data ?? []) as
+           { producao_id: string; estado: string; ultimo_gasto: string | null }[]) {
+        estadoMap[e.producao_id] = { estado: e.estado, ultimo_gasto: e.ultimo_gasto };
+      }
+    }
+
     const postMap: Record<string, string> = {};
     for (const h of hist) {
       if (!postMap[h.criativo_id]) postMap[h.criativo_id] = h.criado_em.slice(0, 10);
@@ -275,6 +345,8 @@ export function AvaliacaoView({ userId }: Props) {
         ...raw,
         data_postagem,
         data_ref: data_postagem ?? raw.data_inicio ?? null,
+        estado_ads: estadoMap[c.id]?.estado ?? null,
+        ultimo_gasto: estadoMap[c.id]?.ultimo_gasto ?? null,
       };
     }));
     setLoading(false);
@@ -580,6 +652,32 @@ export function AvaliacaoView({ userId }: Props) {
                   {saving === c.id + 'status_veiculacao' && (
                     <div className="absolute inset-y-0 right-1.5 flex items-center pointer-events-none">
                       <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  {/* O fato, embaixo da marcação. Quando os dois se contradizem,
+                      o aviso é o que importa — e não o rótulo. */}
+                  {c.estado_ads && ESTADO_ADS[c.estado_ads] && (
+                    <div
+                      className={cn(
+                        'mt-0.5 truncate text-[10px]',
+                        contradiz(c.status_veiculacao, c.estado_ads)
+                          ? 'text-warning'
+                          : ESTADO_ADS[c.estado_ads].cor,
+                      )}
+                      title={
+                        contradiz(c.status_veiculacao, c.estado_ads)
+                          ? `Você marcou "${c.status_veiculacao}", mas a Meta diz ${ESTADO_ADS[c.estado_ads].rotulo}`
+                          : ESTADO_ADS[c.estado_ads].titulo
+                      }
+                    >
+                      {contradiz(c.status_veiculacao, c.estado_ads) && '⚠ '}
+                      {ESTADO_ADS[c.estado_ads].rotulo}
+                      {/* A data do ULTIMO GASTO, que responde "quando parou?".
+                          Sem ela, "parado" nao diz se foi ontem ou em junho —
+                          e essa diferenca muda o que fazer com o criativo. */}
+                      {c.ultimo_gasto
+                        ? ` · ${diaCurto(c.ultimo_gasto)}`
+                        : c.estado_ads !== 'sem_anuncio' && ' · nunca gastou'}
                     </div>
                   )}
                 </div>
