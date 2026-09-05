@@ -92,7 +92,7 @@ The sidebar (`AppSidebar`) lists funnels fetched from the `funis` table. Selecti
 - **Lucro operacional** = faturamento_bruto − taxa_plataforma − reembolsos − imposto_simples − imposto_meta − investimento_meta
 - **Lucro c/ custo fixo** = lucro − custo_fixo (prorated by period days: `(mensal / 30) * dias`)
 - **Margem %** uses lucro operacional (without fixed cost) divided by faturamento_bruto
-- **Upsells** are `vendas` rows where `is_upsell = true` AND the product name matches an `ofertas` entry with `tipo = 'upsell'`
+- **Upsells** são `vendas` com `is_upsell = true`, e **só isso**. O campo vem de `fn_marcar_upsell`, que lê `payload_webhook->>'type' IN ('upsell','manual_upsell')` — a Payt diz, venda por venda. **Nunca cruzar com `ofertas.tipo`**: um mesmo produto vende como upsell e direto (o Handify Completo: 57 e 9), então o tipo é da venda e não do produto. Exigir os dois em `vw_conversao_upsell` cortava 384 vendas / R$ 28.895,49 e deixava a análise vazia — armadilha 1 em forma de filtro. `ofertas` serve para dar **nome** ao upsell, por `LEFT JOIN`, jamais para decidir se ele é um
 - **Order bumps** are `venda_itens` rows — uma linha só existe se a pessoa levou o bump. `vendas.valor_total` **já inclui** os bumps: receita de bump é uma fatia do faturamento, nunca uma parcela a somar por fora (medido: `valor_total − bumps` bate com o preço de quem comprou sem bump, ±R$ 0,80 nos três produtos de maior volume)
 
 ### Editor performance module (EditorsPage)
