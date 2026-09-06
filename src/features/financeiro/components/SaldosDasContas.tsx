@@ -55,7 +55,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeftRight, Pencil, PiggyBank, Wallet } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, Pencil, PiggyBank, Wallet } from 'lucide-react';
 
 export interface SaldoConta {
   id: string;
@@ -70,6 +70,24 @@ export interface SaldoConta {
   saldo: number;
   empresa_nome: string;
   empresa_slug: string;
+  /* Ate quando o extrato foi lido — o dia da fonte MAIS VELHA da conta.
+     Nulo quer dizer que nao houve movimento nenhum depois da foto, e ai nao ha
+     o que envelhecer. Vem da view, junto do calculo: quem soma e quem sabe ate
+     onde somou. */
+  lido_ate: string | null;
+  /* Conta e cartao terminando em dias distintos. O saldo entao mistura datas e
+     esta errado por construcao — foi assim que a Conta Simples apareceu com
+     -R$ 3.208,94 enquanto o banco mostrava R$ 4.615,74. */
+  fontes_em_dias_diferentes: boolean;
+}
+
+/** Quantos dias inteiros se passaram desde `iso`, no fuso de quem olha. */
+function diasDesde(iso: string): number {
+  const [a, m, d] = iso.split('-').map(Number);
+  const alvo = new Date(a, m - 1, d);
+  const hoje = new Date();
+  return Math.floor((new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).getTime()
+                     - alvo.getTime()) / 86400000);
 }
 
 const CLASSES = [
@@ -130,6 +148,8 @@ export function SaldosDasContas({
       movimento: Number(l.movimento ?? 0),
       qtd_movimentos: Number(l.qtd_movimentos ?? 0),
       saldo: Number(l.saldo ?? 0),
+      lido_ate: (l.lido_ate as string | null) ?? null,
+      fontes_em_dias_diferentes: Boolean(l.fontes_em_dias_diferentes),
     })) as SaldoConta[];
     setContas(linhas);
     const soma = (t: 'caixa' | 'fluxo') =>
@@ -324,7 +344,33 @@ export function SaldosDasContas({
                           {' em '}{c.qtd_movimentos} movimento{c.qtd_movimentos > 1 ? 's' : ''} desde então
                         </>
                       )}
+                      {/* A data da foto sozinha enganava: parecia dizer a idade do
+                          saldo, mas so diz a idade do PONTO DE PARTIDA. O que
+                          envelhece e o extrato, e ele nao aparecia em lugar nenhum. */}
+                      {c.lido_ate && (
+                        <>
+                          {' · '}
+                          <span className={diasDesde(c.lido_ate) >= 2 ? 'text-warning' : undefined}>
+                            lido até {ddmm(c.lido_ate)}
+                            {diasDesde(c.lido_ate) >= 1 &&
+                              ` (${diasDesde(c.lido_ate)} dia${diasDesde(c.lido_ate) > 1 ? 's' : ''} atrás)`}
+                          </span>
+                        </>
+                      )}
                     </div>
+
+                    {/* Somar conta de um dia com cartao de outro nao da saldo
+                        nenhum. Vale um aviso proprio, e nao um detalhe na linha
+                        de cima: e a diferenca entre "esta velho" e "esta errado". */}
+                    {c.fontes_em_dias_diferentes && (
+                      <div className="mt-1 flex items-start gap-1.5 text-[11px] text-warning">
+                        <AlertTriangle className="mt-px h-3 w-3 shrink-0" />
+                        <span>
+                          A conta e o cartão foram lidos em dias diferentes — este saldo
+                          mistura datas. Importe o extrato antes de usar o número.
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                     {formatCurrency(c.saldo)}
