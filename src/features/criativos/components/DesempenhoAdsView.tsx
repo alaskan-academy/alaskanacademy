@@ -163,6 +163,74 @@ function rotuloDaVida(v?: Vida): string {
   return `${marca}${v.dias} ${v.dias === 1 ? 'dia' : 'dias'}`;
 }
 
+/**
+ * Ordenação por coluna da tabela de ADs escalados.
+ *
+ * `numerica` decide só o PRIMEIRO clique: em texto o esperado é A→Z, em
+ * dinheiro é o maior primeiro — ninguém abre a tabela de verba querendo ver
+ * quem gastou menos.
+ */
+type ColEscalados = 'nome' | 'tipo' | 'formato' | 'angulo' | 'editor' | 'projeto'
+                  | 'vida' | 'verba' | 'roas' | 'vendas';
+
+type Ordem = { col: ColEscalados; desc: boolean };
+
+const COLUNAS_ESCALADOS: { col: ColEscalados; rotulo: string; numerica: boolean }[] = [
+  { col: 'nome',    rotulo: 'Nome',    numerica: false },
+  { col: 'tipo',    rotulo: 'Tipo',    numerica: false },
+  { col: 'formato', rotulo: 'Formato', numerica: false },
+  { col: 'angulo',  rotulo: 'Ângulo',  numerica: false },
+  { col: 'editor',  rotulo: 'Editor',  numerica: false },
+  { col: 'projeto', rotulo: 'Projeto', numerica: false },
+  { col: 'vida',    rotulo: 'Vida',    numerica: true  },
+  { col: 'verba',   rotulo: 'Verba',   numerica: true  },
+  { col: 'roas',    rotulo: 'ROAS',    numerica: true  },
+  { col: 'vendas',  rotulo: 'Vendas',  numerica: true  },
+];
+
+/**
+ * Compara duas chaves com a ausência SEMPRE por último, nos dois sentidos.
+ *
+ * O travessão da tabela quer dizer "não sei" — AD sem anúncio vinculado —, e
+ * não "zero". Se o nulo virasse zero, inverter a ordem traria doze linhas
+ * vazias para o topo e empurraria para fora justamente o que se foi olhar.
+ */
+function compararChaves(a: string | number | null, b: string | number | null, desc: boolean): number {
+  if (a == null || b == null) return a == null ? (b == null ? 0 : 1) : -1;
+  const c = typeof a === 'string' ? a.localeCompare(String(b), 'pt-BR') : a - Number(b);
+  return desc ? -c : c;
+}
+
+function ThOrdenavel({ col, rotulo, numerica, ordem, setOrdem }: {
+  col: ColEscalados; rotulo: string; numerica: boolean;
+  ordem: Ordem; setOrdem: (o: Ordem) => void;
+}) {
+  const ativa = ordem.col === col;
+  return (
+    <th
+      className={cn('px-3 py-2', numerica ? 'text-right' : 'text-left')}
+      aria-sort={ativa ? (ordem.desc ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => setOrdem(ativa ? { col, desc: !ordem.desc } : { col, desc: numerica })}
+        className={cn(
+          'group inline-flex items-center gap-1 uppercase transition-colors hover:text-foreground',
+          numerica && 'flex-row-reverse',
+          ativa && 'text-foreground',
+        )}
+      >
+        {rotulo}
+        {/* A seta ocupa lugar mesmo apagada: sem isso o cabeçalho pula de
+            largura a cada clique e a tabela inteira treme. */}
+        <span className={cn('text-[9px] leading-none', !ativa && 'opacity-0 group-hover:opacity-40')}>
+          {ativa && ordem.desc ? '▼' : '▲'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 function buildBreakdown(
   rows: PostadoRow[],
   key: keyof PostadoRow,
@@ -391,6 +459,9 @@ export function DesempenhoAdsView() {
   const { metricas } = useMetricasDoAd(startStr, endStr);
 
   const [vidas, setVidas] = useState<Record<string, Vida>>({});
+  /* Começa por nome crescente, que era a ordem fixa de antes: quem já usava a
+     tela não vê nada mudar até clicar. */
+  const [ordem, setOrdem] = useState<Ordem>({ col: 'nome', desc: false });
 
   const projetosDaEmpresa = useProjetosDaEmpresa();
 
@@ -551,9 +622,37 @@ export function DesempenhoAdsView() {
     return Object.values(map).sort((a, b) => a.mes.localeCompare(b.mes));
   }, [filtered]);
 
-  const escaladosLista = useMemo(() =>
-    filteredSemData.filter(isEscalado).sort((a, b) => (a.nome ?? '').localeCompare(b.nome ?? '')),
-  [filteredSemData]);
+  const escaladosLista = useMemo(() => {
+    /* A chave sai daqui, e não de uma função solta, porque `vidas` e
+       `metricas` chegam por hooks: uma função de módulo precisaria recebê-los
+       como parâmetro e o tipo viria junto, sem nada em troca.
+
+       Ordena pelo NÚMERO, nunca pelo que está escrito na célula: "≥ 40 dias"
+       antes de "6 dias" é o que sai de ordenar o rótulo. */
+    const chave = (r: PostadoRow): string | number | null => {
+      const m = metricas.get(r.id);
+      switch (ordem.col) {
+        case 'nome':    return r.nome ?? null;
+        case 'tipo':    return TIPO_LABEL[r.tipo] ?? r.tipo ?? null;
+        case 'formato': return r.formato ?? null;
+        case 'angulo':  return r.angulo_teste ?? null;
+        case 'editor':  return r.responsavel?.nome ?? null;
+        case 'projeto': return r.projeto?.nome ?? null;
+        case 'vida':    return vidas[r.id]?.dias ?? null;
+        case 'verba':   return m?.investimento ?? null;
+        case 'roas':    return m?.roas ?? null;
+        /* Sem métrica é nulo; COM métrica, vendas ausente é zero de verdade —
+           é o mesmo que a célula mostra. */
+        case 'vendas':  return m ? (m.vendas ?? 0) : null;
+      }
+    };
+    return filteredSemData.filter(isEscalado).sort((a, b) => {
+      const c = compararChaves(chave(a), chave(b), ordem.desc);
+      // Desempate pelo nome: sem ele, duas linhas de mesma verba trocariam de
+      // lugar a cada re-render e a tabela pareceria instável.
+      return c !== 0 ? c : (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR');
+    });
+  }, [filteredSemData, ordem, vidas, metricas]);
 
   /* Normalizado aqui também, senão a lista de filtro ofereceria "TSL,VSL" e
      "TSL, VSL" como se fossem escolhas diferentes — e escolher uma esconderia
@@ -945,12 +1044,9 @@ export function DesempenhoAdsView() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-[11px] text-muted-foreground uppercase">
-                      <th className="text-left px-3 py-2">Nome</th>
-                      <th className="text-left px-3 py-2">Tipo</th>
-                      <th className="text-left px-3 py-2">Formato</th>
-                      <th className="text-left px-3 py-2">Ângulo</th>
-                      <th className="text-left px-3 py-2">Editor</th>
-                      <th className="text-left px-3 py-2">Projeto</th>
+                      {COLUNAS_ESCALADOS.slice(0, 6).map(c => (
+                        <ThOrdenavel key={c.col} {...c} ordem={ordem} setOrdem={setOrdem} />
+                      ))}
                       {/*
                         A coluna "Avaliação" saiu em 31/08/2026.
 
@@ -978,10 +1074,9 @@ export function DesempenhoAdsView() {
                       */}
                       {/* Quanto tempo ficou no ar. `≥` quer dizer que ainda
                           esta rodando; `>` que a serie comeca depois do AD. */}
-                      <th className="text-right px-3 py-2">Vida</th>
-                      <th className="text-right px-3 py-2">Verba</th>
-                      <th className="text-right px-3 py-2">ROAS</th>
-                      <th className="text-right px-3 py-2">Vendas</th>
+                      {COLUNAS_ESCALADOS.slice(6).map(c => (
+                        <ThOrdenavel key={c.col} {...c} ordem={ordem} setOrdem={setOrdem} />
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
