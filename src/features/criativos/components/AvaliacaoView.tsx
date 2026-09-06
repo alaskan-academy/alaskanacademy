@@ -1,7 +1,7 @@
 import { todasAsLinhas } from '@/lib/supabase';
 import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, Search, CalendarIcon, GitBranch } from 'lucide-react';
+import { Loader2, Search, CalendarIcon, GitBranch, Ruler, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
@@ -103,6 +103,115 @@ const STATUS_COR: Record<string, string> = {
   'Bloqueado': 'bg-red-500/10 text-red-400 border-red-500/20',
   'Arquivado': 'bg-muted/40 text-muted-foreground/60 border-border/50',
 };
+
+/**
+ * O CRIVO: os números que separam validado de escalado.
+ *
+ * Fica na tela porque é aqui que a decisão é tomada, e número que mora numa
+ * conversa não sobrevive à terceira avaliação — some, e cada pessoa passa a
+ * usar a régua que lembra.
+ *
+ * MEDIDO, não arbitrado. 782 ADs e R$ 242.143 de mídia entre 01/06 e 04/09 de
+ * 2026, com receita e vendas da PAYT. Nunca do Meta: a janela de atribuição de
+ * 7 dias credita venda de backend ao anúncio de topo e infla o ROAS de quem
+ * está no começo do funil.
+ *
+ * DE ONDE SAI CADA NÚMERO
+ *
+ * 1,6 é o empate DE VERDADE: taxa da Payt 6,1% + reembolso 1,7% + Simples 9%
+ * + 14% de imposto sobre a mídia + os R$ 25.000/mês de custo fixo. Sem o custo
+ * fixo daria 1,37, e foi por isso que a primeira versão desta conta estava
+ * errada — validava no empate, e aí escalar levava para o vermelho.
+ *
+ * 2,5 é a única régua que sobrevive à escala. Medido: quando o AD ganha verba,
+ * o ROAS cai para ~63% do que era no teste (80% dos ADs caem). Os que passaram
+ * em 2,5 renderam 1,64 depois — acima do empate. Os de 2,0 renderam 1,60, os
+ * de 1,6 renderam 1,49: os dois abaixo. A 3,0 piora (1,45), que é ruído de
+ * amostra pequena, não sinal.
+ *
+ * 6 e 10 vendas são sobre CONFIANÇA, não sobre lucro. Com 4 vendas a decisão
+ * acerta 71% — quase cara-ou-coroa. Com 6, acerta 86%. E a dispersão do ROAS
+ * só fecha em 10 vendas: o desvio cai de 1,54 para 0,32. ROAS 3,0 com 3 vendas
+ * é sorte, e escalar sorte custa caro.
+ *
+ * QUANDO REFAZER: se a taxa da Payt, o Simples ou o custo fixo mudarem, o 1,6
+ * muda junto. A data está na tela de propósito — régua sem data envelhece em
+ * silêncio, que é a terceira armadilha do CLAUDE.md.
+ */
+const CRIVO = {
+  medidoEm: '06/09/2026',
+  empate: '1,6',
+  linhas: [
+    { nivel: 'Validado', vendas: 6,  roas: '1,6', cor: 'text-emerald-400',
+      significa: 'se paga — mantém no ar e pede variação' },
+    { nivel: 'Escalado', vendas: 10, roas: '2,5', cor: 'text-primary',
+      significa: 'aguenta verba — pode aumentar o orçamento' },
+  ],
+};
+
+function TabelaDoCrivo() {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
+        <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <Ruler className="h-3.5 w-3.5" />
+          Crivo
+        </span>
+
+        {CRIVO.linhas.map(l => (
+          <span key={l.nivel} className="flex items-baseline gap-2 text-xs">
+            <span className={cn('font-medium', l.cor)}>{l.nivel}</span>
+            {/* Os dois números juntos e em tabular: é assim que a pessoa
+                compara com a linha que está avaliando, sem procurar. */}
+            <span className="tabular-nums text-foreground">
+              {l.vendas} vendas · ROAS {l.roas}
+            </span>
+            <span className="text-muted-foreground">{l.significa}</span>
+          </span>
+        ))}
+
+        <button
+          onClick={() => setAberto(v => !v)}
+          className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          de onde vem
+          <ChevronDown className={cn('h-3 w-3 transition-transform', aberto && 'rotate-180')} />
+        </button>
+      </div>
+
+      {aberto && (
+        <div className="border-t border-border px-4 py-3 space-y-2 text-[11px] leading-relaxed text-muted-foreground">
+          <p>
+            <span className="text-foreground">Vendas e ROAS da Payt</span>, nunca do Meta —
+            a janela de 7 dias do Meta credita venda de backend ao anúncio de topo.
+          </p>
+          <p>
+            <span className="text-foreground">ROAS {CRIVO.empate} é o empate real:</span>{' '}
+            taxa da Payt 6,1% + reembolso 1,7% + Simples 9% + 14% de imposto sobre a mídia
+            + R$ 25.000/mês de custo fixo. Sem o custo fixo daria 1,37, e aí validar seria
+            validar no zero.
+          </p>
+          <p>
+            <span className="text-foreground">2,5 para escalar</span> porque escalar derruba
+            o ROAS para ~63% do que era no teste — 80% dos ADs caem. Medido: quem passou em
+            2,5 rendeu 1,64 depois; quem passou em 2,0 rendeu 1,60 e em 1,6 rendeu 1,49,
+            os dois abaixo do empate.
+          </p>
+          <p>
+            <span className="text-foreground">6 e 10 vendas são sobre confiança:</span>{' '}
+            com 4 vendas a decisão acerta 71%, com 6 acerta 86%, e a dispersão do ROAS só
+            fecha em 10 (desvio cai de 1,54 para 0,32). ROAS alto com 3 vendas é sorte.
+          </p>
+          <p className="pt-1 text-muted-foreground/60">
+            Medido em {CRIVO.medidoEm} sobre 782 ADs e R$ 242.143 de mídia (01/06 a 04/09).
+            Se a taxa da Payt, o Simples ou o custo fixo mudarem, o {CRIVO.empate} muda junto.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * O que o Meta diz dos anúncios do card, e como isso aparece.
@@ -580,6 +689,8 @@ export function AvaliacaoView({ userId }: Props) {
           </button>
         </div>
       </div>
+
+      <TabelaDoCrivo />
 
       {/* Resumo pills */}
       <div className="flex items-center gap-2 flex-wrap">
