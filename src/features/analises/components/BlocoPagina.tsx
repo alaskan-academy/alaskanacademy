@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RetencaoVsl, emMinutos } from '../retencao';
+import { variacao } from '../metricas';
 import { ListaMetricas, LinhaMetrica } from './ListaMetricas';
 
 /**
@@ -32,9 +34,15 @@ const MARCOS: { rotulo: string; campo: keyof RetencaoVsl }[] = [
  * linha e nenhum deles seria lido. Por isso a página nem busca o período
  * anterior quando há mais de uma VSL.
  *
- * A diferença sai em PONTOS PERCENTUAIS, não em porcentagem de porcentagem:
- * 40% contra 30% é +10 pp. Dizer "+33%" ali seria verdade aritmética e mentira
- * de leitura — ninguém escala uma VSL por "33% melhor" que é 10 pontos.
+ * A diferença sai em VARIAÇÃO PERCENTUAL, pela mesma `variacao()` que o resto
+ * da tela usa — inclusive a folga de 1% para não pintar seta em ruído de
+ * arredondamento e o corte em "×" acima de 1000%.
+ *
+ * A primeira versão mostrava pontos percentuais ("−44,4 pp"), que é a leitura
+ * mais honesta de duas taxas. Mas era a ÚNICA coluna da página falando essa
+ * língua: Resultado, Ofertas, Funil e Por visitante todos dizem "↓12,8%". Uma
+ * unidade diferente no meio de uma tela inteira obriga a parar e traduzir, e
+ * isso custa mais do que a precisão ganha.
  */
 function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
   const dois = rs.length === 2;
@@ -68,12 +76,15 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
                 </span>
               </span>
             ))}
-            {dois && <span className="w-20 shrink-0 text-right">B − A</span>}
+            {dois && <span className="w-20 shrink-0 text-right">B vs A</span>}
           </div>
 
           {MARCOS.map(({ rotulo, campo }) => {
             const vals = rs.map(r => r[campo] as number | null);
-            const delta = dois && vals[0] != null && vals[1] != null ? vals[1]! - vals[0]! : null;
+            // B contra A, na mesma conta do resto da página: o "anterior" aqui
+            // é o lado A. Retenção maior é melhor, então subir é verde.
+            const v = dois ? variacao(vals[1], vals[0]) : null;
+            const Seta = v?.direcao === 'subiu' ? ArrowUp : ArrowDown;
             const destaque = campo === 'pitch_pct';
             return (
               <div key={campo} className={cn(
@@ -99,16 +110,21 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
                   </span>
                 ))}
                 {dois && (
-                  <span className="w-20 shrink-0 text-right tabular-nums text-[13px] font-medium">
-                    {delta == null ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
+                  <span className="w-20 shrink-0 text-right">
+                    {v?.pct != null && v.direcao !== 'igual' ? (
                       <span className={cn(
-                        Math.abs(delta) < 0.05 ? 'text-muted-foreground'
-                          : delta > 0 ? 'text-emerald-400' : 'text-red-400',
+                        'inline-flex items-center gap-0.5 text-[13px] font-medium tabular-nums',
+                        v.direcao === 'subiu' ? 'text-emerald-400' : 'text-red-400',
                       )}>
-                        {delta > 0 ? '+' : ''}{delta.toFixed(1)} pp
+                        <Seta className="h-3 w-3" />
+                        {/* Mesma regra do resto da tela: acima de 10× o
+                            percentual vira ruído e o múltiplo diz o mesmo. */}
+                        {Math.abs(v.pct) >= 1000
+                          ? `${(Math.abs(v.pct) / 100).toFixed(0)}×`
+                          : `${Math.abs(v.pct).toFixed(1)}%`}
                       </span>
+                    ) : (
+                      <span className="text-[13px] text-muted-foreground">—</span>
                     )}
                   </span>
                 )}
