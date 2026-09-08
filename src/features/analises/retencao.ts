@@ -123,6 +123,21 @@ export async function buscarRetencao(
   };
 }
 
+/**
+ * O retrato gravado em `analise_itens.retencao` mudou de forma em 08/09/2026.
+ *
+ * Antes era UM objeto, porque o REV só podia ter uma VSL. Com teste A/B são
+ * duas, e passou a ser uma lista. As rodadas antigas continuam com o objeto —
+ * migrar o jsonb reescreveria retrato histórico, que é justamente o que ele
+ * existe para não deixar acontecer.
+ *
+ * Então quem lê normaliza aqui, num lugar só, em vez de cada tela adivinhar.
+ */
+export function comoLista(x: unknown): RetencaoVsl[] {
+  if (!x) return [];
+  return Array.isArray(x) ? (x as RetencaoVsl[]) : [x as RetencaoVsl];
+}
+
 /** "13min21" em vez de "801s" — é como ela fala do roteiro. */
 export function emMinutos(seg: number | null): string {
   if (seg == null) return '—';

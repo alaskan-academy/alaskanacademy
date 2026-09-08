@@ -18,7 +18,7 @@ import {
 import { AnalisesNav } from '../components/AnalisesNav';
 import { AcaoEditavel } from '../components/AcaoEditavel';
 import { MetricasDoRev } from '../metricas';
-import { RetencaoVsl } from '../retencao';
+import { RetencaoVsl, comoLista } from '../retencao';
 import { formatarData } from '../periodo';
 import {
   exportarVarias, apagarNoObsidian, sincronizarPlanilha, RodadaParaExportar,
@@ -172,7 +172,7 @@ export default function HistoricoPage() {
           dataRodada: rodada.data,
           projeto: rev.projeto, rev: rev.rev, metodo: rev.metodo,
           metricas: item?.metricas ?? null,
-          retencao: item?.retencao ?? null,
+          retencao: comoLista(item?.retencao)[0] ?? null,
           leitura: item?.leitura ?? '',
           acoes: daRodada.filter(a => a.funil_id === funilId).map(a => ({
             texto: a.texto, expectativa: a.expectativa, feita: a.feita,

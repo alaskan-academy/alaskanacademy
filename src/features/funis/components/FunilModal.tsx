@@ -12,7 +12,7 @@ import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Funil, Projeto, FunilSuboferta, Dominio } from '../types';
+import { Funil, Projeto, FunilSuboferta, FunilVsl, Dominio } from '../types';
 import { GerenciarOpcoesPopover } from '@/features/producao/components/GerenciarOpcoesPopover';
 import { SeletorVsl } from './SeletorVsl';
 import { ItensVendidos } from './ItensVendidos';
@@ -36,10 +36,11 @@ interface Props {
   funil?: Funil | null;
   projetos: Projeto[];
   funilSubofertas: FunilSuboferta[];
+  funilVsls: FunilVsl[];
   dominios: Dominio[];
 }
 
-export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubofertas, dominios }: Props) {
+export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubofertas, funilVsls, dominios }: Props) {
   const { user } = useAuth();
   const [saving, setSaving]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -65,7 +66,8 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
 
   // Método de venda
   const [metodo, setMetodo]       = useState('');
-  const [vslId, setVslId]         = useState('');
+  /** Na ordem de `funil_vsls.ordem`: a primeira é o lado "A" da comparação. */
+  const [vslIds, setVslIds]       = useState<string[]>([]);
   const [opMetodos, setOpMetodos] = useState<string[]>([]);
 
   useEffect(() => {
@@ -74,7 +76,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     setNome(funil?.nome ?? '');
     setOfertaId(funil?.projeto_id ?? '');
     setMetodo(funil?.metodo ?? '');
-    setVslId(funil?.vsl_id ?? '');
+    setVslIds(
+      funilVsls
+        .filter(fv => fv.funil_id === funil?.id)
+        .sort((a, b) => a.ordem - b.ordem)
+        .map(fv => fv.vsl_id),
+    );
     setStatus((funil?.status ?? 'ativo') as typeof status);
     setUrlPage(funil?.url_page ?? '');
     setNotas(funil?.notas ?? '');
@@ -111,7 +118,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
         setOpMetodos(data?.map(d => d.valor as string) ?? []);
       });
 
-  }, [open, funil, funilSubofertas, dominios]);
+  }, [open, funil, funilSubofertas, funilVsls, dominios]);
 
   /* ── Subofertas ── */
   function addSub(tipo: SubTipo) {
@@ -136,7 +143,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       nome:          nome.trim(),
       projeto_id:    semSentinela(ofertaId),
       metodo:        metodo || null,
-      vsl_id:        vslId || null,
       status,
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
@@ -167,6 +173,16 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
         .update({ funil_id: funilId, eh_funil: true, confirmado_em: new Date().toISOString() })
         .in('id', checkoutsPendentes);
       await supabase.rpc('fn_backfill_funil_das_vendas');
+    }
+
+    /* Sync VSLs — mesmo `delete` + `insert` das subofertas.
+       `ordem` sai do índice do array, que é a ordem em que ela marcou: é o que
+       decide quem é "A" e quem é "B" na comparação de Análises. */
+    await supabase.from('funil_vsls').delete().eq('funil_id', funilId);
+    if (vslIds.length > 0) {
+      await supabase.from('funil_vsls').insert(
+        vslIds.map((vsl_id, i) => ({ funil_id: funilId, vsl_id, ordem: i + 1 })),
+      );
     }
 
     // Sync subofertas
@@ -225,7 +241,6 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       nome:          `${nome.trim()} (cópia)`,
       projeto_id:    semSentinela(ofertaId),
       metodo:        metodo || null,
-      vsl_id:        vslId || null,
       status:        'planejado',
       url_page:      urlPage.trim() || null,
       notas:         notas.trim() || null,
@@ -235,6 +250,13 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
       toast({ title: 'Erro ao duplicar', description: res.error?.message, variant: 'destructive' });
       setSaving(false);
       return;
+    }
+    // A cópia leva as VSLs junto: duplicar um REV em teste A/B e perder os dois
+    // lados obrigaria a remontar a escolha na mão.
+    if (vslIds.length > 0) {
+      await supabase.from('funil_vsls').insert(
+        vslIds.map((vsl_id, i) => ({ funil_id: res.data.id, vsl_id, ordem: i + 1 })),
+      );
     }
     if (subofertas.length > 0) {
       await supabase.from('funil_subofertas').insert(
@@ -329,10 +351,11 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
             </div>
           </div>
 
-          {/* VSL — vem do espelho do VTurb, nunca digitada */}
+          {/* VSL — vem do espelho do VTurb, nunca digitada. Plural porque num
+              teste A/B o REV roda duas de verdade. */}
           <div>
-            <Label>VSL rodando</Label>
-            <SeletorVsl value={vslId} onChange={setVslId} />
+            <Label>{vslIds.length > 1 ? 'VSLs rodando (teste A/B)' : 'VSL rodando'}</Label>
+            <SeletorVsl value={vslIds} onChange={setVslIds} />
           </div>
 
           {/* Método de venda — mesmo visual do Funil de Vendas + gerenciar */}

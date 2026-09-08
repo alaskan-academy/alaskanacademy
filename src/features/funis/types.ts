@@ -24,8 +24,6 @@ export interface Funil {
   projeto_id: string | null;
   /** @deprecated Nome antigo de `projeto_id`; o banco mantém os dois iguais. */
   oferta_id: string | null;
-  /** Player do VTurb que roda neste REV. */
-  vsl_id: string | null;
   preco: number | null;
   link_checkout: string | null;
   url_page: string | null;
@@ -38,6 +36,21 @@ export interface Funil {
 export interface PerfilSimples {
   id: string;
   nome: string;
+}
+
+/**
+ * As VSLs que rodam num REV. Tabela própria, e não coluna, porque num teste A/B
+ * o VTurb alterna DOIS players na mesma página — e porque `text[]` não aceita
+ * chave estrangeira, que é o que garante que o id aponta para VSL existente.
+ *
+ * `ordem` decide quem é "A" e quem é "B" na comparação de Análises. Sem ela os
+ * dois lados trocariam de lugar entre uma leitura e outra, e a diferença em
+ * pontos percentuais mudaria de sinal sozinha.
+ */
+export interface FunilVsl {
+  funil_id: string;
+  vsl_id: string;
+  ordem: number;
 }
 
 export interface FunilSuboferta {

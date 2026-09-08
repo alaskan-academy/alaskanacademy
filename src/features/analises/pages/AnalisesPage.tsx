@@ -48,7 +48,8 @@ interface RevDaRodada {
   projeto: string | null;
   vendas: number;
   metodo: string | null;
-  vsl_id: string | null;
+  /** As VSLs do REV, na ordem. Num teste A/B são duas — ver `funil_vsls`. */
+  vsl_ids: string[];
 }
 
 const pct  = (n: number) => `${n.toFixed(1)}%`;
@@ -64,8 +65,9 @@ export default function AnalisesPage() {
   const [preset, setPreset]     = useState<string>('14');
   const [janela, setJanela]     = useState<Janela>(() => janelaDeDias(14));
   const [metricas, setMetricas] = useState<MetricasDoRev | null>(null);
-  const [retencao, setRetencao] = useState<RetencaoVsl | null>(null);
-  const [retencaoAntes, setRetencaoAntes] = useState<RetencaoVsl | null>(null);
+  /* Uma entrada por VSL, na ordem de `vsl_ids`: a primeira é o lado "A". */
+  const [retencoes, setRetencoes] = useState<RetencaoVsl[]>([]);
+  const [retencoesAntes, setRetencoesAntes] = useState<RetencaoVsl[]>([]);
   const [carregando, setCarregando]     = useState(true);
   const [buscandoMetricas, setBuscando] = useState(false);
 
@@ -107,27 +109,22 @@ export default function AnalisesPage() {
     /* undefined = ainda não sei de quem são os projetos; consultar agora
        mostraria as duas empresas por um instante. */
     if (projetosDaEmpresa === undefined) return;
-    let qRevs = supabase.from('vw_mapa_revs').select('id,rev,projeto,vendas,status')
+    /* Uma consulta só: `vw_mapa_revs` já carrega `metodo` e `vsl_ids`. Antes
+       havia uma segunda ida a `funis` para buscar os dois — dois lugares
+       lendo a mesma coisa, e o filtro por projeto repetido em ambos. */
+    let qRevs = supabase.from('vw_mapa_revs')
+      .select('id,rev,projeto,vendas,status,metodo,vsl_ids')
       .eq('status', 'ativo').order('vendas', { ascending: false });
-    let qFunis = supabase.from('funis').select('id,metodo,vsl_id');
-    if (projetosDaEmpresa) {
-      qRevs  = qRevs.in('projeto_id', projetosDaEmpresa);
-      qFunis = qFunis.in('projeto_id', projetosDaEmpresa);
-    }
-    const [{ data, error }, { data: metodos }] = await Promise.all([qRevs, qFunis]);
+    if (projetosDaEmpresa) qRevs = qRevs.in('projeto_id', projetosDaEmpresa);
+    const { data, error } = await qRevs;
 
     if (error) {
       toast({ title: 'Erro ao carregar os REVs', description: error.message, variant: 'destructive' });
     }
-    const por = new Map(((metodos ?? []) as Array<{ id: string; metodo: string | null; vsl_id: string | null }>)
-      .map(f => [f.id, f]));
     const lista: RevDaRodada[] = ((data ?? []) as Array<{
       id: string; rev: string; projeto: string | null; vendas: number;
-    }>).map(r => ({
-      ...r,
-      metodo: por.get(r.id)?.metodo ?? null,
-      vsl_id: por.get(r.id)?.vsl_id ?? null,
-    }));
+      metodo: string | null; vsl_ids: string[] | null;
+    }>).map(r => ({ ...r, vsl_ids: r.vsl_ids ?? [] }));
     setRevs(lista);
     return lista;
   }, [projetosDaEmpresa]);
@@ -240,7 +237,7 @@ export default function AnalisesPage() {
     if (!atual) return;
     let cancelado = false;
     setBuscando(true);
-    setRetencao(null); setRetencaoAntes(null);
+    setRetencoes([]); setRetencoesAntes([]);
     carregarAcoes(atual.id);
 
     (async () => {
@@ -254,14 +251,22 @@ export default function AnalisesPage() {
 
       // A VSL é acessória e falha em silêncio de propósito: se o VTurb estiver
       // fora do ar, a rodada continua — o resto dos números não depende dela.
-      if (atual.vsl_id) {
+      if (atual.vsl_ids.length > 0) {
         try {
-          const ja = janelaAnterior(janela);
-          const [agora, antes] = await Promise.all([
-            buscarRetencao(atual.vsl_id, janela.inicio, janela.fim),
-            buscarRetencao(atual.vsl_id, ja.inicio, ja.fim),
-          ]);
-          if (!cancelado) { setRetencao(agora); setRetencaoAntes(antes); }
+          const agora = await Promise.all(
+            atual.vsl_ids.map(id => buscarRetencao(id, janela.inicio, janela.fim)),
+          );
+          if (!cancelado) setRetencoes(agora.filter(Boolean) as RetencaoVsl[]);
+
+          /* O período anterior só é buscado quando há UMA VSL.
+             Com duas, a pergunta é "A ou B", não "esta quinzena contra a
+             passada" — e o VTurb tem cota: duas VSLs em duas janelas seriam o
+             dobro das chamadas para um número que a tela nem mostraria. */
+          if (atual.vsl_ids.length === 1) {
+            const ja = janelaAnterior(janela);
+            const antes = await buscarRetencao(atual.vsl_ids[0], ja.inicio, ja.fim);
+            if (!cancelado && antes) setRetencoesAntes([antes]);
+          }
         } catch { /* sem retenção, a tela mostra o bloco vazio */ }
       }
     })();
@@ -414,7 +419,9 @@ export default function AnalisesPage() {
       // depois, a leitura continua fazendo sentido ao lado dos números que a
       // motivaram — ver o comentário da tabela no banco.
       metricas: metricas as unknown as Record<string, unknown>,
-      retencao: retencao as unknown as Record<string, unknown>,
+      // A LISTA, não a primeira: numa rodada decidida comparando A e B,
+      // guardar só A perderia o motivo da decisão.
+      retencao: retencoes as unknown as Record<string, unknown>,
       leitura: leitura.trim() || null,
     }, { onConflict: 'analise_id,funil_id' });
 
@@ -458,7 +465,7 @@ export default function AnalisesPage() {
       rev: atual.rev,
       metodo: atual.metodo,
       metricas,
-      retencao,
+      retencao: retencoes[0] ?? null,
       leitura,
       acoes: acoesAgora.map(a => ({
         texto: a.texto, expectativa: a.expectativa, feita: a.feita,
@@ -803,8 +810,8 @@ export default function AnalisesPage() {
 
               {/* 4 — como a página segura: é o meio do funil, entre o clique e
                   o checkout, e por isso vem aqui e não no fim. */}
-              {atual?.metodo === 'VSL' || atual?.vsl_id
-                ? <BlocoVsl r={retencao} anterior={retencaoAntes} />
+              {atual?.metodo === 'VSL' || atual?.vsl_ids.length
+                ? <BlocoVsl rs={retencoes} anteriores={retencoesAntes} />
                 : <BlocoTsl />}
 
               {/* 5 — quanto cada visitante custa e traz */}

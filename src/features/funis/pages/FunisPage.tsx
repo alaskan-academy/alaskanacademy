@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { useFilters } from '@/contexts/FilterContext';
 import { cn } from '@/lib/utils';
-import { Funil, Projeto, FunilSuboferta, Dominio, TesteFunil, PerfilSimples, getStatusDisplay } from '../types';
+import { Funil, Projeto, FunilSuboferta, FunilVsl, Dominio, TesteFunil, PerfilSimples, getStatusDisplay } from '../types';
 import { AlertaBanner } from '../components/AlertaBanner';
 import { FunisTab } from '../components/FunisTab';
 import { DominiosTab } from '../components/DominiosTab';
@@ -20,6 +20,7 @@ interface State {
   funis: Funil[];
   projetos: Projeto[];
   funilSubofertas: FunilSuboferta[];
+  funilVsls: FunilVsl[];
   dominios: Dominio[];
   testes: TesteFunil[];
   perfis: PerfilSimples[];
@@ -54,7 +55,7 @@ export default function FunisPage() {
   };
 
   const [state, setState] = useState<State>({
-    funis: [], projetos: [], funilSubofertas: [],
+    funis: [], projetos: [], funilSubofertas: [], funilVsls: [],
     dominios: [], testes: [], perfis: [], loading: true,
   });
 
@@ -69,10 +70,11 @@ export default function FunisPage() {
     let qProjetos = supabase.from('ofertas_editores').select('id,nome,empresa_id,ativo').eq('ativo', true).order('nome');
     if (projetosDaEmpresa) qFunis = qFunis.in('projeto_id', projetosDaEmpresa);
     if (empresaId) qProjetos = qProjetos.eq('empresa_id', empresaId);
-    const [f, p, fs, d, t, pf] = await Promise.all([
+    const [f, p, fs, fv, d, t, pf] = await Promise.all([
       qFunis,
       qProjetos,
       supabase.from('funil_subofertas').select('*'),
+      supabase.from('funil_vsls').select('funil_id,vsl_id,ordem'),
       supabase.from('dominios').select('*').order('nome'),
       supabase.from('testes_funis').select('*').eq('arquivado', false).order('created_at', { ascending: false }),
       supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
@@ -81,6 +83,7 @@ export default function FunisPage() {
       funis:           (f.data ?? []) as Funil[],
       projetos:        (p.data ?? []) as Projeto[],
       funilSubofertas: (fs.data ?? []) as FunilSuboferta[],
+      funilVsls:       (fv.data ?? []) as FunilVsl[],
       dominios:        (d.data ?? []) as Dominio[],
       testes:          (t.data ?? []) as TesteFunil[],
       perfis:          (pf.data ?? []) as PerfilSimples[],
@@ -164,6 +167,7 @@ export default function FunisPage() {
               funis={state.funis}
               projetos={state.projetos}
               funilSubofertas={state.funilSubofertas}
+              funilVsls={state.funilVsls}
               dominios={state.dominios}
               testes={state.testes}
               onReload={load}

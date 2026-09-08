@@ -15,13 +15,14 @@ import { ToastAction } from '@/components/ui/toast';
 import { TesteModal } from './TesteModal';
 import {
   Funil, Projeto, FunilSuboferta, Dominio, TesteFunil,
-  getStatusDisplay, StatusDisplay, vslEhObrigatoria,
+  getStatusDisplay, StatusDisplay, vslEhObrigatoria, FunilVsl,
 } from '../types';
 
 interface Props {
   funis: Funil[];
   projetos: Projeto[];
   funilSubofertas: FunilSuboferta[];
+  funilVsls: FunilVsl[];
   dominios: Dominio[];
   testes: TesteFunil[];
   onReload: () => void;
@@ -174,7 +175,7 @@ function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; on
   );
 }
 
-export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, onReload }: Props) {
+export function FunisTab({ funis, projetos, funilSubofertas, funilVsls, dominios, testes, onReload }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [verArquivados, setVerArquivados] = useState(false);
   const [dados, setDados] = useState<Record<string, DadosDoRev>>({});
@@ -323,6 +324,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
           projetos={projetos}
 
           funilSubofertas={funilSubofertas}
+          funilVsls={funilVsls}
           dominios={dominios}
         />
       </div>
@@ -333,7 +335,10 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
   // vendendo. Contar os planejados juntos daria um numero grande e inerte.
   const semVslCount = funis.filter(f => {
     const s = getStatusDisplay(f, testes);
-    return !f.vsl_id && vslEhObrigatoria(f) && (s === 'ativo' || s === 'em_teste');
+    // Nenhuma VSL ligada — a lista mora em `funil_vsls` desde que o REV passou
+    // a poder rodar duas (teste A/B).
+    const temVsl = funilVsls.some(fv => fv.funil_id === f.id);
+    return !temVsl && vslEhObrigatoria(f) && (s === 'ativo' || s === 'em_teste');
   }).length;
 
   return (
@@ -705,6 +710,7 @@ export function FunisTab({ funis, projetos, funilSubofertas, dominios, testes, o
         funil={editFunil}
         projetos={projetos}
         funilSubofertas={funilSubofertas}
+        funilVsls={funilVsls}
         dominios={dominios}
       />
 

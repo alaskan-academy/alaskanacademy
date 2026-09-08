@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { MetricasDoRev } from './metricas';
-import { RetencaoVsl } from './retencao';
+import { RetencaoVsl, comoLista } from './retencao';
 import { formatarData } from './periodo';
 
 /**
@@ -373,7 +373,9 @@ export async function reenviarTudoParaObsidian(): Promise<{ notas: number }> {
         dataRodada: rodada.data,
         projeto: rev.projeto, rev: rev.rev, metodo: metodoPor[funilId] ?? null,
         metricas: item?.metricas ?? null,
-        retencao: item?.retencao ?? null,
+        // O retrato pode ser objeto (rodadas antigas) ou lista; o Obsidian
+        // e a planilha mostram o lado A.
+        retencao: comoLista(item?.retencao)[0] ?? null,
         leitura: item?.leitura ?? '',
         acoes: daRodada.filter(a => a.funil_id === funilId).map(a => ({
           texto: a.texto, expectativa: a.expectativa, feita: a.feita,

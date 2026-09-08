@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Check, ChevronDown, Loader2, RefreshCw, Video } from 'lucide-react';
 
 /**
- * Escolhe a VSL que está rodando no REV, a partir do espelho do VTurb.
+ * Escolhe as VSLs que estão rodando no REV, a partir do espelho do VTurb.
  *
  * Não é campo de texto de propósito. A mesma VSL roda em vários REVs, e a
  * pergunta que ela faz é "onde está rodando a h07" — com chave estrangeira isso
@@ -18,6 +18,16 @@ import { Check, ChevronDown, Loader2, RefreshCw, Video } from 'lucide-react';
  * distintos, porque o VTurb duplica o player para montar teste A/B. Por isso
  * duração e data aparecem embaixo do nome: sem elas, ela escolheria entre três
  * linhas idênticas no escuro.
+ *
+ * VÁRIAS, E NÃO UMA
+ *
+ * Num teste A/B o VTurb alterna dois players na MESMA página, então enquanto o
+ * teste corre o REV roda duas VSLs de verdade. Guardar só uma escondia metade
+ * do teste justamente em Análises, que é onde se decide qual das duas fica.
+ *
+ * A ordem de escolha é preservada: a primeira marcada é o lado "A" da
+ * comparação. Trocar a ordem é desmarcar e marcar de novo — mais simples que
+ * arrastar, e a decisão de qual é A raramente muda depois de escolhida.
  */
 
 export interface Vsl {
@@ -44,8 +54,9 @@ function dataCurta(iso: string | null): string {
 }
 
 interface Props {
-  value: string;
-  onChange: (id: string) => void;
+  /** Na ordem: a primeira é o lado "A" da comparação em Análises. */
+  value: string[];
+  onChange: (ids: string[]) => void;
 }
 
 export function SeletorVsl({ value, onChange }: Props) {
@@ -99,7 +110,15 @@ export function SeletorVsl({ value, onChange }: Props) {
     await carregar();
   }
 
-  const atual = useMemo(() => vsls.find(v => v.id === value), [vsls, value]);
+  /* Na ORDEM ESCOLHIDA, não na ordem da lista: é ela que define A e B. */
+  const escolhidas = useMemo(
+    () => value.map(id => vsls.find(v => v.id === id)).filter(Boolean) as Vsl[],
+    [vsls, value],
+  );
+
+  function alternar(id: string) {
+    onChange(value.includes(id) ? value.filter(x => x !== id) : [...value, id]);
+  }
 
   /* A data do espelho, não a de agora: é o que denuncia lista velha. */
   const ultimaSync = useMemo(() => {
@@ -126,12 +145,24 @@ export function SeletorVsl({ value, onChange }: Props) {
           className="mt-1 h-8 w-full flex items-center gap-2 px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left text-sm min-w-0"
         >
           <Video className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className={cn('flex-1 truncate', !atual && 'text-muted-foreground')}>
-            {carregando ? 'Carregando…' : atual ? atual.nome : 'Nenhuma VSL'}
+          {/* Com uma, o nome. Com duas ou mais, os nomes juntos — o botão tem de
+              dizer QUAIS, não só quantas: "2 VSLs" obrigaria a abrir para saber
+              se o teste A/B tem os dois lados certos. */}
+          <span className={cn('flex-1 truncate', escolhidas.length === 0 && 'text-muted-foreground')}>
+            {carregando
+              ? 'Carregando…'
+              : escolhidas.length === 0
+                ? 'Nenhuma VSL'
+                : escolhidas.map(v => v.nome).join(' · ')}
           </span>
-          {atual && (
+          {escolhidas.length === 1 && (
             <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-              {duracao(atual.duracao_seg)}
+              {duracao(escolhidas[0].duracao_seg)}
+            </span>
+          )}
+          {escolhidas.length > 1 && (
+            <span className="shrink-0 text-[11px] text-primary tabular-nums">
+              {escolhidas.length} VSLs
             </span>
           )}
           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -158,12 +189,16 @@ export function SeletorVsl({ value, onChange }: Props) {
             </CommandEmpty>
 
             <CommandGroup>
+              {/* Limpar tudo, e não "escolher nenhuma": com seleção múltipla a
+                  linha vira uma ação, não uma opção da lista. */}
               <CommandItem
-                value="nenhuma vsl"
-                onSelect={() => { onChange(''); setAberto(false); }}
+                value="nenhuma vsl limpar"
+                onSelect={() => { onChange([]); setAberto(false); }}
               >
-                <Check className={cn('mr-2 h-3.5 w-3.5', value ? 'opacity-0' : 'opacity-100')} />
-                <span className="text-muted-foreground">Nenhuma VSL</span>
+                <Check className={cn('mr-2 h-3.5 w-3.5', value.length ? 'opacity-0' : 'opacity-100')} />
+                <span className="text-muted-foreground">
+                  {value.length ? 'Limpar seleção' : 'Nenhuma VSL'}
+                </span>
               </CommandItem>
 
               {vsls.map(v => (
@@ -172,17 +207,29 @@ export function SeletorVsl({ value, onChange }: Props) {
                   // VTurb e achar o player direto.
                   key={v.id}
                   value={`${v.nome} ${v.id}`}
-                  onSelect={() => { onChange(v.id); setAberto(false); }}
+                  // NÃO fecha ao escolher: marcar duas é o caso normal agora, e
+                  // reabrir o popover a cada clique dobraria o trabalho.
+                  onSelect={() => alternar(v.id)}
                 >
-                  <Check className={cn('mr-2 h-3.5 w-3.5 shrink-0', value === v.id ? 'opacity-100' : 'opacity-0')} />
+                  <Check className={cn('mr-2 h-3.5 w-3.5 shrink-0', value.includes(v.id) ? 'opacity-100' : 'opacity-0')} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate">{v.nome}</div>
                     <div className="text-[11px] text-muted-foreground tabular-nums">
                       {duracao(v.duracao_seg)}
-                      {v.pitch_seg ? ` · pitch ${duracao(v.pitch_seg)}` : ''}
+                      {/* Sem pitch marcado no VTurb a retenção no pitch não tem
+                          como ser calculada — vale dizer aqui, e não só no bloco
+                          de Análises, onde já seria tarde. */}
+                      {v.pitch_seg ? ` · pitch ${duracao(v.pitch_seg)}` : ' · sem pitch'}
                       {v.criado_em_vturb ? ` · ${dataCurta(v.criado_em_vturb)}` : ''}
                     </div>
                   </div>
+                  {/* A ordem só aparece quando há comparação: com uma VSL só,
+                      "A" seria um rótulo sem contraparte. */}
+                  {value.length > 1 && value.includes(v.id) && (
+                    <span className="ml-2 shrink-0 rounded border border-primary/30 bg-primary/10 px-1.5 text-[10px] font-semibold text-primary">
+                      {String.fromCharCode(65 + value.indexOf(v.id))}
+                    </span>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>
