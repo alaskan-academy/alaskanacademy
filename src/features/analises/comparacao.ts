@@ -28,6 +28,20 @@ export interface DefinicaoMetrica {
   subirEhRuim?: boolean;
   /** Qual coluna ganha a linha. `null` quando a pergunta não faz sentido. */
   melhorEh?: 'maior' | 'menor' | null;
+  /**
+   * A contagem por trás da porcentagem, em letra miúda embaixo do número.
+   *
+   * Só o número, sem "de quantos": numa tabela cujas linhas são todas sobre as
+   * mesmas vendas, o denominador é sabido e repeti-lo em cada linha vira ruído.
+   *
+   * "22,06%" e "90" dizem coisas diferentes: o primeiro compara, o segundo diz
+   * se dá para confiar. Uma adesão de 50% sobre 4 vendas some da decisão assim
+   * que se sabe que são 4 — e antes disso ela parecia o melhor número da tabela.
+   *
+   * Não entra onde a contagem já é uma linha vizinha: "Margem" com o lucro
+   * embaixo, tendo "Lucro líquido" logo acima, é o mesmo número duas vezes.
+   */
+  base?: (b: BlocoMetricas) => string | null;
 }
 
 const dinheiro = formatCurrency;
@@ -49,7 +63,8 @@ export const LINHAS_COMPARACAO: DefinicaoMetrica[] = [
   { grupo: 'Resultado', rotulo: 'Imposto', valor: b => b.imposto_simples + b.imposto_meta,
     formato: dinheiro, subirEhRuim: true, melhorEh: null },
   { grupo: 'Resultado', rotulo: 'Taxa da plataforma', valor: b => b.taxa_plataforma_pct,
-    formato: pct2, subirEhRuim: true, melhorEh: 'menor' },
+    formato: pct2, subirEhRuim: true, melhorEh: 'menor',
+    base: b => dinheiro(b.taxa_plataforma) },
   { grupo: 'Resultado', rotulo: 'Lucro líquido', valor: b => b.lucro_liquido,
     formato: dinheiro, melhorEh: 'maior' },
   { grupo: 'Resultado', rotulo: 'Margem', valor: b => b.margem_pct,
@@ -57,7 +72,8 @@ export const LINHAS_COMPARACAO: DefinicaoMetrica[] = [
 
   // ── Upsell ─────────────────────────────────────────────────────────────────
   { grupo: 'Com upsell', rotulo: 'Adesão ao upsell', valor: b => b.upsell_adesao_pct,
-    formato: pct2, melhorEh: 'maior' },
+    formato: pct2, melhorEh: 'maior',
+    base: b => inteiro(b.upsell_qtd) },
   { grupo: 'Com upsell', rotulo: 'Faturamento do upsell', valor: b => b.upsell_faturamento,
     formato: dinheiro, melhorEh: null },
   { grupo: 'Com upsell', rotulo: 'ROAS com upsell', valor: b => b.roas_com_upsell,
@@ -71,7 +87,8 @@ export const LINHAS_COMPARACAO: DefinicaoMetrica[] = [
   { grupo: 'Ofertas', rotulo: 'Vendas', valor: b => b.vendas,
     formato: inteiro, melhorEh: null },
   { grupo: 'Ofertas', rotulo: 'Adesão a bump', valor: b => b.bump_adesao_pct,
-    formato: pct2, melhorEh: 'maior' },
+    formato: pct2, melhorEh: 'maior',
+    base: b => inteiro(b.bump_qtd) },
   { grupo: 'Ofertas', rotulo: 'Receita de bumps', valor: b => b.bump_faturamento,
     formato: dinheiro, melhorEh: null },
   { grupo: 'Ofertas', rotulo: 'Bumps no faturamento', valor: b => b.pct_ofertas_extras,
@@ -85,15 +102,18 @@ export const LINHAS_COMPARACAO: DefinicaoMetrica[] = [
   { grupo: 'Funil', rotulo: 'Checkouts iniciados', valor: b => b.checkouts_iniciados,
     formato: inteiro, melhorEh: null },
   { grupo: 'Funil', rotulo: 'Clique → checkout', valor: b => b.taxa_checkout_pct,
-    formato: pct2, melhorEh: 'maior' },
+    formato: pct2, melhorEh: 'maior',
+    base: b => inteiro(b.checkouts_iniciados) },
   { grupo: 'Funil', rotulo: 'Custo por checkout', valor: b => b.cpi,
     formato: dinheiro, subirEhRuim: true, melhorEh: 'menor' },
   { grupo: 'Funil', rotulo: 'Checkout → venda', valor: b => b.conv_checkout_pct,
-    formato: pct2, melhorEh: 'maior' },
+    formato: pct2, melhorEh: 'maior',
+    base: b => inteiro(b.vendas) },
   { grupo: 'Funil', rotulo: 'CPA', valor: b => b.cpa,
     formato: dinheiro, subirEhRuim: true, melhorEh: 'menor' },
   { grupo: 'Funil', rotulo: 'Conversão do funil', valor: b => b.conv_funil_pct,
-    formato: pct2, melhorEh: 'maior' },
+    formato: pct2, melhorEh: 'maior',
+    base: b => inteiro(b.vendas) },
 
   // ── Por visitante ──────────────────────────────────────────────────────────
   { grupo: 'Por visitante', rotulo: 'CPV', valor: b => b.cpv,

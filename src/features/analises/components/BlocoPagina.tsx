@@ -193,7 +193,7 @@ function VendasVsl({ v, anterior }: { v: VendasDaVsl | null; anterior: VendasDaV
     >
       <LinhaMetrica rotulo="Vendas" valor={v.vendas} anterior={anterior?.vendas ?? null}
         formato={formatNumber} destaque
-        detalhe={`de ${formatNumber(v.pedidos)} pedidos iniciados`} />
+        base={formatNumber(v.pedidos) + ' pedidos'} />
       <LinhaMetrica rotulo="Faturamento" valor={v.faturamento} anterior={anterior?.faturamento ?? null}
         formato={formatCurrency} />
       <LinhaMetrica rotulo="Conversão do checkout" valor={v.conv_checkout_pct}

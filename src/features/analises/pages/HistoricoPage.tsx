@@ -13,8 +13,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import {
-  Lock, PenLine, MoreVertical, Archive, ArchiveRestore, Trash2, Pencil,
+  Lock, PenLine, MoreVertical, Archive, ArchiveRestore, Trash2, Pencil, Plus,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { AcaoEditavel } from '../components/AcaoEditavel';
 import { MetricasDoRev } from '../metricas';
@@ -201,6 +202,31 @@ export default function HistoricoPage() {
     const lista = acoes.map(a => (a.id === id ? { ...a, texto, expectativa } : a));
     setAcoes(lista);
     espelharAfetadas(lista);
+  }
+
+  /**
+   * Adicionar ação relendo, e não só ao analisar.
+   *
+   * Antes daqui o Histórico deixava editar e apagar, mas não acrescentar — e é
+   * relendo que se percebe o que ficou faltando. Sem isto, a decisão que nasce
+   * da releitura tinha que esperar a próxima rodada para ter onde morar, ou
+   * virava recado fora do sistema, que é o Google Chat de novo.
+   *
+   * A ação nasce presa à RODADA que está sendo relida, e não à de hoje: é dali
+   * que ela veio, e é ali que o "desde 12/08" precisa contar a partir.
+   */
+  async function adicionarAcao(analiseId: string, funilId: string, texto: string, expectativa: string) {
+    const { error } = await supabase.from('analise_acoes').insert({
+      analise_id: analiseId, funil_id: funilId, texto,
+      expectativa: expectativa || null,
+      criada_por: user?.id ?? null,
+    });
+    if (error) {
+      toast({ title: 'Erro ao salvar a ação', description: error.message, variant: 'destructive' });
+      return;
+    }
+    const { rodadas: rs, acoes: as } = await carregar();
+    espelharAfetadas(as, rs);
   }
 
   async function marcarAcao(id: string, feita: boolean) {
@@ -538,6 +564,8 @@ export default function HistoricoPage() {
                     key={c.funilId} item={c.item} acoes={c.acoes}
                     nome={revs[c.funilId] ?? 'REV removido'}
                     onSalvar={salvarAcao} onMarcar={marcarAcao} onApagar={apagarAcao}
+                    onAdicionar={(texto, expectativa) =>
+                      adicionarAcao(rodada.id, c.funilId, texto, expectativa)}
                     onSalvarLeitura={salvarLeitura}
                     onApagarItem={() => apagarItem(rodada, c.funilId)}
                   />
@@ -553,11 +581,12 @@ export default function HistoricoPage() {
 
 /** Um REV dentro de uma rodada: o que ela leu, e os números que estavam na tela. */
 function ItemDaRodada(
-  { item, nome, acoes, onSalvar, onMarcar, onApagar, onSalvarLeitura, onApagarItem }: {
+  { item, nome, acoes, onSalvar, onMarcar, onApagar, onAdicionar, onSalvarLeitura, onApagarItem }: {
     item: ItemHistorico | null; nome: string; acoes: AcaoHistorico[];
     onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
     onMarcar: (id: string, feita: boolean) => Promise<void>;
     onApagar: (id: string) => Promise<void>;
+    onAdicionar: (texto: string, expectativa: string) => Promise<void>;
     onSalvarLeitura: (itemId: string, leitura: string) => Promise<void>;
     onApagarItem: () => Promise<void>;
   },
@@ -646,16 +675,79 @@ function ItemDaRodada(
         <p className="text-base whitespace-pre-wrap">{item.leitura}</p>
       ) : null}
 
-      {acoes.length > 0 && (
-        <div className="space-y-1.5 pt-1 border-t border-border/40">
-          {acoes.map(ac => (
-            <AcaoEditavel
-              key={ac.id} acao={ac}
-              onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
-            />
-          ))}
-        </div>
-      )}
+      <div className="space-y-1.5 pt-1 border-t border-border/40">
+        {acoes.map(ac => (
+          <AcaoEditavel
+            key={ac.id} acao={ac}
+            onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+          />
+        ))}
+        <NovaAcao onAdicionar={onAdicionar} />
+      </div>
     </article>
+  );
+}
+
+/**
+ * Acrescentar uma ação a uma rodada já fechada.
+ *
+ * Fecha discreto e abre ao clicar: numa página que lista dezenas de cartões, um
+ * campo aberto em cada um viraria uma coluna de caixas vazias e roubaria a
+ * leitura, que é o que se vem fazer aqui.
+ */
+function NovaAcao({ onAdicionar }: { onAdicionar: (texto: string, expectativa: string) => Promise<void> }) {
+  const [aberto, setAberto] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [expectativa, setExpectativa] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    const t = texto.trim();
+    if (!t || salvando) return;
+    setSalvando(true);
+    await onAdicionar(t, expectativa.trim());
+    setSalvando(false);
+    setTexto(''); setExpectativa(''); setAberto(false);
+  }
+
+  if (!aberto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Adicionar ação
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Input
+        autoFocus
+        className="h-9 text-base"
+        placeholder="O que fazer a respeito…"
+        value={texto}
+        onChange={e => setTexto(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); salvar(); } }}
+      />
+      <Textarea
+        className="h-16 resize-none text-sm"
+        placeholder="O que você espera disso? Opcional — é o que permite dizer depois se deu certo."
+        value={expectativa}
+        onChange={e => setExpectativa(e.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <Button size="sm" className="h-7" onClick={salvar} disabled={!texto.trim() || salvando}>
+          {salvando ? 'Salvando…' : 'Adicionar'}
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7"
+          onClick={() => { setAberto(false); setTexto(''); setExpectativa(''); }}>
+          Cancelar
+        </Button>
+      </div>
+    </div>
   );
 }

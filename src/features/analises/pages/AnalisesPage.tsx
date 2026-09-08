@@ -812,6 +812,7 @@ export default function AnalisesPage() {
                   rotulo="Conversão do checkout"
                   valor={a.conv_checkout_pct} anterior={ant.conv_checkout_pct} formato={pct2}
                   detalhe="checkout iniciado que virou venda"
+                  base={formatNumber(a.vendas)}
                 />
                 <LinhaTripla
                   rotulo="Vendas" detalhe="CPA · custo por venda"
@@ -820,7 +821,8 @@ export default function AnalisesPage() {
                   topo={formatNumber(a.vendas)} topoAntes={formatNumber(ant.vendas)}
                 />
                 <LinhaMetrica rotulo="Conversão do funil" valor={a.conv_funil_pct} anterior={ant.conv_funil_pct} formato={pct2}
-                  detalhe="venda por visita à página" />
+                  detalhe="venda por visita à página"
+                  base={formatNumber(a.vendas)} />
               </ListaMetricas>
 
               {/* 4 — como a página segura: é o meio do funil, entre o clique e

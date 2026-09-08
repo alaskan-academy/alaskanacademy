@@ -83,13 +83,29 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
 
             return (
               <Fragment key={`${def.grupo}-${def.rotulo}`}>
+                {/* A FASE DO FUNIL, e não um rótulo de seção.
+
+                    Era uma linha cinza de 12px que sumia entre 25 linhas de
+                    número: quem descia a tabela perdia de vista se estava
+                    olhando Resultado ou Funil, e comparar "22%" sem saber de
+                    que etapa é não decide nada.
+
+                    Agora tem trilho colorido à esquerda, texto maior e a faixa
+                    acompanha a rolagem — é o mesmo peso que a etapa tem na
+                    cabeça de quem lê. */}
                 {abreGrupo && (
-                  <tr className="bg-secondary/25">
+                  <tr className="sticky top-[3.75rem] z-[5]">
                     <td
                       colSpan={colunas.length + 1}
-                      className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                      className="p-0"
                     >
-                      {def.grupo}
+                      <div className="flex items-center gap-2 border-y border-border bg-secondary
+                                      px-3 py-1.5">
+                        <span className="h-3.5 w-1 rounded-full bg-primary shrink-0" />
+                        <span className="text-[13px] font-semibold uppercase tracking-wider text-foreground">
+                          {def.grupo}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -102,6 +118,7 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
                     const bom = varia.direcao === 'igual' ? null
                       : (varia.direcao === 'subiu') !== Boolean(def.subirEhRuim);
                     const Icone = varia.direcao === 'subiu' ? ArrowUp : ArrowDown;
+                    const base = def.base?.(c.atual) ?? null;
 
                     return (
                       <td key={c.funil_id} className={cn(
@@ -130,6 +147,15 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
                             </span>
                           )}
                         </span>
+                        {/* De quantos saiu a porcentagem. Uma adesão de 50%
+                            sobre 4 vendas some da decisão assim que se sabe que
+                            são 4 — e sem isto ela parecia o melhor número da
+                            tabela. */}
+                        {v != null && base && (
+                          <span className="block text-[11px] leading-tight text-muted-foreground/70 mt-0.5">
+                            {base}
+                          </span>
+                        )}
                       </td>
                     );
                   })}

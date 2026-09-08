@@ -28,10 +28,20 @@ export function ListaMetricas({
 }: { titulo: string; nota?: ReactNode; children: ReactNode }) {
   return (
     <section className="space-y-1.5">
+      {/* A ETAPA DO FUNIL, e não um rótulo de seção.
+
+          Era um texto cinza de 13px, do mesmo peso da nota à direita: numa
+          página de sete blocos e sessenta números, quem rolava perdia de vista
+          em que etapa estava — e "22%" sem saber de que etapa é não decide
+          nada. O trilho colorido dá o mesmo peso que a etapa tem na cabeça de
+          quem lê, sem virar título de página. */}
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {titulo}
-        </h3>
+        <span className="flex items-center gap-2">
+          <span className="h-3.5 w-1 rounded-full bg-primary shrink-0 self-center" />
+          <h3 className="text-[13px] font-semibold uppercase tracking-wider text-foreground">
+            {titulo}
+          </h3>
+        </span>
         <div className="h-px flex-1 min-w-4 bg-border" />
         {nota && <span className="text-xs text-muted-foreground/80">{nota}</span>}
       </div>
@@ -63,11 +73,22 @@ interface Props {
   /** Linha miúda sob o rótulo: o que é, quanto custa, que fatia representa. */
   detalhe?: ReactNode;
   destaque?: boolean;
+  /**
+   * A contagem por trás do número, miúda, embaixo dele.
+   *
+   * Só o número, sem "de quantos": numa tela cujas linhas são todas sobre as
+   * mesmas vendas, o denominador é sabido e repeti-lo em cada linha vira ruído.
+   *
+   * "63,4%" e "26" dizem coisas diferentes: o primeiro compara, o segundo diz
+   * se dá para confiar. Uma conversão de 50% sobre 4 pedidos some da decisão
+   * assim que se sabe que são 4.
+   */
+  base?: ReactNode;
 }
 
 export function LinhaMetrica({
   rotulo, valor, anterior, formato = n => String(n),
-  subirEhRuim = false, detalhe, destaque = false,
+  subirEhRuim = false, detalhe, destaque = false, base,
 }: Props) {
   const v = variacao(valor, anterior);
 
@@ -97,11 +118,18 @@ export function LinhaMetrica({
           que decide a linha, e estavam em 500 aqui contra 600 lá. A 16px a
           diferença de peso se lê como diferença de TAMANHO — na tela do Funil,
           "R$ 23,15" parecia maior que "34,15%" sem nenhum motivo. */}
-      <span className={cn(
-        'w-40 shrink-0 text-right tabular-nums',
-        destaque ? 'text-lg font-semibold' : 'text-base font-semibold',
-      )}>
-        {valor == null ? '—' : formato(valor)}
+      <span className="w-40 shrink-0 text-right">
+        <span className={cn(
+          'block tabular-nums',
+          destaque ? 'text-lg font-semibold' : 'text-base font-semibold',
+        )}>
+          {valor == null ? '—' : formato(valor)}
+        </span>
+        {valor != null && base != null && (
+          <span className="block text-[11px] leading-tight text-muted-foreground/70 tabular-nums mt-0.5">
+            {base}
+          </span>
+        )}
       </span>
 
       <span className="w-20 shrink-0 text-right">
