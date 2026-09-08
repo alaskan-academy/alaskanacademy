@@ -28,6 +28,7 @@ import {
 } from './constants';
 import { useFases, fasesDoTipo, rotuloDaFase } from '../useFases';
 import { usePedirMotivo } from '../usePedirMotivo';
+import { partirMencoes, ehMencao } from '../mencoes';
 import { SeletorDePrazo } from './SeletorDePrazo';
 import { TipoBadge } from './TipoBadge';
 import { PedidoVariacaoModal } from './PedidoVariacaoModal';
@@ -1215,7 +1216,9 @@ function ComentarioItem({
             </div>
           </div>
         ) : (
-          <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={comentario.texto} /></p>
+          <p className="leading-relaxed whitespace-pre-wrap">
+            <TextWithMentions text={comentario.texto} perfis={perfis} />
+          </p>
         )}
       </div>
 
@@ -1270,7 +1273,9 @@ function ComentarioItem({
                   </div>
                 </div>
               ) : (
-                <p className="leading-relaxed whitespace-pre-wrap"><TextWithMentions text={r.texto} /></p>
+                <p className="leading-relaxed whitespace-pre-wrap">
+                  <TextWithMentions text={r.texto} perfis={perfis} />
+                </p>
               )}
             </div>
           ))}
@@ -1312,12 +1317,19 @@ function ComentarioItem({
   );
 }
 
-function TextWithMentions({ text }: { text: string }) {
-  const parts = text.split(/(@\S+)/g);
+/**
+ * O comentario na tela, com as mencoes inteiras em destaque.
+ *
+ * A divisao mora em `mencoes.ts` e tem teste: era uma regra escrita a mao
+ * aqui dentro que pintava so "@Jessica" de "@Jessica Maihato" e fazia a
+ * mencao parecer ser para a outra Jessica.
+ */
+function TextWithMentions({ text, perfis }: { text: string; perfis: Perfil[] }) {
+  const parts = partirMencoes(text, perfis.map(p => p.nome));
   return (
     <>
       {parts.map((part, i) =>
-        part.startsWith('@') ? (
+        ehMencao(part) ? (
           <span key={i} className="text-blue-400 font-medium">{part}</span>
         ) : (
           part
@@ -1326,6 +1338,7 @@ function TextWithMentions({ text }: { text: string }) {
     </>
   );
 }
+
 
 function MentionTextarea({
   value, onChange, onSubmit, perfis, placeholder, rows = 2, className, autoFocus,
