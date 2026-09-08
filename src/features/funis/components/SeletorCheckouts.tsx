@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
-import { Plus, X, ShoppingCart } from 'lucide-react';
+import { Plus, X, ShoppingCart, Video } from 'lucide-react';
 
 /**
  * Quais checkouts pertencem a este REV.
@@ -35,6 +35,8 @@ interface Checkout {
   titulo: string | null;
   funil_id: string | null;
   eh_funil: boolean | null;
+  /** Este e o checkout da VSL — e por ele que a Payt isola o que a VSL trouxe. */
+  eh_vsl: boolean;
   vendas: number | null;
   preco: number | null;
   preco_praticado: number | null;
@@ -73,7 +75,7 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
   const carregar = useCallback(async () => {
     const { data, error } = await supabase
       .from('vw_checkouts_a_confirmar')
-      .select('id,url,titulo,funil_id,eh_funil,vendas,primeira_venda,ultima_venda,preco,preco_praticado,vendas_pendentes');
+      .select('id,url,titulo,funil_id,eh_funil,eh_vsl,vendas,primeira_venda,ultima_venda,preco,preco_praticado,vendas_pendentes');
     if (error) {
       toast({ title: 'Erro ao carregar checkouts', description: error.message, variant: 'destructive' });
     }
@@ -176,6 +178,25 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
    * o que quebrava no REV novo, onde o id é null e "vincular" era lido como
    * "desvincular". A escolha simplesmente não colava.
    */
+  /**
+   * Marca (ou desmarca) o checkout como o da VSL.
+   *
+   * Grava na hora, como o vínculo: é uma marca de uma linha só, e um "salvar"
+   * separado para ela criaria um estado onde a tela mostra marcado e o banco
+   * não sabe.
+   */
+  async function marcarVsl(c: Checkout) {
+    setSalvando(c.id);
+    const { error } = await supabase
+      .from('funil_checkouts').update({ eh_vsl: !c.eh_vsl }).eq('id', c.id);
+    setSalvando(null);
+    if (error) {
+      toast({ title: 'Erro ao marcar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setTodos(prev => prev.map(x => (x.id === c.id ? { ...x, eh_vsl: !c.eh_vsl } : x)));
+  }
+
   async function definir(checkoutId: string, vincular: boolean) {
     // REV ainda não existe: guarda a escolha e deixa o modal aplicá-la depois
     // de criar. Gravar agora exigiria um `funil_id` que ainda não há.
@@ -354,6 +375,30 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
                   />
                 </div>
               )}
+              {/* Marcar qual checkout e o da VSL.
+
+                   Sem isto, "quanto a VSL trouxe" nao tem resposta: a Payt sabe
+                   separar — na REV5 sao 216 vendas no checkout do REV e 77 no da
+                   VSL —, mas so se alguem disser qual e qual. Deduzir pelo nome
+                   seria a armadilha 3: um checkout chamado "Aula gratuita"
+                   sumiria da conta sem nada reclamar. */}
+              <button
+                type="button"
+                onClick={() => marcarVsl(c)}
+                disabled={salvando === c.id}
+                title={c.eh_vsl
+                  ? 'E o checkout da VSL — clique para desmarcar'
+                  : 'Marcar como o checkout da VSL'}
+                className={cn(
+                  'shrink-0 flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold transition-colors',
+                  c.eh_vsl
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground/50 hover:text-foreground hover:bg-muted/50',
+                )}
+              >
+                <Video className="h-3 w-3" />
+                VSL
+              </button>
               <button
                 type="button"
                 onClick={() => definir(c.id, false)}

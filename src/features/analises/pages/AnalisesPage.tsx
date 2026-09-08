@@ -15,7 +15,7 @@ import { AnalisesNav } from '../components/AnalisesNav';
 import { ListaMetricas, LinhaMetrica, LinhaTripla } from '../components/ListaMetricas';
 import { TabelaItens } from '../components/TabelaItens';
 import { ListaAcoes, AcoesFeitas, Acao } from '../components/ListaAcoes';
-import { BlocoVsl, BlocoTsl } from '../components/BlocoPagina';
+import { BlocoVsl, BlocoTsl, VendasDaVsl } from '../components/BlocoPagina';
 import { BlocoUpsell } from '../components/BlocoUpsell';
 import { AvisoPlanilha } from '../components/AvisoPlanilha';
 import { MetricasDoRev, distanciaDoMeta, baseAnteriorFragil, LIMITE_DISTANCIA } from '../metricas';
@@ -68,6 +68,9 @@ export default function AnalisesPage() {
   /* Uma entrada por VSL, na ordem de `vsl_ids`: a primeira é o lado "A". */
   const [retencoes, setRetencoes] = useState<RetencaoVsl[]>([]);
   const [retencoesAntes, setRetencoesAntes] = useState<RetencaoVsl[]>([]);
+  /* O que a VSL vendeu, pela Payt, isolada pelo checkout marcado. Nao existe
+     em teste A/B: os dois lados vao para o mesmo checkout. */
+  const [vendasVsl, setVendasVsl] = useState<{ atual: VendasDaVsl; anterior: VendasDaVsl } | null>(null);
   const [carregando, setCarregando]     = useState(true);
   const [buscandoMetricas, setBuscando] = useState(false);
 
@@ -237,7 +240,7 @@ export default function AnalisesPage() {
     if (!atual) return;
     let cancelado = false;
     setBuscando(true);
-    setRetencoes([]); setRetencoesAntes([]);
+    setRetencoes([]); setRetencoesAntes([]); setVendasVsl(null);
     carregarAcoes(atual.id);
 
     (async () => {
@@ -251,6 +254,18 @@ export default function AnalisesPage() {
 
       // A VSL é acessória e falha em silêncio de propósito: se o VTurb estiver
       // fora do ar, a rodada continua — o resto dos números não depende dela.
+      /* Uma VSL so: da para isolar o que ela vendeu pelo checkout dela.
+         Com duas, a Payt manda as duas para o mesmo checkout e a pergunta muda
+         de fonte — ver o comentario em BlocoVsl. */
+      if (atual.vsl_ids.length === 1) {
+        const { data: dv } = await supabase.rpc('fn_vsl_do_rev', {
+          p_funil_id: atual.id, p_inicio: janela.inicio, p_fim: janela.fim,
+        });
+        if (!cancelado && dv) {
+          setVendasVsl(dv as { atual: VendasDaVsl; anterior: VendasDaVsl });
+        }
+      }
+
       if (atual.vsl_ids.length > 0) {
         try {
           const agora = await Promise.all(
@@ -811,7 +826,8 @@ export default function AnalisesPage() {
               {/* 4 — como a página segura: é o meio do funil, entre o clique e
                   o checkout, e por isso vem aqui e não no fim. */}
               {atual?.metodo === 'VSL' || atual?.vsl_ids.length
-                ? <BlocoVsl rs={retencoes} anteriores={retencoesAntes} />
+                ? <BlocoVsl rs={retencoes} anteriores={retencoesAntes}
+                    vendas={vendasVsl?.atual ?? null} vendasAntes={vendasVsl?.anterior ?? null} />
                 : <BlocoTsl />}
 
               {/* 5 — quanto cada visitante custa e traz */}

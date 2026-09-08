@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { RetencaoVsl, emMinutos } from '../retencao';
 import { variacao } from '../metricas';
 import { ListaMetricas, LinhaMetrica } from './ListaMetricas';
@@ -145,7 +146,67 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
   );
 }
 
-export function BlocoVsl({ rs, anteriores }: { rs: RetencaoVsl[]; anteriores: RetencaoVsl[] }) {
+/** O que `fn_vsl_do_rev` devolve por período. */
+export interface VendasDaVsl {
+  tem_checkout: boolean;
+  checkouts: string[];
+  pedidos: number;
+  vendas: number;
+  faturamento: number;
+  conv_checkout_pct: number | null;
+}
+
+/**
+ * O que a VSL vendeu — pela PAYT, isolada pelo checkout dela.
+ *
+ * A retenção diz se o vídeo segura; isto diz se ele vende, que é outra
+ * pergunta. Fica logo acima da retenção porque é a resposta que se procura
+ * primeiro: "quanto a VSL trouxe".
+ *
+ * A conversão aqui é a DO CHECKOUT (aprovadas ÷ pedidos), não "de cada 100 que
+ * viram o vídeo". Essa outra precisaria das views, que só o VTurb tem, e cruzar
+ * as duas fontes num mesmo número é o que já produziu "conversão de checkout:
+ * 202,9%" neste projeto.
+ */
+function VendasVsl({ v, anterior }: { v: VendasDaVsl | null; anterior: VendasDaVsl | null }) {
+  if (!v) return null;
+
+  if (!v.tem_checkout) {
+    return (
+      <ListaMetricas titulo="O que a VSL vendeu">
+        <p className="px-3 py-3 text-sm text-muted-foreground/70">
+          Nenhum checkout marcado como o da VSL.{' '}
+          <Link to="/funis-gestao" className="text-primary hover:underline">
+            Marque em Funis
+          </Link>
+          , na lista de checkouts do REV, e a Payt passa a separar o que a VSL
+          trouxe do resto do funil.
+        </p>
+      </ListaMetricas>
+    );
+  }
+
+  return (
+    <ListaMetricas
+      titulo="O que a VSL vendeu"
+      nota={<>pela Payt · {v.checkouts.join(' · ')}</>}
+    >
+      <LinhaMetrica rotulo="Vendas" valor={v.vendas} anterior={anterior?.vendas ?? null}
+        formato={formatNumber} destaque
+        detalhe={`de ${formatNumber(v.pedidos)} pedidos iniciados`} />
+      <LinhaMetrica rotulo="Faturamento" valor={v.faturamento} anterior={anterior?.faturamento ?? null}
+        formato={formatCurrency} />
+      <LinhaMetrica rotulo="Conversão do checkout" valor={v.conv_checkout_pct}
+        anterior={anterior?.conv_checkout_pct ?? null} formato={pct}
+        detalhe="pedido iniciado que virou venda" />
+    </ListaMetricas>
+  );
+}
+
+export function BlocoVsl({ rs, anteriores, vendas, vendasAntes }: {
+  rs: RetencaoVsl[]; anteriores: RetencaoVsl[];
+  vendas: VendasDaVsl | null; vendasAntes: VendasDaVsl | null;
+}) {
   if (rs.length === 0) {
     return (
       <ListaMetricas titulo="Retenção da VSL">
@@ -160,12 +221,19 @@ export function BlocoVsl({ rs, anteriores }: { rs: RetencaoVsl[]; anteriores: Re
     );
   }
 
+  /* Teste A/B: a Payt manda os dois lados para o MESMO checkout, então ela não
+     tem como saber qual VSL a pessoa viu. Não é limitação do painel — é o que
+     existe. Ali a única medida possível é a do próprio VTurb, e o bloco de
+     vendas por checkout sai de cena em vez de mostrar um número que não separa
+     o que se está comparando. */
   if (rs.length > 1) return <Comparacao rs={rs} />;
 
   const r = rs[0];
   const anterior = anteriores[0] ?? null;
 
   return (
+    <>
+    <VendasVsl v={vendas} anterior={vendasAntes} />
     <ListaMetricas
       titulo="Retenção da VSL"
       nota={<>ao vivo do VTurb{r.nome ? ` · ${r.nome}` : ''}</>}
@@ -184,6 +252,7 @@ export function BlocoVsl({ rs, anteriores }: { rs: RetencaoVsl[]; anteriores: Re
       <LinhaMetrica rotulo="Final da VSL" valor={r.final_pct} anterior={anterior?.final_pct ?? null} formato={pct}
         detalhe={r.duracao_seg != null ? `aos ${emMinutos(r.duracao_seg)}` : undefined} />
     </ListaMetricas>
+    </>
   );
 }
 
