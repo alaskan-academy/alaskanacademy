@@ -14,7 +14,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  * Ações:
  *   players     → lista os players (id + nome). É o que transforma "qual VSL está
  *                 rodando" de digitação em seleção.
- *   sincronizar → espelha os players na tabela `vsls`.
+ *   sincronizar → espelha os players na tabela `vsls`. Entra quem tem pitch
+ *                 configurado OU quem está num teste A/B — ver `espelhaveis()`.
  *   stats       → métricas de um player no período. Traz os cinco campos que hoje
  *                 são digitados à mão na análise quinzenal.
  *   retencao    → a curva de retenção, para ler qualquer marco (1 min, fim da
@@ -46,6 +47,65 @@ function ok(data: unknown) {
     status: 200,
     headers: { 'Content-Type': 'application/json', ...CORS },
   });
+}
+
+type Player = {
+  id: string;
+  name: string;
+  duration: number;
+  pitch_time: number;
+  created_at: string;
+};
+
+/**
+ * Quem entra no espelho `vsls` — e por que são DUAS portas.
+ *
+ * A primeira é `pitch_time > 0`: dos 162 players, 88 passam, e o resto é aula
+ * da área de membros e upsell curto. Não é um campo feito para classificar, mas
+ * é o único sinal que o VTurb dá de "isto é uma VSL de venda".
+ *
+ * A segunda porta nasceu de um defeito real. Em 05/09/2026 o teste "Velas de
+ * Lembrancina - Teste de Microlead 01 e 02" chegou aqui com os dois lados, e
+ * mesmo assim não dava para ligá-lo ao REV: os dois players não estavam em
+ * `vsls`, então não apareciam no seletor "VSL rodando", então nenhum REV tinha
+ * `vsl_id`, então `fn_backfill_funil_dos_testes` devolvia zero. Quatro elos, e o
+ * primeiro era este filtro.
+ *
+ * **Um player que está num teste A/B É uma VSL** — alguém montou um teste em
+ * cima dele. Esse sinal é mais forte que o pitch, e não depende de ninguém ter
+ * lembrado de configurar o pitch antes de subir o teste.
+ *
+ * `pitch_seg` fica NULO para quem entrou só pela segunda porta, em vez de zero:
+ * zero seria um pitch no segundo 0, e a retenção no pitch mostraria 100%.
+ * Nulo faz a tela mostrar tracinho, que é a verdade — ninguém marcou o pitch.
+ */
+function espelhaveis(players: Player[], emTeste: Set<string>) {
+  const agora = new Date().toISOString();
+  return players
+    .filter((p) => p.pitch_time > 0 || emTeste.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      nome: p.name,
+      duracao_seg: p.duration,
+      pitch_seg: p.pitch_time > 0 ? p.pitch_time : null,
+      criado_em_vturb: p.created_at,
+      sincronizado_em: agora,
+    }));
+}
+
+/** Os ids de player que participam de algum teste A/B, em qualquer data. */
+async function playersEmTeste(): Promise<Set<string>> {
+  const gl = await vturb('/comparison_groups/list', 'POST', {
+    start_date: '2026-01-01 00:00:00',
+    end_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    timezone: 'America/Sao_Paulo',
+  });
+  // Falhar aqui não pode derrubar a sincronização inteira: sem a lista, o
+  // espelho volta a ser só o do pitch, que é o comportamento antigo.
+  if (gl.erro) return new Set();
+  return new Set(
+    ((gl.dados ?? []) as Array<{ player_ids?: string[] }>).flatMap((g) => g.player_ids ?? []),
+  );
 }
 
 /**
@@ -171,39 +231,33 @@ Deno.serve(async (req) => {
     case 'quota':
       return ok(await vturb('/quota/usage', 'GET', {}));
 
-    // Espelha os players do VTurb na tabela `vsls`.
+    // Espelha os players do VTurb na tabela `vsls`. Quem entra: ver
+    // `espelhaveis()` — pitch configurado OU participando de teste A/B.
     //
-    // Só entra quem tem `pitch_time > 0`. Dos 162 players, 88 passam: o resto é
-    // aula da área de membros e upsell curto, onde ninguém configurou pitch.
-    // Não é um campo feito para classificar, mas é o único sinal que o VTurb dá
-    // — e errar para menos aqui é barato, porque quem faltar aparece na busca
-    // do seletor assim que alguém configurar o pitch lá.
+    // Antes de 08/09/2026 esta ação não tinha quem a chamasse: o espelho nasceu
+    // de uma rodada única em 25/08 e congelou ali, com 88 players. Era a quarta
+    // armadilha do CLAUDE.md — carga inicial sem gatilho —, e o preço foi uma
+    // VSL em teste que não aparecia em lugar nenhum. Agora o seletor de VSL tem
+    // o botão.
     case 'sincronizar': {
       const r = await vturb('/players/list', 'GET', {});
       if (r.erro) return ok(r);
 
-      const players = (r.dados ?? []) as Array<{
-        id: string; name: string; duration: number;
-        pitch_time: number; created_at: string;
-      }>;
-
-      const vsls = players
-        .filter((p) => p.pitch_time > 0)
-        .map((p) => ({
-          id: p.id,
-          nome: p.name,
-          duracao_seg: p.duration,
-          pitch_seg: p.pitch_time,
-          criado_em_vturb: p.created_at,
-          sincronizado_em: new Date().toISOString(),
-        }));
+      const players = (r.dados ?? []) as Player[];
+      const vsls = espelhaveis(players, await playersEmTeste());
 
       // `upsert` pela chave primária, que é o id do VTurb: rodar de novo não
       // duplica nem apaga o vínculo que o REV já tem com a VSL.
       const { error } = await supabaseAdmin.from('vsls').upsert(vsls);
       if (error) return ok({ erro: `Falha ao gravar: ${error.message}` });
 
-      return ok({ dados: { players_no_vturb: players.length, vsls_gravadas: vsls.length } });
+      return ok({ dados: {
+        players_no_vturb: players.length,
+        vsls_gravadas: vsls.length,
+        // Quantas entraram só por estarem em teste. Vale mostrar: é a diferença
+        // entre este espelho e o de antes.
+        so_por_estarem_em_teste: vsls.filter((v) => v.pitch_seg === null).length,
+      } });
     }
 
     // Traz os testes A/B do VTurb para `testes_funis`, com os números dos dois
@@ -227,18 +281,33 @@ Deno.serve(async (req) => {
 
       const pl = await vturb('/players/list', 'GET', {});
       if (pl.erro) return ok(pl);
-      const porId = new Map(
-        ((pl.dados ?? []) as Array<{ id: string; name: string; duration: number; pitch_time: number }>)
-          .map((x) => [x.id, x]),
-      );
+      const porId = new Map(((pl.dados ?? []) as Player[]).map((x) => [x.id, x]));
 
       const grupos = (gl.dados ?? []) as Array<{
         id: string; name: string; player_ids: string[];
         started_at: string | null; finished_at: string | null;
       }>;
 
+      /*
+        Espelha os players DESTES testes antes de gravar os testes.
+
+        É o elo que faltava. `fn_backfill_funil_dos_testes` liga o teste ao REV
+        cujo `vsl_id` seja um dos players — e o `vsl_id` só pode ser escolhido
+        entre o que existe em `vsls`. Sem este passo, sincronizar um teste de uma
+        VSL nova gravava o teste e devolvia "0 ligados a um REV" para sempre, sem
+        nada dizendo que o problema era o espelho e não o vínculo.
+
+        Só os players dos testes, não os 162: esta ação é sobre testes. Quem
+        quiser o espelho inteiro usa o botão do seletor de VSL.
+      */
+      const emTeste = new Set(grupos.flatMap((g) => g.player_ids ?? []));
+      const doTeste = [...porId.values()].filter((player) => emTeste.has(player.id));
+      const { error: eVsls } = await supabaseAdmin
+        .from('vsls').upsert(espelhaveis(doTeste, emTeste));
+
       let gravados = 0;
       const problemas: string[] = [];
+      if (eVsls) problemas.push(`Espelho de VSLs: ${eVsls.message}`);
 
       for (const g of grupos) {
         const items = g.player_ids.map((id) => ({
@@ -319,6 +388,7 @@ Deno.serve(async (req) => {
         dados: {
           testes_no_vturb: grupos.length,
           gravados,
+          vsls_dos_testes_espelhadas: doTeste.length,
           ligados_a_um_rev: ligados ?? 0,
           problemas,
         },

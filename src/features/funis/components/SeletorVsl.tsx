@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { supabase } from '@/lib/supabase';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, Video } from 'lucide-react';
+import { Check, ChevronDown, Loader2, RefreshCw, Video } from 'lucide-react';
 
 /**
  * Escolhe a VSL que está rodando no REV, a partir do espelho do VTurb.
@@ -25,6 +26,7 @@ export interface Vsl {
   duracao_seg: number | null;
   pitch_seg: number | null;
   criado_em_vturb: string | null;
+  sincronizado_em: string | null;
 }
 
 /** 1347 → "22:27". A duração é o que distingue players de nome igual. */
@@ -50,22 +52,65 @@ export function SeletorVsl({ value, onChange }: Props) {
   const [vsls, setVsls]   = useState<Vsl[]>([]);
   const [aberto, setAberto] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [sincronizando, setSincronizando] = useState(false);
 
-  useEffect(() => {
-    let cancelado = false;
-    (async () => {
-      const { data } = await supabase
-        .from('vsls')
-        .select('id,nome,duracao_seg,pitch_seg,criado_em_vturb')
-        .order('criado_em_vturb', { ascending: false });
-      if (cancelado) return;
-      setVsls((data ?? []) as Vsl[]);
-      setCarregando(false);
-    })();
-    return () => { cancelado = true; };
+  const carregar = useCallback(async () => {
+    const { data } = await supabase
+      .from('vsls')
+      .select('id,nome,duracao_seg,pitch_seg,criado_em_vturb,sincronizado_em')
+      .order('criado_em_vturb', { ascending: false });
+    setVsls((data ?? []) as Vsl[]);
+    setCarregando(false);
   }, []);
 
+  useEffect(() => { carregar(); }, [carregar]);
+
+  /*
+    Buscar os players do VTurb de novo.
+
+    Este botão existe porque o espelho já congelou: nasceu de uma rodada única
+    em 25/08/2026 e ficou 14 dias parado, sem nada na tela dizendo. Uma VSL que
+    subiu depois — inclusive uma em teste A/B — simplesmente não aparecia aqui,
+    e sem ela o REV ficava sem `vsl_id`, e sem `vsl_id` o teste do VTurb nunca
+    se ligava ao REV. O botão fica AQUI, e não numa tela de configuração, porque
+    é aqui que a falta é descoberta.
+  */
+  async function sincronizar() {
+    setSincronizando(true);
+    const { data, error } = await supabase.functions.invoke('vturb', {
+      body: { acao: 'sincronizar' },
+    });
+    setSincronizando(false);
+
+    if (error || data?.erro) {
+      toast({
+        title: 'Não consegui falar com o VTurb',
+        description: data?.erro ?? error?.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    const d = data?.dados ?? {};
+    toast({
+      title: `${d.vsls_gravadas ?? 0} VSLs no espelho`,
+      description: `${d.players_no_vturb ?? 0} players no VTurb`
+        + (d.so_por_estarem_em_teste ? ` · ${d.so_por_estarem_em_teste} entraram por estarem em teste A/B` : ''),
+    });
+    await carregar();
+  }
+
   const atual = useMemo(() => vsls.find(v => v.id === value), [vsls, value]);
+
+  /* A data do espelho, não a de agora: é o que denuncia lista velha. */
+  const ultimaSync = useMemo(() => {
+    const datas = vsls.map(v => v.sincronizado_em).filter(Boolean) as string[];
+    return datas.length ? datas.sort().at(-1)! : null;
+  }, [vsls]);
+
+  const diasParado = useMemo(() => {
+    if (!ultimaSync) return null;
+    return Math.floor((Date.now() - new Date(ultimaSync).getTime()) / 86400000);
+  }, [ultimaSync]);
 
   // `modal` porque este Popover vive DENTRO de um Dialog.
   //
@@ -108,8 +153,8 @@ export function SeletorVsl({ value, onChange }: Props) {
               {carregando
                 ? 'Carregando…'
                 : vsls.length === 0
-                  ? 'Nenhuma VSL espelhada ainda. Sincronize com o VTurb.'
-                  : 'Nenhuma VSL com esse nome.'}
+                  ? 'Nenhuma VSL espelhada ainda — use "Buscar do VTurb" abaixo.'
+                  : 'Nenhuma VSL com esse nome. Se ela é nova, busque do VTurb abaixo.'}
             </CommandEmpty>
 
             <CommandGroup>
@@ -143,6 +188,34 @@ export function SeletorVsl({ value, onChange }: Props) {
             </CommandGroup>
           </CommandList>
         </Command>
+
+        {/* O rodapé diz a idade da lista ANTES de alguém procurar o que não
+            está nela. Sem isto, uma lista de 14 dias atrás parece completa. */}
+        <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
+          <span className="text-[11px] text-muted-foreground truncate">
+            {carregando
+              ? 'Carregando…'
+              : ultimaSync
+                ? <>
+                    {vsls.length} VSLs · lista de{' '}
+                    <span className={cn(diasParado !== null && diasParado >= 7 && 'text-warning')}>
+                      {dataCurta(ultimaSync)}
+                      {diasParado ? ` (${diasParado} dia${diasParado > 1 ? 's' : ''})` : ''}
+                    </span>
+                  </>
+                : 'Espelho vazio'}
+          </span>
+          <button
+            type="button"
+            onClick={sincronizar}
+            disabled={sincronizando}
+            className="shrink-0 flex items-center gap-1.5 text-[11px] text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+          >
+            {sincronizando
+              ? <><Loader2 className="h-3 w-3 animate-spin" />Buscando…</>
+              : <><RefreshCw className="h-3 w-3" />Buscar do VTurb</>}
+          </button>
+        </div>
       </PopoverContent>
     </Popover>
   );
