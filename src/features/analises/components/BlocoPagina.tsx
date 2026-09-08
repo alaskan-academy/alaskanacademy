@@ -18,8 +18,16 @@ import { ListaMetricas, LinhaMetrica } from './ListaMetricas';
 
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
-/** Os cinco marcos, na ordem em que a pessoa lê o roteiro. */
+/**
+ * As linhas do bloco do VTurb, na ordem em que a pessoa decide.
+ *
+ * A CONVERSÃO vem primeiro, e não junto do resto da retenção: num teste A/B ela
+ * é a métrica que decide — retenção diz se o vídeo segura, conversão diz se ele
+ * vende, e é a segunda que escolhe o lado vencedor. Nos outros marcos a ordem é
+ * a do roteiro.
+ */
 const MARCOS: { rotulo: string; campo: keyof RetencaoVsl }[] = [
+  { rotulo: 'Conversão',    campo: 'conversao_pct' },
   { rotulo: 'Play Rate',    campo: 'play_rate_pct' },
   { rotulo: '1 minuto',     campo: 'um_minuto_pct' },
   { rotulo: 'Fim da Lead',  campo: 'fim_da_lead_pct' },
@@ -50,9 +58,12 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
   return (
     <section className="space-y-1.5">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Retenção da VSL
-        </h3>
+        <span className="flex items-center gap-2">
+          <span className="h-3.5 w-1 rounded-full bg-primary shrink-0 self-center" />
+          <h3 className="text-[13px] font-semibold uppercase tracking-wider text-foreground">
+            A VSL
+          </h3>
+        </span>
         <div className="h-px flex-1 min-w-4 bg-border" />
         <span className="text-xs text-muted-foreground/80">
           teste A/B · {rs.length} VSLs · ao vivo do VTurb
@@ -86,7 +97,7 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
             // é o lado A. Retenção maior é melhor, então subir é verde.
             const v = dois ? variacao(vals[1], vals[0]) : null;
             const Seta = v?.direcao === 'subiu' ? ArrowUp : ArrowDown;
-            const destaque = campo === 'pitch_pct';
+            const destaque = campo === 'conversao_pct';
             return (
               <div key={campo} className={cn(
                 'flex items-baseline gap-3 px-3 py-2 border-b border-border/40 last:border-0',
@@ -163,10 +174,12 @@ export interface VendasDaVsl {
  * pergunta. Fica logo acima da retenção porque é a resposta que se procura
  * primeiro: "quanto a VSL trouxe".
  *
- * A conversão aqui é a DO CHECKOUT (aprovadas ÷ pedidos), não "de cada 100 que
- * viram o vídeo". Essa outra precisaria das views, que só o VTurb tem, e cruzar
- * as duas fontes num mesmo número é o que já produziu "conversão de checkout:
- * 202,9%" neste projeto.
+ * A conversão aqui é a DO CHECKOUT (aprovadas ÷ pedidos), e a outra — quantos
+ * dos que deram play compraram — está no bloco "A VSL", logo abaixo. São duas
+ * perguntas, e cada uma vive no bloco da fonte que a responde inteira: a do
+ * checkout é toda da Payt, a do vídeo é toda do VTurb. Misturar venda da Payt
+ * com view do VTurb num mesmo número foi o que já produziu "conversão de
+ * checkout: 202,9%" neste projeto.
  */
 function VendasVsl({ v, anterior }: { v: VendasDaVsl | null; anterior: VendasDaVsl | null }) {
   if (!v) return null;
@@ -209,7 +222,7 @@ export function BlocoVsl({ rs, anteriores, vendas, vendasAntes }: {
 }) {
   if (rs.length === 0) {
     return (
-      <ListaMetricas titulo="Retenção da VSL">
+      <ListaMetricas titulo="A VSL">
         <p className="px-3 py-3 text-sm text-muted-foreground/70">
           Este REV não tem VSL vinculada.{' '}
           <Link to="/funis-gestao" className="text-primary hover:underline">
@@ -235,9 +248,17 @@ export function BlocoVsl({ rs, anteriores, vendas, vendasAntes }: {
     <>
     <VendasVsl v={vendas} anterior={vendasAntes} />
     <ListaMetricas
-      titulo="Retenção da VSL"
+      titulo="A VSL"
       nota={<>ao vivo do VTurb{r.nome ? ` · ${r.nome}` : ''}</>}
     >
+      {/* A conversão DA VSL, que é outra pergunta que a do checkout logo
+          acima: aquela mede o checkout (pedido iniciado que virou venda), esta
+          mede o vídeo (quem viu e comprou). Não são versões do mesmo número, e
+          por isso estão em blocos separados — um da Payt, outro do VTurb. */}
+      <LinhaMetrica rotulo="Conversão" valor={r.conversao_pct} anterior={anterior?.conversao_pct ?? null}
+        formato={pct} destaque
+        detalhe="de quem deu play, quantos compraram"
+        base={r.plays != null ? `${formatNumber(r.plays)} deram play` : undefined} />
       <LinhaMetrica rotulo="Play Rate" valor={r.play_rate_pct} anterior={anterior?.play_rate_pct ?? null} formato={pct}
         detalhe="quem deu play" />
       <LinhaMetrica rotulo="1 minuto" valor={r.um_minuto_pct} anterior={anterior?.um_minuto_pct ?? null} formato={pct}

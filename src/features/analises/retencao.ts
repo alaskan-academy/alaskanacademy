@@ -24,6 +24,36 @@ export interface RetencaoVsl {
   pitch_seg: number | null;
   duracao_seg: number | null;
   nome: string | null;
+
+  /*
+    A CONVERSÃO DA PRÓPRIA VSL: de quem viu, quantos compraram.
+
+    Vem do VTurb, e fica no bloco DELE — junto do play rate e da retenção —,
+    nunca no bloco de vendas da Payt. O motivo é a regra do módulo: duas fontes
+    não se cruzam num mesmo número. Dividir venda da Payt por view do VTurb foi
+    o que já produziu "conversão de checkout: 202,9%" neste projeto.
+
+    Então são duas conversões, e elas respondem coisas diferentes:
+
+      Conversão do checkout (Payt)  pedido iniciado que virou venda — 63,4%
+      Conversão da VSL (VTurb)      quem viu o vídeo e comprou — 3,06%
+
+    A primeira mede o checkout; a segunda mede o vídeo. Não são versões do
+    mesmo número, e por isso moram em blocos separados.
+
+    Num teste A/B esta é A métrica de decisão: é o único jeito de saber qual
+    lado vende mais, já que a Payt manda os dois para o mesmo checkout.
+
+    O DENOMINADOR É QUEM DEU PLAY, não quem viu a página. Conferido contra os
+    próprios números da API em dois períodos: 151 ÷ 4.189 = 3,60% e
+    173 ÷ 6.375 = 2,71%, exatamente o `overall_conversion_rate` que ela devolve
+    em cada um — e nenhum dos dois bate se o divisor for `total_viewed`.
+    Rotular "de quem viu a página" fazia a mesma taxa parecer 40% mais rasa do
+    que é, e a contagem embaixo dela mentia sobre a base.
+  */
+  conversao_pct: number | null;
+  /** Quem apertou play no período — a base da conversão acima. */
+  plays: number | null;
 }
 
 interface Vsl {
@@ -120,6 +150,9 @@ export async function buscarRetencao(
     pitch_seg: vsl.pitch_seg,
     duracao_seg: vsl.duracao_seg,
     nome: vsl.nome,
+    // Já vinham na mesma resposta de `/sessions/stats`; não custam chamada nova.
+    conversao_pct: comoPct(s.overall_conversion_rate),
+    plays: typeof s.total_started_device_uniq === 'number' ? s.total_started_device_uniq : null,
   };
 }
 

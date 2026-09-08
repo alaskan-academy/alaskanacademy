@@ -49,9 +49,15 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
 
       <div className="overflow-x-auto rounded-lg border border-border">
       <table className="w-full text-base">
-        <thead className="sticky top-0 z-10">
-          <tr className="border-b border-border bg-secondary/60">
-            <th className="text-left font-medium px-3 py-2 w-60 min-w-[15rem] text-xs uppercase tracking-wide text-muted-foreground align-bottom">
+        <thead className="sticky top-0 z-20">
+          <tr className="border-b border-border bg-secondary">
+            {/* A METRICA FICA. Com tres REVs a tabela passa da largura da tela,
+                e rolar para o lado levava junto o nome da linha: sobrava
+                "R$ 1,08 ↑6%" sem dizer de que metrica.
+
+                z-30 porque esta e a quina: precisa ficar acima tanto do
+                cabecalho (z-20) quanto da coluna fixa das linhas (z-10). */}
+            <th className="sticky left-0 z-30 bg-secondary border-r border-border text-left font-medium px-3 py-2 w-60 min-w-[15rem] text-xs uppercase tracking-wide text-muted-foreground align-bottom">
               <span className="block">Métrica</span>
               <span className="block normal-case tracking-normal font-normal text-muted-foreground/70 mt-0.5">
                 valor no período · vs. anterior
@@ -94,23 +100,30 @@ export function TabelaLadoALado({ colunas }: { colunas: ColunaRev[] }) {
                     acompanha a rolagem — é o mesmo peso que a etapa tem na
                     cabeça de quem lê. */}
                 {abreGrupo && (
-                  <tr className="sticky top-[3.75rem] z-[5]">
+                  <tr className="sticky top-[3.75rem] z-[15]">
                     <td
                       colSpan={colunas.length + 1}
                       className="p-0"
                     >
-                      <div className="flex items-center gap-2 border-y border-border bg-secondary
-                                      px-3 py-1.5">
-                        <span className="h-3.5 w-1 rounded-full bg-primary shrink-0" />
-                        <span className="text-[13px] font-semibold uppercase tracking-wider text-foreground">
-                          {def.grupo}
+                      <div className="border-y border-border bg-secondary py-1.5">
+                        {/* A faixa atravessa a tabela inteira, mas o nome da
+                            fase gruda na esquerda junto com a coluna da
+                            metrica — senao ele sairia de vista ao rolar e a
+                            faixa viraria uma tarja sem legenda. */}
+                        <span className="sticky left-0 flex items-center gap-2 px-3 w-60 min-w-[15rem]">
+                          <span className="h-3.5 w-1 rounded-full bg-primary shrink-0" />
+                          <span className="text-[13px] font-semibold uppercase tracking-wider text-foreground">
+                            {def.grupo}
+                          </span>
                         </span>
                       </div>
                     </td>
                   </tr>
                 )}
                 <tr className="border-b border-border/40 last:border-0">
-                  <td className="px-3 py-1.5 text-sm">{def.rotulo}</td>
+                  <td className="sticky left-0 z-10 bg-card border-r border-border px-3 py-1.5 text-sm">
+                    {def.rotulo}
+                  </td>
                   {colunas.map((c, i) => {
                     const v = valores[i];
                     const ant = def.valor(c.anterior);
