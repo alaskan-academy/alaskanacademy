@@ -229,7 +229,7 @@ Deno.serve(async (req) => {
   );
 
   const porConta: Record<string, unknown>[] = [];
-  const paraGravar: { ref: string; payload: unknown }[] = [];
+  const paraGravar: { ref: string; payload: unknown; descricao: string }[] = [];
   let totalBanking = 0;
   let totalCard = 0;
 
@@ -351,15 +351,26 @@ Deno.serve(async (req) => {
       ...(empresaId ? {} : { aviso: 'sem empresa cadastrada para este slug' }),
     });
 
-    // ── 3b. Payload nas linhas que já existiam
+    // ── 3b. O que chega DEPOIS, nas linhas que já existiam
+    //
     // O upsert acima usa `ignoreDuplicates`, que é o que protege
     // `status_revisao` de voltar para "pendente" em transação já revisada. O
     // efeito colateral é que linha antiga nunca recebia `payload_raw`: depois
     // do primeiro sync, 1.120 transações tinham payload em exatamente uma.
-    // Esta passada escreve só aquela coluna.
+    //
+    // A DESCRIÇÃO tem o mesmo problema. Quando o lançamento entra antes de a
+    // Conta Simples anexar o estabelecimento, fica gravado o texto de reserva
+    // — e ficava para sempre. Foi assim que um estorno de R$ 357,16 do
+    // Facebook ficou sem categoria: a regra procura "facebk" na descrição, e
+    // ali estava escrito "Cartão CS".
+    //
+    // Esta passada escreve só essas duas colunas, e quem decide se promove a
+    // descrição é a função, apenas quando a gravada ainda é um dos dois textos
+    // de reserva. Descrição ajustada à mão não é tocada.
     paraGravar.push(...[...bankingRows, ...cardRows].map(r => ({
-      ref:     r.referencia_externa,
-      payload: r.payload_raw,
+      ref:       r.referencia_externa,
+      payload:   r.payload_raw,
+      descricao: r.descricao,
     })));
    } catch (e) {
     /* Uma conta com problema não pode impedir a outra de sincronizar — mesmo
@@ -380,12 +391,17 @@ Deno.serve(async (req) => {
   }
 
     let payloadsGravados = 0;
+    let descricoesPromovidas = 0;
     for (let i = 0; i < paraGravar.length; i += 200) {
       const { data, error } = await supabase.rpc('fn_gravar_payloads', {
         p_linhas: paraGravar.slice(i, i + 200),
       });
-      if (error) console.warn('[cs-sync] payload_raw falhou:', error.message);
-      else payloadsGravados += Number(data ?? 0);
+      if (error) { console.warn('[cs-sync] payload_raw falhou:', error.message); continue; }
+      // Dois numeros separados: somar os dois faria o log dizer "N payloads"
+      // contando linha que nao era payload.
+      const r = (data ?? {}) as { payloads?: number; descricoes?: number };
+      payloadsGravados     += Number(r.payloads ?? 0);
+      descricoesPromovidas += Number(r.descricoes ?? 0);
     }
 
     // ── 4. Auto-categorização via regras_categoria
@@ -393,7 +409,8 @@ Deno.serve(async (req) => {
     if (catError) console.warn('[cs-sync] Auto-categorização falhou:', catError.message);
 
     console.log('[cs-sync] OK: ' + contas.length + ' conta(s), ' + totalBanking + ' banking, '
-      + totalCard + ' cartão, ' + (categorized ?? 0) + ' categorizados, ' + payloadsGravados + ' payloads');
+      + totalCard + ' cartão, ' + (categorized ?? 0) + ' categorizados, ' + payloadsGravados + ' payloads, '
+      + descricoesPromovidas + ' descrições promovidas');
     return json({
       ok:          true,
       contas:      porConta,
@@ -401,6 +418,7 @@ Deno.serve(async (req) => {
       card:        { fetched: totalCard },
       categorized: categorized ?? 0,
       payloads:    payloadsGravados,
+      descricoes:  descricoesPromovidas,
       period:      { startDate, endDate },
     });
   } catch (err) {
