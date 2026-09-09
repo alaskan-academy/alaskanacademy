@@ -235,11 +235,29 @@ Deno.serve(async (req) => {
   let body: { startDate?: string; endDate?: string } = {};
   try { body = await req.json(); } catch { /* vazio ok */ }
 
+  /*
+    A janela e de REENCONTRO, nao de novidade.
+
+    Ela era de 3 dias, e isso pressupoe que o extrato nasce completo e nunca
+    mais muda. Nao e o caso: a Conta Simples publica lancamento com atraso, e o
+    que passa do terceiro dia some para sempre — o `ignoreDuplicates` do upsert
+    garante que o passado nao seja reescrito, mas nao traz de volta o que nunca
+    entrou.
+
+    Quem denunciou foi a Rentabilidade CDI. Das 20 linhas de agosto so 2
+    entraram, e as duas varreduras largas de 29/06 e 24/08 trouxeram 52 de uma
+    vez — ou seja, a API TEM as linhas; a janela curta e que nao as via.
+
+    30 dias cobre o mes corrente inteiro, que e o recorte de um fechamento, e
+    custa pouco: a conta corrente move ~5 linhas por dia e o cartao ja e
+    buscado em janelas mensais. Reler e barato; perder lancamento nao.
+  */
+  const DIAS_DE_JANELA = 30;
   const today = new Date();
-  const endDate   = body.endDate   ?? today.toISOString().slice(0, 10);
+  const endDate   = body.endDate   ?? diaNoBrasil(today.toISOString());
   const start     = new Date(today);
-  start.setDate(start.getDate() - 3);
-  const startDate = body.startDate ?? start.toISOString().slice(0, 10);
+  start.setDate(start.getDate() - DIAS_DE_JANELA);
+  const startDate = body.startDate ?? diaNoBrasil(start.toISOString());
 
   const contas = contasConfiguradas();
   if (contas.length === 0) {
@@ -294,11 +312,36 @@ Deno.serve(async (req) => {
     const bankingRows = rawBanking
       .filter((t) => {
         const tx = t as Record<string, unknown>;
-        if (tx['status'] !== 2) return false;
         const desc = String(tx['description'] ?? '').toLowerCase();
         const name = String(tx['sourceDestinationName'] ?? tx['counterpartName'] ?? '').toLowerCase();
         const tipoDesc = String((tx['transactionType'] as Record<string, unknown> | undefined)?.['description'] ?? '').toLowerCase();
         const combined = `${desc} ${name} ${tipoDesc}`;
+
+        /*
+          O filtro de status existe para nao importar o que AINDA NAO
+          ACONTECEU. So que a Conta Simples nunca move o rendimento para
+          "liquidado": ele nasce em status 0 e fica.
+
+          Medido na API entre 01/06 e 09/09, sobre 397 lancamentos:
+
+            status 0   35 linhas   TODAS Rentabilidade CDI
+            status 2  362 linhas   todo o resto, mais 9 CDI
+
+          Ou seja, status 0 so existe em rendimento, e o rendimento raramente
+          chega a 2. O dinheiro ja esta no saldo do extrato desde o primeiro
+          dia — o que faltava era o painel aceitar isso.
+
+          O preco de nao aceitar: das 20 linhas de CDI de agosto so 2 entraram,
+          e a conferencia contra o extrato acusou R$ 1,43 a menos no mes.
+
+          A excecao e estreita de proposito. Rendimento entra em qualquer
+          status; todo o resto continua exigindo liquidado, porque para PIX o
+          status 0 significaria mesmo "ainda nao". Se um dia aparecer status 0
+          em outro tipo, ele CONTINUA sendo recusado — a excecao nao cresce
+          sozinha, que e o contrario de uma lista fixa envelhecendo calada.
+        */
+        const rendimento = tipoDesc.includes('rentabilidade');
+        if (tx['status'] !== 2 && !rendimento) return false;
         if (combined.includes('deposito de limite') || combined.includes('resgate de limite')) return false;
         if (combined.includes('limite cartao') || combined.includes('limite cartão')) return false;
         if (name === 'conta simples solucoes de pagamentos ltda') return false;
