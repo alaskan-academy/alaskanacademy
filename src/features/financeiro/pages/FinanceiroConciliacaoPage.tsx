@@ -25,6 +25,9 @@ interface Transacao {
   descricao_original: string;
   /** "Cartão •••• 6896", "PIX Enviado", "Recebimento via PIX"… */
   meio_pagamento: string;
+  /** "Conta Simples", "Conta Simples (cartão)", "C6", "Inter"… Derivado da
+   *  fonte na view, não listado à mão — conta nova aparece sozinha. */
+  banco: string;
   valor: number;
   categoria: string | null;
   /** Grupo resolvido pelo plano de contas, não o centro cru do CS. */
@@ -66,7 +69,7 @@ export default function FinanceiroConciliacaoPage() {
       (de, ate) => {
         let query = supabase
           .from('vw_conciliacao')
-          .select('id,data,nome,descricao_original,meio_pagamento,valor,categoria,grupo,status_revisao')
+          .select('id,data,nome,descricao_original,meio_pagamento,banco,valor,categoria,grupo,status_revisao')
           .gte('data', dataInicio)
           .lte('data', dataFim)
           .order('data', { ascending: false }).order('id')
@@ -115,16 +118,33 @@ export default function FinanceiroConciliacaoPage() {
     }
 
     const escapa = (v: string) => `"${(v ?? '').replace(/"/g, '""')}"`;
+    const dinheiro = (n: number) => n.toFixed(2).replace('.', ',');
+
+    /*
+      Entrada e saída em colunas separadas, do jeito que o extrato do banco
+      vem — e VAZIAS quando não se aplica, nunca zero. Zero somaria como
+      lançamento na hora de conferir a coluna, e o que a contabilidade faz com
+      essas duas é exatamente somar.
+
+      `Valor` continua, com sinal, porque é por ele que se confere o total do
+      período contra o saldo. As três colunas dizem a mesma coisa de formas
+      diferentes, e é de propósito: aqui não há campo editável divergindo, há
+      uma leitura derivada da outra na hora de escrever o arquivo.
+    */
     const linhas = [
-      ['Data', 'Nome', 'Descrição original', 'Meio de pagamento', 'Categoria', 'Grupo', 'Valor'].join(';'),
+      ['Data', 'Banco', 'Nome', 'Descrição original', 'Meio de pagamento',
+       'Categoria', 'Grupo', 'Entrada', 'Saída', 'Valor'].join(';'),
       ...transacoes.map(t => [
         escapa(t.data.split('-').reverse().join('/')),
+        escapa(t.banco ?? ''),
         escapa(t.nome),
         escapa(t.descricao_original),
         escapa(t.meio_pagamento),
         escapa(t.categoria ?? ''),
         escapa(t.grupo ?? ''),
-        escapa(t.valor.toFixed(2).replace('.', ',')),
+        escapa(t.valor > 0 ? dinheiro(t.valor) : ''),
+        escapa(t.valor < 0 ? dinheiro(-t.valor) : ''),
+        escapa(dinheiro(t.valor)),
       ].join(';')),
     ].join('\r\n');
 
