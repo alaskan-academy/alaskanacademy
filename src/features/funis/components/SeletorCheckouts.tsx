@@ -68,6 +68,16 @@ interface Props {
 export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }: Props) {
   const [todos, setTodos]       = useState<Checkout[]>([]);
   const [carregando, setCarregando] = useState(true);
+  /*
+    A falha da busca precisa SOBREVIVER ao toast.
+
+    Sem isto, a consulta recusada pelo PostgREST deixava as duas listas vazias e
+    a tela dizia "nenhum checkout livre" -- que nao parece defeito, parece
+    resposta. Foi assim que uma coluna faltando na view passou um dia inteiro
+    sem ninguem saber que era erro. Lista vazia por falha e lista vazia por
+    ausencia sao coisas diferentes, e a tela agora diz qual das duas e.
+  */
+  const [erro, setErro]         = useState<string | null>(null);
   const [aberto, setAberto]     = useState(false);
   const [salvando, setSalvando] = useState<string | null>(null);
   const [urlNova, setUrlNova]   = useState('');
@@ -79,6 +89,7 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
     if (error) {
       toast({ title: 'Erro ao carregar checkouts', description: error.message, variant: 'destructive' });
     }
+    setErro(error?.message ?? null);
     setTodos((data ?? []) as Checkout[]);
     setCarregando(false);
   }, []);
@@ -262,7 +273,10 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
                 <CommandInput placeholder="Buscar checkout pelo nome ou link…" className="h-9" />
                 <CommandList className="max-h-72">
                   <CommandEmpty>
-                    {carregando ? 'Carregando…' : 'Nenhum checkout livre com esse nome.'}
+                    {carregando ? 'Carregando…'
+                      : erro
+                        ? `Não deu para carregar a lista: ${erro}`
+                        : 'Nenhum checkout livre com esse nome.'}
                   </CommandEmpty>
                   <CommandGroup>
                     {disponiveis.map(c => (
@@ -324,11 +338,20 @@ export function SeletorCheckouts({ funilId, pendentes = [], onPendentesChange }:
       </div>
 
       {meus.length === 0 ? (
-        <p className="text-xs text-muted-foreground/60 italic">
-          {funilId
-            ? 'Nenhum checkout vinculado — as vendas deste REV não estão sendo contadas.'
-            : 'Nenhum checkout escolhido ainda. O vínculo é gravado ao salvar o REV.'}
-        </p>
+        erro ? (
+          <p className="text-xs text-destructive italic">
+            Não deu para carregar os checkouts: {erro}.{' '}
+            <button type="button" onClick={carregar} className="underline">
+              tentar de novo
+            </button>
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground/60 italic">
+            {funilId
+              ? 'Nenhum checkout vinculado — as vendas deste REV não estão sendo contadas.'
+              : 'Nenhum checkout escolhido ainda. O vínculo é gravado ao salvar o REV.'}
+          </p>
+        )
       ) : (
         <div className="space-y-1.5">
           {meus.map(c => (
