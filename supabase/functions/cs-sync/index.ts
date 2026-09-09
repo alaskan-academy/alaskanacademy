@@ -137,6 +137,36 @@ async function fetchCard(token: string, startDate: string, endDate: string): Pro
   return all;
 }
 
+
+/**
+ * A data do lancamento e a do BRASIL, nao a do UTC que a API devolve.
+ *
+ * `transactionDate` vem como "2026-09-01T03:16:00.000Z". Cortar os dez
+ * primeiros caracteres dava o dia em UTC, e o Brasil esta tres horas atras:
+ * toda compra feita depois das 21h caia no dia seguinte. Medido antes do
+ * conserto: 69 de 948 linhas do cartao no dia errado, e seis delas
+ * atravessando a virada do mes — R$ 1.693,00 saindo de agosto para setembro,
+ * que foi exatamente a diferenca que a conferencia contra o extrato achou.
+ *
+ * A zona IANA em vez de "menos tres horas" e proposital: o Brasil aboliu o
+ * horario de verao em 2019, mas fixar o deslocamento no codigo seria uma
+ * lista fixa envelhecendo em silencio.
+ *
+ * `en-CA` e o truque que devolve YYYY-MM-DD sem montar a string a mao.
+ */
+const DIA_BR = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
+function diaNoBrasil(carimbo: unknown): string {
+  const s = String(carimbo ?? '');
+  const d = new Date(s);
+  // Carimbo que o Date nao entende nao pode virar `Invalid Date` gravado:
+  // devolve o que da para aproveitar, como antes.
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10);
+  return DIA_BR.format(d);
+}
+
 function buildDescricaoBanking(t: Record<string, unknown>): string {
   const candidates = [
     t['sourceDestinationName'],
@@ -280,7 +310,7 @@ Deno.serve(async (req) => {
         return {
           referencia_externa: ref(String(tx['id'])),
           empresa_id: empresaId,
-          data: String(tx['transactionDate'] ?? '').slice(0, 10),
+          data: diaNoBrasil(tx['transactionDate']),
           descricao: buildDescricaoBanking(tx),
           valor: isDebitBanking(tx) ? -Math.abs(raw) : Math.abs(raw),
           status_revisao: 'pendente',
@@ -310,7 +340,7 @@ Deno.serve(async (req) => {
         return {
           referencia_externa: ref('card_' + String(tx['id'])),
           empresa_id: empresaId,
-          data: String(tx['transactionDate'] ?? tx['date'] ?? '').slice(0, 10),
+          data: diaNoBrasil(tx['transactionDate'] ?? tx['date']),
           descricao: merchant,
           valor: isCashOut ? -Math.abs(amountBrl) : Math.abs(amountBrl),
           status_revisao: 'pendente',
