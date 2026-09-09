@@ -161,6 +161,8 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
 export interface VendasDaVsl {
   tem_checkout: boolean;
   checkouts: string[];
+  /** Os checkouts do REV que ainda NAO foram marcados como o da VSL. */
+  candidatos: string[];
   pedidos: number;
   vendas: number;
   faturamento: number;
@@ -184,16 +186,46 @@ export interface VendasDaVsl {
 function VendasVsl({ v, anterior }: { v: VendasDaVsl | null; anterior: VendasDaVsl | null }) {
   if (!v) return null;
 
+  /*
+    Faltar MARCACAO e faltar CHECKOUT sao coisas diferentes, e o aviso dizia as
+    duas com a mesma frase.
+
+    "Nenhum checkout marcado como o da VSL" num REV que tem dois checkouts
+    vinculados foi lido como "este REV nao tem checkout" — e mandava procurar o
+    que falta no lugar errado. Agora o aviso NOMEIA o que esta la, porque a
+    acao pedida e sobre um deles.
+
+    O que ele nao faz e escolher: um checkout chamado "VSL 01" quase certamente
+    e o da VSL, mas deduzir do titulo e a armadilha 3 — basta alguem chamar o
+    checkout do front de "VSL" e as vendas inteiras do REV viram vendas da VSL
+    sem ninguem ver.
+  */
   if (!v.tem_checkout) {
+    const tem = v.candidatos.length > 0;
     return (
       <ListaMetricas titulo="O que a VSL vendeu">
         <p className="px-3 py-3 text-sm text-muted-foreground/70">
-          Nenhum checkout marcado como o da VSL.{' '}
-          <Link to="/funis-gestao" className="text-primary hover:underline">
-            Marque em Funis
-          </Link>
-          , na lista de checkouts do REV, e a Payt passa a separar o que a VSL
-          trouxe do resto do funil.
+          {tem ? (
+            <>
+              Este REV tem {v.candidatos.length === 1 ? 'um checkout' : `${v.candidatos.length} checkouts`},
+              e nenhum está marcado como o da VSL:{' '}
+              <span className="text-foreground/80">{v.candidatos.join(' · ')}</span>.{' '}
+              <Link to="/funis-gestao" className="text-primary hover:underline">
+                Marque em Funis
+              </Link>
+              , no botão VSL da linha do checkout, e a Payt passa a separar o
+              que a VSL trouxe do resto do funil.
+            </>
+          ) : (
+            <>
+              Este REV não tem checkout vinculado, então não há o que marcar
+              como o da VSL.{' '}
+              <Link to="/funis-gestao" className="text-primary hover:underline">
+                Vincule em Funis
+              </Link>
+              , na lista de checkouts do REV.
+            </>
+          )}
         </p>
       </ListaMetricas>
     );
