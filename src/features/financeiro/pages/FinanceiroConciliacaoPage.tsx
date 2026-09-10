@@ -121,30 +121,44 @@ export default function FinanceiroConciliacaoPage() {
     const dinheiro = (n: number) => n.toFixed(2).replace('.', ',');
 
     /*
+      No ARQUIVO o meio de pagamento é só a forma, e o número do cartão sai.
+
+      Na tela ele continua sendo "Cartão •••• 6896", porque ali serve para ela
+      reconhecer qual cartão pagou o quê. A contabilidade não concilia por
+      cartão — e são 28 deles só em agosto, o que transformava a coluna numa
+      lista de números sem uso.
+
+      O que não é nem Pix nem cartão MANTÉM o próprio nome: boleto, rendimento,
+      cashback. Espremer tudo em duas palavras chamaria boleto de Pix, que é
+      mentira por arredondamento.
+    */
+    const forma = (m: string) =>
+      m.startsWith('Cartão') ? 'Cartão'
+      : /pix/i.test(m)       ? 'Pix'
+      : m;
+
+    /*
       Entrada e saída em colunas separadas, do jeito que o extrato do banco
       vem — e VAZIAS quando não se aplica, nunca zero. Zero somaria como
       lançamento na hora de conferir a coluna, e o que a contabilidade faz com
       essas duas é exatamente somar.
 
-      `Valor` continua, com sinal, porque é por ele que se confere o total do
-      período contra o saldo. As três colunas dizem a mesma coisa de formas
-      diferentes, e é de propósito: aqui não há campo editável divergindo, há
-      uma leitura derivada da outra na hora de escrever o arquivo.
+      Sem `Valor`, sem `Categoria` e sem `Grupo`: o arquivo é para conciliar
+      contra o extrato, e categoria e grupo são a nossa leitura gerencial, não
+      a do banco. `Valor` saiu junto porque dizia a mesma coisa que as duas
+      colunas ao lado.
     */
     const linhas = [
       ['Data', 'Banco', 'Nome', 'Descrição original', 'Meio de pagamento',
-       'Categoria', 'Grupo', 'Entrada', 'Saída', 'Valor'].join(';'),
+       'Entrada', 'Saída'].join(';'),
       ...transacoes.map(t => [
         escapa(t.data.split('-').reverse().join('/')),
         escapa(t.banco ?? ''),
         escapa(t.nome),
         escapa(t.descricao_original),
-        escapa(t.meio_pagamento),
-        escapa(t.categoria ?? ''),
-        escapa(t.grupo ?? ''),
+        escapa(forma(t.meio_pagamento)),
         escapa(t.valor > 0 ? dinheiro(t.valor) : ''),
         escapa(t.valor < 0 ? dinheiro(-t.valor) : ''),
-        escapa(dinheiro(t.valor)),
       ].join(';')),
     ].join('\r\n');
 
