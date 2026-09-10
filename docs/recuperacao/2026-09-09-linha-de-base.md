@@ -574,7 +574,10 @@ todos. A pessoa vê um valor no anúncio, chega no checkout e o total é outro:
 > *"Foi porque escolhi um valor e foi o dobro."*
 > *"Gerei o pagamento e não vi o desconto."*
 
-A causa aparece nas próprias falas: são os **order bumps** do checkout.
+A causa são os **order bumps** — mas não porque venham marcados: **eles não
+vêm** (conferido com a Jessica em 10/09). O que acontece é que a pessoa marca,
+e o total só se materializa na hora do pix. Medido em junho–agosto, quem leva
+bump sai de R$ 67 para **R$ 122 de ticket**.
 
 > *"No caso esses outros cursos são opcionais? Não entendi…"*
 > *"Tudo aquilo que cliquei, tenho certeza que vou precisar."*
@@ -686,41 +689,68 @@ pode ser por boleto?"*
 
 ## O que mudar
 
-Em ordem de dinheiro por esforço. O item 0 é do checkout, não do fluxo, e
-entrou na frente porque agosto mostrou que ele é a maior causa isolada de
-abandono. Os itens 1 a 3 não custam nada além de editar o fluxo.
+Em ordem de dinheiro por esforço. O item 0 nasce do preço, que é a maior causa
+isolada de abandono em agosto — mas a ação fica **na mensagem**, porque o
+checkout é da plataforma. Os itens 1 a 3 não custam nada além de editar o
+fluxo.
 
-### 0. Fazer o checkout cobrar o preço anunciado
+### 0. Oferecer o carrinho **sem os bumps** na recuperação
 
-O defeito mais repetido das 386 conversas de agosto: a pessoa vê um valor no
-anúncio e o checkout mostra outro, por causa dos **order bumps**. *"O valor
-inicial foi 37, quando cliquei para pagar virou 256."* · *"No anúncio o valor
-era 97 reais e no PIX aparece 124 reais."*
+> **Este item foi reescrito em 10/09.** A primeira versão mandava mexer no
+> checkout — tirar bump pré-marcado, mostrar o total, afrouxar o captcha. Duas
+> coisas derrubaram isso: **nenhum bump vem pré-marcado** (já era assim), e o
+> **checkout é da plataforma**, sem espaço para essas mudanças. E, quando fui
+> medir, a recomendação estava errada também no mérito.
 
-Três correções, na ordem:
+**Os order bumps não são o vilão. Medido, junho a agosto, 5.581 pedidos:**
 
-1. **Nenhum order bump pré-marcado.** O total inicial tem que ser o preço do
-   anúncio. Se algum vem marcado hoje, é a causa direta de *"escolhi um valor e
-   foi o dobro"*.
-2. **Mostrar o total ao lado de cada bump**, não só o preço do bump. Hoje a
-   pessoa marca quatro coisas e só descobre a soma no pix.
-3. **Repetir o valor final antes de gerar o pix.** *"Quando fui gerar o Pix
-   apareceu um outro valor, foi isso que não dei continuidade."*
+| cesta | pedidos | pagos | ticket | **valor esperado por pedido** |
+|---|---:|---:|---:|---:|
+| com bump | 2.372 | 69,4% | R$ 121,95 | **R$ 84,63** |
+| sem bump | 3.209 | 79,3% | R$ 67,24 | **R$ 53,33** |
 
-E dois bloqueios técnicos que aparecem no mesmo lugar:
+O bump derruba a conversão em **10 pontos** e mesmo assim vale **+59% por
+pedido**. Tirar bump seria jogar fora R$ 31 por pedido. **Não tire.**
 
-- **O captcha.** Duas falas descrevem a mesma tela — *"aparece os quadrinhos
-  pra gente marcar os que tem carros"*, *"uma tela falando pra clicar onde
-  tinha ônibus"*. Num público de mais idade isso encerra a compra. Vale
-  conferir com a Payt se dá para afrouxar.
-- **O pix que não copia.** *"Não visualizo a Chave PIX"*, *"Não consigo copiar
-  e colar"*, *"Deu erro quando foi copiar o código de barra via pix"*. Botão de
-  copiar visível e QR Code grande.
+Só que o outro lado da conta é o que alimenta a recuperação: **726 carrinhos
+com bump foram abandonados**, e o curso sozinho dentro deles soma
+**R$ 45.545,05**. Essas pessoas quiseram o curso e travaram no total do
+pacote — é literalmente o que elas escrevem:
 
-*Vale:* atinge quem ainda **não** abandonou — é o único item da lista que
-reduz o tamanho do problema em vez de remediar. E resolve, de quebra, boa parte
-do medo de golpe: *"Realmente, o valor mudou ao digitar para o pagamento. Já
-não mim passou segurança."*
+> *"O valor inicial foi 37, quando cliquei para pagar virou 256."*
+> *"É porque não vou querer os debaixo."*
+> *"Tudo aquilo que cliquei, tenho certeza que vou precisar se quiser…"*
+> *"No caso esses outros cursos são opcionais? Não entendi…"*
+
+**A ação, que não depende da plataforma:** criar um link de checkout **só com o
+curso, sem bumps**, e usá-lo na recuperação de quem abandonou carrinho com
+bump. Em vez de 20% sobre R$ 127, oferecer **o curso limpo por R$ 67** — o
+preço pelo qual a pessoa entrou.
+
+> Vi que o seu carrinho ficou em R$ 127 com os extras. Se preferir, dá pra
+> levar **só o curso por R$ 67** e pegar os extras depois. Link aqui.
+
+*Vale:* atinge um bolso de R$ 45.545 em 3 meses que hoje recebe uma oferta com
+o preço que causou o abandono. E não custa conversão de quem estava disposto ao
+pacote, porque só muda a mensagem de quem já desistiu dele.
+
+### 0b. O que depende da Payt — pedir, não implementar
+
+Não dá para mudar sozinha; vale abrir chamado com a plataforma, porque cada um
+apareceu nas conversas de agosto:
+
+- **O captcha na hora de pagar.** Duas clientes descrevem a mesma tela:
+  *"aparece os quadrinhos pra gente marcar os que tem carros"*, *"uma tela
+  falando pra clicar onde tinha ônibus"*. Num público de mais idade, encerra a
+  compra.
+- **O pix que não copia.** *"Não visualizo a Chave PIX"* · *"Não consigo copiar
+  e colar pra fazer o pix"* · *"Deu erro quando foi copiar o código de barra
+  via pix"* · *"Cliquei em pix e não aparece nada"*.
+- **O total só aparecer no fim.** Se algum dia der para mostrar o total ao lado
+  de cada bump, é a correção de raiz do item 0.
+
+Enquanto não vier, **a mensagem de recuperação é o remendo** — e ela está sob
+seu controle.
 
 ### 1. Dar sequência depois do link — **é aqui que está o dinheiro**
 
@@ -831,12 +861,50 @@ recusado, a primeira mensagem não é desconto: é "seu cartão não passou — 
 tentar outro ou prefere pix?". São 495 pessoas desde maio e a faixa que melhor
 converte.
 
-### 7. Resolver a qualidade dos templates
+### 7. Resolver a qualidade dos templates — passo a passo
 
-Os três estão com "Qualidade pendente" e 13,2% das mensagens não chegam.
-Reescrever a msg 3 para caber em **Utilidade** (enquadrar como "reativação do
-seu pedido" em vez de "ação especial") tira a mensagem da cota de Marketing e
-reduz o bloqueio de *ecosystem engagement*.
+13,2% das mensagens não chegam, e 112 contatos bateram exatamente no erro
+*"to maintain a healthy ecosystem engagement"*, que é o **limite de mensagens
+de marketing por pessoa** que o Meta impõe.
+
+**Onde isso mora.** Não é no Voxuy: é no **WhatsApp Manager** do Meta
+(`business.facebook.com` → a conta do WhatsApp Business → **Ferramentas da
+conta → Modelos de mensagem**). O Voxuy só usa os templates que estão lá. A
+Payt não tem nada a ver com isso.
+
+**O que "Qualidade pendente" quer dizer.** Não é problema: é *ainda não tenho
+dados*. O Meta classifica cada template em Alta / Média / Baixa a partir de
+quem **bloqueia** e quem **denuncia** depois de receber. "Pendente" vira uma
+nota assim que houver volume. **Só vira problema se descer para Baixa** — aí o
+template é pausado e para de enviar.
+
+**As três coisas que dá para fazer, em ordem:**
+
+1. **Trocar a categoria da msg 3 de Marketing para Utilidade.** É a única das
+   três em Marketing, e é a categoria que tem limite por pessoa — a origem dos
+   112 bloqueios. Para caber em Utilidade, a mensagem tem que tratar de um
+   pedido existente, não de uma promoção: *"seu pedido do Saponaria Brasil
+   ficou pendente e eu consegui reativar o link com a condição de antes"*
+   passa; *"estamos com uma ação especial acontecendo"* não passa. **A
+   categoria é escolhida na criação do template**, e a mudança exige criar um
+   novo e submeter à aprovação (costuma sair em minutos ou horas).
+2. **Conferir a nota de qualidade do número**, na mesma tela, ao lado do
+   telefone. Ela define o **limite diário de mensagens** (250 → 1.000 → 10.000).
+   Se estiver Média ou Baixa, o limite pode estar cortando envios antes de o
+   template ter culpa.
+3. **Parar de mandar para quem nunca respondeu nada.** O que derruba a nota é
+   bloqueio e denúncia, e quem já ignorou três mensagens é quem mais bloqueia.
+   Vale cortar o disparo depois de dois silêncios seguidos — perde-se pouca
+   venda e protege-se o número inteiro.
+
+**Como saber se funcionou:** a mesma tela mostra o status e a nota de cada
+template. Na remedição de 09/10, anotar as três notas e refazer a conta de erro
+de entrega (seção [4. Entrega e leitura](#4-entrega-e-leitura)); a meta é sair
+de 13,2% para menos de 5%.
+
+> Se em 09/10 as notas ainda estiverem "Pendente" e o erro de ecosystem
+> continuar, o caminho é o item 3 acima, não reescrever texto: o bloqueio é de
+> **frequência**, não de conteúdo.
 
 ### 8. Dar valor ao desconto conforme o carrinho
 
@@ -1006,7 +1074,8 @@ Fazer nesta ordem. **Só é comparação justa se a lógica for a mesma.**
 | entrou → pagou | **2,7%** | **6%** |
 | erro de entrega | 13,2% | < 5% |
 | objeções do ato de pagar sem resposta no fluxo | 31,3% | 0% |
-| conversas citando preço diferente do anunciado | 6,5% | < 1% |
+| conversas citando preço diferente do anunciado | 6,5% | < 3% |
+| carrinhos com bump abandonados (jun–ago: 726) | 30,6% | 25% |
 
 ### Duas armadilhas na hora de comparar
 
@@ -1073,3 +1142,12 @@ fluxo para não reiniciar a sequência de quem já está nela.
   - E apareceu um achado que a amostra pequena não tinha: **o preço do checkout
     diferente do anunciado**, por causa dos order bumps, que é também a origem
     da suspeita de golpe.
+- **O item 0 foi reescrito depois da revisão da Jessica** (10/09). A primeira
+  versão mandava mexer no checkout: tirar bump pré-marcado, mostrar o total,
+  afrouxar o captcha, melhorar o botão do pix. Três erros de uma vez —
+  **nenhum bump vem pré-marcado**, o **checkout é da plataforma** e não aceita
+  essas mudanças, e a medição mostrou que **os bumps valem +59% por pedido**
+  mesmo derrubando a conversão em 10 pontos. Tirar bump destruiria valor. A
+  ação certa é oferecer **o curso sem os bumps na recuperação**, que é
+  mensagem e não checkout. O que só a Payt pode fazer virou o item 0b, como
+  pedido.
