@@ -7,7 +7,12 @@ import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { enviarDocumento, mensagemDeEnvio } from '@/lib/documentos';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2, FolderOpen } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2, FolderOpen, X, Undo2 } from 'lucide-react';
 import { FinanceiroNav } from '@/features/financeiro/components/FinanceiroNav';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +48,9 @@ interface Item {
   /** Todas as notas do fornecedor no mês. As três colunas acima são atalho
    *  para a primeira; esta é a lista inteira. */
   documentos: Documento[];
+  /** Marcado como "não precisa de nota" neste mês. */
+  dispensado: boolean;
+  motivo_dispensa: string | null;
 }
 
 interface Documento {
@@ -95,6 +103,32 @@ export default function FinanceiroNotasFiscaisPage() {
   const [enviando, setEnviando] = useState<string | null>(null);
   const confirm = useConfirm();
 
+  /*
+    O diálogo do motivo, com a promessa que quem chama espera.
+
+    Mesmo desenho do `usePedirMotivo` de Produção, escrito aqui porque aquele é
+    amarrado a `Fase`. `null` é desistência; string é o motivo já aparado.
+  */
+  const [aDispensar, setADispensar] = useState<Item | null>(null);
+  const [motivoTexto, setMotivoTexto] = useState('');
+  const resolverMotivo = useRef<((v: string | null) => void) | null>(null);
+
+  const pedirMotivo = useCallback((item: Item) => {
+    setADispensar(item);
+    setMotivoTexto('');
+    return new Promise<string | null>(res => { resolverMotivo.current = res; });
+  }, []);
+
+  const fecharMotivo = useCallback((valor: string | null) => {
+    resolverMotivo.current?.(valor);
+    resolverMotivo.current = null;
+    setADispensar(null);
+    setMotivoTexto('');
+  }, []);
+
+  // Curto demais não é motivo: "x" e "-" preenchem o campo sem dizer nada.
+  const motivoValido = motivoTexto.trim().length >= 3;
+
   // Um input por linha, e não um input com um `alvoRef` dizendo quem pediu.
   // Com a referência compartilhada, um segundo clique antes de o primeiro
   // terminar sobrescreve o alvo e o arquivo vai para o fornecedor errado — a NF
@@ -115,6 +149,7 @@ export default function FinanceiroNotasFiscaisPage() {
     // causa de um fornecedor.
     else setItens((data ?? []).map((x: Item) => ({
       ...x, valor: Number(x.valor), documentos: x.documentos ?? [],
+      dispensado: x.dispensado ?? false,
     })));
     setCarregando(false);
   }, [competencia, empresaId]);
@@ -276,6 +311,57 @@ export default function FinanceiroNotasFiscaisPage() {
     setEnviando(null);
   }
 
+  /**
+   * Marca que este fornecedor não precisa de nota NESTE mês.
+   *
+   * O motivo é obrigatório e o diálogo não deixa passar em branco. Um X mudo
+   * em cima do Meta Ads tiraria R$ 134 mil da lista sem deixar rastro, e daqui
+   * a três meses ninguém saberia se foi decisão ou engano.
+   */
+  async function dispensar(item: Item) {
+    // Gravar exige empresa escolhida — a mesma regra do extrato e do lançamento
+    // manual. Em "Ambas" a dispensa não saberia de quem é.
+    if (!empresaId) {
+      toast({
+        title: 'Escolha a empresa',
+        description: 'A dispensa é de uma empresa só. Selecione uma no topo e tente de novo.',
+      });
+      return;
+    }
+    const motivo = await pedirMotivo(item);
+    if (motivo === null) return;              // desistiu
+
+    const { error } = await supabase.from('documento_dispensas').insert({
+      competencia,
+      empresa_id: empresaId,
+      fornecedor: item.fornecedor,
+      motivo,
+    });
+    if (error) {
+      toast({ title: 'Não consegui dispensar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Dispensado', description: `${item.fornecedor} — ${motivo}` });
+    await carregar();
+  }
+
+  /** Volta a cobrar a nota. Não pede confirmação: o caminho de volta tem que
+   *  ser mais barato que o de ida, senão ninguém corrige um X errado. */
+  async function cobrarDeNovo(item: Item) {
+    const { error } = await supabase
+      .from('documento_dispensas')
+      .delete()
+      .eq('competencia', competencia)
+      .eq('fornecedor', item.fornecedor)
+      .eq('empresa_id', empresaId!);
+    if (error) {
+      toast({ title: 'Não consegui desfazer', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Voltou para a lista', description: item.fornecedor });
+    await carregar();
+  }
+
   /** Remove UMA nota. Com várias no mesmo fornecedor, apagar todas de uma vez
    *  seria destruir o que ela não pediu — a confirmação diz qual arquivo é. */
   async function remover(item: Item, doc: Documento) {
@@ -305,7 +391,10 @@ export default function FinanceiroNotasFiscaisPage() {
     if (mes === 0) { setMes(11); setAno(a => a - 1); } else setMes(m => m - 1);
   }
 
-  const faltam = itens.filter(i => !i.tem_documento);
+  // Dispensado sai da conta junto com quem já entregou: os dois estão
+  // resolvidos, e um total que continua contando o dispensado é um total que
+  // nunca fecha — que é o motivo de a lista deixar de ser lida.
+  const faltam = itens.filter(i => !i.tem_documento && !i.dispensado);
   const valorFaltante = faltam.reduce((a, i) => a + i.valor, 0);
 
   // Separa o que é tarefa dela do que é espera. Um contador só, dizendo "23 de
@@ -499,8 +588,24 @@ export default function FinanceiroNotasFiscaisPage() {
                         </button>
                       )}
                     </span>
+                  ) : item.dispensado ? (
+                    // Dispensado fica CINZA, não verde: não foi entregue, foi
+                    // decidido que não precisa. Pintar de verde faria os dois
+                    // parecerem a mesma coisa na hora de conferir o mês.
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground/70">dispensado</span>
+                      <button
+                        type="button"
+                        onClick={() => cobrarDeNovo(item)}
+                        className="text-muted-foreground/70 hover:text-foreground"
+                        title="Voltar a cobrar a nota"
+                        aria-label={`Voltar a cobrar a nota de ${item.fornecedor}`}
+                      >
+                        <Undo2 className="h-3 w-3" />
+                      </button>
+                    </span>
                   ) : (
-                    <>
+                    <span className="inline-flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => inputsRef.current[item.fornecedor]?.click()}
@@ -515,7 +620,19 @@ export default function FinanceiroNotasFiscaisPage() {
                           ? 'enviando…'
                           : item.tipo === 'servico' ? 'anexar por ele' : 'anexar'}
                       </button>
-                    </>
+                      {/* "Este não precisa de nota". Discreto de propósito: a
+                          saída normal é anexar, e um X do mesmo tamanho do
+                          anexar convidaria a limpar a lista em vez de resolvê-la. */}
+                      <button
+                        type="button"
+                        onClick={() => dispensar(item)}
+                        className="text-muted-foreground/40 hover:text-muted-foreground"
+                        title="Não precisa de nota"
+                        aria-label={`Marcar que ${item.fornecedor} não precisa de nota`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
                   )}
                 </span>
 
@@ -523,6 +640,16 @@ export default function FinanceiroNotasFiscaisPage() {
                   <span className="w-full text-[11px] text-muted-foreground/70">
                     {item.categoria}
                     {item.tipo === 'servico' && ' · prestador'}
+                  </span>
+                )}
+
+                {/* O motivo fica VISÍVEL na linha, não escondido num histórico.
+                    É ele que separa "decidimos que não precisa" de "alguém
+                    apertou o X sem querer" — e é o que a contabilidade vai
+                    perguntar quando o mês fechar com um fornecedor a menos. */}
+                {item.dispensado && item.motivo_dispensa && (
+                  <span className="w-full text-[11px] text-muted-foreground/70 italic">
+                    Sem nota: {item.motivo_dispensa}
                   </span>
                 )}
 
@@ -586,6 +713,44 @@ export default function FinanceiroNotasFiscaisPage() {
           </ul>
         )}
       </div>
+
+      <AlertDialog open={!!aDispensar} onOpenChange={v => { if (!v) fecharMotivo(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {aDispensar?.fornecedor} não precisa de nota?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Vale só para {MESES[mes]} de {ano}. Se o fornecedor reaparecer no mês
+              que vem, a pergunta volta. O motivo fica na linha, à vista.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <Textarea
+            autoFocus
+            value={motivoTexto}
+            onChange={e => setMotivoTexto(e.target.value)}
+            placeholder="Ex.: taxa da plataforma, já vem na fatura / pessoa física, não emite / reembolso"
+            className="min-h-24 text-sm"
+          />
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => fecharMotivo(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!motivoValido}
+              onClick={e => {
+                /* Sem o preventDefault o Radix fecha o diálogo mesmo com o botão
+                   desabilitado quando se aperta Enter, e a dispensa iria sem
+                   motivo — que é justamente o que ela existe para impedir. */
+                if (!motivoValido) { e.preventDefault(); return; }
+                fecharMotivo(motivoTexto.trim());
+              }}
+            >
+              Dispensar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
