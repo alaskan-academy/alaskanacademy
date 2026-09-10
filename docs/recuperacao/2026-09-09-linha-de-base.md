@@ -531,71 +531,137 @@ Duas consequências:
 Na leitura de comportamento feita antes, o canal tem dois picos: **1 a 6 horas**
 e **3 a 7 dias**. Hoje **não existe nenhuma mensagem na janela de 1 a 6 horas**.
 
-### As objeções reais, lidas nas conversas
+### As objeções reais, lidas nas conversas de agosto
 
-Lidas na central de atendimento do Voxuy em 10/09/2026, abertas **e** fechadas:
-**44 conversas com tag de recuperação**, das quais 33 têm objeção
-identificável. Amostra não aleatória — são as conversas mais recentes — mas o
-padrão é forte o bastante para decidir. As falas abaixo estão sem nome e sem
-telefone de propósito.
+**Base: agosto inteiro.** Todas as conversas arquivadas de 01/08 a 31/08/2026 —
+**4.364**, das quais **1.389 têm tag de recuperação**. Dessas, **436 têm ao
+menos uma mensagem escrita pela cliente** (875 mensagens no total), e **386
+sobram** depois de tirar resposta automática de bot de outra empresa e
+saudação pura ("oi", "obrigada", "bom dia").
 
-| objeção | conversas | % |
+> **Esta seção substitui uma leitura anterior de 33 conversas recentes, e
+> corrige duas conclusões dela.** Ver [Correções](#correções-feitas-depois-da-primeira-versão).
+
+Classificação por palavra-chave, **multirrótulo** (uma conversa pode carregar
+mais de uma objeção, então os números somam mais de 100%). São **pisos**: 130
+das 386 não casaram com nenhuma regra e parte delas tem objeção que a regra não
+pegou. As falas estão sem nome, telefone e e-mail.
+
+| objeção | conversas | % de 386 |
 |---|---:|---:|
-| **A. "Quero, mas não agora" — dinheiro e prazo** | 9 | **27%** |
-| **B. Falha técnica no pagamento** | 6 | **18%** |
-| C. Preço alto de verdade | 4 | 12% |
-| D. Quer comprar/pagar pelo WhatsApp | 4 | 12% |
-| E. Dúvida de formato e plataforma | 4 | 12% |
-| F. Medo de golpe | 3 | 9% |
-| G. Não conhece o conteúdo o bastante | 3 | 9% |
+| **O ato de pagar** (união das três abaixo) | **121** | **31,3%** |
+| ├ falha técnica no pagamento | 78 | 20,2% |
+| ├ quer o link/pix pelo WhatsApp | 30 | 7,8% |
+| └ preço do checkout ≠ preço anunciado | 25 | 6,5% |
+| **Dúvida sobre o produto** | 77 | 19,9% |
+| └ *dessas, sobre o que a msg 2 responde* | *12* | *3,1%* |
+| **Dinheiro e prazo** | 69 | 17,9% |
+| Pós-compra (acesso, estorno) | 35 | 9,1% |
+| Sem interesse / já tem / comprou em outro lugar | 26 | 6,7% |
+| Medo de golpe | 15 | 3,9% |
 
-**A + B + D = 57%.** Todas são variações de *"eu quis e não deu"* — nenhuma
-delas é falta de informação sobre o curso.
+#### O achado principal: o preço muda no caminho até o pagamento
 
-**A — dinheiro e prazo (27%).** É a maior, e é a mais fácil de recuperar,
-porque a pessoa já decidiu:
+Não estava na amostra pequena e é o defeito mais **específico e repetido** de
+todos. A pessoa vê um valor no anúncio, chega no checkout e o total é outro:
 
-> *"Não houve nenhum erro. Só vou conseguir efetuar o pagamento no dia 15."*
-> *"Tenho que pagar meu cartão primeiro."*
-> *"Vou receber amanhã e farei o pagamento amanhã."*
-> *"Só posso fazer depois de amanhã por causa do cartão."*
-> *"Assim que possível farei… tô com minha mãe fazendo uma cirurgia."*
+> *"O valor inicial foi 37, quando cliquei para pagar virou 256."*
+> *"Oferecem o curso por 67,00 e qdo vai finalizar está por 180,00."*
+> *"No anúncio o valor era 97 reais e no PIX aparece 124 reais."*
+> *"No anúncio estava de 63 reais e quando fui pagar de 85."*
+> *"O valor dobrou ao fazer o Pix, não interesso mais, obrigada!"*
+> *"Já tentei fazer 3× o pagamento, mas o valor q aparece nao condiz…"*
+> *"Foi porque escolhi um valor e foi o dobro."*
+> *"Gerei o pagamento e não vi o desconto."*
 
-Hoje o fluxo não tem nenhum ramo para isso. A pessoa diz "dia 15" e recebe a
-oferta relâmpago no dia 3.
+A causa aparece nas próprias falas: são os **order bumps** do checkout.
 
-**B — falha técnica (18%).** A venda estava fechada e o checkout quebrou:
+> *"No caso esses outros cursos são opcionais? Não entendi…"*
+> *"Tudo aquilo que cliquei, tenho certeza que vou precisar."*
+> *"Pensei q eles sairiam todos por aquele preço abaixo."*
+> *"Hummmm, e muita coisa pra comprar."*
 
-> *"O sistema não estava aceitando o número do cartão. E quando tentei
-> novamente o valor já era outro."*
-> *"Problema ao fazer o Pix."* · *"Deu erro no valor do pagamento."*
-> *"Tentei pagar pelo cartão virtual, porém tive problema."*
-> *"Diz que meu gmail não consta na inscrição na hora do pagamento."*
-> *"Mas já passou o tempo da promoção."*
+E o efeito não para no preço — **é o que cria a suspeita de golpe**:
 
-As duas últimas são causa direta dos 219: gente que **voltou** e não conseguiu.
+> *"Realmente, o valor mudou ao digitar para o pagamento. **Já não mim passou
+> segurança.**"*
 
-**D — querem pagar pelo WhatsApp (12%).** Não querem o checkout:
+Isso liga as duas pontas: a linha de "medo de golpe" (3,9%) não é desconfiança
+solta, é consequência do preço mudar. E o banco entra junto:
 
-> *"Posso pagar por aqui?"* · *"Se eu quiser fazer pix por aqui mesmo consigo?"*
-> *"Quanto é o pix?"* · *"Manda o link pra mim completar a inscrição."*
+> *"O cartão bloqueou dizendo que era fraude."*
+> *"Não irei fazer o pix, meu banco avisou que era conta falsa."*
 
-**F — medo de golpe (9%), e nunca tratado em lugar nenhum.** Aparece sempre
-junto de A ou B, e é o que trava na hora exata de pagar:
+**Nenhuma mensagem do fluxo de recuperação toca nesse assunto.** A pessoa
+abandona por causa do valor e recebe, um dia depois, um texto sobre o formato
+das aulas.
 
-> *"Tenho medo, o que já sofri golpe por celular."*
-> *"Não consegui concluir o pgto… sumiu tudo… aí fiquei com medo."*
-> *"Desculpa, porque já caí em golpe."*
-> *"Qual nome que aparece para a financeira?" — "Aparece PaytCCRV6HAND."*
+#### Falha técnica (20,2%) — três causas concretas
 
-**E — formato e plataforma: 12%.** É exatamente a objeção que a msg 2 responde
-hoje. **A mensagem do meio do funil trata a sexta objeção mais comum e ignora
-as três primeiras.**
+**Pix** é a mais citada: *"Não visualizo a Chave PIX"* · *"Não consigo copiar e
+colar pra fazer o pix"* · *"Deu erro quando foi copiar o código de barra via
+pix"* · *"Cliquei em pix e não aparece nada"* · *"Não gerou o Pix e saiu fora a
+página"* · *"O código de pagamento não passou"*.
 
-Entre quem chegou a aceitar o desconto, as duas objeções registradas são de
-dinheiro e prazo — *"Estou com problemas de saúde e gastando muito com
-remédios… fica pra próxima"* e *"Pode cancelar"*. Isso importa para a decisão:
-**aumentar o desconto não recuperaria essas pessoas; remarcar a cobrança sim.**
+**Captcha** — duas falas descrevem exatamente a mesma tela, e é um bloqueio
+invisível num público de mais idade:
+
+> *"Quando vou entrar para pagar aparece os quadrinhos pra gente marcar os que
+> tem carros."*
+> *"Não consegui, apareceu uma tela falando pra clicar onde tinha ônibus 🤷🏽‍♀️"*
+
+**CPF** — resistência a informar, que trava o checkout:
+
+> *"Não vou colocar meu cpf. Pago o pix. Porque CPF????"*
+> *"Não gostaria de informar meu cpf."*
+
+#### Dúvida de produto (19,9%) — família certa, respostas erradas
+
+Aqui está a correção mais importante em relação à leitura anterior: **dúvida de
+produto é o maior rótulo isolado**, não o sexto. Eu estava errado sobre isso.
+
+Mas o que a msg 2 responde — formato das aulas, acesso vitalício, canal de
+suporte — cobre **12 das 386 conversas (3,1%)**. As outras são práticas, e o
+fluxo não diz uma palavra sobre elas:
+
+> *"É incluso somente o curso? E materiais?"*
+> *"Nesse curso vou receber o material ou só aulas com o passo a passo?"*
+> *"Onde consigo comprar os materiais pra iniciar?"*
+> *"Então os modelos de embalagem não estão incluídos?"*
+> *"O curso ensina a calcular preço das peças?"*
+> *"Gostaria de saber o endereço dos fornecedores."*
+
+São 26 conversas — mais que o dobro das 12 — sobre **material, fornecedor e o
+que está incluído**. É a dúvida de quem vai *fazer e vender*, não de quem vai
+*assistir*.
+
+#### Dinheiro e prazo (17,9%)
+
+Continua grande e continua sem ramo nenhum no fluxo:
+
+> *"Só poderei comprar no pagamento dia 05/09."* · *"Estou no aguardo receber
+> minha aposentadoria."* · *"Meu cartão foi bloqueado e estou esperando outro."*
+> *"Vou esperar virar a fatura do meu cartão e volto a entrar em contato."*
+> *"Farei minha inscrição em setembro na segunda semana, pode ser?"*
+> *"Não fiz, porque só vou conseguir efetuar a matrícula dia 01/09."*
+
+Repare que várias **marcam uma data sozinhas**. O fluxo ignora e manda a oferta
+relâmpago no terceiro dia.
+
+#### Querem pagar pelo WhatsApp (7,8%)
+
+> *"Posso fazer a matrícula por aqui mesmo???"* · *"Manda a chave pix"* ·
+> *"Me envie o pix de vcs para efetuar o pagamento"* · *"Não consegui abrir o
+> link. Tem como me enviar de outra forma?"*
+
+#### Duas coisas menores que valem registro
+
+**Hotmart.** Os mesmos cursos aparecem lá, e isso gera confusão e compra
+duplicada: *"Essas aulas eu vejo é pela hotmart?"* · *"Eu já tenho esse curso
+pela hotmart"* · *"Então paguei duas vezes pelo mesmo conteúdo."*
+
+**Boleto.** Duas pedem: *"Vcs tem forma de pago em boleto?"* · *"O pagamento
+pode ser por boleto?"*
 
 ### A estratégia
 
@@ -620,8 +686,41 @@ remédios… fica pra próxima"* e *"Pode cancelar"*. Isso importa para a decis�
 
 ## O que mudar
 
-Em ordem de dinheiro por esforço. Os três primeiros não custam nada além de
-editar o fluxo.
+Em ordem de dinheiro por esforço. O item 0 é do checkout, não do fluxo, e
+entrou na frente porque agosto mostrou que ele é a maior causa isolada de
+abandono. Os itens 1 a 3 não custam nada além de editar o fluxo.
+
+### 0. Fazer o checkout cobrar o preço anunciado
+
+O defeito mais repetido das 386 conversas de agosto: a pessoa vê um valor no
+anúncio e o checkout mostra outro, por causa dos **order bumps**. *"O valor
+inicial foi 37, quando cliquei para pagar virou 256."* · *"No anúncio o valor
+era 97 reais e no PIX aparece 124 reais."*
+
+Três correções, na ordem:
+
+1. **Nenhum order bump pré-marcado.** O total inicial tem que ser o preço do
+   anúncio. Se algum vem marcado hoje, é a causa direta de *"escolhi um valor e
+   foi o dobro"*.
+2. **Mostrar o total ao lado de cada bump**, não só o preço do bump. Hoje a
+   pessoa marca quatro coisas e só descobre a soma no pix.
+3. **Repetir o valor final antes de gerar o pix.** *"Quando fui gerar o Pix
+   apareceu um outro valor, foi isso que não dei continuidade."*
+
+E dois bloqueios técnicos que aparecem no mesmo lugar:
+
+- **O captcha.** Duas falas descrevem a mesma tela — *"aparece os quadrinhos
+  pra gente marcar os que tem carros"*, *"uma tela falando pra clicar onde
+  tinha ônibus"*. Num público de mais idade isso encerra a compra. Vale
+  conferir com a Payt se dá para afrouxar.
+- **O pix que não copia.** *"Não visualizo a Chave PIX"*, *"Não consigo copiar
+  e colar"*, *"Deu erro quando foi copiar o código de barra via pix"*. Botão de
+  copiar visível e QR Code grande.
+
+*Vale:* atinge quem ainda **não** abandonou — é o único item da lista que
+reduz o tamanho do problema em vez de remediar. E resolve, de quebra, boa parte
+do medo de golpe: *"Realmente, o valor mudou ao digitar para o pagamento. Já
+não mim passou segurança."*
 
 ### 1. Dar sequência depois do link — **é aqui que está o dinheiro**
 
@@ -676,9 +775,9 @@ segundo maior lever depois do desconto.
 
 ### 5. Trocar o conteúdo da msg 2 — que a pessoa escolha a objeção
 
-Hoje a msg 2 explica o formato das aulas, que é a objeção de **12%** da base.
-As três maiores — dinheiro e prazo, falha técnica, e querer pagar pelo
-WhatsApp — somam **57%** e não têm resposta nenhuma no fluxo.
+A msg 2 explica plataforma, acesso vitalício e canal de suporte. Isso responde
+**12 das 386 conversas de agosto (3,1%)**. O ato de pagar sozinho é **31,3%**,
+e dinheiro e prazo é **17,9%** — nenhum dos dois tem resposta no fluxo.
 
 Nenhum texto único cobre três objeções diferentes. O que cobre é **perguntar**,
 com botões, e ramificar. Continua em **Utilidade**, porque continua sendo
@@ -688,34 +787,42 @@ suporte:
 > Só pra eu te ajudar do jeito certo — o que rolou com o seu pedido do
 > {{produto}}?
 >
-> **[ Deu erro no pagamento ]  [ Quero pagar depois ]  [ Fiquei com dúvida ]**
+> **[ Deu problema no pagamento ]  [ Quero pagar depois ]  [ Fiquei com dúvida ]**
 
-**Ramo "Deu erro no pagamento"** (18% da base)
+**Ramo "Deu problema no pagamento"** — 31,3% da base
 
 > Consigo resolver por aqui mesmo. Foi no **cartão** ou no **pix**?
 
-Cartão → oferecer pix. Pix → gerar um novo na hora. E **passar para o
-atendimento humano**, porque é uma venda fechada travada por software.
+Cartão → oferecer pix. Pix → **gerar um novo na hora, dentro da conversa** —
+7,8% pedem exatamente isso (*"Posso fazer a matrícula por aqui mesmo???"*,
+*"Manda a chave pix"*). E **passar para o atendimento humano**: é uma venda
+fechada travada por software.
 
-**Ramo "Quero pagar depois"** (27% da base — o maior, e hoje inexistente)
+**Ramo "Quero pagar depois"** — 17,9%, e hoje inexistente
 
 > Sem problema nenhum. Que dia fica melhor pra você?
 > **[ Essa semana ]  [ Semana que vem ]  [ Depois do dia 15 ]**
 
-E **reagendar o disparo para a data que a pessoa escolheu**, em vez de mandar a
-oferta relâmpago no terceiro dia. Quem diz "dia 15" hoje recebe a última
-chamada no dia 3 e some.
+E **reagendar o disparo para a data que a pessoa escolheu**. Várias já dão a
+data sozinhas — *"Só poderei comprar no pagamento dia 05/09"*, *"vou esperar
+virar a fatura do meu cartão"* — e recebem a oferta relâmpago no terceiro dia.
 
-**Ramo "Fiquei com dúvida"** (12% + 9%)
+**Ramo "Fiquei com dúvida"** — 19,9%, mas não as dúvidas que o fluxo responde
 
-Aí sim a informação — curta, três linhas, não sete — e **com a linha de
-confiança que hoje não existe em lugar nenhum**:
+As perguntas reais são **práticas**: material, fornecedor, o que está incluído.
+*"É incluso somente o curso? E materiais?"* · *"Onde consigo comprar os
+materiais pra iniciar?"* · *"Então os modelos de embalagem não estão
+incluídos?"* São 26 conversas contra 12 sobre plataforma e acesso.
+
+Três linhas sobre **o que vem junto e onde comprar o material**, e a linha de
+confiança que hoje não existe em lugar nenhum:
 
 > Na fatura aparece **PAYT\*HANDIFY** — somos a Handify, e o pagamento é o
 > mesmo checkout da Payt que você já tinha aberto.
 
-Nove por cento das conversas mencionam medo de golpe, e uma delas trava
-exatamente em não reconhecer o nome na fatura. É uma linha de texto.
+Uma das falas trava exatamente em não reconhecer o nome na fatura (*"qual nome
+que aparece para a financeira?"*), e duas relatam o **banco** bloqueando por
+suspeita de fraude. É uma linha de texto.
 
 ### 6. Separar cartão recusado de pix expirado
 
@@ -784,34 +891,106 @@ Fazer nesta ordem. **Só é comparação justa se a lógica for a mesma.**
    contador vem antes do nó a que pertence**.
 5. **Anotar o custo de conversa do WhatsApp** vindo do faturamento do Meta.
    Sem ele não há margem, só receita.
-6. **Reclassificar as objeções.** Na central de atendimento, trocar o filtro
-   para **Fechadas** (o padrão é "Abertas", e lá só ficam ~12 conversas — o
-   volume está nas fechadas), rolar a lista até carregar ~80 e rodar:
+6. **Reclassificar as objeções.** Clicar conversa a conversa não chega em
+   agosto — a lista carrega 20 por vez e dois dias já ocupam 79. Use a própria
+   API do Voxuy, na aba do app já logada. **O token fica só na página; nunca
+   copie para lugar nenhum.**
+
+   **a) Capturar o cabeçalho de autenticação** (o app o guarda em memória, não
+   em `localStorage`):
 
    ```js
-   const sleep = ms => new Promise(r => setTimeout(r, ms));
-   const TPL = /ultimo contato|reunimos aqui as principais|houve uma interrup|Central de Ajuda|Horário de atendimento|equipe de atendimento da Handify|link acima você consegue/i;
-   window.__acc = window.__acc || [];
-   const items = [...document.querySelectorAll('.row.align-items-center.message-row')];
-   for (let i = 0; i < 18; i++) {            // 18 por vez: acima disso o tool expira
-     if (!items[i]) break;
-     items[i].click(); await sleep(900);
-     const recv = [...document.querySelectorAll('.message-row.received .message-text')]
-       .map(e => e.innerText.replace(/\s+/g, ' ').trim())
-       .filter(t => t.length > 2 && !TPL.test(t));   // TPL tira o eco dos templates
-     const tag = [...document.querySelectorAll('.system-message-row')]
-       .map(e => e.innerText.replace(/\s+/g, ' ')).filter(t => /adicionou a tag/i.test(t))
-       .map(t => t.replace(/.*adicionou a tag /, '').replace(/ · .*/, '')).slice(0, 3);
-     if (recv.length && tag.length) window.__acc.push({ tag, m: recv.slice(-7) });
+   if (!window.__hook) {
+     window.__hook = 1; window.__hdrs = null;
+     const oo = XMLHttpRequest.prototype.open, os = XMLHttpRequest.prototype.setRequestHeader,
+           on = XMLHttpRequest.prototype.send;
+     XMLHttpRequest.prototype.open = function (m, u) { this.__u = u; this.__h = {}; return oo.apply(this, arguments); };
+     XMLHttpRequest.prototype.setRequestHeader = function (k, v) { if (this.__h) this.__h[k] = v; return os.apply(this, arguments); };
+     XMLHttpRequest.prototype.send = function () {
+       if (this.__u && /\/api\//.test(this.__u) && this.__h && Object.keys(this.__h).length) window.__hdrs = this.__h;
+       return on.apply(this, arguments);
+     };
    }
-   JSON.stringify(window.__acc);
    ```
 
-   Classificar só as que têm tag `Recuperação *`, `Desconto Aceito` ou
-   `Recusou Oferta`, nas mesmas sete categorias (A a G) da seção
-   [As objeções reais](#as-objeções-reais-lidas-nas-conversas), uma objeção
-   principal por conversa. **Não copiar nome, telefone nem e-mail para lugar
-   nenhum.**
+   Depois role a lista de conversas uma vez para disparar uma chamada e
+   `window.__hdrs` se preenche. **O token expira em poucos minutos** — quando
+   um `fetch` devolver 401, role a lista de novo e continue de onde parou.
+
+   **b) Listar as conversas do mês.** O cursor é a data da última conversa da
+   página; `pageSize` maior que 20 devolve vazio:
+
+   ```js
+   window.__L = window.__L || { cur: '2026-10-01T00:00:00-03:00', its: [], fim: false };
+   const REC = /Recupera|Reupera|Desconto Aceito|Recusou Oferta/i;
+   const S = window.__L;
+   let p = 0;
+   while (!S.fim && p < 40) {                 // 40 páginas por chamada: acima disso o tool expira
+     const u = `/api/inbox/conversations?cursor=${encodeURIComponent(S.cur)}&pageSize=20&archived=true&dateOrder=1&tags.operator=OR`;
+     const res = await fetch(u, { headers: window.__hdrs });
+     if (res.status !== 200) break;           // 401 = recapturar o token e repetir
+     const d = (await res.json()).data || [];
+     if (!d.length) { S.fim = true; break; }
+     for (const c of d) {
+       const t = (c.contact && c.contact.tags || []).map(x => x.name);
+       S.its.push({ id: c.id, dt: (c.lastInteractionAt || '').slice(0, 10), tags: t });
+     }
+     S.cur = d[d.length - 1].lastInteractionAt;
+     if (S.cur < '2026-09-01') S.fim = true;  // limite inferior do mês medido
+     p++;
+   }
+   JSON.stringify({ total: S.its.length, ate: S.cur.slice(0, 10), fim: S.fim });
+   ```
+
+   **Guarde `tags` inteiro, não só as de recuperação** — sem a tag
+   `Compra Aprovada` não dá para separar quem comprou depois de quem não
+   comprou. (Foi o erro desta rodada.)
+
+   **c) Puxar as mensagens.** O texto vem em `text.body`, e não em `text`
+   — ler `m.text` devolve `[object Object]` e zero resultados:
+
+   ```js
+   const M = window.__M = window.__M || { i: 0, alvo: S.its.filter(x => x.tags.some(t => REC.test(t))), falas: [] };
+   const TPL = /ultimo contato|reunimos aqui as principais|houve uma interrup|Central de Ajuda|Horário de atendimento|equipe de atendimento da Handify|link acima você consegue|foi liberado com sucesso/i;
+   const t0 = Date.now();
+   while (M.i < M.alvo.length && Date.now() - t0 < 31000) {
+     const lote = M.alvo.slice(M.i, M.i + 6);
+     const rs = await Promise.all(lote.map(c =>
+       fetch(`/api/inbox/conversations/${c.id}/messages`, { headers: window.__hdrs })
+         .then(r => r.status === 200 ? r.json() : null).catch(() => null)));
+     rs.forEach((j, k) => {
+       if (!j) return;
+       const t = (j.data || [])
+         .filter(m => m && m.fromMe === false && m.text && typeof m.text.body === 'string' && m.text.body.trim().length > 2)
+         .map(m => m.text.body.replace(/\s+/g, ' ').trim()).filter(s => !TPL.test(s));
+       if (t.length) M.falas.push({ dt: lote[k].dt, tags: lote[k].tags, t });
+     });
+     M.i += 6;
+   }
+   JSON.stringify({ lidas: M.i, total: M.alvo.length, comFala: M.falas.length });
+   ```
+
+   **d) Limpar antes de contar.** Sem isto o resultado é lixo: **respostas
+   automáticas de bots de outras empresas** (o número da cliente é comercial e
+   o bot dela responde) e **saudações puras**. Redija também e-mails e números:
+
+   ```js
+   const BOT = /agradece(mos)? (o )?seu contato|seja bem[- ]vind|em breve (retorn|responder)|como podemos (te )?ajudar|assim que possível (estarei |)responder|não estamos disponíve|horário de atendimento|retornarei o contato|neste momento não consigo/i;
+   const OI = /^(oi+|olá|bom dia|boa tarde|boa noite|sim|não|ok|obrigad[ao]|blz|beleza|tudo bem\??|certo|entendi|tá bom|tudo bom|amém)[\s\p{Emoji}!.?,]*$/iu;
+   const red = s => s.replace(/[\w.+-]+@[\w.-]+/g, '@').replace(/\d{4,}/g, '#');
+   window.__F = M.falas
+     .map(f => ({ tg: f.tags.join('/'), t: red(f.t.filter(s => !BOT.test(s) && !OI.test(s.trim()) && s.trim().length > 8).join(' ~ ')) }))
+     .filter(f => f.t.length > 8);
+   ```
+
+   **e) Classificar.** Nas mesmas categorias da seção
+   [As objeções reais](#as-objeções-reais-lidas-nas-conversas-de-agosto), em
+   **multirrótulo** — uma conversa pode ter mais de uma, e os números somam
+   mais de 100%. Regra por palavra-chave dá um **piso**: em agosto, 130 das 386
+   não casaram com nenhuma regra e parte delas tinha objeção. Se der para ler
+   as 386 à mão, leia — foi assim que o preço divergente apareceu.
+
+   **Não copiar nome, telefone nem e-mail para lugar nenhum.**
 6. **Calcular as quatro dobradiças** — são elas que dizem se a mudança
    funcionou, não a receita total. A receita se move com o volume de vendas do
    mês; as dobradiças, não.
@@ -826,7 +1005,8 @@ Fazer nesta ordem. **Só é comparação justa se a lógica for a mesma.**
 | abriu pedido → pagou | 74,8% | manter |
 | entrou → pagou | **2,7%** | **6%** |
 | erro de entrega | 13,2% | < 5% |
-| objeções A+B+D sem resposta no fluxo | 57% | 0% |
+| objeções do ato de pagar sem resposta no fluxo | 31,3% | 0% |
+| conversas citando preço diferente do anunciado | 6,5% | < 1% |
 
 ### Duas armadilhas na hora de comparar
 
@@ -878,3 +1058,18 @@ fluxo para não reiniciar a sequência de quem já está nela.
   de follow-up depois do link — o Lead Perdido é um problema de leitura do CRM,
   não de receita. As duas coisas estão separadas no diagnóstico e na lista do
   que mudar.
+- **A leitura de objeções foi refeita com agosto inteiro** (10/09). A primeira
+  versão classificou **33 conversas recentes** e tirou duas conclusões que
+  agosto desmente:
+  - *"Dinheiro e prazo é a maior objeção, com 27%."* Continua grande (17,9%),
+    mas o maior bloco é **o ato de pagar** — falha técnica, querer pagar pelo
+    WhatsApp e preço divergente — com **31,3%**.
+  - *"A msg 2 responde a sexta objeção mais comum."* Errado ao contrário:
+    dúvida de produto é o **maior** rótulo isolado (19,9%). O que muda é que a
+    msg 2 responde **plataforma e acesso**, que são 12 das 386 conversas
+    (3,1%), enquanto as dúvidas de **material, fornecedor e o que está
+    incluído** são 26 e não têm resposta nenhuma. Família certa, respostas
+    erradas.
+  - E apareceu um achado que a amostra pequena não tinha: **o preço do checkout
+    diferente do anunciado**, por causa dos order bumps, que é também a origem
+    da suspeita de golpe.
