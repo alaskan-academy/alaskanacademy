@@ -412,6 +412,12 @@ export default function FinanceiroNotasFiscaisPage() {
   // resolvidos, e um total que continua contando o dispensado é um total que
   // nunca fecha — que é o motivo de a lista deixar de ser lida.
   const faltam = itens.filter(i => !i.tem_documento && !i.dispensado);
+
+  // Os dispensados moram no bloco de baixo, e por isso saem do denominador de
+  // cima: "10 de 28" com 21 linhas na tela faz a pessoa recontar à mão.
+  const dispensados     = itens.filter(i => i.dispensado);
+  const naLista         = itens.length - dispensados.length;
+  const valorDispensado = dispensados.reduce((a, i) => a + i.valor, 0);
   const valorFaltante = faltam.reduce((a, i) => a + i.valor, 0);
 
   // Separa o que é tarefa dela do que é espera. Um contador só, dizendo "23 de
@@ -449,11 +455,11 @@ export default function FinanceiroNotasFiscaisPage() {
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-muted/30 px-3 py-2.5">
             <span className="text-xs text-muted-foreground">
               {faltam.length === 0
-                ? `Todos os ${itens.length} documentos do mês foram recebidos`
+                ? `Todos os ${naLista} documentos do mês foram recebidos`
                 : (
                   <>
                     {faltamDela.length > 0
-                      ? `${faltamDela.length} de ${itens.length} para você buscar`
+                      ? `${faltamDela.length} de ${naLista} para você buscar`
                       : 'Nada para você buscar'}
                     {faltamEditores.length > 0 && (
                       <span className="text-amber-400/80">
@@ -482,7 +488,10 @@ export default function FinanceiroNotasFiscaisPage() {
           </p>
         ) : (
           <ul className="space-y-0">
-            {itens.map(item => (
+            {/* Dispensado sai DESTA lista e ganha bloco próprio logo abaixo.
+                Aparecer nos dois lugares seria a mesma linha contada duas
+                vezes por olho humano — e a lista aqui é sobre documento. */}
+            {itens.filter(i => !i.dispensado).map(item => (
               <li
                 key={`${item.fornecedor}-${item.tipo}`}
                 className={cn(
@@ -735,6 +744,65 @@ export default function FinanceiroNotasFiscaisPage() {
           </ul>
         )}
       </div>
+
+      {/* O mês inteiro de dispensas, num lugar só.
+          Espalhadas no fim da lista grande elas eram invisíveis: dava para
+          dispensar sete fornecedores e não ter onde reler as sete decisões.
+          É a contrapartida obrigatória do X — cadastro sem a leitura ao lado
+          envelhece, e aqui o que envelhece é decisão fiscal. */}
+      {!carregando && dispensados.length > 0 && (
+        <div className="mt-6 rounded-lg border border-border/60 bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Dispensados em {MESES[mes]} de {ano}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {dispensados.length === 1 ? '1 fornecedor' : `${dispensados.length} fornecedores`}
+              {' · '}
+              <span className="tabular-nums">{formatCurrency(valorDispensado)}</span>
+              {' sem nota'}
+            </span>
+          </div>
+
+          <ul className="space-y-0">
+            {dispensados.map(item => (
+              <li
+                key={`disp-${item.fornecedor}-${item.tipo}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-border/40 py-2 text-sm last:border-0"
+              >
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {item.fornecedor}
+                </span>
+                <span className="tabular-nums whitespace-nowrap text-muted-foreground">
+                  {formatCurrency(item.valor)}
+                </span>
+                <span className="w-36 shrink-0 text-right whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={() => cobrarDeNovo(item)}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground/70 hover:text-foreground"
+                    title="Voltar a cobrar a nota"
+                    aria-label={`Voltar a cobrar a nota de ${item.fornecedor}`}
+                  >
+                    <Undo2 className="h-3 w-3 shrink-0" />
+                    voltar a cobrar
+                  </button>
+                </span>
+                {/* O motivo é a razão de o bloco existir: sem ele isto seria só
+                    uma lista de quem sumiu da cobrança. */}
+                <span className="w-full text-[11px] text-muted-foreground/70 italic">
+                  {item.motivo_dispensa}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="mt-3 text-[11px] text-muted-foreground/60">
+            Vale só para {MESES[mes]}. Se o fornecedor for pago de novo no mês que
+            vem, ele volta a pedir nota.
+          </p>
+        </div>
+      )}
 
       <AlertDialog open={!!aDispensar} onOpenChange={v => { if (!v) fecharMotivo(null); }}>
         <AlertDialogContent>
