@@ -363,22 +363,41 @@ maio, anteriores à divisão por produto.
 
 ## Diagnóstico
 
-### O maior buraco: o fluxo marca "Lead Perdido" no instante em que a pessoa diz sim
+### O maior buraco: depois de mandar o link, o fluxo acaba
 
 Conferido no grafo do react-flow, aresta por aresta. Depois que a pessoa clica
 em "Link Atualizado":
 
 ```
 [botão] → Mensagem "Link 20% OFF" (234)
-        → Fase 4: tag Desconto Aceito + FECHAR CONVERSA + CRM "Aceitou Oferta Final" (234)
+        → Fase 4: tag Desconto Aceito + fecha conversa + CRM "Aceitou Oferta Final" (234)
         → Condição "comprou?" (234) → 0% comprou · 0% recusou · 100% nenhum
         → CRM Lead Perdido (234)
 ```
 
-Não existe nó de atraso entre a Fase 4 e a condição. A condição é avaliada
-**milissegundos depois de o link ser enviado** — é claro que 100% ainda não
-comprou. E o resultado é arquivar como perdido a pessoa que acabou de levantar
-a mão.
+**Não há mais nada depois disso.** Nenhum lembrete, nenhum "conseguiu abrir?",
+nenhum aviso de vencimento. A pessoa mais quente da base inteira recebe um link
+cru e é deixada sozinha.
+
+> **O "Fechar conversa" não é o problema** — quando a contato responde, o
+> chamado reabre sozinho. Ele só serve para não poluir a central de
+> atendimento. Vale para a Fase 1, a 2, a 3 e a 4 igualmente.
+
+O que **é** problema nesse trecho, e são duas coisas diferentes que não devem
+ser confundidas:
+
+**a) Dinheiro — não existe follow-up.** É isto que custa as vendas. O último
+contato do fluxo é a mensagem do link, e ela é a pior escrita de todas
+(ver [A mensagem do link](#a-mensagem-do-link-depois-do-botão)).
+
+**b) Enxergar — o CRM mente sobre essas pessoas.** Não existe nó de atraso
+entre a Fase 4 e a condição, então ela é avaliada milissegundos depois de o
+link sair; ninguém comprou ainda, 100% cai no "nenhum" e vai para Lead Perdido.
+Os contadores provam sozinhos que a leitura está errada: **"Lead Ganho" marca
+0 e "Lead Perdido" marca 234 — sendo que 56 dessas pessoas pagaram.** Quem
+abrir o quadro do CRM não vê ninguém em "Aceitou Oferta Final" e vê 234
+perdidos que não estão perdidos. Isso não faz a cliente deixar de comprar; faz
+o time deixar de ver.
 
 O efeito no número:
 
@@ -410,11 +429,11 @@ gente, e 7 minutos é a hora certa — o pix ainda nem expirou.
 
 **O que quebra:**
 
-- **Faz uma pergunta e fecha a conversa.** A Fase 1, logo em seguida, executa
-  "Central de atendimento → Fechar conversa". Pede "me dá um toque" e arquiva
-  o atendimento no mesmo movimento.
-- O fluxo não espera resposta. Quem responde cai num ticket fechado e o fluxo
-  segue para o atraso de 1 dia como se nada tivesse acontecido.
+- **A automação não reage a quem responde.** Quem responde reabre o chamado
+  sozinho e cai no atendimento humano — isso funciona. Mas o fluxo em si não
+  tem ramo de resposta aqui: segue para o atraso de 1 dia igual, e a pessoa que
+  respondeu recebe a msg 2 no dia seguinte como se não tivesse dito nada. (A
+  msg 3 tem esse ramo; a 1 e a 2 não.)
 - "matrícula na **Handify**" — a pessoa comprou "Saponaria Brasil". Pode não
   reconhecer o nome da plataforma.
 - Não diz o valor nem mostra o produto. É a mensagem de maior alcance do fluxo
@@ -488,7 +507,8 @@ pessoas que disseram "sim" recebem — e é a última coisa que recebem.
 - **"por tempo limitado" sem prazo não é escassez, é ruído.** Sem data e hora,
   não cria urgência nenhuma.
 - **Nada depois.** Sem lembrete, sem "conseguiu abrir?", sem aviso de
-  vencimento. Conversa fechada e Lead Perdido.
+  vencimento. O fluxo termina aqui, e quem não voltou sozinho não é procurado
+  mais.
 
 ### O tempo
 
@@ -537,15 +557,7 @@ e **3 a 7 dias**. Hoje **não existe nenhuma mensagem na janela de 1 a 6 horas**
 Em ordem de dinheiro por esforço. Os três primeiros não custam nada além de
 editar o fluxo.
 
-### 1. Parar de arquivar como perdido quem aceitou o desconto
-
-Na Fase 4, tirar o "Fechar conversa" e tirar o caminho para Lead Perdido.
-Trocar por: manter a conversa **aberta**, deixar no CRM em "Aceitou Oferta
-Final", e **avisar o atendimento**. São 3 a 4 pessoas por dia.
-
-*Vale:* é a origem dos 219. Meta da dobradiça: **32% → 60%**.
-
-### 2. Dar sequência depois do link
+### 1. Dar sequência depois do link — **é aqui que está o dinheiro**
 
 Hoje não existe nada. Colocar:
 
@@ -555,9 +567,10 @@ Hoje não existe nada. Colocar:
   volta ao normal."
 - Só então, e só aí, a condição de compra e o Lead Perdido.
 
-*Vale:* é o que transforma um clique numa compra.
+*Vale:* é o que transforma um clique numa compra. Junto com o item 2, é a
+origem dos 219.
 
-### 3. Reescrever a mensagem do link
+### 2. Reescrever a mensagem do link
 
 Ordem certa e informação concreta:
 
@@ -568,6 +581,22 @@ Ordem certa e informação concreta:
 4. e uma linha de segurança: "é o mesmo checkout da Payt de antes"
 
 *Vale:* é a mensagem que 100% dos 322 leem e a única que hoje não vende nada.
+
+### 3. Tirar do "Lead Perdido" quem aceitou o desconto — é enxergar, não vender
+
+Colocar o atraso e a sequência do item 1 **antes** da condição de compra. Assim
+ela é avaliada quando já dá para ter comprado, e quem comprou cai em "Lead
+Ganho" em vez de "Lead Perdido".
+
+Isso **não traz venda nenhuma sozinho** — a cliente nem fica sabendo. O que ele
+resolve é o quadro do CRM dizer a verdade: hoje 234 pessoas estão em "Lead
+Perdido" e 56 delas pagaram, enquanto "Lead Ganho" marca zero. Sem isso, no mês
+que vem não há como olhar o quadro e saber se os itens 1 e 2 funcionaram.
+
+O "Fechar conversa" pode ficar como está em todas as fases: a resposta da
+cliente reabre o chamado sozinha, e ele só serve para não poluir a central.
+
+*Vale:* é o que torna o resto mensurável.
 
 ### 4. Antecipar a oferta e abrir a janela
 
@@ -698,3 +727,13 @@ fluxo para não reiniciar a sequência de quem já está nela.
 - Taxa da Payt: `vendas.taxa_plataforma_valor`, venda a venda.
 - Custo do WhatsApp de agosto (R$ 513,88): **entrada manual**, vinda do
   faturamento do Meta. Não existe em `transacoes`.
+
+### Correções feitas depois da primeira versão
+
+- **"Fechar conversa" não prejudica nada** (10/09, corrigido pela Jessica). A
+  primeira versão tratava isso como defeito da msg 1 e como parte da causa dos
+  219. Está errado: a resposta da contato reabre o chamado sozinha, e o nó só
+  serve para não poluir a central de atendimento. A causa dos 219 é a ausência
+  de follow-up depois do link — o Lead Perdido é um problema de leitura do CRM,
+  não de receita. As duas coisas estão separadas no diagnóstico e na lista do
+  que mudar.
