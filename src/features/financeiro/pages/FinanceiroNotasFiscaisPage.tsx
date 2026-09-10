@@ -40,19 +40,50 @@ interface Item {
   /** Preenchido quando o espelho no Drive já rodou. */
   drive_url: string | null;
   nome_arquivo: string | null;
+  /** Todas as notas do fornecedor no mês. As três colunas acima são atalho
+   *  para a primeira; esta é a lista inteira. */
+  documentos: Documento[];
+}
+
+interface Documento {
+  id: string;
+  nome_arquivo: string | null;
+  drive_url: string | null;
+  storage_path: string;
+}
+
+/**
+ * Um pedaço do nome ORIGINAL do arquivo, e é ele que separa uma nota da outra.
+ *
+ * O Meta Ads de agosto teve 129 lançamentos: são várias faturas, não uma. Sem
+ * esta chave as duas virariam o mesmo nome de arquivo e a segunda apagaria a
+ * primeira no Storage, em silêncio.
+ *
+ * Serve para duas coisas ao mesmo tempo, e de propósito: entra no nome gravado
+ * e em `referencia_externa`, que é parte da unicidade da tabela. Assim
+ * reenviar o MESMO arquivo corrige, e enviar outro acrescenta.
+ */
+function chaveDoArquivo(nomeOriginal: string): string {
+  return nomeOriginal
+    .replace(/\.[^.]+$/, '')                          // sem extensão
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // sem acento
+    .replace(/[^\w-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .toLowerCase() || 'arquivo';
 }
 
 /** Nome do arquivo, sempre datado e sempre no mesmo formato — é o que permite
  *  achar a NF de dezembro passado sem abrir uma por uma.
- *  `2026-08_ElevenLabs_invoice.pdf`, `2026-08_Jaqueline-Coelho_pagamento.pdf` */
-function nomeDoArquivo(item: Item, competencia: string, extensao: string, subtipo?: string): string {
+ *  `2026-08_ElevenLabs_invoice_fatura-agosto.pdf` */
+function nomeDoArquivo(item: Item, competencia: string, extensao: string, chave: string, subtipo?: string): string {
   const fornecedor = item.fornecedor
     .normalize('NFD').replace(/[̀-ͯ]/g, '')   // sem acento
     .replace(/[^\w\s()-]/g, '')
     .trim()
     .replace(/\s+/g, '-');
   const sufixo = subtipo ?? (item.pais === 'BR' ? 'NF' : 'invoice');
-  return `${competencia}_${fornecedor}_${sufixo}.${extensao}`;
+  return `${competencia}_${fornecedor}_${sufixo}_${chave}.${extensao}`;
 }
 
 export default function FinanceiroNotasFiscaisPage() {
@@ -79,16 +110,21 @@ export default function FinanceiroNotasFiscaisPage() {
     setCarregando(true);
     const { data, error } = await supabase.rpc('fn_checklist_fiscal', { p_competencia: competencia, p_empresa: empresaId });
     if (error) toast({ title: 'Erro ao carregar', description: error.message, variant: 'destructive' });
-    else setItens((data ?? []).map((x: Item) => ({ ...x, valor: Number(x.valor) })));
+    // `documentos` sempre vira lista: a função já devolve `[]`, mas a tela lê
+    // `.length` em toda linha e um nulo aqui derrubaria a página inteira por
+    // causa de um fornecedor.
+    else setItens((data ?? []).map((x: Item) => ({
+      ...x, valor: Number(x.valor), documentos: x.documentos ?? [],
+    })));
     setCarregando(false);
   }, [competencia, empresaId]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
   async function aoEscolherArquivo(e: React.ChangeEvent<HTMLInputElement>, item: Item) {
-    const arquivo = e.target.files?.[0];
+    const arquivos = Array.from(e.target.files ?? []);
     e.target.value = '';                 // permite reenviar o mesmo arquivo
-    if (!arquivo) return;
+    if (arquivos.length === 0) return;
     // Um envio por vez: dois em paralelo fariam a lista recarregar por cima de
     // si mesma, e a segunda leitura poderia chegar antes da primeira gravar.
     // Avisa em vez de ignorar — falhar em silêncio é o pior jeito de funcionar.
@@ -101,9 +137,24 @@ export default function FinanceiroNotasFiscaisPage() {
     }
 
     setEnviando(item.fornecedor);
+    let enviados = 0;
+    const falhas: string[] = [];
+    /*
+      Os arquivos vão um de cada vez, e não em paralelo.
+
+      Cada um são dois passos — sobe ao Storage, grava a linha — e o segundo
+      desfaz o primeiro quando falha. Em paralelo, uma falha no meio deixaria
+      arquivo órfão no bucket, que foi como quatro NFs sumiram em
+      `ferramentas/2026-08`.
+
+      Uma falha no meio da fila também não derruba o resto: o que deu certo
+      fica, e o aviso no fim diz exatamente quantos e quais faltaram.
+    */
+    for (const arquivo of arquivos) {
     try {
       const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'pdf';
-      const nome = nomeDoArquivo(item, competencia.slice(0, 7), extensao);
+      const chave = chaveDoArquivo(arquivo.name);
+      const nome = nomeDoArquivo(item, competencia.slice(0, 7), extensao, chave);
       const pasta = item.tipo === 'servico' ? 'servicos' : 'ferramentas';
       const caminho = `${pasta}/${competencia.slice(0, 7)}/${nome}`;
 
@@ -133,11 +184,15 @@ export default function FinanceiroNotasFiscaisPage() {
             // Vazio em ferramenta e comprovante; 'pagamento'/'comissao' são de
             // prestador, que manda duas por mês.
             subtipo: '',
-            // Vazio, não nulo: a coluna é `not null default ''` justamente
-            // para que a unicidade funcione. Nulo não colide com nulo no
-            // Postgres, e reenviar criaria uma segunda linha em vez de
-            // corrigir a primeira.
-            referencia_externa: '',
+            // A CHAVE DO ARQUIVO, e não vazio como antes: é ela que permite
+            // duas notas do mesmo fornecedor no mesmo mês. Vazio fazia a
+            // segunda sobrescrever a primeira, porque as cinco colunas do
+            // `onConflict` ficavam idênticas.
+            //
+            // Nunca nulo: a coluna é `not null default ''` justamente para que
+            // a unicidade funcione. Nulo não colide com nulo no Postgres, e
+            // reenviar criaria uma segunda linha em vez de corrigir.
+            referencia_externa: chave,
             storage_path: destino,
             nome_arquivo: nome,
             valor: item.valor,
@@ -145,33 +200,42 @@ export default function FinanceiroNotasFiscaisPage() {
         return error;
       });
 
-      toast({ title: 'Enviado', description: nome });
-      await carregar();
+      enviados++;
     } catch (err) {
+      falhas.push(`${arquivo.name}: ${mensagemDeEnvio(err)}`);
+    }
+    }
+
+    setEnviando(null);
+    await carregar();
+
+    // O aviso conta os dois lados. "Enviado" sozinho, depois de três arquivos
+    // e uma falha, esconderia justamente o que precisa de ação.
+    if (falhas.length === 0) {
       toast({
-        title: 'Não consegui enviar',
-        description: mensagemDeEnvio(err),
+        title: enviados === 1 ? 'Enviado' : `${enviados} arquivos enviados`,
+        description: item.fornecedor,
+      });
+    } else {
+      toast({
+        title: enviados > 0
+          ? `${enviados} de ${arquivos.length} enviados`
+          : 'Não consegui enviar',
+        description: falhas.join(' · '),
         variant: 'destructive',
       });
-    } finally {
-      setEnviando(null);
     }
   }
 
   /** O bucket é privado: link direto não abre. Gera uma URL que vale 1 minuto. */
-  async function abrir(item: Item) {
-    const { data, error } = await supabase
-      .from('documentos_fiscais')
-      .select('storage_path')
-      .eq('id', item.documento_id!)
-      .single();
-    if (error || !data?.storage_path) {
+  async function abrir(doc: Documento) {
+    if (!doc.storage_path) {
       toast({ title: 'Arquivo não encontrado', variant: 'destructive' });
       return;
     }
     const { data: assinado } = await supabase.storage
       .from('documentos')
-      .createSignedUrl(data.storage_path, 60);
+      .createSignedUrl(doc.storage_path, 60);
     if (assinado?.signedUrl) window.open(assinado.signedUrl, '_blank', 'noopener');
   }
 
@@ -212,25 +276,25 @@ export default function FinanceiroNotasFiscaisPage() {
     setEnviando(null);
   }
 
-  async function remover(item: Item) {
+  /** Remove UMA nota. Com várias no mesmo fornecedor, apagar todas de uma vez
+   *  seria destruir o que ela não pediu — a confirmação diz qual arquivo é. */
+  async function remover(item: Item, doc: Documento) {
     // Pergunta antes: um clique aqui apaga em três lugares de uma vez, e a
     // cópia do Drive é a que a contabilidade usa. Não há desfazer.
     const ok = await confirm({
       title: `Remover a nota de ${item.fornecedor}?`,
-      description: 'O arquivo sai do dashboard e também da pasta do Drive que a contabilidade usa. Não dá para desfazer.',
+      description: `${doc.nome_arquivo ?? 'O arquivo'} sai do dashboard e também da pasta do Drive que a contabilidade usa. Não dá para desfazer.`,
       confirmText: 'Remover',
     });
     if (!ok) return;
 
-    const { data } = await supabase
-      .from('documentos_fiscais').select('storage_path').eq('id', item.documento_id!).single();
-    if (data?.storage_path) await supabase.storage.from('documentos').remove([data.storage_path]);
-    const { error } = await supabase.from('documentos_fiscais').delete().eq('id', item.documento_id!);
+    if (doc.storage_path) await supabase.storage.from('documentos').remove([doc.storage_path]);
+    const { error } = await supabase.from('documentos_fiscais').delete().eq('id', doc.id);
     if (error) {
       toast({ title: 'Não foi possível remover', description: error.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Nota removida', description: item.fornecedor });
+    toast({ title: 'Nota removida', description: doc.nome_arquivo ?? item.fornecedor });
     await carregar();
   }
 
@@ -345,16 +409,34 @@ export default function FinanceiroNotasFiscaisPage() {
                 </span>
 
                 <span className="w-28 shrink-0 text-right whitespace-nowrap">
+                  {/* O input mora FORA do ramo, e não dentro do "ainda falta".
+                      Dentro, um fornecedor que já tem nota perdia o botão de
+                      anexar — e com várias faturas por mês a segunda só entrava
+                      apagando a primeira. */}
+                  <input
+                    ref={el => { inputsRef.current[item.fornecedor] = el; }}
+                    type="file"
+                    // Vários de uma vez: um fornecedor como o Meta Ads fecha o
+                    // mês com várias faturas, e anexar uma por uma era o que
+                    // fazia a tela render menos que a pasta.
+                    multiple
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={e => aoEscolherArquivo(e, item)}
+                  />
                   {item.tem_documento ? (
                     <span className="inline-flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => abrir(item)}
+                        onClick={() => abrir(item.documentos[0])}
                         className="inline-flex items-center gap-1 text-xs text-green-400 hover:underline"
                         title={item.nome_arquivo ?? 'Abrir'}
                       >
                         <Check className="h-3 w-3 shrink-0" />
-                        recebido
+                        {/* Com mais de uma, o rótulo passa a ser a CONTAGEM: um
+                            "recebido" sozinho esconderia que existem outras
+                            três, e o que está escondido ninguém confere. */}
+                        {item.documentos.length > 1 ? `${item.documentos.length} notas` : 'recebido'}
                       </button>
                       {/* O Drive é cópia, não fonte — se o espelho falhar o
                           arquivo continua no Storage e a tela segue funcionando.
@@ -387,30 +469,38 @@ export default function FinanceiroNotasFiscaisPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => abrir(item)}
+                        onClick={() => abrir(item.documentos[0])}
                         className="text-muted-foreground hover:text-foreground"
                         aria-label={`Baixar documento de ${item.fornecedor}`}
                       >
                         <Download className="h-3 w-3" />
                       </button>
+                      {/* Anexar MAIS uma. Com uma nota só, o lixo ao lado dá
+                          conta de trocar; com várias, sem este botão a segunda
+                          fatura do mês não teria por onde entrar. */}
                       <button
                         type="button"
-                        onClick={() => remover(item)}
-                        className="text-muted-foreground hover:text-red-400"
-                        aria-label={`Remover documento de ${item.fornecedor}`}
+                        onClick={() => inputsRef.current[item.fornecedor]?.click()}
+                        disabled={enviando !== null}
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        title="Anexar mais um arquivo"
+                        aria-label={`Anexar mais um documento de ${item.fornecedor}`}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Upload className="h-3 w-3" />
                       </button>
+                      {item.documentos.length === 1 && (
+                        <button
+                          type="button"
+                          onClick={() => remover(item, item.documentos[0])}
+                          className="text-muted-foreground hover:text-red-400"
+                          aria-label={`Remover documento de ${item.fornecedor}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
                     </span>
                   ) : (
                     <>
-                      <input
-                        ref={el => { inputsRef.current[item.fornecedor] = el; }}
-                        type="file"
-                        accept="application/pdf,image/png,image/jpeg,image/webp"
-                        className="hidden"
-                        onChange={e => aoEscolherArquivo(e, item)}
-                      />
                       <button
                         type="button"
                         onClick={() => inputsRef.current[item.fornecedor]?.click()}
@@ -433,6 +523,51 @@ export default function FinanceiroNotasFiscaisPage() {
                   <span className="w-full text-[11px] text-muted-foreground/70">
                     {item.categoria}
                     {item.tipo === 'servico' && ' · prestador'}
+                  </span>
+                )}
+
+                {/* As notas, uma a uma, quando há mais de uma.
+                    Sem esta linha as outras existiriam sem aparecer: dava para
+                    anexar quatro e ver "4 notas", mas não para saber QUAIS nem
+                    remover a errada. Cadastro sem a leitura ao lado envelhece —
+                    é a segunda armadilha do projeto. */}
+                {item.documentos.length > 1 && (
+                  <span className="flex w-full flex-wrap gap-1.5">
+                    {item.documentos.map(doc => (
+                      <span
+                        key={doc.id}
+                        className="inline-flex max-w-full items-center gap-1 rounded bg-muted/50 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => abrir(doc)}
+                          className="truncate hover:text-foreground hover:underline"
+                          title={doc.nome_arquivo ?? 'Abrir'}
+                        >
+                          {doc.nome_arquivo ?? 'sem nome'}
+                        </button>
+                        {doc.drive_url && (
+                          <a
+                            href={doc.drive_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 hover:text-foreground"
+                            title="Abrir no Drive"
+                            aria-label={`Abrir no Drive ${doc.nome_arquivo ?? 'o arquivo'}`}
+                          >
+                            <FolderOpen className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => remover(item, doc)}
+                          className="shrink-0 hover:text-red-400"
+                          aria-label={`Remover ${doc.nome_arquivo ?? 'o arquivo'}`}
+                        >
+                          <Trash2 className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
                   </span>
                 )}
 
