@@ -531,6 +531,72 @@ Duas consequências:
 Na leitura de comportamento feita antes, o canal tem dois picos: **1 a 6 horas**
 e **3 a 7 dias**. Hoje **não existe nenhuma mensagem na janela de 1 a 6 horas**.
 
+### As objeções reais, lidas nas conversas
+
+Lidas na central de atendimento do Voxuy em 10/09/2026, abertas **e** fechadas:
+**44 conversas com tag de recuperação**, das quais 33 têm objeção
+identificável. Amostra não aleatória — são as conversas mais recentes — mas o
+padrão é forte o bastante para decidir. As falas abaixo estão sem nome e sem
+telefone de propósito.
+
+| objeção | conversas | % |
+|---|---:|---:|
+| **A. "Quero, mas não agora" — dinheiro e prazo** | 9 | **27%** |
+| **B. Falha técnica no pagamento** | 6 | **18%** |
+| C. Preço alto de verdade | 4 | 12% |
+| D. Quer comprar/pagar pelo WhatsApp | 4 | 12% |
+| E. Dúvida de formato e plataforma | 4 | 12% |
+| F. Medo de golpe | 3 | 9% |
+| G. Não conhece o conteúdo o bastante | 3 | 9% |
+
+**A + B + D = 57%.** Todas são variações de *"eu quis e não deu"* — nenhuma
+delas é falta de informação sobre o curso.
+
+**A — dinheiro e prazo (27%).** É a maior, e é a mais fácil de recuperar,
+porque a pessoa já decidiu:
+
+> *"Não houve nenhum erro. Só vou conseguir efetuar o pagamento no dia 15."*
+> *"Tenho que pagar meu cartão primeiro."*
+> *"Vou receber amanhã e farei o pagamento amanhã."*
+> *"Só posso fazer depois de amanhã por causa do cartão."*
+> *"Assim que possível farei… tô com minha mãe fazendo uma cirurgia."*
+
+Hoje o fluxo não tem nenhum ramo para isso. A pessoa diz "dia 15" e recebe a
+oferta relâmpago no dia 3.
+
+**B — falha técnica (18%).** A venda estava fechada e o checkout quebrou:
+
+> *"O sistema não estava aceitando o número do cartão. E quando tentei
+> novamente o valor já era outro."*
+> *"Problema ao fazer o Pix."* · *"Deu erro no valor do pagamento."*
+> *"Tentei pagar pelo cartão virtual, porém tive problema."*
+> *"Diz que meu gmail não consta na inscrição na hora do pagamento."*
+> *"Mas já passou o tempo da promoção."*
+
+As duas últimas são causa direta dos 219: gente que **voltou** e não conseguiu.
+
+**D — querem pagar pelo WhatsApp (12%).** Não querem o checkout:
+
+> *"Posso pagar por aqui?"* · *"Se eu quiser fazer pix por aqui mesmo consigo?"*
+> *"Quanto é o pix?"* · *"Manda o link pra mim completar a inscrição."*
+
+**F — medo de golpe (9%), e nunca tratado em lugar nenhum.** Aparece sempre
+junto de A ou B, e é o que trava na hora exata de pagar:
+
+> *"Tenho medo, o que já sofri golpe por celular."*
+> *"Não consegui concluir o pgto… sumiu tudo… aí fiquei com medo."*
+> *"Desculpa, porque já caí em golpe."*
+> *"Qual nome que aparece para a financeira?" — "Aparece PaytCCRV6HAND."*
+
+**E — formato e plataforma: 12%.** É exatamente a objeção que a msg 2 responde
+hoje. **A mensagem do meio do funil trata a sexta objeção mais comum e ignora
+as três primeiras.**
+
+Entre quem chegou a aceitar o desconto, as duas objeções registradas são de
+dinheiro e prazo — *"Estou com problemas de saúde e gastando muito com
+remédios… fica pra próxima"* e *"Pode cancelar"*. Isso importa para a decisão:
+**aumentar o desconto não recuperaria essas pessoas; remarcar a cobrança sim.**
+
 ### A estratégia
 
 - **Três mensagens, duas de suporte e uma de oferta**, com a oferta por último.
@@ -608,11 +674,48 @@ cliente reabre o chamado sozinha, e ele só serve para não poluir a central.
 *Vale:* 32% das pessoas nunca chegam à msg 3. Encurtar o caminho até ela é o
 segundo maior lever depois do desconto.
 
-### 5. Trocar o conteúdo da msg 2
+### 5. Trocar o conteúdo da msg 2 — que a pessoa escolha a objeção
 
-Sair de "como funciona a plataforma" e ir para a objeção real: preço, medo de
-não dar conta, medo de golpe. Uma prova social curta e uma pergunta que dê para
-responder com uma palavra. Manter em **Utilidade**.
+Hoje a msg 2 explica o formato das aulas, que é a objeção de **12%** da base.
+As três maiores — dinheiro e prazo, falha técnica, e querer pagar pelo
+WhatsApp — somam **57%** e não têm resposta nenhuma no fluxo.
+
+Nenhum texto único cobre três objeções diferentes. O que cobre é **perguntar**,
+com botões, e ramificar. Continua em **Utilidade**, porque continua sendo
+suporte:
+
+> Oi, {{nome}}! Sou eu de novo.
+> Só pra eu te ajudar do jeito certo — o que rolou com o seu pedido do
+> {{produto}}?
+>
+> **[ Deu erro no pagamento ]  [ Quero pagar depois ]  [ Fiquei com dúvida ]**
+
+**Ramo "Deu erro no pagamento"** (18% da base)
+
+> Consigo resolver por aqui mesmo. Foi no **cartão** ou no **pix**?
+
+Cartão → oferecer pix. Pix → gerar um novo na hora. E **passar para o
+atendimento humano**, porque é uma venda fechada travada por software.
+
+**Ramo "Quero pagar depois"** (27% da base — o maior, e hoje inexistente)
+
+> Sem problema nenhum. Que dia fica melhor pra você?
+> **[ Essa semana ]  [ Semana que vem ]  [ Depois do dia 15 ]**
+
+E **reagendar o disparo para a data que a pessoa escolheu**, em vez de mandar a
+oferta relâmpago no terceiro dia. Quem diz "dia 15" hoje recebe a última
+chamada no dia 3 e some.
+
+**Ramo "Fiquei com dúvida"** (12% + 9%)
+
+Aí sim a informação — curta, três linhas, não sete — e **com a linha de
+confiança que hoje não existe em lugar nenhum**:
+
+> Na fatura aparece **PAYT\*HANDIFY** — somos a Handify, e o pagamento é o
+> mesmo checkout da Payt que você já tinha aberto.
+
+Nove por cento das conversas mencionam medo de golpe, e uma delas trava
+exatamente em não reconhecer o nome na fatura. É uma linha de texto.
 
 ### 6. Separar cartão recusado de pix expirado
 
@@ -681,6 +784,34 @@ Fazer nesta ordem. **Só é comparação justa se a lógica for a mesma.**
    contador vem antes do nó a que pertence**.
 5. **Anotar o custo de conversa do WhatsApp** vindo do faturamento do Meta.
    Sem ele não há margem, só receita.
+6. **Reclassificar as objeções.** Na central de atendimento, trocar o filtro
+   para **Fechadas** (o padrão é "Abertas", e lá só ficam ~12 conversas — o
+   volume está nas fechadas), rolar a lista até carregar ~80 e rodar:
+
+   ```js
+   const sleep = ms => new Promise(r => setTimeout(r, ms));
+   const TPL = /ultimo contato|reunimos aqui as principais|houve uma interrup|Central de Ajuda|Horário de atendimento|equipe de atendimento da Handify|link acima você consegue/i;
+   window.__acc = window.__acc || [];
+   const items = [...document.querySelectorAll('.row.align-items-center.message-row')];
+   for (let i = 0; i < 18; i++) {            // 18 por vez: acima disso o tool expira
+     if (!items[i]) break;
+     items[i].click(); await sleep(900);
+     const recv = [...document.querySelectorAll('.message-row.received .message-text')]
+       .map(e => e.innerText.replace(/\s+/g, ' ').trim())
+       .filter(t => t.length > 2 && !TPL.test(t));   // TPL tira o eco dos templates
+     const tag = [...document.querySelectorAll('.system-message-row')]
+       .map(e => e.innerText.replace(/\s+/g, ' ')).filter(t => /adicionou a tag/i.test(t))
+       .map(t => t.replace(/.*adicionou a tag /, '').replace(/ · .*/, '')).slice(0, 3);
+     if (recv.length && tag.length) window.__acc.push({ tag, m: recv.slice(-7) });
+   }
+   JSON.stringify(window.__acc);
+   ```
+
+   Classificar só as que têm tag `Recuperação *`, `Desconto Aceito` ou
+   `Recusou Oferta`, nas mesmas sete categorias (A a G) da seção
+   [As objeções reais](#as-objeções-reais-lidas-nas-conversas), uma objeção
+   principal por conversa. **Não copiar nome, telefone nem e-mail para lugar
+   nenhum.**
 6. **Calcular as quatro dobradiças** — são elas que dizem se a mudança
    funcionou, não a receita total. A receita se move com o volume de vendas do
    mês; as dobradiças, não.
@@ -695,6 +826,7 @@ Fazer nesta ordem. **Só é comparação justa se a lógica for a mesma.**
 | abriu pedido → pagou | 74,8% | manter |
 | entrou → pagou | **2,7%** | **6%** |
 | erro de entrega | 13,2% | < 5% |
+| objeções A+B+D sem resposta no fluxo | 57% | 0% |
 
 ### Duas armadilhas na hora de comparar
 
@@ -723,6 +855,15 @@ fluxo para não reiniciar a sequência de quem já está nela.
   e *Fábrica de Lembrancinhas - Recuperação*, lidos em 09/09/2026.
 - Exportação de contatos: `contatos_2026-09-10 022333.xlsx`, 11.182 linhas,
   19 colunas.
+- Conversas: central de atendimento do Voxuy, filtros **Abertas** e
+  **Fechadas**, lidas em 10/09/2026. 44 conversas com tag de recuperação, 33
+  com objeção identificável. Nenhum nome, telefone ou e-mail foi copiado para
+  este documento.
+- Links de recuperação: quatro do fluxo (`wGCBMxg` Saponaria · `LmCa9dy` Buquê
+  · `kNCnkLg` Fábrica · `LmCaG1b` Velas). **6 dos 105 pedidos com
+  `utm_medium=recuperacao` vieram de links mandados à mão** que pegaram carona
+  na UTM (`ODCdqxv`, `bbC2mzn`, `8oClXQy`, 2 de Assinatura, 1 sem link). É 5,7%
+  e não move as dobradiças, mas se crescer, separar por `link_url`.
 - Alíquota do Simples: `configuracoes.imposto_simples_nacional_pct` = 9,0000.
 - Taxa da Payt: `vendas.taxa_plataforma_valor`, venda a venda.
 - Custo do WhatsApp de agosto (R$ 513,88): **entrada manual**, vinda do
