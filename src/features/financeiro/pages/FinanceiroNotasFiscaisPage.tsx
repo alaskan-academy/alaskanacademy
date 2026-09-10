@@ -51,6 +51,9 @@ interface Item {
   /** Marcado como "não precisa de nota" neste mês. */
   dispensado: boolean;
   motivo_dispensa: string | null;
+  /** A empresa que pagou este fornecedor no mês, quando foi uma só. Nulo
+   *  quando as duas pagaram — aí a tela precisa perguntar. */
+  empresa_id: string | null;
 }
 
 interface Documento {
@@ -319,12 +322,19 @@ export default function FinanceiroNotasFiscaisPage() {
    * a três meses ninguém saberia se foi decisão ou engano.
    */
   async function dispensar(item: Item) {
-    // Gravar exige empresa escolhida — a mesma regra do extrato e do lançamento
-    // manual. Em "Ambas" a dispensa não saberia de quem é.
-    if (!empresaId) {
+    /*
+      Continua impossível gravar sem empresa, mas a pergunta virou último
+      recurso: o fornecedor só está na lista porque saiu dinheiro de uma conta
+      bancária, e a conta é carimbada. Então a empresa vem dele.
+
+      A pergunta sobra para o caso em que ela tem conteúdo: o mesmo fornecedor
+      pago pelas duas: dispensar sem dizer qual deixaria a outra cobrando.
+    */
+    const dono = empresaId ?? item.empresa_id;
+    if (!dono) {
       toast({
         title: 'Escolha a empresa',
-        description: 'A dispensa é de uma empresa só. Selecione uma no topo e tente de novo.',
+        description: `${item.fornecedor} foi pago pelas duas empresas neste mês. Selecione uma no topo e tente de novo.`,
       });
       return;
     }
@@ -333,7 +343,7 @@ export default function FinanceiroNotasFiscaisPage() {
 
     const { error } = await supabase.from('documento_dispensas').insert({
       competencia,
-      empresa_id: empresaId,
+      empresa_id: dono,
       fornecedor: item.fornecedor,
       motivo,
     });
@@ -348,12 +358,19 @@ export default function FinanceiroNotasFiscaisPage() {
   /** Volta a cobrar a nota. Não pede confirmação: o caminho de volta tem que
    *  ser mais barato que o de ida, senão ninguém corrige um X errado. */
   async function cobrarDeNovo(item: Item) {
+    // Mesma empresa que a dispensa usou. Sem este filtro, desfazer em "Ambas"
+    // apagaria a dispensa das duas de uma vez.
+    const dono = empresaId ?? item.empresa_id;
+    if (!dono) {
+      toast({ title: 'Escolha a empresa', description: `${item.fornecedor} foi pago pelas duas empresas neste mês.` });
+      return;
+    }
     const { error } = await supabase
       .from('documento_dispensas')
       .delete()
       .eq('competencia', competencia)
       .eq('fornecedor', item.fornecedor)
-      .eq('empresa_id', empresaId!);
+      .eq('empresa_id', dono);
     if (error) {
       toast({ title: 'Não consegui desfazer', description: error.message, variant: 'destructive' });
       return;
@@ -497,7 +514,12 @@ export default function FinanceiroNotasFiscaisPage() {
                   {item.lancamentos > 1 ? `${item.lancamentos} lanç.` : ''}
                 </span>
 
-                <span className="w-28 shrink-0 text-right whitespace-nowrap">
+                {/* w-36 e não w-28: com o botão de anexar mais, o pior caso
+                    ("recebido" + pasta + baixar + anexar + lixo) mede 138px e
+                    vazava 26px para fora do cartão. Largura FIXA, e não
+                    conteúdo, porque é ela que mantém os ícones alinhados de uma
+                    linha para a outra — sem isso cada linha termina num lugar. */}
+                <span className="w-36 shrink-0 text-right whitespace-nowrap">
                   {/* O input mora FORA do ramo, e não dentro do "ainda falta".
                       Dentro, um fornecedor que já tem nota perdia o botão de
                       anexar — e com várias faturas por mês a segunda só entrava
