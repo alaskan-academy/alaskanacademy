@@ -8,6 +8,7 @@ import type { ProducaoNivel, Funil, Perfil } from '../components/types';
 import { MeuPainelView } from '../components/MeuPainelView';
 import { CalendarioView } from '../components/CalendarioView';
 import { PainelAprovacaoView } from '../components/PainelAprovacaoView';
+import { AprovadosView } from '../components/AprovadosView';
 import { CriativoDrawer } from '../components/CriativoDrawer';
 import { CriativoFormModal } from '../components/CriativoFormModal';
 import { supabase } from '@/lib/supabase';
@@ -29,6 +30,13 @@ const TABS: { chave: string; label: string; niveis: ProducaoNivel[] }[] = [
   { chave: 'calendario', label: 'Calendário Geral',    niveis: ['socio'] },
   { chave: 'setor',     label: 'Calendário do Setor',  niveis: ['head'] },
   { chave: 'aprovacao', label: 'Painel de Aprovação',  niveis: ['socio', 'head'] },
+  /*
+    Vizinha da aprovação, e não dentro dela: a fila do Painel esvazia porque a
+    consulta só traz as fases de revisão, e trazer os aprovados de volta
+    destruiria isso. São duas perguntas — "o que falta aprovar" e "o que
+    aconteceu com o que aprovei".
+  */
+  { chave: 'aprovei',   label: 'O que eu aprovei',     niveis: ['socio', 'head'] },
 ];
 
 export default function ProducaoPage() {
@@ -152,6 +160,9 @@ export default function ProducaoPage() {
       )}
       {activeTab === 'aprovacao' && (
         <PainelAprovacaoView nivel={nivel} setor={setor} userId={userId} />
+      )}
+      {activeTab === 'aprovei' && (
+        <AprovadosView nivel={nivel} setor={setor} userId={userId} funis={funis} perfis={perfis} />
       )}
 
       {/* Abre criativo diretamente a partir de notificação.
