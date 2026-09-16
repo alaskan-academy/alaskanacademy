@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import { useMetricasDoAd, TiraDeMetricas, LegendaFontes } from '@/features/criativos/metricasDoAd';
+import { situacaoDe } from '@/features/ads/situacao';
 import { PedidoVariacaoModal } from '@/features/producao/components/PedidoVariacaoModal';
 import type { Perfil, Funil } from '@/features/producao/components/types';
 
@@ -225,22 +226,19 @@ function TabelaDoCrivo() {
  * O primeiro é dinheiro saindo num criativo que ela considera encerrado. Sem
  * esta coluna não havia como ver isso sem abrir o Business Manager.
  *
- * Vem de `effective_status` e nunca de `status`: o segundo é só o botão do
- * anúncio e ignora campanha ou conjunto pausados — divergem em 4.825 dos 8.123
- * anúncios, e usar o errado mostraria quase tudo como ativo.
+ * O RÓTULO NÃO MORA MAIS AQUI
+ *
+ * Havia um `ESTADO_ADS` neste arquivo com vocabulário próprio — ativo, pausado,
+ * reprovado, com_problema —, e `vw_meta_status` já classificava os mesmos
+ * anúncios com outro: rodando, parado, barrado_pelo_pai. Dois mapas para a
+ * mesma pergunta, a primeira armadilha, e eles já divergiam: 109 anúncios
+ * `ADSET_PAUSED` eram chamados de "parado" aqui, escondendo o único grupo que
+ * pede ação — alguém LIGOU o anúncio e o conjunto acima está desligado.
+ *
+ * Agora `vw_producao_estado_ads` devolve o mesmo vocabulário da view, e o rótulo
+ * sai de `situacaoDe` em `@/features/ads/situacao` — um mapa só, servindo a tela
+ * do Meta Ads e esta. Na prática, 87 cards saíram de "parado" para "Pai pausado".
  */
-const ESTADO_ADS: Record<string, { rotulo: string; cor: string; titulo: string }> = {
-  ativo:        { rotulo: 'no ar',       cor: 'text-emerald-400',
-                  titulo: 'Pelo menos um anúncio deste card está entregando agora' },
-  pausado:      { rotulo: 'parado',      cor: 'text-muted-foreground',
-                  titulo: 'Todos os anúncios estão pausados — no anúncio, no conjunto ou na campanha' },
-  reprovado:    { rotulo: 'reprovado',   cor: 'text-destructive',
-                  titulo: 'A Meta recusou o anúncio' },
-  com_problema: { rotulo: 'com problema', cor: 'text-warning',
-                  titulo: 'A Meta sinalizou problema no anúncio' },
-  sem_anuncio:  { rotulo: 'sem anúncio', cor: 'text-muted-foreground/50',
-                  titulo: 'Nenhum anúncio ligado a este card, ou o anúncio sumiu da API' },
-};
 
 /** Data curta para caber na célula: "05/09". Ano só quando não é o atual. */
 function diaCurto(iso: string): string {
@@ -249,12 +247,25 @@ function diaCurto(iso: string): string {
   return a === esteAno ? `${d}/${m}` : `${d}/${m}/${a.slice(2)}`;
 }
 
-/** A marcação dela contradiz o Meta? É o caso que custa dinheiro. */
+/**
+ * A marcação dela contradiz o Meta? É o caso que custa dinheiro.
+ *
+ * `ALGUEM_DESLIGOU` existe porque o vocabulário novo separa o que o antigo
+ * juntava: "parado" é o anúncio desligado e "barrado_pelo_pai" é o conjunto
+ * desligado por cima dele. Os dois contradizem quem marcou "Rodando", e omitir
+ * o segundo perderia 5 dos 8 casos.
+ *
+ * Fora da lista de propósito: `ativo_sem_entregar` e `em_analise`. Nesses dois o
+ * anúncio ESTÁ ligado — quem marcou "Rodando" não errou, a entrega é que não
+ * saiu. Acusar contradição ali mandaria a pessoa desmarcar o que está certo.
+ */
+const ALGUEM_DESLIGOU = ['parado', 'barrado_pelo_pai', 'sem_anuncio'];
+
 function contradiz(marcado: string | null, estado: string | null): boolean {
   if (!marcado || !estado) return false;
-  if (marcado === 'Rodando')   return estado === 'pausado' || estado === 'sem_anuncio';
-  if (marcado === 'Encerrado') return estado === 'ativo';
-  if (marcado === 'Pausado')   return estado === 'ativo';
+  if (marcado === 'Rodando')   return ALGUEM_DESLIGOU.includes(estado);
+  if (marcado === 'Encerrado') return estado === 'rodando';
+  if (marcado === 'Pausado')   return estado === 'rodando';
   return false;
 }
 
@@ -804,22 +815,22 @@ export function AvaliacaoView({ userId }: Props) {
                   )}
                   {/* O fato, embaixo da marcação. Quando os dois se contradizem,
                       o aviso é o que importa — e não o rótulo. */}
-                  {c.estado_ads && ESTADO_ADS[c.estado_ads] && (
+                  {c.estado_ads && situacaoDe(c.estado_ads) && (
                     <div
                       className={cn(
                         'mt-0.5 truncate text-[10px]',
                         contradiz(c.status_veiculacao, c.estado_ads)
                           ? 'text-warning'
-                          : ESTADO_ADS[c.estado_ads].cor,
+                          : situacaoDe(c.estado_ads)!.texto,
                       )}
                       title={
                         contradiz(c.status_veiculacao, c.estado_ads)
-                          ? `Você marcou "${c.status_veiculacao}", mas a Meta diz ${ESTADO_ADS[c.estado_ads].rotulo}`
-                          : ESTADO_ADS[c.estado_ads].titulo
+                          ? `Você marcou "${c.status_veiculacao}", mas a Meta diz ${situacaoDe(c.estado_ads)!.rotulo}`
+                          : situacaoDe(c.estado_ads)!.explica
                       }
                     >
                       {contradiz(c.status_veiculacao, c.estado_ads) && '⚠ '}
-                      {ESTADO_ADS[c.estado_ads].rotulo}
+                      {situacaoDe(c.estado_ads)!.rotulo}
                       {/* A data do ULTIMO GASTO, que responde "quando parou?".
                           Sem ela, "parado" nao diz se foi ontem ou em junho —
                           e essa diferenca muda o que fazer com o criativo. */}

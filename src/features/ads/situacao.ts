@@ -9,59 +9,90 @@
  * primeiro o que alguém ligou e não está rodando, depois o que roda, e por
  * último o que foi desligado de propósito.
  */
-export const SITUACAO: Record<string, { rotulo: string; ponto: string; selo: string; explica: string }> = {
+export const SITUACAO: Record<string, { rotulo: string; ponto: string; selo: string; texto: string; explica: string }> = {
   bloqueado: {
     rotulo: 'Bloqueado',
     ponto: 'bg-red-500',
     selo: 'bg-red-500/15 text-red-400',
+    texto: 'text-destructive',
     explica: 'Ligado, mas a Meta barrou — reprovado ou com problema.',
   },
   ativo_nunca_entregou: {
     rotulo: 'Nunca entregou',
     ponto: 'bg-red-400',
     selo: 'bg-red-500/15 text-red-300',
+    texto: 'text-red-400',
     explica: 'Ligado e nunca teve uma impressão.',
   },
   ativo_sem_entregar: {
     rotulo: 'Sem entregar',
     ponto: 'bg-amber-400',
     selo: 'bg-amber-500/15 text-amber-300',
+    texto: 'text-warning',
     explica: 'Ligado e sem impressão desde ontem — verba, público ou lance.',
   },
   barrado_pelo_pai: {
     rotulo: 'Pai pausado',
     ponto: 'bg-amber-500',
     selo: 'bg-amber-500/15 text-amber-400',
+    texto: 'text-warning',
     explica: 'Ligado dentro de um conjunto ou campanha que está pausado.',
   },
   em_analise: {
     rotulo: 'Em análise',
     ponto: 'bg-blue-400',
     selo: 'bg-blue-500/15 text-blue-400',
+    texto: 'text-blue-400',
     explica: 'Aguardando a revisão da Meta.',
   },
   rodando: {
     rotulo: 'Rodando',
     ponto: 'bg-emerald-500',
     selo: 'bg-emerald-500/15 text-emerald-400',
+    texto: 'text-emerald-400',
     explica: 'Ligado e entregando.',
   },
   parado: {
     rotulo: 'Parado',
     ponto: 'bg-muted-foreground/40',
     selo: 'bg-secondary text-muted-foreground',
+    texto: 'text-muted-foreground',
     explica: 'Alguém desligou.',
   },
   sem_dado: {
     rotulo: 'Sem dado',
     ponto: 'bg-muted-foreground/25',
     selo: 'bg-secondary text-muted-foreground',
+    texto: 'text-muted-foreground/70',
     explica: 'A API não confirma mais este objeto — o último estado é passado.',
+  },
+  /**
+   * Não é situação de anúncio: é a AUSÊNCIA de anúncio.
+   *
+   * Entra aqui porque `vw_producao_estado_ads` resume os anúncios de um card no
+   * mesmo vocabulário desta tabela, e um card sem nenhum anúncio ligado precisa
+   * de rótulo. Não ocorre em `vw_meta_status`, e por isso fica FORA de
+   * `ORDEM_SITUACAO` — senão apareceria como coluna vazia na tela do Meta Ads.
+   */
+  sem_anuncio: {
+    rotulo: 'sem anúncio',
+    ponto: 'bg-muted-foreground/25',
+    selo: 'bg-secondary text-muted-foreground',
+    texto: 'text-muted-foreground/50',
+    explica: 'Nenhum anúncio ligado a este card, ou o anúncio sumiu da API.',
   },
 };
 
-/** A ordem em que os selos aparecem: o que pede ação primeiro. */
-export const ORDEM_SITUACAO = Object.keys(SITUACAO);
+/**
+ * A ordem em que os selos aparecem na tela do Meta Ads: o que pede ação primeiro.
+ *
+ * NÃO é a ordem de precedência para resumir vários anúncios num card — lá
+ * "rodando" ganha de tudo, porque a pergunta é outra ("este criativo ainda está
+ * no ar?"). Essa outra ordem mora em `vw_producao_estado_ads`, no banco. Duas
+ * ordens porque são duas perguntas; usar esta para resumir faria card com
+ * anúncio entregando ler "Pai pausado".
+ */
+export const ORDEM_SITUACAO = Object.keys(SITUACAO).filter(s => s !== 'sem_anuncio');
 
 /**
  * O que mostrar para uma situação.
@@ -77,6 +108,7 @@ export function situacaoDe(s: string | null | undefined) {
     rotulo: s,
     ponto: 'bg-muted-foreground/40',
     selo: 'bg-secondary text-muted-foreground',
+    texto: 'text-muted-foreground',
     explica: 'Situação que o painel ainda não conhece.',
   };
 }
