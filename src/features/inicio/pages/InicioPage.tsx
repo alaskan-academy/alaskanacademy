@@ -225,25 +225,71 @@ export default function InicioPage() {
    */
   const fora = useMemo(() => {
     /*
-      Uma linha por folga, e não por dia dela.
+      Uma linha por OCORRÊNCIA da folga, e não por dia dela nem por evento.
 
-      Desde que folga pode durar mais de um dia, listar dia a dia faria uma
-      semana de férias virar "Ana na segunda, Ana na terça, Ana na quarta…" e
-      empurrar todo mundo para fora da faixa. Agrupado pelo evento, sai
-      "Ana de 24 a 28 de dez", que é o que a pessoa diria.
+      Dia a dia, uma semana de férias viraria "Ana na segunda, Ana na terça,
+      Ana na quarta…" e empurraria todo mundo para fora da faixa. Mas agrupar
+      pelo EVENTO — que era o que estava aqui — quebra na folga recorrente:
+      todas as ocorrências de uma série têm o mesmo `ev.id`, e uma folga toda
+      segunda desde 31/08 colapsava numa linha só dizendo "de 31 de ago a 5 de
+      out" — 36 dias para seis segundas, com três já passadas ainda anunciadas.
+
+      Blocos contíguos resolvem os dois: folga de um dia ou de vários vira um
+      bloco (comportamento igual ao de antes), e a série vira um bloco por
+      ocorrência. De brinde, o `item` guardado passa a ser o primeiro dia da
+      ocorrência VIVA, e não o de uma série que começou em agosto — então o
+      botão "Pular este dia" do drawer, que grava `item.data` em
+      `recorrencia_puladas`, deixa de escrever uma data do passado.
     */
-    const porEvento = new Map<string, { item: ItemAgenda; de: string; ate: string }>();
-
+    const porEvento = new Map<string, { item: ItemAgenda; dias: string[] }>();
     itens.filter(i => i.tipo === 'folga').forEach(i => {
       const id = i.evento?.id ?? i.chave;
       const atual = porEvento.get(id);
-      if (!atual) { porEvento.set(id, { item: i, de: i.data, ate: i.data }); return; }
-      // O item guardado é o do primeiro dia: é ele que o clique deve abrir.
-      if (i.data < atual.de)  { atual.de = i.data; atual.item = i; }
-      if (i.data > atual.ate) { atual.ate = i.data; }
+      if (atual) atual.dias.push(i.data);
+      else porEvento.set(id, { item: i, dias: [i.data] });
     });
 
-    return [...porEvento.values()]
+    const blocos: { item: ItemAgenda; de: string; ate: string }[] = [];
+    for (const { item, dias } of porEvento.values()) {
+      const ordenados = [...dias].sort();
+      let de = ordenados[0];
+      let ate = ordenados[0];
+      const fechar = () => blocos.push({
+        // O clique abre o primeiro dia DESTE bloco, não o do evento inteiro.
+        item: { ...item, chave: `${item.evento?.id ?? item.chave}@${de}`, data: de },
+        de,
+        /*
+          O fim REAL, e não o último dia que coube na janela.
+
+          `diasOcupados` recorta em `fim`, que é o dia 7 do mês seguinte ao que
+          está aberto na agenda. Uma folga de 14/09 a 20/10 saía daqui com
+          `ate = 07/10` e a faixa anunciava a volta 13 dias antes — numa faixa
+          que existe justamente para alguém não marcar entrega no dia errado.
+          Para evento sem recorrência o fim está em `data_fim`, e é ele que vale.
+        */
+        ate: !item.evento?.recorrencia_tipo && item.evento?.data_fim
+          ? (item.evento.data_fim > ate ? item.evento.data_fim : ate)
+          : ate,
+      });
+
+      for (const d of ordenados.slice(1)) {
+        if (d === toYMD(new Date(daYMD(ate).getTime() + 86_400_000))) { ate = d; continue; }
+        fechar(); de = d; ate = d;
+      }
+      fechar();
+    }
+
+    return blocos
+      /*
+        Folga que já acabou não é aviso, é histórico — e a Agenda logo abaixo
+        continua desenhando o passado, que é onde ele pertence.
+
+        O corte é pelo `ate` e NUNCA pelo `de`: folga que começou semana passada
+        e ainda está correndo é exatamente a que precisa continuar aqui. E é
+        `>=` e não `>`, senão quem está fora HOJE some da faixa — o bug que
+        ninguém reporta, porque o aviso simplesmente não aparece.
+      */
+      .filter(({ ate }) => ate >= hoje)
       .sort((a, b) => a.de.localeCompare(b.de))
       .map(({ item, de, ate }) => {
         const id = item.evento?.pessoa_id;
@@ -252,10 +298,19 @@ export default function InicioPage() {
           chave: item.chave,
           item,
           quem: cheio.split(' ')[0],
-          quando: de === ate ? diaDaSemana(de) : `de ${periodoCurto(de, ate)}`,
+          /*
+            Folga em curso diz o que SOBROU, não o intervalo inteiro.
+
+            "de 14 a 18 de set" no dia 16 mistura passado e futuro numa faixa
+            que passou a ser só sobre o que vem. O que a pessoa precisa saber é
+            até quando.
+          */
+          quando: de === ate ? diaDaSemana(de)
+                : de < hoje  ? `até ${diaDaSemana(ate)}`
+                : `de ${periodoCurto(de, ate)}`,
         };
       });
-  }, [itens, nomes]);
+  }, [itens, nomes, hoje]);
 
   /**
    * As paradas que chegam nos próximos dias, com o "quando" já escrito.
@@ -432,8 +487,17 @@ export default function InicioPage() {
         {/* ---- quem está fora ---- */}
         {fora.length > 0 && (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-teal-400/25 bg-teal-400/[0.06] px-4 py-2.5 text-sm">
+            {/*
+              Era sempre "fora neste mês", e a faixa lê o mês ABERTO na agenda:
+              navegar para dezembro trocava o conteúdo e o rótulo continuava
+              dizendo "neste". Agora ele diz qual mês — e no mês corrente, que
+              é onde a faixa vira aviso, diz que o corte é daqui pra frente.
+            */}
             <span className="font-mono text-[10px] uppercase tracking-wider text-teal-300/80">
-              fora neste mês
+              {ancora.getMonth() === new Date().getMonth()
+                && ancora.getFullYear() === new Date().getFullYear()
+                ? 'fora daqui pra frente'
+                : `fora em ${MESES[ancora.getMonth()]}`}
             </span>
             {fora.map((f, i) => (
               <button
