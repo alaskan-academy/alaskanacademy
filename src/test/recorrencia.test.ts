@@ -66,6 +66,47 @@ describe('ocorrencias', () => {
     ]);
   });
 
+  it('anual cai no mesmo dia e mês, ano após ano', () => {
+    const natal = { ...base, inicio: '2026-12-25', recorrencia_tipo: 'anual' };
+    expect(ocorrencias(natal, '2026-01-01', '2029-12-31')).toEqual([
+      '2026-12-25', '2027-12-25', '2028-12-25', '2029-12-25',
+    ]);
+  });
+
+  it('anual alcança um ano distante sem precisar de janela larga', () => {
+    // A consulta traz TODA série recorrente, independente da janela. Um feriado
+    // cadastrado anos atrás tem que continuar caindo no ano que está na tela.
+    const natal = { ...base, inicio: '2020-12-25', recorrencia_tipo: 'anual' };
+    expect(ocorrencias(natal, '2026-12-01', '2026-12-31')).toEqual(['2026-12-25']);
+  });
+
+  /**
+   * 29 de fevereiro é o caso que quebra a implementação ingênua.
+   *
+   * Somar um ano em cima do valor corrente faz 29/02 virar 01/03, e daí em
+   * diante a série inteira anda em 1º de março — um evento que muda de data
+   * sozinho e ninguém percebe. Contando sempre a partir da base, ele
+   * simplesmente não cai nos anos sem 29 de fevereiro.
+   */
+  it('anual em 29 de fevereiro só cai em ano bissexto, e nunca escorrega para março', () => {
+    const r = { ...base, inicio: '2024-02-29', recorrencia_tipo: 'anual' };
+    const dias = ocorrencias(r, '2024-01-01', '2033-12-31');
+    expect(dias).toEqual(['2024-02-29', '2028-02-29', '2032-02-29']);
+    expect(dias.some(d => d.slice(5, 7) === '03')).toBe(false);
+  });
+
+  it('anual respeita o fim da série', () => {
+    const r = { ...base, inicio: '2026-12-25', recorrencia_tipo: 'anual',
+                recorrencia_fim: '2028-01-01' };
+    expect(ocorrencias(r, '2026-01-01', '2032-12-31')).toEqual(['2026-12-25', '2027-12-25']);
+  });
+
+  it('anual respeita os dias pulados', () => {
+    const r = { ...base, inicio: '2026-12-25', recorrencia_tipo: 'anual',
+                recorrencia_puladas: ['2027-12-25'] };
+    expect(ocorrencias(r, '2026-01-01', '2028-12-31')).toEqual(['2026-12-25', '2028-12-25']);
+  });
+
   it('série sem fim marcado para no fim da janela pedida', () => {
     const r = { ...base, recorrencia_tipo: 'diario' };
     expect(ocorrencias(r, '2026-09-01', '2026-09-03')).toEqual([

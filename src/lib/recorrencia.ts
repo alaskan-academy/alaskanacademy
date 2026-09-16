@@ -10,7 +10,7 @@
  * já fazia, e evita ter que expandir série em SQL só para desenhar uma semana.
  */
 
-export type TipoRecorrencia = 'diario' | 'semanal' | 'mensal';
+export type TipoRecorrencia = 'diario' | 'semanal' | 'mensal' | 'anual';
 
 export interface RegraRecorrencia {
   /** Data da primeira ocorrência, em `yyyy-MM-dd`. */
@@ -81,7 +81,20 @@ export function ocorrencias(
   const dias = tipo === 'semanal' && diasSemana.length === 0 ? [base.getDay()] : diasSemana;
 
   for (let passo = 0; passo < 400; passo++) {
-    if (tipo === 'mensal') cur.setMonth(cur.getMonth() + 1);
+    if (tipo === 'anual') {
+      /*
+        Anual conta a partir da BASE, e não do passo anterior.
+
+        Somar um ano em cima do valor corrente arrasta o erro: 29/02 mais um ano
+        vira 01/03, e daí em diante a série inteira anda em 1º de março. Voltando
+        à base a cada passo, um evento de 29/02 simplesmente não cai nos anos
+        sem 29 de fevereiro — que é a resposta certa, e a única que não inventa
+        uma data que não existe.
+      */
+      cur.setTime(base.getTime());
+      cur.setFullYear(base.getFullYear() + passo + 1);
+    }
+    else if (tipo === 'mensal') cur.setMonth(cur.getMonth() + 1);
     else cur.setDate(cur.getDate() + 1);
 
     const ymd = toYMD(cur);
@@ -91,6 +104,8 @@ export function ocorrencias(
     if (tipo === 'diario') cai = true;
     else if (tipo === 'semanal') cai = dias.includes(cur.getDay());
     else if (tipo === 'mensal') cai = cur.getDate() === base.getDate();
+    else if (tipo === 'anual') cai = cur.getMonth() === base.getMonth()
+                                  && cur.getDate() === base.getDate();
 
     if (cai && ymd >= ini && !puladas.has(ymd)) datas.push(ymd);
   }

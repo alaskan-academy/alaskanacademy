@@ -441,6 +441,11 @@ export function EventoFormModal({
                     <SelectItem value="diario">Todo dia</SelectItem>
                     <SelectItem value="semanal">Toda semana</SelectItem>
                     <SelectItem value="mensal">Todo mês</SelectItem>
+                    {/* Anual é o que a maior parte dos feriados é: 25/12 não se
+                        repete a cada 30 dias. Sem esta opção, cada Natal
+                        precisava ser cadastrado de novo — e o que ninguém
+                        cadastrava sumia da agenda do ano seguinte. */}
+                    <SelectItem value="anual">Todo ano</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
