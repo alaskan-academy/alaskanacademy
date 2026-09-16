@@ -12,6 +12,8 @@ import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import type { ProducaoNivel } from '@/features/producao/components/types';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import GlobalFilters from '@/components/GlobalFilters';
+import { situacaoDe } from '@/features/ads/situacao';
+import { hoje } from '@/lib/datas';
 import { cn } from '@/lib/utils';
 
 /**
@@ -71,6 +73,15 @@ const VINCULO: Record<Vinculo, { curto: string; comoResolver: string }> = {
 const vinculoDe = (v: Vinculo) =>
   VINCULO[v] ?? { curto: v, comoResolver: 'estado desconhecido vindo do banco' };
 
+/** Ids por consulta, para a URL do PostgREST não estourar. Mesmo número de `AvaliacaoView`. */
+const BLOCO_IDS = 200;
+
+/** "05/09". O ano só quando não é o corrente — a coluna é estreita. */
+function diaCurto(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return a === String(new Date().getFullYear()) ? `${d}/${m}` : `${d}/${m}/${a.slice(2)}`;
+}
+
 interface Anuncio {
   ad_id: string; ad_nome: string; conta_id: string; conta: string;
   estreia: string;
@@ -91,6 +102,21 @@ interface Anuncio {
   conta_cpm: number | null; conta_cpc: number | null;
   /** Quanto das vendas da conta chega com anúncio identificado, no período. */
   conta_pct_atribuido: number;
+  /**
+   * A situação do anúncio HOJE, não no período filtrado.
+   *
+   * Os números desta tela são do recorte de datas; este campo é de agora. São
+   * dois tempos na mesma linha, e por isso o selo fica colado ao nome, fora do
+   * bloco de métricas, e o cabeçalho diz as duas datas.
+   *
+   * Vem de `vw_meta_status` por `ad_id`, numa consulta à parte em vez de dentro
+   * de `fn_criativos_meta`: mudar o `RETURNS TABLE` da função exige derrubá-la e
+   * recriá-la inteira, e ela tem 7.6 mil caracteres de CTEs que ninguém tem
+   * motivo para reescrever por causa de duas colunas.
+   */
+  situacao: string | null;
+  /** Último dia em que este anúncio gastou, de qualquer período. Responde "quando parou?". */
+  ultimo_gasto: string | null;
 }
 
 /**
@@ -167,6 +193,18 @@ function somarCriativo(grupo: Anuncio[]): Criativo {
     conta_cpm: ref(a => a.conta_cpm),
     conta_cpc: ref(a => a.conta_cpc),
     conta_pct_atribuido: ref(a => a.conta_pct_atribuido) ?? base.conta_pct_atribuido,
+    /*
+      `situacao` NÃO é herdada de `base`.
+
+      `base` é o anúncio que mais gastou, e 65 cards têm anúncios em situações
+      diferentes: herdar faria um criativo com um anúncio no ar e outro pausado
+      dizer "parado" sempre que o pausado tivesse gasto mais. A situação do
+      criativo é resolvida depois, em `criativos`, lendo `vw_producao_estado_ads`
+      — a mesma regra do banco, não uma segunda cópia dela aqui.
+    */
+    situacao: null,
+    ultimo_gasto: grupo.reduce<string | null>(
+      (m, a) => (a.ultimo_gasto && (!m || a.ultimo_gasto > m) ? a.ultimo_gasto : m), null),
     anuncios: ordenado,
   };
 }
@@ -379,7 +417,10 @@ export function CriativosMetaTab() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [busca, setBusca] = useState('');
+  /** A situação de HOJE de cada card, resolvida pelo banco. Chave: `producao_id`. */
+  const [estadoDoCard, setEstadoDoCard] = useState<Map<string, string>>(new Map());
   const [soMeus, setSoMeus] = useState(false);
+  const [soNoAr, setSoNoAr] = useState(false);
   const [editoresFiltro, setEditoresFiltro] = useState<string[]>([]);
   const [soPendentes, setSoPendentes] = useState(false);
   const [verPoucoInvestimento, setVerPoucoInvestimento] = useState(false);
@@ -432,12 +473,59 @@ export function CriativosMetaTab() {
         porConta.set(a.conta_id, t);
       });
 
+      /*
+        A situação de HOJE, em blocos: uma URL com centenas de ids não passa,
+        o mesmo motivo do histórico em `AvaliacaoView`.
+
+        Falha aqui não derruba a tela: sem este dado o selo some e o resto
+        continua servindo. Mas o erro vai para o console — coluna que some em
+        silêncio é pior que coluna vazia.
+      */
+      const ids = lista.map(a => a.ad_id);
+      const hoje = new Map<string, { situacao: string; ultimo_gasto: string | null }>();
+      const blocos = await Promise.all(
+        Array.from({ length: Math.ceil(ids.length / BLOCO_IDS) }, (_, i) =>
+          supabase.from('vw_meta_status')
+            .select('objeto_id,situacao,ultimo_gasto')
+            .eq('nivel', 'ad')
+            .in('objeto_id', ids.slice(i * BLOCO_IDS, (i + 1) * BLOCO_IDS)),
+        ),
+      );
+      for (const b of blocos) {
+        if (b.error) { console.error('vw_meta_status:', b.error.message); continue; }
+        for (const s of (b.data ?? []) as
+             { objeto_id: string; situacao: string; ultimo_gasto: string | null }[]) {
+          hoje.set(s.objeto_id, { situacao: s.situacao, ultimo_gasto: s.ultimo_gasto });
+        }
+      }
+
+      /* E o estado já resumido por card, para o criativo agregado não ter que
+         reimplementar a precedência aqui. */
+      const cards = [...new Set(lista.map(a => a.producao_id).filter(Boolean))] as string[];
+      const porCard = new Map<string, string>();
+      const blocosCard = await Promise.all(
+        Array.from({ length: Math.ceil(cards.length / BLOCO_IDS) }, (_, i) =>
+          supabase.from('vw_producao_estado_ads')
+            .select('producao_id,estado')
+            .in('producao_id', cards.slice(i * BLOCO_IDS, (i + 1) * BLOCO_IDS)),
+        ),
+      );
+      for (const b of blocosCard) {
+        if (b.error) { console.error('vw_producao_estado_ads:', b.error.message); continue; }
+        for (const e of (b.data ?? []) as { producao_id: string; estado: string }[]) {
+          porCard.set(e.producao_id, e.estado);
+        }
+      }
+      setEstadoDoCard(porCard);
+
       setDados(lista.map(a => {
         const t = porConta.get(a.conta_id);
         return {
           ...a,
           conta_cpm: t && t.imp > 0 ? (t.inv / t.imp) * 1000 : null,
           conta_cpc: t && t.cli > 0 ? t.inv / t.cli : null,
+          situacao: hoje.get(a.ad_id)?.situacao ?? null,
+          ultimo_gasto: hoje.get(a.ad_id)?.ultimo_gasto ?? null,
         };
       }));
     }
@@ -454,8 +542,21 @@ export function CriativosMetaTab() {
       const g = m.get(k);
       if (g) g.push(a); else m.set(k, [a]);
     });
-    return [...m.values()].map(somarCriativo);
-  }, [dados]);
+    return [...m.values()].map(somarCriativo).map(c => ({
+      ...c,
+      /*
+        A situação do criativo vem de `vw_producao_estado_ads`, que resolve a
+        precedência no banco: "rodando" ganha de tudo, depois a pior das que
+        pedem ação. Escrever essa ordem aqui também seria a mesma regra em dois
+        lugares — e elas divergiriam, que é como `vw_producao_estado_ads` e
+        `vw_meta_status` chegaram a discordar em 112 anúncios.
+
+        Sem card não há linha na view, e aí o grupo é de um anúncio só: a
+        situação dele mesmo responde.
+      */
+      situacao: c.producao_id ? (estadoDoCard.get(c.producao_id) ?? null) : c.anuncios[0].situacao,
+    }));
+  }, [dados, estadoDoCard]);
 
 
   /**
@@ -466,11 +567,12 @@ export function CriativosMetaTab() {
    * apagaria o recorte que a pessoa escolheu de propósito.
    */
   const filtrosAtivos =
-    (busca ? 1 : 0) + (soMeus ? 1 : 0) + (editoresFiltro.length ? 1 : 0);
+    (busca ? 1 : 0) + (soMeus ? 1 : 0) + (editoresFiltro.length ? 1 : 0) + (soNoAr ? 1 : 0);
 
   const limparFiltros = () => {
     setBusca('');
     setSoMeus(false);
+    setSoNoAr(false);
     setEditoresFiltro([]);
   };
 
@@ -500,14 +602,35 @@ export function CriativosMetaTab() {
     if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
     if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
     if (editoresFiltro.length) l = l.filter(a => a.editor_id && editoresFiltro.includes(a.editor_id));
+    if (soNoAr) l = l.filter(a => a.situacao === 'rodando');
     if (busca.trim()) {
       const b = busca.trim().toLowerCase();
-      l = l.filter(a => a.ad_nome?.toLowerCase().includes(b)
-                     || a.editor?.toLowerCase().includes(b)
-                     || a.conta?.toLowerCase().includes(b));
+      /*
+        A busca casa QUALQUER anúncio do criativo, e não só o `ad_nome` do
+        agregado — que é o do anúncio de maior gasto. Procurar pelo nome de um
+        anúncio que existe e não aparecer é a pior resposta possível para quem
+        digitou o nome exato.
+      */
+      l = l.filter(a => a.editor?.toLowerCase().includes(b)
+                     || a.conta?.toLowerCase().includes(b)
+                     || a.anuncios.some(x => x.ad_nome?.toLowerCase().includes(b)
+                                          || x.ad_id === busca.trim()));
     }
     return l;
-  }, [criativos, verPoucoInvestimento, soMeus, user, editoresFiltro, busca]);
+  }, [criativos, verPoucoInvestimento, soMeus, user, editoresFiltro, busca, soNoAr]);
+
+  /**
+   * Quantos ainda rodam, contado sobre a lista já peneirada e sem o próprio
+   * filtro — senão o número mudaria ao clicar nele, que foi o bug que o aviso
+   * de "sem editor" já teve nesta tela.
+   */
+  const noArAgora = useMemo(() => {
+    let l: Criativo[] = criativos;
+    if (!verPoucoInvestimento) l = l.filter(a => a.investimento >= INVESTIMENTO_RELEVANTE);
+    if (soMeus && user) l = l.filter(a => a.editor_id === user.id);
+    if (editoresFiltro.length) l = l.filter(a => a.editor_id && editoresFiltro.includes(a.editor_id));
+    return l.filter(a => a.situacao === 'rodando').length;
+  }, [criativos, verPoucoInvestimento, soMeus, user, editoresFiltro]);
 
   const pendentes = useMemo(() => {
     const g: Record<string, Criativo[]> = {};
@@ -722,6 +845,19 @@ export function CriativosMetaTab() {
           </ChipFiltro>
         )}
 
+        {/*
+          A pergunta que o editor faz ao abrir esta tela é "isto ainda roda?", e
+          até aqui ela só era respondida abrindo o Gerenciador. O número vem
+          contado sobre a lista já peneirada, e sem o próprio filtro — senão ele
+          mudaria ao ser clicado.
+
+          Coluna sem filtro é a segunda armadilha: dá para ver e não dá para
+          agir. Por isso o selo e o chip nascem juntos.
+        */}
+        <ChipFiltro ativo={soNoAr} onClick={() => setSoNoAr(v => !v)}>
+          Só o que ainda roda{noArAgora > 0 && ` (${noArAgora})`}
+        </ChipFiltro>
+
         {filtrosAtivos > 0 && (
           <Button size="sm" variant="ghost"
                   className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
@@ -759,6 +895,22 @@ export function CriativosMetaTab() {
           {' · '}{formatNumber(totais.vendas)} vendas registradas
         </span>
       </div>
+
+      {/*
+        OS DOIS TEMPOS, ditos em voz alta.
+
+        Os números desta tela são do período filtrado; o selo de situação é de
+        agora. Sem esta linha, um editor que filtra agosto lê "parado" e pode
+        entender "parado em agosto" — quando o que está escrito é "parado hoje".
+        Duas datas visíveis, nunca uma só.
+      */}
+      {!loading && !erro && (
+        <p className="text-[11px] text-muted-foreground/70">
+          Números de {startDateStr?.split('-').reverse().join('/')} a{' '}
+          {endDateStr?.split('-').reverse().join('/')} · situação e último gasto são de hoje,{' '}
+          {diaCurto(hoje())}
+        </p>
+      )}
 
       {!loading && !erro && visiveis.length > 0 && (
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -1054,7 +1206,22 @@ function LinhaAnuncio({ a, expandido, onToggle, onVincular, onAbrirCard, podeTro
                 </span>
               )}
               {a.projeto && <span className="text-muted-foreground">· {a.projeto}</span>}
-              {a.status_veiculacao && <span className="text-muted-foreground">· {a.status_veiculacao}</span>}
+              {/*
+                Aqui havia `· {a.status_veiculacao}`: um campo do CARD, digitado
+                à mão, colado numa linha de ANÚNCIO ao lado de ROAS e CPA reais —
+                e lido como se fosse fato. Em 16/09/2026 ele errava em 9 dos 28
+                cards marcados "Pausado" que tinham anúncio no ar.
+
+                No lugar dele, a situação que a Meta confirma, com a data do
+                último gasto ao lado: "parado" sozinho não diz se foi ontem ou em
+                junho, e é essa diferença que decide o que fazer com o criativo.
+              */}
+              {a.situacao && (
+                <span className={situacaoDe(a.situacao)!.texto} title={situacaoDe(a.situacao)!.explica}>
+                  · {situacaoDe(a.situacao)!.rotulo.toLowerCase()}
+                  {a.ultimo_gasto && ` · ${diaCurto(a.ultimo_gasto)}`}
+                </span>
+              )}
             </div>
 
             {/* O funil do criativo, na ordem em que a pessoa atravessa. Onde ele cai é

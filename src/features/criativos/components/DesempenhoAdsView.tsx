@@ -43,7 +43,6 @@ interface PostadoRow {
   angulo_teste: string | null;
   nivel_consciencia: string | null;
   avaliacao: string | null;
-  status_veiculacao: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
   funil_ids: string[];
@@ -470,7 +469,11 @@ export function DesempenhoAdsView() {
     if (projetosDaEmpresa === undefined) return;
     setLoading(true);
 
-    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,status_veiculacao,data_inicio,responsavel_id,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
+    /* `status_veiculacao` saiu daqui: era carregado e nunca renderizado. Campo
+       que trafega sem aparecer é campo que alguém vai acabar mostrando sem
+       saber que ele é digitado à mão — e ele erra. O fato mora em
+       `vw_producao_estado_ads`. */
+    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,data_inicio,responsavel_id,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
 
     // Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
     // fora de todos os gráficos e de todas as taxas desta tela.
