@@ -658,6 +658,13 @@ Extra barato: `vazio` e `carregando` das 4 colunas novas já vêm de graça se e
 
 **Chave:** `ad-morrendo` · **Esforço:** medio
 
+> **SUPERADO PELA CALIBRAÇÃO DE 17/09/2026.** O desenho abaixo continua sendo a
+> melhor versão da regra, e foi medido como tal — mas a medição diz para não
+> construí-la: ela dispararia 0,5 vez por dia, com acerto dentro do ruído, e o
+> andar do dinheiro apoia-se num `faturamento_atribuido` que reivindica 107% de
+> tudo que a empresa faturou. Em vez do alerta, uma coluna. Ler primeiro
+> [`docs/calibracoes/2026-09-17-ad-morrendo.md`](../calibracoes/2026-09-17-ad-morrendo.md).
+
 ### Veredito
 Refino, e refuto metade: ROAS e CPA **diários** não podem disparar essa regra — só 32,2% dos dias-anúncio têm ao menos 1 compra (média 1,01/dia), então em ~68% dos dias o CPA é divisão por zero e o ROAS é literalmente 0,00, e "caiu 3 dias seguidos" vira ou impossível (regra estrita: 0 não é menor que 0) ou universal (regra frouxa). CTR, CPM e hookrate estão certos: vêm de milhares de impressões/dia, e 89,5% dos dias-anúncio têm dado de vídeo. O desenho correto é de dois andares — **sinal diário só com o que tem impressão no denominador (ele dispara), dinheiro só em janela de 7 dias (ele contextualiza, nunca dispara)**.
 
