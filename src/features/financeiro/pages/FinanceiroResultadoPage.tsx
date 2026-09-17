@@ -78,13 +78,13 @@ export default function FinanceiroResultadoPage() {
 
     const [fat, trans] = await Promise.all([
       buscarTudo<{ data: string; faturamento_bruto: number; juros_parcelamento: number;
-                   receita_tributavel: number; taxa_plataforma: number;
+                   receita_tributavel: number; base_simples: number; taxa_plataforma: number;
                    perda_reembolso: number; perda_chargeback: number;
                    coproducao: number; vendas_sem_dado_coproducao: number; vendas_aprovadas: number;
                    investimento_meta: number; imposto_meta_ads: number }>(
         (de, ate) => {
           let q = supabase.from('vw_faturamento_liquido')
-            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,taxa_plataforma,perda_reembolso,perda_chargeback,coproducao,vendas_sem_dado_coproducao,vendas_aprovadas,investimento_meta,imposto_meta_ads')
+            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,base_simples,taxa_plataforma,perda_reembolso,perda_chargeback,coproducao,vendas_sem_dado_coproducao,vendas_aprovadas,investimento_meta,imposto_meta_ads')
             .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
           if (empresaId) q = q.eq('empresa_id', empresaId);
           return q;
@@ -109,7 +109,8 @@ export default function FinanceiroResultadoPage() {
       const c = competencia.get(k) ?? {
         pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
         coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 0,
-        juros: 0, receita: 0, taxaPayt: 0, investMeta: 0, impostoMeta: 0,
+        juros: 0, receita: 0, baseSimples: 0,
+        taxaPayt: 0, investMeta: 0, impostoMeta: 0,
       };
       /* `faturamento_bruto` da view so conta `aprovada`, entao a venda que voltou
          atras nao esta nele. Somando as perdas de volta, o topo da cascata passa
@@ -127,6 +128,9 @@ export default function FinanceiroResultadoPage() {
                            + Number(r.perda_chargeback ?? 0);
       c.juros             += Number(r.juros_parcelamento ?? 0);
       c.receita           += Number(r.receita_tributavel ?? 0);
+      /* A base do Simples vem PRONTA da view — receita mais juros, derivado num
+         lugar só. Somar aqui criaria a segunda cópia da regra. Ver 20260917a. */
+      c.baseSimples       += Number(r.base_simples ?? 0);
       c.taxaPayt += Number(r.taxa_plataforma ?? 0);
       c.investMeta += Number(r.investimento_meta ?? 0);
       c.impostoMeta += Number(r.imposto_meta_ads ?? 0);

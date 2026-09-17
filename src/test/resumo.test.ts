@@ -67,17 +67,26 @@ describe('diasDoCustoFixo', () => {
 });
 
 describe('lucroPorDia', () => {
+  /* `baseSimples` é o faturamento MAIS os juros do parcelamento — 2% aqui. O
+     Simples incide sobre ela, e não sobre o faturamento: ver 20260917a. */
   const dias = [
-    { dia: '2026-08-01', faturamento: 10_000, vendas: 100, taxa: 600, investimento: 4_000 },
-    { dia: '2026-08-02', faturamento: 0,      vendas: 0,   taxa: 0,   investimento: 3_000 },
-    { dia: '2026-08-03', faturamento: 8_000,  vendas: 80,  taxa: 480, investimento: 2_000 },
+    { dia: '2026-08-01', faturamento: 10_000, baseSimples: 10_200, vendas: 100, taxa: 600, investimento: 4_000 },
+    { dia: '2026-08-02', faturamento: 0,      baseSimples: 0,      vendas: 0,   taxa: 0,   investimento: 3_000 },
+    { dia: '2026-08-03', faturamento: 8_000,  baseSimples:  8_160, vendas: 80,  taxa: 480, investimento: 2_000 },
   ];
   const opcoes = { simplesPct: 10, metaPct: 12.5, contarAds: true };
 
   it('o dia é receita menos taxa, Simples, imposto de mídia e a própria mídia', () => {
     const [d1] = lucroPorDia(dias, opcoes);
-    // 10.000 − 600 − 1.000 − 500 − 4.000
-    expect(d1.lucro).toBeCloseTo(3_900, 2);
+    // 10.000 − 600 − 1.020 − 500 − 4.000
+    expect(d1.lucro).toBeCloseTo(3_880, 2);
+  });
+
+  it('o Simples do dia sai da BASE, não do faturamento', () => {
+    const [d1] = lucroPorDia(dias, opcoes);
+    // pela regra antiga daria 3.900: 20 reais a menos de imposto, todo dia
+    expect(d1.lucro).toBeCloseTo(3_900 - 200 * 0.10, 2);
+    expect(d1.lucro).toBeLessThan(3_900);
   });
 
   /*
@@ -98,13 +107,16 @@ describe('lucroPorDia', () => {
     const somaDias = lucroPorDia(dias, opcoes).reduce((s, d) => s + d.lucro, 0);
 
     const receita = dias.reduce((s, d) => s + d.faturamento, 0);
+    const base = dias.reduce((s, d) => s + d.baseSimples, 0);
     const taxa = dias.reduce((s, d) => s + d.taxa, 0);
     const investimento = dias.reduce((s, d) => s + d.investimento, 0);
 
     const periodo = calcularResultado({
       receita,
       taxaPlataforma: taxa,
-      impostoSimples: impostoSobre(receita, 10),
+      /* A mesma base dos dias. Com bases diferentes aqui e lá, a soma deixaria
+         de fechar e a diferença apareceria diluída em 31 dias. */
+      impostoSimples: impostoSobre(base, 10),
       impostoMeta: impostoSobre(investimento, 12.5),
       investimento,
       custoFixo: 0,
@@ -115,7 +127,7 @@ describe('lucroPorDia', () => {
 
   it('no Back-end não há mídia, nem imposto sobre ela', () => {
     const [d1, d2] = lucroPorDia(dias, { ...opcoes, contarAds: false });
-    expect(d1.lucro).toBeCloseTo(8_400, 2); // 10.000 − 600 − 1.000
+    expect(d1.lucro).toBeCloseTo(8_380, 2); // 10.000 − 600 − 1.020
     expect(d2.lucro).toBe(0);               // dia que era só gasto some do vermelho
     expect(d2.investimento).toBe(0);
   });

@@ -68,16 +68,29 @@ export interface LinhaTransacao {
  * pelo crédito, e que nunca foi da operação. Em agosto/2026 foram R$ 5.403,26,
  * e a série cresce: 547,88 em maio, 692,64 em junho, 2.414,05 em julho.
  *
- * `receita` é o que vale para conta: é sobre ela que o Simples incide, e é ela
- * o denominador da margem e de todo percentual da tela. É a mesma convenção de
- * `vw_faturamento_liquido`, que usa `receita_tributavel` em TODOS os cálculos
- * e só exibe o bruto, e a do `/resumo`, que mostra "Pago pelos clientes",
- * desconta os juros e chama o resto de "Receita".
+ * `receita` é o que vale para PERFORMANCE: é ela o denominador da margem e de
+ * todo percentual da tela. É a mesma convenção de `vw_faturamento_liquido` e a
+ * do `/resumo`, que mostra "Pago pelos clientes", desconta os juros e chama o
+ * resto de "Receita". Uma versão antiga desta tela usou o valor COM juros como
+ * denominador dos percentuais; nada dava erro, o número só ficava maior do que
+ * a empresa faturou.
  *
- * A primeira versão desta tela usou o valor COM juros como base do imposto e
- * como denominador dos percentuais. Nada dava erro — o número só ficava maior
- * do que a empresa faturou, e a estimativa de Simples cobrava imposto sobre
- * dinheiro da adquirente: ~R$ 408 a mais só em agosto.
+ * ── E por que o IMPOSTO não sai dela ────────────────────────────────────
+ *
+ * "Quanto a empresa faturou" e "sobre quanto o fisco cobra" são perguntas
+ * diferentes, com respostas diferentes — por isso `baseSimples` existe ao lado
+ * de `receita`. A contabilidade confirmou em 17/09/2026: o Simples incide
+ * sobre o montante BRUTO, juros do parcelamento inclusos. A empresa paga
+ * imposto sobre dinheiro que nunca viu. Desagradável, e verdade.
+ *
+ * Isto derruba o parágrafo que estava aqui até 17/09/2026, que dizia que o
+ * Simples incidia sobre a receita e chamava de defeito os ~R$ 408 a mais que
+ * agosto dava. Aqueles R$ 408 eram devidos. Fica escrito porque a versão
+ * anterior era plausível — e alguém vai querer "consertar" isto de volta.
+ *
+ * O número vem de `vw_faturamento_liquido.base_simples`, e não de
+ * `receita + juros` somado aqui: a regra mora num lugar só, senão as cópias
+ * divergem. Ver a migração 20260917a.
  */
 export interface Competencia {
   /**
@@ -133,8 +146,14 @@ export interface Competencia {
    */
   vendas: number;
   juros: number;
-  /** `receita_tributavel`. É esta que a conta usa, do imposto à margem. */
+  /** `receita_tributavel`. O denominador da margem e de todo percentual. */
   receita: number;
+  /**
+   * `base_simples` da view: a receita MAIS os juros do parcelamento.
+   *
+   * Só o Simples sai daqui — nenhum percentual da tela. Ver o bloco acima.
+   */
+  baseSimples: number;
   taxaPayt: number;
   investMeta: number;
   impostoMeta: number;
@@ -264,8 +283,9 @@ export function agruparCaixa(linhas: LinhaTransacao[]): Map<string, Caixa> {
  *
  * ── Por que uma média móvel e não a alíquota configurada ────────────────
  *
- * Medido em 01/09/2026, o percentual efetivo sobe com o faturamento acumulado,
- * que é exatamente como a faixa do Simples funciona:
+ * Medido em 01/09/2026 — e reconferido em 17/09 sobre a base bruta, que é a
+ * legal —, o percentual efetivo sobe com o faturamento acumulado, que é
+ * exatamente como a faixa do Simples funciona:
  *
  *     fev  5,64%    mar  6,65%    abr  6,43%    jun  8,16%    jul  7,26%
  *
@@ -291,8 +311,8 @@ export function agruparCaixa(linhas: LinhaTransacao[]): Map<string, Caixa> {
  * FECHADO, não só com o corrente, e por isso a busca pula os vazios em vez de
  * assumir que os dois anteriores servem.
  *
- * `baseMeses` nomeia os meses da RECEITA que formaram a alíquota, não os do
- * pagamento: é sobre a receita que a tela vai falar com quem lê.
+ * `baseMeses` nomeia os meses da BASE que formaram a alíquota, não os do
+ * pagamento: é sobre o mês que gerou o imposto que a tela vai falar com quem lê.
  */
 export function simplesDoMes(
   mes: string,
@@ -304,30 +324,34 @@ export function simplesDoMes(
   const pago = caixa.get(mesSeguinte(mes))?.impostosPagos ?? 0;
   if (pago > 0) return { valor: pago, presumido: false, pct: null, baseMeses: [] };
 
-  /* Senão, a alíquota vem dos dois meses de receita mais recentes cujo imposto
-     JÁ saiu — precisa dos dois lados do par, senão a razão não significa nada. */
+  /* Senão, a alíquota vem dos dois meses mais recentes cujo imposto JÁ saiu —
+     precisa dos dois lados do par, senão a razão não significa nada.
+
+     Os dois lados são `baseSimples`: o que se mede aqui é imposto pago sobre a
+     base que o gerou. Dividir por uma base menor do que a real devolveria uma
+     alíquota maior do que a verdadeira, e ela seria reaplicada mês a mês. */
   const anteriores = historicoDeMeses.filter(m => m < mes).reverse();
   const base: string[] = [];
   let somaPago = 0;
-  let somaReceita = 0;
+  let somaBase = 0;
 
   for (const m of anteriores) {
     if (base.length === 2) break;
     const p = caixa.get(mesSeguinte(m))?.impostosPagos ?? 0;
-    const r = competencia.get(m)?.receita ?? 0;
-    if (p <= 0 || r <= 0) continue;
+    const b = competencia.get(m)?.baseSimples ?? 0;
+    if (p <= 0 || b <= 0) continue;
     base.unshift(m);
     somaPago += p;
-    somaReceita += r;
+    somaBase += b;
   }
 
-  if (base.length === 0 || somaReceita <= 0) {
+  if (base.length === 0 || somaBase <= 0) {
     return { valor: 0, presumido: true, pct: null, baseMeses: [] };
   }
 
-  const pct = somaPago / somaReceita;
-  const receitaBase = competencia.get(mes)?.receita ?? 0;
-  return { valor: pct * receitaBase, presumido: true, pct: pct * 100, baseMeses: base };
+  const pct = somaPago / somaBase;
+  const baseDoMes = competencia.get(mes)?.baseSimples ?? 0;
+  return { valor: pct * baseDoMes, presumido: true, pct: pct * 100, baseMeses: base };
 }
 
 export interface Resultado {
@@ -396,7 +420,7 @@ export function montarResultado(
   const c = competencia.get(mes)
     ?? { pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
          coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 0, juros: 0, receita: 0,
-         taxaPayt: 0, investMeta: 0, impostoMeta: 0 };
+         baseSimples: 0, taxaPayt: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
     ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
   const simples = simplesDoMes(mes, caixa, competencia, historicoDeMeses);

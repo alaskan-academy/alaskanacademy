@@ -13,13 +13,14 @@ import {
   type Competencia, type LinhaTransacao,
 } from '@/features/financeiro/lib/resultado';
 
-/** Atalho dos testes: o valor passado e a RECEITA (sem juros), que e a base de
- *  tudo. `pagoPelosClientes` so e exibido, entao os casos aqui o deixam igual a
- *  receita, menos onde o juros e o proprio assunto. */
+/** Atalho dos testes: o valor passado e a RECEITA (sem juros), denominador de
+ *  todo percentual. Sem juros no caso, `baseSimples` e igual a ela — os casos
+ *  em que o juros e o proprio assunto passam as duas explicitamente.
+ *  `pagoPelosClientes` so e exibido, entao aqui ele fica igual a receita. */
 const comp = (receita: number, resto: Partial<Competencia> = {}): Competencia => ({
   pagoPelosClientes: receita, perdaReembolso: 0, perdaChargeback: 0,
   coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 1,
-  juros: 0, receita,
+  juros: 0, receita, baseSimples: receita,
   taxaPayt: 0, investMeta: 0, impostoMeta: 0, ...resto,
 });
 
@@ -216,7 +217,7 @@ describe('a cadeia de saldos', () => {
     ['2026-08', {
       pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
       coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 2_094,
-      juros: 5_403.26, receita: 198_851.66,
+      juros: 5_403.26, receita: 198_851.66, baseSimples: 204_254.92,
       taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
     }],
@@ -278,20 +279,28 @@ describe('a cadeia de saldos', () => {
 describe('os juros de parcelamento', () => {
   /* Agosto/2026 real: o cliente pagou R$ 204.254,92 e a empresa faturou
      R$ 198.851,66. Os R$ 5.403,26 de diferença sao da adquirente, e a serie
-     cresce com o parcelamento: 547,88 em maio, 2.414,05 em julho. */
+     cresce com o parcelamento: 547,88 em maio, 2.414,05 em julho.
+
+     Junho e julho entram com pagamento de imposto DE VERDADE (4.756,25 em
+     julho, que e o de junho; 8.486,88 em agosto, que e o de julho) porque sem
+     eles `simplesDoMes` nao acha par nenhum e devolve pct nulo — e `null / 100`
+     da 0 em JavaScript, entao as asserções abaixo comparavam 0 com 0 e
+     passavam sem medir nada. Foi assim ate 17/09/2026. */
   const competencia = new Map<string, Competencia>([
-    ['2026-07', comp(114_554.38)],
+    ['2026-06', comp(57_588.79,  { juros:   692.64, baseSimples:  58_281.43 })],
+    ['2026-07', comp(114_554.38, { juros: 2_414.05, baseSimples: 116_968.43 })],
     ['2026-08', {
       pagoPelosClientes: 207_070.16, perdaReembolso: 2_415.28, perdaChargeback: 399.96,
       coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 2_094,
-      juros: 5_403.26, receita: 198_851.66,
+      juros: 5_403.26, receita: 198_851.66, baseSimples: 204_254.92,
       taxaPayt: 12_380.57,
       investMeta: 118_939.04, impostoMeta: 16_651.48,
     }],
   ]);
   const caixa = agruparCaixa([
     { data: '2026-08-10', valor: -12_372.86, categoria: 'Aplicativos e Ferramentas' },
-    { data: '2026-07-20', valor:  -8_486.88, categoria: 'Impostos e Tributos' },
+    { data: '2026-07-20', valor:  -4_756.25, categoria: 'Impostos e Tributos' },
+    { data: '2026-08-20', valor:  -8_486.88, categoria: 'Impostos e Tributos' },
   ]);
   const r = montarResultado('2026-08', competencia, caixa, janelaDeMeses('2026-08', 12));
 
@@ -307,12 +316,21 @@ describe('os juros de parcelamento', () => {
     expect(r.margem).toBeGreaterThan((r.resultado / 204_254.92) * 100);
   });
 
-  it('o imposto estimado incide sobre a receita, nao sobre o pago', () => {
+  it('o imposto estimado incide sobre o BRUTO, e nao sobre a receita', () => {
+    /* A contabilidade confirmou em 17/09/2026: a base do Simples e o montante
+       bruto. A empresa paga imposto sobre os juros, que ficaram com a
+       adquirente. Este teste afirmava o contrario ate aquele dia. */
     expect(r.simples.presumido).toBe(true);
-    const pct = r.simples.pct! / 100;
-    expect(r.simples.valor).toBeCloseTo(198_851.66 * pct, 2);
-    // a diferenca que o defeito causava: imposto sobre dinheiro da adquirente
-    expect(204_254.92 * pct - r.simples.valor).toBeCloseTo(5_403.26 * pct, 2);
+    expect(r.simples.baseMeses).toEqual(['2026-06', '2026-07']);
+
+    // a aliquota tambem e medida sobre a base bruta dos dois meses do par
+    const pct = (4_756.25 + 8_486.88) / (58_281.43 + 116_968.43);
+    expect(r.simples.pct).toBeCloseTo(pct * 100, 6);
+
+    expect(r.simples.valor).toBeCloseTo(204_254.92 * pct, 2);
+    // e o que a mudanca custou: imposto sobre dinheiro que a empresa nao viu
+    expect(r.simples.valor - 198_851.66 * pct).toBeCloseTo(5_403.26 * pct, 2);
+    expect(r.simples.valor).toBeGreaterThan(198_851.66 * pct);
   });
 
   it('os valores continuam visiveis, para ninguem perder o de cima', () => {
@@ -331,7 +349,7 @@ describe('a coprodução', () => {
     ['2026-08', {
       pagoPelosClientes: 4_176.66, perdaReembolso: 0, perdaChargeback: 0,
       coproducao: 377.50, vendasSemDadoCoproducao: 0, vendas: 13,
-      juros: 0, receita: 3_799.16,
+      juros: 0, receita: 3_799.16, baseSimples: 3_799.16,
       taxaPayt: 211.93,
       investMeta: 3_370.51, impostoMeta: 471.87,
     }],

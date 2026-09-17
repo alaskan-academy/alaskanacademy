@@ -56,6 +56,13 @@ export function diasDoCustoFixo(
 export interface DiaBruto {
   dia: string;
   faturamento: number;
+  /**
+   * A base do Simples do dia: o faturamento MAIS os juros do parcelamento.
+   *
+   * Vem pronta de `fn_overview.por_dia`. O imposto incide sobre o bruto, e não
+   * sobre o que a empresa faturou — ver a migração 20260917a.
+   */
+  baseSimples: number;
   vendas: number;
   taxa: number;
   investimento: number;
@@ -96,7 +103,7 @@ export function lucroPorDia(
       lucro:
         d.faturamento
         - d.taxa
-        - impostoSobre(d.faturamento, simplesPct)
+        - impostoSobre(d.baseSimples, simplesPct)
         - impostoSobre(investimento, metaPct)
         - investimento,
     };

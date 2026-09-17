@@ -326,18 +326,23 @@ export default function OverviewPage() {
     const fiscal = d.fiscal ?? {};
 
     /*
-      O Simples sai da receita DESTE recorte, e não do rateio do total.
+      O Simples sai da base DESTE recorte, e não do rateio do total.
 
       Mesmo defeito do imposto do Meta, na linha de cima da cascata: com a conta
       Saponaria em agosto, o rótulo dizia "Simples (10.00%)" e o número era
-      R$ 6.379,00 sobre R$ 64.050,95 — 9,96%. A diferença vinha de ratear um
-      imposto que incide sobre a RECEITA usando a participação no faturamento
-      BRUTO, que inclui juros de parcelamento.
+      R$ 6.379,00 sobre R$ 64.050,95 — 9,96%. A diferença vinha de ratear pela
+      participação no faturamento um imposto que incide sobre outra grandeza.
 
-      Conferido: a própria view faz essa conta assim — em agosto,
-      R$ 173.777,54 x 10% = R$ 17.377,75 contra os R$ 17.377,76 que ela soma.
+      E a grandeza NÃO é a receita: é `base_simples`, que soma os juros do
+      parcelamento de volta. A contabilidade confirmou em 17/09/2026 que o
+      Simples incide sobre o montante bruto — a empresa paga sobre dinheiro que
+      ficou com a adquirente. Este comentário dizia "incide sobre a RECEITA" até
+      aquele dia, e estava errado. Ver a migração 20260917a.
+
+      Conferido: a própria `fn_overview` faz essa conta assim — em agosto/2026,
+      R$ 202.752,24 x 9% = R$ 18.247,70, o mesmo que ela devolve.
     */
-    const impSimples = impostoSobre(receita, num(fiscal.simples_pct));
+    const impSimples = impostoSobre(num(d.base_simples), num(fiscal.simples_pct));
     // Custo de anúncio não existe no back-end, e o imposto sobre ele também não. O
     // imposto do Meta incide sobre o gasto, não sobre a receita — ratear pela
     // participação no faturamento fazia o back-end pagar imposto de mídia que ele
@@ -525,6 +530,7 @@ export default function OverviewPage() {
         (d.por_dia ?? []).map((x: any) => ({
           dia: x.dia,
           faturamento: num(x.faturamento),
+          baseSimples: num(x.base_simples),
           vendas: num(x.vendas),
           taxa: num(x.taxa),
           investimento: num(x.investimento),

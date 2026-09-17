@@ -151,6 +151,9 @@ function FiscalTab() {
     custo_fixo_mensal: 0,
   });
   const [fatBruto, setFatBruto]     = useState(0);
+  /** A base do Simples: o faturamento MAIS os juros do parcelamento. A prévia
+      simulava o imposto sobre o faturamento e o subestimava. Ver 20260917a. */
+  const [baseSimples, setBaseSimples] = useState(0);
   const [taxaPlat, setTaxaPlat]     = useState(0);
   const [investMeta, setInvestMeta] = useState(0);
   const [reembolsos, setReembolsos] = useState(0);
@@ -165,7 +168,7 @@ function FiscalTab() {
         chegasse, e qual é a última é sorteio do Postgres.
       */
       let qFat = supabase.from("vw_faturamento_liquido")
-        .select("faturamento_bruto,taxa_plataforma,investimento_meta,reembolsos");
+        .select("faturamento_bruto,base_simples,taxa_plataforma,investimento_meta,reembolsos");
       if (empresaId) qFat = qFat.eq("empresa_id", empresaId);
 
       const [r1, r2, r3] = await Promise.all([
@@ -192,6 +195,8 @@ function FiscalTab() {
       });
       const fatRows = r2.data || [];
       setFatBruto(fatRows.reduce((s: number, r: any)  => s + Number(r.faturamento_bruto  || 0), 0));
+      setBaseSimples(fatRows.reduce(
+        (s: number, r: { base_simples?: number | string | null }) => s + Number(r.base_simples || 0), 0));
       setTaxaPlat(fatRows.reduce((s: number, r: any)  => s + Number(r.taxa_plataforma    || 0), 0));
       setInvestMeta(fatRows.reduce((s: number, r: any) => s + Number(r.investimento_meta  || 0), 0));
       setReembolsos(fatRows.reduce((s: number, r: any) => s + Number(r.reembolsos         || 0), 0));
@@ -264,7 +269,9 @@ function FiscalTab() {
   };
 
   const taxaPlatPct   = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
-  const impostoSimples = fatBruto * (form.imposto_simples_nacional_pct / 100);
+  /* Sobre a BASE, não sobre o faturamento: o Simples incide no bruto, juros do
+     parcelamento inclusos. Ver a migração 20260917a. */
+  const impostoSimples = baseSimples * (form.imposto_simples_nacional_pct / 100);
   const impostoMeta    = investMeta * (form.imposto_meta_ads_pct / 100);
   const fatLiqPreview  = fatBruto - taxaPlat - reembolsos - impostoSimples - impostoMeta - investMeta - form.custo_fixo_mensal;
   const margemPreview  = fatBruto > 0 ? (fatLiqPreview / fatBruto) * 100 : 0;
