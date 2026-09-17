@@ -598,8 +598,10 @@ export function AvaliacaoView({ userId }: Props) {
               width="w-36"
             />
           )}
+          {/* "Marcação" e não "Status" pelo mesmo motivo do cabeçalho: o filtro
+              peneira pelo que alguém digitou, não pelo que a Meta diz. */}
           <MultiFilter
-            label="Status"
+            label="Marcação"
             options={opStatus.map(a => ({ id: a, nome: a }))}
             value={filtroStatus}
             onChange={setFiltroStatus}
@@ -745,7 +747,15 @@ export function AvaliacaoView({ userId }: Props) {
             <span>Nome</span>
             <span>Projeto</span>
             <span>Editor</span>
-            <span>Status</span>
+            {/*
+              Era "Status", e o nome é metade do problema: ao lado de ROAS e CPA
+              reais, "Status" se lê como fato. Ele é o que ALGUÉM MARCOU, e em
+              16/09/2026 errava em 9 dos 28 cards marcados "Pausado" que tinham
+              anúncio no ar. O fato é a linha de baixo, derivada da Meta.
+            */}
+            <span title="O que você marcou. O que a Meta diz aparece logo abaixo de cada marcação.">
+              Marcação
+            </span>
             <span>Avaliação</span>
             {podePedir && <span className="text-right" title="Pedir variação">Var.</span>}
           </div>

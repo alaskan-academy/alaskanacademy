@@ -1163,8 +1163,11 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
           />
         )}
         {opStatus.length > 0 && (
+          /* "Marcação" e não "Status": `status_veiculacao` é digitado à mão e
+             diz o que a pessoa decidiu. O que a Meta confirma vive em
+             `vw_producao_estado_ads`. */
           <MultiFilter
-            label="Status"
+            label="Marcação"
             options={opStatus.map(a => ({ id: a, nome: a }))}
             value={filtroStatus}
             onChange={setFiltroStatus}

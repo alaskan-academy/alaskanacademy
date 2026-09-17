@@ -409,7 +409,10 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
               <p className="text-[9.5px] uppercase tracking-wide text-muted-foreground/60 font-semibold">Veiculação</p>
               <div className="grid grid-cols-2 gap-3">
-                <Sel label="Status de Veiculação" field="status_veiculacao" options={opStatusVeiculacao} />
+                {/* "Marcação" e não "Status de Veiculação": campo digitado à mão,
+                    que diz o que a pessoa decidiu. O que a Meta confirma vive em
+                    `vw_producao_estado_ads` e aparece na aba Avaliação. */}
+                <Sel label="Marcação" field="status_veiculacao" options={opStatusVeiculacao} />
                 <Sel label="Avaliação"            field="avaliacao"         options={opAvaliacao}        />
               </div>
             </div>

@@ -823,7 +823,15 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-3">
           {slLabel('Veiculação')}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            <Field label="Status" editing={editing}>
+            {/*
+              "Marcação" e não "Status": este campo é digitado à mão e diz o que
+              a pessoa DECIDIU, não o que está acontecendo. Chamado de "Status",
+              num bloco chamado "Veiculação", ele era lido como fato — e em
+              16/09/2026 errava em 9 dos 28 cards marcados "Pausado" que tinham
+              anúncio no ar. O fato vive em `vw_producao_estado_ads`, e aparece
+              na aba Avaliação e na tela dos editores.
+            */}
+            <Field label="Marcação" editing={editing}>
               {editing ? (
                 <div className="flex items-center gap-1 mt-0.5">
                   <Select
@@ -838,7 +846,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                       ))}
                     </SelectContent>
                   </Select>
-                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="status_veiculacao" label="Status de Veiculação" onAtualizar={loadOpcoes} />}
+                  {nivel === 'socio' && <GerenciarOpcoesPopover campo="status_veiculacao" label="Marcação" onAtualizar={loadOpcoes} />}
                 </div>
               ) : (
                 <span>{criativo.status_veiculacao ?? '—'}</span>
