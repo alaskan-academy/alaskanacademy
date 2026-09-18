@@ -150,8 +150,17 @@ function FiscalTab() {
     imposto_meta_ads_pct: 0,
     custo_fixo_mensal: 0,
   });
-  const [fatBruto, setFatBruto]     = useState(0);
-  /** A base do Simples: o faturamento MAIS os juros do parcelamento. A prévia
+  /**
+   * `receita_tributavel`, e não `faturamento_bruto`.
+   *
+   * A prévia partia do bruto, que inclui a fatia do coprodutor — dinheiro que a
+   * Payt paga direto a ele e que nunca passa pela conta. Na Aeliss isso é 9,4%
+   * do faturamento dela, nove vezes o reembolso. A view já desconta coprodução
+   * em `receita_tributavel` desde a migração 20260902a; a tela é que refazia a
+   * conta por fora e a partir da base errada.
+   */
+  const [receita, setReceita]       = useState(0);
+  /** A base do Simples: a receita MAIS os juros do parcelamento. A prévia
       simulava o imposto sobre o faturamento e o subestimava. Ver 20260917a. */
   const [baseSimples, setBaseSimples] = useState(0);
   const [taxaPlat, setTaxaPlat]     = useState(0);
@@ -168,7 +177,7 @@ function FiscalTab() {
         chegasse, e qual é a última é sorteio do Postgres.
       */
       let qFat = supabase.from("vw_faturamento_liquido")
-        .select("faturamento_bruto,base_simples,taxa_plataforma,investimento_meta,reembolsos");
+        .select("receita_tributavel,base_simples,taxa_plataforma,investimento_meta,reembolsos");
       if (empresaId) qFat = qFat.eq("empresa_id", empresaId);
 
       const [r1, r2, r3] = await Promise.all([
@@ -194,7 +203,7 @@ function FiscalTab() {
         custo_fixo_mensal:            cfgMap["custo_fixo_mensal"]            ?? 0,
       });
       const fatRows = r2.data || [];
-      setFatBruto(fatRows.reduce((s: number, r: any)  => s + Number(r.faturamento_bruto  || 0), 0));
+      setReceita(fatRows.reduce((s: number, r: any)   => s + Number(r.receita_tributavel || 0), 0));
       setBaseSimples(fatRows.reduce(
         (s: number, r: { base_simples?: number | string | null }) => s + Number(r.base_simples || 0), 0));
       setTaxaPlat(fatRows.reduce((s: number, r: any)  => s + Number(r.taxa_plataforma    || 0), 0));
@@ -268,13 +277,25 @@ function FiscalTab() {
     }
   };
 
-  const taxaPlatPct   = fatBruto > 0 ? (taxaPlat / fatBruto) * 100 : 0;
-  /* Sobre a BASE, não sobre o faturamento: o Simples incide no bruto, juros do
+  const taxaPlatPct   = receita > 0 ? (taxaPlat / receita) * 100 : 0;
+  /* Sobre a BASE, não sobre a receita: o Simples incide no bruto, juros do
      parcelamento inclusos. Ver a migração 20260917a. */
   const impostoSimples = baseSimples * (form.imposto_simples_nacional_pct / 100);
   const impostoMeta    = investMeta * (form.imposto_meta_ads_pct / 100);
-  const fatLiqPreview  = fatBruto - taxaPlat - reembolsos - impostoSimples - impostoMeta - investMeta - form.custo_fixo_mensal;
-  const margemPreview  = fatBruto > 0 ? (fatLiqPreview / fatBruto) * 100 : 0;
+  /*
+    O reembolso NÃO entra nesta cascata, e é de propósito.
+
+    `receita_tributavel` só soma `status = 'aprovada'`, então a venda estornada
+    nunca entrou aqui. Descontá-la puniria o mesmo evento duas vezes — é o que o
+    próprio COMMENT da view sempre disse, o que `calcularResultado` em
+    `src/lib/financeiro.ts` sempre fez, e o que esta tela era a última a
+    desobedecer. Ver a migração 20260918a.
+
+    O número continua visível abaixo do total, informando sem distorcer — a
+    mesma solução que o /resumo adotou para a linha de perdas.
+  */
+  const fatLiqPreview  = receita - taxaPlat - impostoSimples - impostoMeta - investMeta - form.custo_fixo_mensal;
+  const margemPreview  = receita > 0 ? (fatLiqPreview / receita) * 100 : 0;
 
   const fields = [
     { key: "imposto_simples_nacional_pct", label: "Imposto Simples Nacional (%)", step: 0.01 },
@@ -379,16 +400,12 @@ function FiscalTab() {
         <h3 className="text-sm font-medium text-foreground mb-4">Preview do Impacto</h3>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Faturamento bruto</span>
-            <span className="text-foreground">{formatCurrency(fatBruto)}</span>
+            <span className="text-muted-foreground">Receita (sem coprodução)</span>
+            <span className="text-foreground">{formatCurrency(receita)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-destructive">(-) Taxa Payt ({taxaPlatPct.toFixed(2)}%)</span>
             <span className="text-destructive">{formatCurrency(taxaPlat)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-destructive">(-) Reembolsos</span>
-            <span className="text-destructive">{formatCurrency(reembolsos)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-destructive">(-) Simples ({formatPercent(form.imposto_simples_nacional_pct)})</span>
@@ -418,6 +435,13 @@ function FiscalTab() {
               {formatPercent(margemPreview)}
             </span>
           </div>
+          {reembolsos > 0 && (
+            <p className="text-[11px] leading-snug text-muted-foreground pt-1">
+              Fora da conta: <strong>{formatCurrency(reembolsos)}</strong> de vendas que
+              voltaram atrás. Elas nunca entraram na receita acima — descontá-las aqui
+              cobraria o mesmo prejuízo duas vezes.
+            </p>
+          )}
         </div>
       </div>
     </div>
