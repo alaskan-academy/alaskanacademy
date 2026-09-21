@@ -24,6 +24,7 @@ interface CriativoRow {
 interface Projeto {
   id: string;
   nome: string;
+  ativo: boolean | null;
 }
 
 interface Props {
@@ -120,9 +121,13 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const semProjeto = filtered.filter(c => !c.projeto_id);
 
   const sections: { key: string; label: string; items: CriativoRow[] }[] = [
+    /* Projeto encerrado ENTRA na lista, com a marca. Ate 21/09/2026 a lista
+       vinha filtrada por ativo, e card de projeto ausente nao caia em secao
+       nenhuma: sumia da tela, sem ir para "Sem projeto", porque o projeto_id
+       dele nao e nulo. Eram 839 cards so em Velas Perfeitas. Ver dataCache. */
     ...projetos.map(p => ({
       key:   p.id,
-      label: p.nome,
+      label: p.ativo === false ? `${p.nome} · encerrado` : p.nome,
       items: filtered.filter(c => c.projeto_id === p.id),
     })),
     ...(semProjeto.length > 0 ? [{ key: '__sem_projeto__', label: 'Sem projeto', items: semProjeto }] : []),

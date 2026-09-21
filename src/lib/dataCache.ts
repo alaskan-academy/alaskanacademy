@@ -31,9 +31,31 @@ export const fetchPerfis = () =>
     return data ?? [];
   });
 
+/**
+ * TODOS os projetos, e não só os ativos.
+ *
+ * O `.eq('ativo', true)` devolvia 7 de 35 — e as telas que usam esta lista não
+ * filtram a TABELA por ativo. O resultado, medido em 21/09/2026:
+ *
+ *   · em Criativos/Avaliação, Desempenho e Calendário, os cards dos outros 28
+ *     projetos apareciam na lista e não havia como isolá-los. Velas Perfeitas
+ *     (839 cards, 755 postados, 58 aprovados) e Cosmética Natural (728, 545,
+ *     37) são os dois maiores estoques da casa e nenhum dos dois era opção.
+ *   · em Produção/Por Projeto é pior: a lista monta as SEÇÕES, e card de
+ *     projeto ausente não cai em seção nenhuma. Ele sumia da tela — não ia
+ *     para "Sem projeto", porque `projeto_id` dele não é nulo.
+ *
+ * É a mesma armadilha do `funis.ativo × funis.status` que o CLAUDE.md conta:
+ * um filtro escondendo dado sem nada na tela dizendo que escondeu.
+ *
+ * `ativo` vem junto para quem exibe poder marcar o encerrado, e a ordem põe os
+ * ativos primeiro — 28 encerrados no topo de um seletor seria outra forma de
+ * esconder os 7 que interessam no dia a dia.
+ */
 export const fetchProjetos = () =>
   cached('projetos', async () => {
     const { data } = await supabase
-      .from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome');
+      .from('ofertas_editores').select('id,nome,ativo')
+      .order('ativo', { ascending: false }).order('nome');
     return data ?? [];
   });
