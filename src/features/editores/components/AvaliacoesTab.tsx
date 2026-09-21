@@ -233,11 +233,37 @@ export function AvaliacoesTab() {
 
   const bonusEstimado = bonusBase;
   const bonusComMultiplicador = Math.round(bonusBase * multiplicador * 100) / 100;
+  /**
+   * A liderança sai do bônus BASE do editor supervisionado, não do total dele.
+   *
+   * O multiplicador é individual: ele premia o desempenho daquela pessoa, e não
+   * é trabalho que passou pela supervisão de ninguém. Quem lidera ganha sobre o
+   * que a equipe produziu — a base —, não sobre o prêmio pessoal de cada um.
+   *
+   * Usar `bonus_total` estava errado por três motivos que se somavam:
+   *   1. ele já vem multiplicado (agosto/2026: R$ 580,80 em vez de R$ 528,00,
+   *      o que inflava a liderança de R$ 105,60 para R$ 116,16);
+   *   2. ele inclui qualquer ajuste manual digitado no total daquele editor;
+   *   3. se o supervisionado fosse ele próprio líder, a liderança dele entraria
+   *      na conta e viraria liderança em cascata.
+   *
+   * `bonus_estimado` é a soma pura dos critérios, antes de multiplicador, antes
+   * de liderança e antes de ajuste manual. É a única das três que não muda por
+   * razões alheias ao trabalho supervisionado.
+   */
   const bonusResponsaveis = useMemo(() => {
     if (!isHeadOuLider || !mesReferenciaPayload || form.responsaveis_ids.length === 0) return 0;
     return items
       .filter(item => item.mes_referencia === mesReferenciaPayload && form.responsaveis_ids.includes(item.editor_id))
-      .reduce((sum, item) => sum + Number(item.bonus_total || 0) * pctLideranca, 0);
+      .reduce((sum, item) => sum + Number(item.bonus_estimado || 0) * pctLideranca, 0);
+  }, [items, mesReferenciaPayload, form.responsaveis_ids, pctLideranca, isHeadOuLider]);
+
+  /** A soma das bases dos supervisionados — só para a tela poder mostrar a conta. */
+  const baseSupervisionados = useMemo(() => {
+    if (!isHeadOuLider || !mesReferenciaPayload || form.responsaveis_ids.length === 0) return 0;
+    return items
+      .filter(item => item.mes_referencia === mesReferenciaPayload && form.responsaveis_ids.includes(item.editor_id))
+      .reduce((sum, item) => sum + Number(item.bonus_estimado || 0), 0);
   }, [form.responsaveis_ids, isHeadOuLider, items, mesReferenciaPayload]);
   const bonusTotalCalculado = Math.round((bonusComMultiplicador + bonusResponsaveis) * 100) / 100;
 
@@ -281,7 +307,11 @@ export function AvaliacoesTab() {
     const responsaveisIds = Array.isArray(snap[CHAVE_RESPONSAVEIS]?.editor_ids)
       ? snap[CHAVE_RESPONSAVEIS].editor_ids.filter((id: unknown) => typeof id === 'string')
       : [];
-    const bonusLiderancaSalvo = Number(snap[CHAVE_RESPONSAVEIS]?.bonus_lideranca || 0);
+    /* `bonus_total_manual` diz, e não adivinha, se o total foi digitado à mão.
+       Até 21/09/2026 isto era inferido comparando o total gravado com o
+       recálculo — e a inferência para de funcionar no instante em que a
+       liderança muda, porque aí um valor digitado e um valor velho ficam
+       idênticos aos olhos da comparação. Ver a migração 20260921a. */
     const editorDaAval = editores.find(e => e.id === a.editor_id);
     // Multiplicador: usa snapshot congelado; legados usam atual como fallback
     const snapshotSalvo = a.multiplicador_snapshot != null ? Number(a.multiplicador_snapshot) : null;
@@ -290,9 +320,6 @@ export function AvaliacoesTab() {
     // % liderança: lê o percentual gravado no snapshot da avaliação; legados usam atual como fallback
     const pctSalvo    = snap[CHAVE_RESPONSAVEIS]?.percentual != null ? Number(snap[CHAVE_RESPONSAVEIS].percentual) : null;
     const pctFallback = editorDaAval?.percentual_lideranca != null ? Number(editorDaAval.percentual_lideranca) / 100 : 0.2;
-    const bonusBaseCalculado = Math.round(Number(a.bonus_estimado || 0) * multEfetivo * 100) / 100;
-    const bonusTotalCalculadoItem = Math.round((bonusBaseCalculado + bonusLiderancaSalvo) * 100) / 100;
-
     setEditingId(a.id);
     setForm({
       editor_id: a.editor_id || '',
@@ -300,7 +327,7 @@ export function AvaliacoesTab() {
       data_lancamento: a.data_lancamento ? String(a.data_lancamento).slice(0, 10) : '',
       avaliador: a.avaliador || '',
       perfil: a.perfil || '',
-      bonus_total_override: a.bonus_total != null && Number(a.bonus_total) !== bonusTotalCalculadoItem
+      bonus_total_override: a.bonus_total_manual && a.bonus_total != null
         ? String(a.bonus_total) : '',
       feedback: a.feedback || '',
       responsaveis_ids: responsaveisIds,
@@ -375,7 +402,10 @@ export function AvaliacoesTab() {
       respostasSnapshot['_criterios_snap'] = criterios.filter(c => c.ativo && !c.arquivado).map(c => c.chave);
     }
 
-    const bonusFinal = form.bonus_total_override !== '' && form.bonus_total_override != null
+    /* Campo preenchido = total digitado à mão. Isso vira `bonus_total_manual`
+       no banco, e é o que impede o gatilho de sobrescrever o lançamento. */
+    const ehManual = form.bonus_total_override !== '' && form.bonus_total_override != null;
+    const bonusFinal = ehManual
       ? Number(form.bonus_total_override)
       : bonusTotalCalculado;
 
@@ -399,6 +429,7 @@ export function AvaliacoesTab() {
       bonus_vsl: qtdVsl * unitVsl,
       bonus_estimado: bonusEstimado,
       bonus_total: bonusFinal,
+      bonus_total_manual: ehManual,
       folgas: folgasAuto,
       feedback: form.feedback || null,
       respostas: respostasSnapshot,
@@ -678,8 +709,19 @@ export function AvaliacoesTab() {
                      <div className="text-lg font-medium">{form.responsaveis_ids.length}</div>
                    </div>
                    <div>
-                     <Label className="text-xs text-muted-foreground">+ {(pctLideranca * 100).toFixed(0)}% bônus de liderança</Label>
+                     {/* O rótulo diz a BASE: sem isso, "+20%" se lê como 20% do
+                         total do editor, que foi exatamente a leitura errada que
+                         inflou agosto/2026 em R$ 10,56. */}
+                     <Label className="text-xs text-muted-foreground">
+                       + {(pctLideranca * 100).toFixed(0)}% sobre a base da equipe
+                     </Label>
                      <div className="text-lg font-medium text-primary">{formatCurrency(bonusResponsaveis)}</div>
+                     {baseSupervisionados > 0 && (
+                       <div className="text-[11px] text-muted-foreground">
+                         {(pctLideranca * 100).toFixed(0)}% de {formatCurrency(baseSupervisionados)}
+                         <span className="opacity-70"> · antes do multiplicador de cada um</span>
+                       </div>
+                     )}
                    </div>
                    <div>
                      <Label className="text-xs text-muted-foreground">Subtotal (mult. + liderança)</Label>
