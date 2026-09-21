@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { SeletorDeMeses } from '@/components/SeletorDeMeses';
 import { cn } from '@/lib/utils';
+import { rodaComoAnuncio } from '@/features/ads/situacao';
 
 
 
@@ -151,23 +152,37 @@ export function DesempenhoTab() {
   }), [items, filterEditores, filterOfertas]);
 
   /**
-   * Os quatro números do topo contam ANÚNCIO, e só anúncio.
-   *
-   * Somavam tudo: o cartão dizia "Total ADs testados 75" e os 75 eram 73
-   * criativos mais 2 VSLs. Pior no "Validados": o único validado do período
-   * era uma VSL, então o número que se lê como "anúncio que deu certo" era
-   * inteiramente de outra coisa. A taxa herdava o erro nos dois lados.
+   * A base de TODA taxa de anúncio desta aba — e não só dos cartões do topo.
    *
    * Anúncio e VSL não se comparam. Uma VSL é uma peça longa, testada aos
    * poucos e validada por outro critério; misturar as duas num denominador só
    * faz a taxa de validação de anúncio subir ou descer por motivo que não tem
-   * a ver com anúncio.
+   * a ver com anúncio. Quando os cartões do topo foram consertados, o exemplo
+   * era gritante: "Total ADs testados 75" eram 73 criativos mais 2 VSLs, e o
+   * ÚNICO validado do período era a VSL — o número que se lê como "anúncio que
+   * deu certo" era inteiramente de outra coisa.
    *
-   * VSL e aula continuam na tabela de baixo, cada uma na sua linha.
+   * Nasceu em 21/09/2026 porque o filtro acima existia só dentro de `totals`:
+   * os quatro cartões do topo já contavam só criativo, e os três gráficos
+   * logo abaixo — por editora, por projeto e a evolução no tempo — somavam
+   * tudo. A mesma tela dizia dois números para a mesma pergunta, e o que
+   * julga pessoa era o errado.
+   *
+   * Medido no dia: entre os cards em fase 'postado', a Jessica Maihato
+   * aparecia com 8,16% (52 de 637) contra 8,20% da Jaqueline — empate. Só
+   * entre criativos são 6,66% (41 de 616) contra 7,59%: quase um ponto de
+   * distância. Onze dos 52 "validados" dela eram VSLs, e nenhuma VSL teve um
+   * centavo de mídia, logo nenhuma podia ter sido validada por ROAS.
+   *
+   * VSL e aula continuam inteiras em "Por tipo de peça", logo abaixo.
    */
+  const soAnuncio = useMemo(
+    () => filtered.filter(i => rodaComoAnuncio(i.tipo ?? 'criativo')),
+    [filtered],
+  );
+
   const totals = useMemo(() => {
-    const t = filtered
-      .filter(i => (i.tipo || 'criativo') === 'criativo')
+    const t = soAnuncio
       .reduce((acc, i) => {
         acc.testados  += Number(i.ads_testados  || 0);
         acc.validados += Number(i.ads_validados || 0);
@@ -175,7 +190,7 @@ export function DesempenhoTab() {
         return acc;
       }, { testados: 0, validados: 0, escalados: 0 });
     return { ...t, taxa: t.testados > 0 ? ((t.validados + t.escalados) / t.testados) * 100 : 0 };
-  }, [filtered]);
+  }, [soAnuncio]);
 
   const porTipo = useMemo(() => {
     const map: Record<string, { tipo: string; testados: number; validados: number; escalados: number }> = {};
@@ -193,7 +208,7 @@ export function DesempenhoTab() {
 
   const porEditor = useMemo(() => {
     const map: Record<string, { nome: string; testados: number; validados: number; escalados: number; projetos: Set<string> }> = {};
-    filtered.forEach(i => {
+    soAnuncio.forEach(i => {
       const key = i.editor_id || 'sem-editor';
       const nome = editorMap[i.editor_id] || '—';
       if (!map[key]) map[key] = { nome, testados: 0, validados: 0, escalados: 0, projetos: new Set() };
@@ -207,11 +222,11 @@ export function DesempenhoTab() {
       taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0,
       projetos: v.projetos.size,
     })).sort((a, b) => b.taxa - a.taxa);
-  }, [filtered, editorMap]);
+  }, [soAnuncio, editorMap]);
 
   const porProjeto = useMemo(() => {
     const map: Record<string, { oferta: string; testados: number; validados: number; escalados: number }> = {};
-    filtered.forEach(i => {
+    soAnuncio.forEach(i => {
       const oferta = i.oferta || '—';
       if (!map[oferta]) map[oferta] = { oferta, testados: 0, validados: 0, escalados: 0 };
       map[oferta].testados  += Number(i.ads_testados  || 0);
@@ -221,11 +236,11 @@ export function DesempenhoTab() {
     return Object.values(map).map(v => ({
       ...v, taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0,
     })).sort((a, b) => b.taxa - a.taxa);
-  }, [filtered]);
+  }, [soAnuncio]);
 
   const evolucao = useMemo(() => {
     const map: Record<string, { mes: string; testados: number; validados: number; escalados: number }> = {};
-    filtered.forEach(i => {
+    soAnuncio.forEach(i => {
       const mes = String(i.mes_referencia).slice(0, 7);
       if (!map[mes]) map[mes] = { mes, testados: 0, validados: 0, escalados: 0 };
       map[mes].testados  += Number(i.ads_testados  || 0);
@@ -235,7 +250,7 @@ export function DesempenhoTab() {
     return Object.values(map)
       .map(v => ({ ...v, taxa: v.testados > 0 ? ((v.validados + v.escalados) / v.testados) * 100 : 0 }))
       .sort((a, b) => a.mes.localeCompare(b.mes));
-  }, [filtered]);
+  }, [soAnuncio]);
 
   // Falha não vira gráfico vazio: a tela diz o que houve e oferece a saída.
   if (erro) {

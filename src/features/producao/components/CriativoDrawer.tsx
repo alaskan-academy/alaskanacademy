@@ -904,6 +904,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
           open
           producaoId={criativo.id}
           nome={criativo.nome}
+          tipoDaPeca={criativo.tipo}
           onClose={() => setPedidoAberto(false)}
           onSalvo={() => void loadPedido()}
         />

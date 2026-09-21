@@ -189,6 +189,51 @@ describe('aula e VSL não viram anúncio', () => {
       });
     }
 
+    it('a base de anúncio não pode ser refeita à mão em cada tela', () => {
+      /*
+        CATRACA, e assumidamente uma.
+
+        Em DesempenhoAdsView e DesempenhoTab as taxas vivem dentro de `useMemo`
+        de componente — não são funções puras que dê para interrogar daqui sem
+        arrastar as duas telas para dentro do teste. O que dá para travar é a
+        FORMA: `filtered` é a lista com tudo, `soAnuncio` é a que mede anúncio,
+        e só DUAS coisas em cada arquivo têm direito de depender de `filtered`:
+        a definição de `soAnuncio` e a tabela "por tipo", que existe justamente
+        para mostrar VSL e aula.
+
+        Um `useMemo` novo com `[filtered]` na lista de dependências quebra
+        aqui. É o defeito de 21/09/2026 em forma reconhecível: em DesempenhoTab
+        os cartões do topo já filtravam criativo e os três gráficos logo abaixo
+        não, e ninguém percebeu porque cada memo parecia certo sozinho.
+      */
+      const telas = [
+        { caminho: ['features', 'criativos', 'components', 'DesempenhoAdsView.tsx'], permitidos: 2 },
+        { caminho: ['features', 'editores', 'components', 'DesempenhoTab.tsx'],      permitidos: 2 },
+      ];
+
+      for (const tela of telas) {
+        const texto = readFileSync(join(SRC, ...tela.caminho), 'utf8');
+        const nome = tela.caminho.at(-1);
+
+        expect(texto, `${nome} deixou de ter uma base própria para anúncio`).toContain('soAnuncio');
+
+        /* Listas de dependência que contêm `filtered` — e não `filteredSemData`,
+           `soAnuncio` nem `soAnuncioSemData`. */
+        const deps = [...texto.matchAll(/[)}]\s*,\s*\[([^\]]*)\]\s*,?\s*\)/g)]
+          .map(m => m[1].split(',').map(s => s.trim()))
+          .filter(lista => lista.includes('filtered'));
+
+        expect(
+          deps.length,
+          `${nome} tem ${deps.length} useMemo dependendo de \`filtered\`, e o combinado são ` +
+            `${tela.permitidos}: a definição de \`soAnuncio\` e a tabela por tipo de peça. ` +
+            `Se o novo mede ANÚNCIO, ele tem de sair de \`soAnuncio\` — VSL e aula não viram ` +
+            `anúncio e não entram em taxa de anúncio. Se ele é outro quadro por tipo, suba o ` +
+            `número aqui e diga por quê.`,
+        ).toBe(tela.permitidos);
+      }
+    });
+
     it('tipo desconhecido não é acusado — quem não está classificado fica de fora', () => {
       /* Se um quarto tipo nascer no banco e alguém esquecer de classificá-lo, o
          primeiro teste deste arquivo quebra. Até lá, o silêncio é o padrão

@@ -137,23 +137,28 @@ export function situacaoDe(s: string | null | undefined) {
  *
  * ── Por que isto é um Set e não `tipo === 'criativo'` espalhado ────────────
  *
- * Porque já há duas definições de "roda como anúncio" no projeto e elas
- * DISCORDAM — a primeira armadilha do CLAUDE.md, em pleno vigor:
+ * Porque o projeto tinha QUATRO lugares respondendo "VSL é anúncio?", e eles
+ * se dividiam dois a dois — a primeira armadilha do CLAUDE.md:
  *
- *   `fn_fixar_vinculo_ads`  → só `criativo`
- *   `CriativoFormModal`     → `isAdType = criativo || vsl`, e por isso 66 das
- *                             98 VSLs têm `avaliacao` preenchida e 21 estão
- *                             marcadas Validado/Escalado — julgadas à mão como
- *                             se rodassem, enquanto as views de esteira
- *                             (`tipo = 'criativo'`) não as enxergam.
+ *   dizem que É          `CriativoFormModal` (`isAdType = criativo || vsl`)
+ *                        `CriativoDrawer` (bloco Veiculação abre para VSL)
+ *   dizem que NÃO É      `fn_fixar_vinculo_ads` (`tipo = 'criativo'`)
+ *                        as views de esteira (`tipo = 'criativo'`)
  *
- * Esta é a definição de quem PERGUNTA pelo anúncio, e ela segue o vínculo, que
- * é o lado que manda. A divergência do formulário está anotada, não resolvida:
- * decidir se VSL entra na esteira é pergunta dela, não refactor de passagem.
+ * Ela decidiu em 21/09/2026: **VSL não é anúncio, e quem manda é o vínculo.**
+ * Este Set é essa decisão, num lugar só.
  *
- * `src/test/aula-e-vsl-nao-viram-anuncio.test.ts` trava as duas pontas: se o
- * banco ganhar um quarto tipo, ou se alguém afrouxar o vínculo, o teste quebra
- * — terceira armadilha, lista no código que envelhece em silêncio.
+ * O que a decisão NÃO significa: que VSL deixa de ser avaliada. Ela continua
+ * ganhando `avaliacao` e `status_veiculacao` no formulário, e as 66 já
+ * avaliadas continuam gravadas — o julgamento humano da VSL é legítimo, só
+ * não é taxa de anúncio. Por isso VSL aparece com os números DELA em "Por
+ * tipo de peça", em Criativos → Desempenho e em Editores → Desempenho, ao
+ * lado da linha de criativo e nunca dentro dela.
+ *
+ * `src/test/aula-e-vsl-nao-viram-anuncio.test.ts` trava as pontas: se o banco
+ * ganhar um quarto tipo, se alguém afrouxar o vínculo, ou se uma tela montar
+ * taxa de anúncio sobre a lista completa, o teste quebra — terceira
+ * armadilha, lista no código que envelhece em silêncio.
  */
 export const VIRA_ANUNCIO: ReadonlySet<string> = new Set(['criativo']);
 

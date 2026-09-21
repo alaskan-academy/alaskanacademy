@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { rodaComoAnuncio } from '@/features/ads/situacao';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
@@ -36,12 +37,26 @@ interface Dinheiro { inv_30d: number | null; fat_30d: number | null; ultimo_dia:
  * entrar a campanha de Natal". Por isso ela é selo na fila do Copy, e não a
  * ordenação: a fila ordena por dinheiro.
  */
-export function PedidoVariacaoModal({ open, onClose, onSalvo, producaoId, nome }: {
+export function PedidoVariacaoModal({ open, onClose, onSalvo, producaoId, nome, tipoDaPeca }: {
   open: boolean;
   onClose: () => void;
   onSalvo?: () => void;
   producaoId: string;
   nome: string;
+  /**
+   * `producoes.tipo` do card. Chega por prop e não por consulta porque os dois
+   * chamadores já o têm em mãos.
+   *
+   * Sem ele, este modal dizia "Sem investimento registrado nos últimos 30 dias
+   * — vale conferir se ainda faz sentido variar" para VSL, SEMPRE: o drawer
+   * abre o bloco Veiculação para `tipo !== 'aula'`, e `vw_criativo_investimento`
+   * não tem uma única linha de VSL, porque VSL não vira anúncio. Um aviso que é
+   * verdade em 98 de 98 casos não informa nada — só acusa.
+   *
+   * `tipoDaPeca` e não `tipo` porque `tipo` aqui dentro já é o tipo da
+   * VARIAÇÃO pedida, que é outra coisa.
+   */
+  tipoDaPeca: string;
 }) {
   const { user } = useAuth();
   const [porQue, setPorQue] = useState('');
@@ -105,13 +120,19 @@ export function PedidoVariacaoModal({ open, onClose, onSalvo, producaoId, nome }
   const roas = dinheiro?.inv_30d && dinheiro.inv_30d > 0 && dinheiro.fat_30d != null
     ? (dinheiro.fat_30d / dinheiro.inv_30d).toFixed(2) : null;
 
+  /* Pedir variação de VSL continua valendo — o que não vale é cobrar verba
+     dela. Ver `rodaComoAnuncio`. */
+  const ehAnuncio = rodaComoAnuncio(tipoDaPeca);
+
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-sm">Pedir variação de {nome}</DialogTitle>
           <DialogDescription className="text-xs">
-            O pedido entra na esteira do Copy com o histórico de verba deste anúncio ao lado.
+            {ehAnuncio
+              ? 'O pedido entra na esteira do Copy com o histórico de verba deste anúncio ao lado.'
+              : 'O pedido entra na esteira do Copy.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,7 +140,19 @@ export function PedidoVariacaoModal({ open, onClose, onSalvo, producaoId, nome }
           O dinheiro fica no topo e não é editável: é a resposta para "qual o
           grau de importância", e o banco já a tem. Quem pede lê e decide; não
           digita de novo.
+
+          E ele só aparece para quem TEM dinheiro para mostrar. Numa VSL este
+          quadro dizia "sem investimento registrado — vale conferir se ainda faz
+          sentido variar" nas 98 de 98 vezes, porque VSL não vira anúncio e
+          `vw_criativo_investimento` não tem linha nenhuma delas. Aviso sempre
+          verdadeiro não é aviso: é acusação automática.
         */}
+        {!ehAnuncio ? (
+          <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground/70">
+            Esta peça não roda como anúncio, então não há verba para consultar aqui — o que
+            justifica a variação é o seu argumento abaixo.
+          </div>
+        ) : (
         <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2 text-xs">
           {dinheiro?.inv_30d != null ? (
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -139,13 +172,14 @@ export function PedidoVariacaoModal({ open, onClose, onSalvo, producaoId, nome }
             </span>
           )}
         </div>
+        )}
 
         <div className="space-y-3">
           <div>
             <Label className="text-xs">Por que vale a pena variar<span className="text-red-400"> *</span></Label>
             <Textarea className="mt-1 resize-none text-xs" rows={3} value={porQue}
                       onChange={e => setPorQue(e.target.value)}
-                      placeholder="O que este anúncio fez que justifica insistir nele" />
+                      placeholder={`O que est${ehAnuncio ? 'e anúncio' : 'a peça'} fez que justifica insistir nel${ehAnuncio ? 'e' : 'a'}`} />
           </div>
 
           <div>

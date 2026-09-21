@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import { useMetricasDoAd, TiraDeMetricas, LegendaFontes } from '@/features/criativos/metricasDoAd';
-import { situacaoDe } from '@/features/ads/situacao';
+import { situacaoDe, rodaComoAnuncio } from '@/features/ads/situacao';
 import { PedidoVariacaoModal } from '@/features/producao/components/PedidoVariacaoModal';
 import type { Perfil, Funil } from '@/features/producao/components/types';
 
@@ -321,7 +321,7 @@ export function AvaliacaoView({ userId }: Props) {
   */
   const [podePedir, setPodePedir]       = useState(false);
   const [comPedido, setComPedido]       = useState<Set<string>>(new Set());
-  const [pedindo, setPedindo]           = useState<{ id: string; nome: string } | null>(null);
+  const [pedindo, setPedindo]           = useState<{ id: string; nome: string; tipo: string } | null>(null);
   const [somentePendentes, setSomentePendentes] = useState(false);
   /* Só os cards em que a marcação dela contradiz a Meta. São 53 hoje, e o
      lado caro são os 24 marcados "Encerrado" que gastaram R$ 5.691,62 em
@@ -539,6 +539,23 @@ export function AvaliacaoView({ userId }: Props) {
   const validados    = displayCriativos.filter(c => c.avaliacao === 'Validado').length;
   const naoValidados = displayCriativos.filter(c => c.avaliacao === 'Não validado').length;
 
+  /*
+    A TAXA mede anúncio; a LISTA mostra tudo que precisa ser avaliado.
+
+    São duas coisas, e antes eram uma: `validados / total` usava como
+    denominador a fila inteira, que inclui os 66 VSLs e a 1 aula em fase
+    'postado'. E o crivo logo acima — a `TabelaDoCrivo`, "Validado = 6 vendas ·
+    ROAS 1,6" — é régua de mídia: ROAS é receita sobre verba, e 66 de 66 VSLs
+    têm zero de verba. Dezenove delas ainda assim entravam no numerador.
+
+    A fila continua com todas: VSL segue sendo avaliada, por decisão dela em
+    21/09/2026 — o que muda é que o julgamento da VSL não se mistura mais com a
+    taxa do anúncio. Ver `rodaComoAnuncio`.
+  */
+  const daTaxa        = displayCriativos.filter(c => rodaComoAnuncio(c.tipo));
+  const validadosAnun = daTaxa.filter(c => c.avaliacao === 'Validado').length;
+  const foraDaTaxa    = total - daTaxa.length;
+
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
@@ -696,7 +713,9 @@ export function AvaliacaoView({ userId }: Props) {
       {/* Resumo pills */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted/50 text-muted-foreground border border-border">
-          {total} criativos
+          {/* "peças" quando a fila tem VSL ou aula: chamá-las de criativo é o
+              mesmo engano que punha as duas na taxa. */}
+          {total} {foraDaTaxa > 0 ? 'peças' : 'criativos'}
         </span>
         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
           {pendentes} pendentes
@@ -707,9 +726,17 @@ export function AvaliacaoView({ userId }: Props) {
         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
           {naoValidados} não validados
         </span>
-        {total > 0 && (
-          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted/50 text-muted-foreground border border-border">
-            {Math.round((validados / total) * 100)}% taxa de validação
+        {daTaxa.length > 0 && (
+          <span
+            className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted/50 text-muted-foreground border border-border"
+            title={foraDaTaxa > 0
+              ? `Sobre ${daTaxa.length} criativos. ${foraDaTaxa} VSL/aula ficam de fora: o crivo mede ROAS, e elas não gastam mídia.`
+              : undefined}
+          >
+            {Math.round((validadosAnun / daTaxa.length) * 100)}% taxa de validação
+            {foraDaTaxa > 0 && (
+              <span className="text-muted-foreground/60"> · dos {daTaxa.length} criativos</span>
+            )}
           </span>
         )}
       </div>
@@ -874,7 +901,7 @@ export function AvaliacaoView({ userId }: Props) {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setPedindo({ id: c.id, nome: c.nome })}
+                        onClick={() => setPedindo({ id: c.id, nome: c.nome, tipo: c.tipo })}
                         title="Pedir variação deste criativo"
                         aria-label="Pedir variação"
                         className="grid h-6 w-6 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
@@ -917,6 +944,7 @@ export function AvaliacaoView({ userId }: Props) {
           open
           producaoId={pedindo.id}
           nome={pedindo.nome}
+          tipoDaPeca={pedindo.tipo}
           onClose={() => setPedindo(null)}
           onSalvo={() => { setPedindo(null); void carregarPedidos(); }}
         />

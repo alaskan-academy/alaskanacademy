@@ -14,6 +14,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import { useMetricasDoAd, LegendaFontes } from '@/features/criativos/metricasDoAd';
+import { rodaComoAnuncio } from '@/features/ads/situacao';
 import { formatCurrency, formatNumber as fmtNum } from '@/lib/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -660,9 +661,31 @@ export function DesempenhoAdsView() {
     return true;
   }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroMetodo, filtroRev]);
 
+  /*
+    TUDO QUE MEDE ANÚNCIO MEDE SÓ CRIATIVO.
+
+    Decidido em 21/09/2026: VSL não é anúncio, e quem manda é o vínculo —
+    `fn_fixar_vinculo_ads` exige `tipo = 'criativo'`, então VSL e aula não
+    ganham anúncio nem podem ganhar. Ver `rodaComoAnuncio`.
+
+    Sem isto, os 66 VSLs e a 1 aula em fase 'postado' entravam em TODO
+    denominador desta tela, e em parte dos numeradores: 21 VSLs estão marcadas
+    Validado/Escalado à mão, apesar de 66 de 66 terem zero de mídia — ROAS
+    incalculável. Em agosto/2026 a tela dizia 17,30% de validação quando entre
+    criativos era 15,93%, e no ranking por editora a diferença era maior que a
+    distância entre a primeira e a segunda colocada.
+
+    `porTipo` é a exceção, de propósito: é a tabela onde VSL e aula aparecem
+    com os números DELAS, separadas, que é o lugar certo para elas.
+  */
+  const soAnuncio = useMemo(() => filtered.filter(r => rodaComoAnuncio(r.tipo)), [filtered]);
+  const soAnuncioSemData = useMemo(() => filteredSemData.filter(r => rodaComoAnuncio(r.tipo)), [filteredSemData]);
+  /** Quantos o recorte tem que NÃO são anúncio — para a tela dizer isso em voz alta. */
+  const foraDaConta = filtered.length - soAnuncio.length;
+
   const totals = useMemo(() => {
-    const testados  = filtered.length;
-    const validados = filtered.filter(isValidado).length;
+    const testados  = soAnuncio.length;
+    const validados = soAnuncio.filter(isValidado).length;
     /*
       Escalados conta no MESMO recorte dos outros, e isso mudou em 31/08/2026.
 
@@ -673,33 +696,33 @@ export function DesempenhoAdsView() {
 
       Quem quiser o acumulado troca o período — que é para isso que ele serve.
     */
-    const escalados = filtered.filter(isEscalado).length;
-    const aprovados = filtered.filter(isAprovado).length;
-    const naoValid  = filtered.filter(r => r.avaliacao === 'Não validado').length;
-    const pendentes = filtered.filter(semAvaliacao).length;
-    const semDado   = filtered.filter(semDados).length;
+    const escalados = soAnuncio.filter(isEscalado).length;
+    const aprovados = soAnuncio.filter(isAprovado).length;
+    const naoValid  = soAnuncio.filter(r => r.avaliacao === 'Não validado').length;
+    const pendentes = soAnuncio.filter(semAvaliacao).length;
+    const semDado   = soAnuncio.filter(semDados).length;
     const taxaValid = testados > 0 ? (validados / testados) * 100 : 0;
     const taxaEscal = testados > 0 ? (escalados / testados) * 100 : 0;
     /* A MESMA funcao do grafico e das tabelas: a taxa da tela grande nao
        pode discordar da taxa de cada recorte. */
     const taxaAprov = taxaDeValidacao({ testados, aprovados });
     return { testados, validados, escalados, aprovados, naoValid, pendentes, semDado, taxaValid, taxaEscal, taxaAprov };
-  }, [filtered]);
+  }, [soAnuncio]);
 
   const porTipo       = useMemo(() => buildBreakdown(filtered, 'tipo', v => TIPO_LABEL[v ?? ''] ?? v ?? '—'), [filtered]);
   const porFormato    = useMemo(() =>
-    buildBreakdown(filtered, 'formato', v => v ?? '— sem formato —').sort(porTaxaValidacao),
-  [filtered]);
+    buildBreakdown(soAnuncio, 'formato', v => v ?? '— sem formato —').sort(porTaxaValidacao),
+  [soAnuncio]);
   const porAngulo     = useMemo(() =>
-    buildBreakdown(filtered, 'angulo_teste', v => v ?? '— sem ângulo —').sort(porTaxaValidacao),
-  [filtered]);
+    buildBreakdown(soAnuncio, 'angulo_teste', v => v ?? '— sem ângulo —').sort(porTaxaValidacao),
+  [soAnuncio]);
 
   const porNivelConsc = useMemo(() =>
-    buildBreakdown(filtered, 'nivel_consciencia', v => v ?? '— sem nível —').sort(porNivelDeConsciencia),
-  [filtered]);
+    buildBreakdown(soAnuncio, 'nivel_consciencia', v => v ?? '— sem nível —').sort(porNivelDeConsciencia),
+  [soAnuncio]);
   const porEditor     = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
-    for (const r of filtered) {
+    for (const r of soAnuncio) {
       const k = r.responsavel_id ?? '__sem__';
       const label = r.responsavel?.nome ?? '— sem editor —';
       if (!map[k]) map[k] = { label, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
@@ -709,11 +732,11 @@ export function DesempenhoAdsView() {
       if (isAprovado(r)) map[k].aprovados++;
     }
     return Object.values(map).sort((a, b) => b.testados - a.testados);
-  }, [filtered]);
+  }, [soAnuncio]);
 
   const evolucao = useMemo(() => {
     const map: Record<string, { mes: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
-    for (const r of filtered) {
+    for (const r of soAnuncio) {
       const mes = (r.data_ref ?? '').slice(0, 7);
       if (!mes) continue;
       if (!map[mes]) map[mes] = { mes, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
@@ -723,7 +746,7 @@ export function DesempenhoAdsView() {
       if (isAprovado(r)) map[mes].aprovados++;
     }
     return Object.values(map).sort((a, b) => a.mes.localeCompare(b.mes));
-  }, [filtered]);
+  }, [soAnuncio]);
 
   const escaladosLista = useMemo(() => {
     /* A chave sai daqui, e não de uma função solta, porque `vidas` e
@@ -749,13 +772,13 @@ export function DesempenhoAdsView() {
         case 'vendas':  return m ? (m.vendas ?? 0) : null;
       }
     };
-    return filteredSemData.filter(isEscalado).sort((a, b) => {
+    return soAnuncioSemData.filter(isEscalado).sort((a, b) => {
       const c = compararChaves(chave(a), chave(b), ordem.desc);
       // Desempate pelo nome: sem ele, duas linhas de mesma verba trocariam de
       // lugar a cada re-render e a tabela pareceria instável.
       return c !== 0 ? c : (a.nome ?? '').localeCompare(b.nome ?? '', 'pt-BR');
     });
-  }, [filteredSemData, ordem, vidas, metricas]);
+  }, [soAnuncioSemData, ordem, vidas, metricas]);
 
   /* Normalizado aqui também, senão a lista de filtro ofereceria "TSL,VSL" e
      "TSL, VSL" como se fossem escolhas diferentes — e escolher uma esconderia
@@ -766,7 +789,7 @@ export function DesempenhoAdsView() {
 
   const porMetodo = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
-    for (const r of filtered) {
+    for (const r of soAnuncio) {
       const fv = normalizarMetodo(r.metodo_video);
       if (!fv) continue;
       if (!map[fv]) map[fv] = { label: fv, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
@@ -776,7 +799,7 @@ export function DesempenhoAdsView() {
       if (isAprovado(r)) map[fv].aprovados++;
     }
     return Object.values(map).sort((a, b) => b.testados - a.testados);
-  }, [filtered]);
+  }, [soAnuncio]);
 
   /**
    * Por REV, e com a linha que a tabela de método não tem: "não dá para saber".
@@ -818,7 +841,7 @@ export function DesempenhoAdsView() {
     let cardsComRev = 0;
     let emMaisDeUm = 0;
 
-    for (const r of filtered) {
+    for (const r of soAnuncio) {
       if (r.revs.length === 0) {
         sem.testados++;
         if (isAprovado(r)) sem.aprovados++;
@@ -857,7 +880,7 @@ export function DesempenhoAdsView() {
       });
 
     return { linhas, sem, ocorrencias, cardsComRev, emMaisDeUm, semAmostraPropria };
-  }, [filtered, revs]);
+  }, [soAnuncio, revs]);
 
   /*
     A vida útil IGNORA o filtro de datas, e isso não é descuido.
@@ -870,7 +893,7 @@ export function DesempenhoAdsView() {
 
     A regra que separa os dois casos: contagem de eventos aceita período
     ("quantos escalamos em agosto"); DURAÇÃO não, porque a janela corta a
-    medida pelas duas pontas. Por isso este painel usa `filteredSemData` —
+    medida pelas duas pontas. Por isso este painel usa `soAnuncioSemData` —
     editor, projeto, tipo, formato e funil valem; a data, não. E o título diz
     isso, senão vira o mesmo engano com outra roupa.
 
@@ -883,7 +906,7 @@ export function DesempenhoAdsView() {
     const dias: number[] = [];
     let abertos = 0, truncados = 0, semDado = 0;
 
-    for (const r of filteredSemData) {
+    for (const r of soAnuncioSemData) {
       const v = vidas[r.id];
       if (!v || v.dias == null) { semDado++; continue; }
       if (v.aberta)   { abertos++;   continue; }
@@ -910,7 +933,7 @@ export function DesempenhoAdsView() {
     }));
 
     return { encerrados: dias.length, meio, media, maior: dias.at(-1) ?? null, faixas, abertos, truncados, semDado };
-  }, [filteredSemData, vidas]);
+  }, [soAnuncioSemData, vidas]);
 
   const rangeLabel = useMemo(() => {
     if (!dateRange?.from) return 'Selecionar período';
@@ -1056,7 +1079,14 @@ export function DesempenhoAdsView() {
       */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'ADs testados', value: totals.testados,  sub: 'no período e nos filtros', color: '' },
+          /* O "só criativos" não é detalhe de rodapé: é o denominador. Sem ele
+             escrito, ninguém tem como notar que VSL saiu da conta — e foi
+             exatamente assim que ela ficou lá dentro por meses. */
+          { label: 'ADs testados', value: totals.testados,
+            sub: foraDaConta > 0
+              ? `só criativos · ${formatNumber(foraDaConta)} VSL/aula fora`
+              : 'no período e nos filtros',
+            color: '' },
           { label: 'Val. + Esc.',  value: totals.aprovados, sub: formatPercent(totals.taxaAprov) + ' de validação', color: 'text-violet-400' },
         ].map(card => (
           <div key={card.label} className="bg-card border border-border rounded-lg p-4">
@@ -1132,7 +1162,7 @@ export function DesempenhoAdsView() {
                     alguém desconfiar, que é a regra de leitura do CLAUDE.md
                     funcionando ao contrário.
 
-                    Os números saem de `filtered` em tempo de execução, nunca de
+                    Os números saem de `soAnuncio` em tempo de execução, nunca de
                     literal no código: com filtro de data ligado eles mudam.
                   */
                   rodape={(
@@ -1231,7 +1261,26 @@ export function DesempenhoAdsView() {
               <BreakdownTable title="Por ângulo" coluna="Ângulo" rows={porAngulo.filter(r => r.label !== '— sem ângulo —' || porAngulo.length === 1)} />
               <BreakdownTable title="Por nível de consciência" coluna="Nível" rows={porNivelConsc.filter(r => r.label !== '— sem nível —' || porNivelConsc.length === 1)} />
 
-              <BreakdownTable title="Por tipo" coluna="Tipo" rows={porTipo} />
+              {/* A ÚNICA tabela desta tela com VSL e aula dentro — e é por isso
+                  que ela existe. Todo o resto mede anúncio, e VSL não é um:
+                  não ganha vínculo, não gasta mídia, não tem ROAS. Aqui ela
+                  aparece com o número dela, separada, que era o pedido: ver as
+                  duas sem misturar. */}
+              <BreakdownTable
+                title="Por tipo de peça"
+                coluna="Tipo"
+                rows={porTipo}
+                rodape={
+                  foraDaConta > 0 ? (
+                    <span>
+                      Só esta tabela conta VSL e aula. Elas ficam fora de "ADs testados" e de
+                      todas as taxas acima porque não viram anúncio — o vínculo anúncio↔card
+                      exige tipo Criativo, e nenhuma VSL registrou um centavo de mídia. A
+                      avaliação delas continua gravada no card.
+                    </span>
+                  ) : undefined
+                }
+              />
               <BreakdownTable title="Por formato" coluna="Formato" rows={porFormato} />
               {porEditor.length > 0 && <BreakdownTable title="Por editor" coluna="Editor" rows={porEditor} />}
           {/*
