@@ -68,7 +68,6 @@ interface CriativoPostado {
   avaliacao: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
-  funil_ids: string[];
   responsavel: { id: string; nome: string } | null;
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
@@ -305,7 +304,6 @@ export function AvaliacaoView({ userId }: Props) {
   const [filtroAval, setFiltroAval]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
   const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
-  const [filtroFunil, setFiltroFunil]     = useState<string[]>([]);
   const [preset, setPreset]               = useState<'this' | 'last' | 'custom'>('this');
   const [dateRange, setDateRange]         = useState<DateRange | undefined>();
   const [calOpen, setCalOpen]             = useState(false);
@@ -406,7 +404,7 @@ export function AvaliacaoView({ userId }: Props) {
     const mkQuery = () => {
       let q = supabase
         .from('producoes')
-        .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,responsavel_id,projeto_id,funil_ids,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
+        .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,responsavel_id,projeto_id,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
         .order('nome');
       q = q.eq('fase', 'postado');
       if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
@@ -520,10 +518,9 @@ export function AvaliacaoView({ userId }: Props) {
       if (dateEnd   && c.data_ref > dateEnd)   return false;
       if (somentePendentes && !isPendente(c)) return false;
       if (buscaLower && !c.nome.toLowerCase().includes(buscaLower)) return false;
-      if (filtroFunil.length && !filtroFunil.some(f => (c.funil_ids ?? []).includes(f))) return false;
       return true;
     });
-  }, [criativos, dateStart, dateEnd, somentePendentes, busca, filtroFunil]);
+  }, [criativos, dateStart, dateEnd, somentePendentes, busca]);
 
   const qtdContradicao = useMemo(
     () => baseCriativos.filter(c => contradiz(c.status_veiculacao, c.estado_ads)).length,
@@ -607,16 +604,7 @@ export function AvaliacaoView({ userId }: Props) {
             onChange={setFiltroStatus}
             width="w-36"
           />
-          {funis.length > 0 && (
-            <MultiFilter
-              label="Funil"
-              options={funis.map(f => ({ id: f.id, nome: f.nome }))}
-              value={filtroFunil}
-              onChange={setFiltroFunil}
-              width="w-44"
-            />
-          )}
-        </div>
+                  </div>
 
         {/* Linha 2 — período + toggles */}
         <div className="flex items-center gap-2 flex-wrap">

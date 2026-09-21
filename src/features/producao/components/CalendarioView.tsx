@@ -568,7 +568,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     let q = supabase
       .from('producoes')
       .select([
-        'id,nome,tipo,fase,funil_video,data_inicio,data_prazo,editor_nome_historico,funil_ids,tipo_teste',
+        'id,nome,tipo,fase,funil_video,data_inicio,data_prazo,editor_nome_historico,tipo_teste',
         'funil:funis(id,nome,produto)',
         'projeto:ofertas_editores!projeto_id(id,nome)',
         'responsavel:perfis!responsavel_id(id,nome)',

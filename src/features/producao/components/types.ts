@@ -8,8 +8,11 @@ export interface Criativo {
   nome: string;
   tipo: CriativoTipo;
   fase: string;
-  funil_id: string | null;
-  funil_ids: string[];
+  /* `funil_id` e `funil_ids` sairam em 21/09/2026: os dois estavam vazios em
+     4.098 de 4.098 cards, e os filtros que liam deles esvaziavam a tela sem
+     erro nenhum. De qual REV o criativo veio agora sai de `vw_criativo_funil`,
+     derivado da venda. Ver a migracao 20260921c. */
+  /** TSL / VSL / QUIZ. E METODO, nao funil — o nome e divida antiga. */
   funil_video: string | null;
   projeto_id: string | null;
   responsavel_id: string | null;       // editor

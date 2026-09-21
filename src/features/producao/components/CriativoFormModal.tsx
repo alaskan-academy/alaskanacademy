@@ -37,7 +37,7 @@ type OfertaEditorOption = { id: string; nome: string };
 
 type FormState = {
   nome: string; tipo: CriativoTipo; fase: string;
-  funil_ids: string[]; responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; funil_video: string;
+  responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; funil_video: string;
   formato: string; plataforma: string; tipo_teste: string; nivel_consciencia: string; angulo_teste: string;
   modulo: string; ordem: string;
   copy_url: string; video_gravado_url: string; video_editado_url: string;
@@ -47,7 +47,7 @@ type FormState = {
 
 const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
   nome: '', tipo, fase: getDefaultFase(tipo),
-  funil_ids: [], responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', funil_video: '',
+  responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', funil_video: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
   copy_url: '', video_gravado_url: '', video_editado_url: '',
@@ -124,13 +124,6 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   }, [open, defaultDate, funisProp, perfisProp]);
 
   const set = (k: keyof FormState, v: string) => setForm(prev => ({ ...prev, [k]: v }));
-  const toggleFunil = (id: string) =>
-    setForm(prev => ({
-      ...prev,
-      funil_ids: prev.funil_ids.includes(id)
-        ? prev.funil_ids.filter(x => x !== id)
-        : [...prev.funil_ids, id],
-    }));
   const setTipo = (v: CriativoTipo) => setForm(prev => ({ ...prev, tipo: v, fase: getDefaultFase(v) }));
 
   const handleSubmit = async () => {
@@ -144,7 +137,6 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       nome:              form.nome.trim(),
       tipo:              form.tipo,
       fase:              form.fase || getDefaultFase(form.tipo),
-      funil_ids:         form.funil_ids,
       projeto_id:        form.projeto_id        || null,
       funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,

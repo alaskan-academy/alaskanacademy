@@ -17,7 +17,6 @@ interface CriativoRow {
   fase: string;
   avaliacao: string | null;
   projeto_id: string | null;
-  funil_ids: string[];
   funil_video: string | null;
   responsavel: { nome: string } | null;
 }
@@ -48,7 +47,6 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const [filtroTipo, setFiltroTipo]   = useState<string[]>([]);
   const [filtroFase, setFiltroFase]   = useState<string[]>([]);
   const [filtroResp, setFiltroResp]   = useState<string[]>([]);
-  const [filtroFunil, setFiltroFunil] = useState<string[]>([]);
   const [filtroAval, setFiltroAval]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
   const [filtroStatus, setFiltroStatus]   = useState<string[]>([]);
@@ -85,7 +83,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
     while (true) {
       let q = supabase
         .from('producoes')
-        .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(nome)')
+        .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_video,responsavel:perfis!responsavel_id(nome)')
         .order('nome')
         .range(from, from + PAGE - 1);
       if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
@@ -116,7 +114,6 @@ export function PorProjetoView({ nivel, userId }: Props) {
   const buscaLower = busca.toLowerCase();
   const filtered = criativos.filter(c => {
     if (buscaLower && !c.nome.toLowerCase().includes(buscaLower)) return false;
-    if (filtroFunil.length && !filtroFunil.some(f => (c.funil_ids ?? []).includes(f))) return false;
     return true;
   });
 
@@ -199,16 +196,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
             width="w-36"
           />
         )}
-        {funis.length > 0 && (
-          <MultiFilter
-            label="Funil"
-            options={funis.map(f => ({ id: f.id, nome: f.nome }))}
-            value={filtroFunil}
-            onChange={setFiltroFunil}
-            width="w-44"
-          />
-        )}
-
+        
         <button
           onClick={() => setMostrarInativos(v => !v)}
           className={cn(
@@ -250,8 +238,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
                       <p className="text-xs text-muted-foreground py-3 px-4 italic">Nenhum item vinculado a este projeto.</p>
                     )}
                     {section.items.map(c => {
-                      const funisNomes = funis.filter(f => (c.funil_ids ?? []).includes(f.id)).map(f => f.nome);
-                      const funil = funisNomes.length > 0 ? funisNomes.join(', ') : (c.funil_video ?? null);
+                      const funil = c.funil_video ?? null;
                       return (
                         <button
                           key={c.id}

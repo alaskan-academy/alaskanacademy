@@ -213,10 +213,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     if (k in changes) return (changes[k] as string[]) ?? [];
     return ((criativo as unknown as Record<string, unknown> | null)?.[k] as string[] | null) ?? [];
   };
-  const toggleFunilId = (id: string) => {
-    const current = valArr('funil_ids');
-    ch('funil_ids', current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
-  };
   const valFunilVideoArr = (): string[] => {
     const raw = val('funil_video');
     return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
