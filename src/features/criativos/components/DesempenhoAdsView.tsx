@@ -85,8 +85,26 @@ const toYMD = paraYmd;
 
 // Pure functions — definidas fora do componente para evitar recriação
 /** O que vem do banco: o embed do projeto chega como objeto ou array. */
-interface RevBruto { id: string; nome: string; projeto: { nome: string } | { nome: string }[] | null }
-interface Rev { id: string; nome: string; projeto: string | null }
+interface RevBruto {
+  id: string; nome: string; status: string | null;
+  projeto: { nome: string } | { nome: string }[] | null;
+}
+interface Rev { id: string; nome: string; status: string | null; projeto: string | null }
+
+/**
+ * Quantos cards EXCLUSIVOS um REV precisa ter para entrar no ranking.
+ *
+ * Medido em 21/09/2026, o ranking por taxa bruta punha em primeiro o
+ * REV8 · Saponária: 75,0% sobre 4 cards dos quais ZERO são dele — os quatro
+ * rodaram também em outro REV do mesmo projeto. O segundo, REV9, tinha 2
+ * exclusivos e nenhum aprovado: taxa própria 0,0%.
+ *
+ * Acertividade sobre amostra emprestada não é acertividade, e este ranking é o
+ * que decide onde testar. Com o piso sobram 5 REVs, e o menor deles
+ * (REV5 · Saponária, 49 exclusivos) ainda é grande o bastante para uma troca
+ * não virar a ordem.
+ */
+const PISO_EXCLUSIVOS = 10;
 
 /**
  * O nome do REV sozinho não identifica o REV.
@@ -103,7 +121,10 @@ interface Rev { id: string; nome: string; projeto: string | null }
  * Por isso a tabela agrupa por `funil_id`, que é único, e o rótulo carrega o
  * projeto. Chave e rótulo são coisas diferentes, e confundi-los foi o defeito.
  */
-const rotuloRev = (r: Rev) => (r.projeto ? `${r.nome} · ${r.projeto}` : r.nome);
+const rotuloRev = (r: Rev) =>
+  /* O status entra no rótulo porque "onde testar agora" não pode apontar para
+     REV encerrado sem dizer que está encerrado — 3 dos 11 estão. */
+  `${r.projeto ? `${r.nome} · ${r.projeto}` : r.nome}${r.status === 'ativo' ? '' : ` (${r.status ?? 'sem status'})`}`;
 
 const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalado';
 const isValidado  = (r: PostadoRow) => r.avaliacao === 'Validado';
@@ -594,11 +615,11 @@ export function DesempenhoAdsView() {
     const revIds = [...new Set(Object.values(revMap).flat().map(r => r.funil_id))];
     const { data: revNomes } = revIds.length
       ? await supabase.from('funis')
-          .select('id,nome,projeto:ofertas_editores!projeto_id(nome)').in('id', revIds)
+          .select('id,nome,status,projeto:ofertas_editores!projeto_id(nome)').in('id', revIds)
       : { data: [] as RevBruto[] };
     setRevs(((revNomes ?? []) as unknown as RevBruto[]).map(r => {
       const p = Array.isArray(r.projeto) ? r.projeto[0] : r.projeto;
-      return { id: r.id, nome: r.nome, projeto: p?.nome ?? null };
+      return { id: r.id, nome: r.nome, status: r.status, projeto: p?.nome ?? null };
     }));
 
     setRows(crs.map(c => {
@@ -770,34 +791,72 @@ export function DesempenhoAdsView() {
     /* Chave = `funil_id`, que é único. Agrupar pelo NOME somava REVs de
        projetos diferentes na mesma linha — ver `rotuloRev`. */
     const rotulo = Object.fromEntries(revs.map(r => [r.id, rotuloRev(r)]));
-    const map: Record<string, LinhaBreakdown> = {};
-    const conta = (k: string, r: PostadoRow) => {
-      if (!map[k]) map[k] = { label: k, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
-      map[k].testados++;
-      if (isValidado(r)) map[k].validados++;
-      if (isEscalado(r)) map[k].escalados++;
-      if (isAprovado(r)) map[k].aprovados++;
+    /*
+      `testados` conta só o card EXCLUSIVO daquele REV.
+
+      Um card que rodou em dois REVs não diz nada sobre qual dos dois funciona —
+      o acerto dele é de ambos ou de nenhum. Contá-lo nos dois lados produz o
+      líder falso que esta tabela teve até 21/09/2026: REV8 · Saponária em 1º
+      com 75,0% sobre 4 cards, zero deles exclusivos.
+
+      As aparições compartilhadas não somem: elas viram o excedente nomeado no
+      rodapé, que é o que faz a soma da tabela fechar contra o total.
+    */
+    type Linha = LinhaBreakdown & { exclusivos: number; ocorrencias: number };
+    const map: Record<string, Linha> = {};
+    const pega = (k: string): Linha => {
+      if (!map[k]) map[k] = { label: k, testados: 0, validados: 0, escalados: 0, aprovados: 0, exclusivos: 0, ocorrencias: 0 };
+      return map[k];
     };
-    /* O que a tabela não cobre vai para o RODAPÉ, não para uma linha.
-       Como linha ele competia por uma vaga no corte de `LIMITE` e sumia atrás
-       do "Ver todas" — e é a linha que mede o silêncio da tabela. Também não dá
-       para zerá-lo: dos 2.523 sem REV, 156 são validados e 2 escalados. */
+
+    /* O que a tabela não cobre vai para o RODAPÉ, não para uma linha: como
+       linha ele competia por uma vaga no corte de `LIMITE` e sumia atrás do
+       "Ver todas", e é ele que mede o silêncio da tabela. Zerá-lo também não
+       serve: dos sem-REV, 156 são validados e 2 escalados. */
     const sem = { testados: 0, aprovados: 0 };
+    let ocorrencias = 0;
+    let cardsComRev = 0;
+    let emMaisDeUm = 0;
+
     for (const r of filtered) {
       if (r.revs.length === 0) {
         sem.testados++;
         if (isAprovado(r)) sem.aprovados++;
         continue;
       }
-      for (const { funil_id } of r.revs) conta(rotulo[funil_id] ?? funil_id.slice(0, 8), r);
+      cardsComRev++;
+      const exclusivo = r.revs.length === 1;
+      if (!exclusivo) emMaisDeUm++;
+      for (const { funil_id } of r.revs) {
+        const l = pega(rotulo[funil_id] ?? funil_id.slice(0, 8));
+        l.ocorrencias++;
+        ocorrencias++;
+        if (!exclusivo) continue;
+        l.exclusivos++;
+        l.testados++;
+        if (isValidado(r)) l.validados++;
+        if (isEscalado(r)) l.escalados++;
+        if (isAprovado(r)) l.aprovados++;
+      }
     }
-    /* Por acertividade, como "Por formato" e "Por ângulo" já fazem. O desempate
-       de `porTaxaValidacao` é a amostra, senão 1 de 1 empataria com 8 de 8 e a
-       ordem viraria sorteio. */
-    return {
-      linhas: Object.values(map).sort(porTaxaValidacao),
-      sem,
-    };
+
+    const todas = Object.values(map);
+    /* REV sem nenhum card exclusivo não tem taxa para ranquear. Ele sai da
+       tabela e é NOMEADO no rodapé — esconder sem dizer é como o
+       `.eq('ativo', true)` escondeu 4 REVs por meses. */
+    const semAmostraPropria = todas.filter(l => l.exclusivos === 0);
+    const linhas = todas
+      .filter(l => l.exclusivos > 0)
+      .sort((a, b) => {
+        const aAcima = a.exclusivos >= PISO_EXCLUSIVOS;
+        const bAcima = b.exclusivos >= PISO_EXCLUSIVOS;
+        /* Acima do piso, ranqueia por acertividade. Abaixo, por amostra: entre
+           dois números que não significam nada, o maior ao menos é menos ruim. */
+        if (aAcima !== bAcima) return aAcima ? -1 : 1;
+        return aAcima ? porTaxaValidacao(a, b) : b.exclusivos - a.exclusivos;
+      });
+
+    return { linhas, sem, ocorrencias, cardsComRev, emMaisDeUm, semAmostraPropria };
   }, [filtered, revs]);
 
   /*
@@ -1063,15 +1122,55 @@ export function DesempenhoAdsView() {
                   title="Por REV"
                   coluna="REV"
                   rows={porRev.linhas}
-                  rodape={porRev.sem.testados > 0 ? (
-                    <>
-                      <strong>{porRev.sem.testados}</strong> criativo(s) sem REV identificado
-                      {porRev.sem.aprovados > 0 && <> — {porRev.sem.aprovados} aprovado(s) entre eles</>}
-                      <span className="opacity-70">
-                        {' '}· o REV vem da venda do anúncio, então quem nunca virou anúncio fica fora
-                      </span>
-                    </>
-                  ) : null}
+                  /*
+                    O rodapé fecha a conta em voz alta.
+
+                    A soma das linhas NÃO é o total de criativos, e a versão
+                    anterior não dizia isso: ela somava 3.002 contra 2.980
+                    postados. Os 22 a mais eram legítimos — cards que rodaram em
+                    mais de um REV —, mas 0,7% de erro é pequeno demais para
+                    alguém desconfiar, que é a regra de leitura do CLAUDE.md
+                    funcionando ao contrário.
+
+                    Os números saem de `filtered` em tempo de execução, nunca de
+                    literal no código: com filtro de data ligado eles mudam.
+                  */
+                  rodape={(
+                    <div className="space-y-1">
+                      <div>
+                        <strong>{porRev.cardsComRev}</strong> criativo(s) com REV ·{' '}
+                        {porRev.ocorrencias} aparição(ões)
+                        {porRev.emMaisDeUm > 0 && (
+                          <span className="opacity-70">
+                            {' '}— {porRev.emMaisDeUm} rodou(aram) em mais de um REV, e por isso a
+                            soma das linhas é maior que o número de criativos
+                          </span>
+                        )}
+                      </div>
+                      {porRev.sem.testados > 0 && (
+                        <div>
+                          <strong>{porRev.sem.testados}</strong> sem REV identificado
+                          {porRev.sem.aprovados > 0 && <> — {porRev.sem.aprovados} aprovado(s) entre eles</>}
+                          <span className="opacity-70">
+                            {' '}· o REV vem da venda do anúncio, então quem nunca virou anúncio fica fora
+                          </span>
+                        </div>
+                      )}
+                      <div className="opacity-70">
+                        A taxa sai só dos criativos EXCLUSIVOS de cada REV: um card que
+                        rodou em dois não diz qual dos dois funcionou. Abaixo de{' '}
+                        {PISO_EXCLUSIVOS} exclusivos a linha aparece, mas fora da ordem.
+                      </div>
+                      {porRev.semAmostraPropria.length > 0 && (
+                        <div className="opacity-70">
+                          Fora da tabela por não ter card exclusivo nenhum:{' '}
+                          {porRev.semAmostraPropria
+                            .map(l => `${l.label} (${l.ocorrencias})`)
+                            .join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 />
               )}
 

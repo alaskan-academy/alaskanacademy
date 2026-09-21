@@ -209,6 +209,38 @@ e só 8 order bumps?" levou a descobrir que carrinho abandonado estava sendo
 contado como venda. **Quando um número parecer estranho, ele provavelmente
 está.** Conferir contra uma segunda fonte antes de explicá-lo.
 
+## O banco é COMPARTILHADO: a ordem do deploy não é detalhe
+
+Uma migração vale na hora, para todo mundo. O código vive em commits que podem
+nunca ter sido empurrados. Quando os dois discordam, quem paga é quem está
+usando o painel — não quem escreveu a migração.
+
+> **Nunca apagar coluna antes de o código que parou de usá-la estar em
+> produção.** A ordem é deploy do código, confirmar a tela, e só então o DROP.
+
+Em 21/09/2026 isso derrubou Produção duas vezes no mesmo dia. `producoes.funil_id`
+e `funil_ids` estavam em 0 de 4.098 linhas — colunas provadamente mortas — e
+mesmo assim o DROP quebrou cinco telas, porque o código que ainda as usava
+estava em produção e o conserto estava só na máquina de quem apagou.
+
+**Duas coisas específicas que um `grep` pelo nome da coluna NÃO encontra:**
+
+- **O embed do PostgREST é resolvido pela RELAÇÃO, não pela coluna.**
+  `funil:funis(id,nome,produto)` depende da chave estrangeira de
+  `producoes.funil_id`, e não contém a string `funil_id` em lugar nenhum.
+  Apagar a coluna apaga a chave, e o PostgREST passa a **recusar a consulta
+  inteira** — não devolve nulo, derruba a tela.
+- **Tirar a coluna do `select` de um arquivo não tira dos outros.** A busca
+  precisa cobrir `select(`, embeds `x:tabela(...)`, tipos e filtros.
+
+**A verificação que vale** não é listar o que você lembra de ter apagado: é
+**rodar a consulta que o código de `origin/main` faz, inteira, contra o banco**,
+e ver se ela passa. Está escrita como prova na migração `20260921e`.
+
+Quando a pressa for real, o desfazer mais rápido é pelo banco, não pelo deploy:
+devolver a coluna vazia e a chave estrangeira destrava na hora
+(`20260921d`/`20260921e`), e aí o DROP definitivo espera a ordem certa.
+
 ## UX/UI guidelines
 
 - **Sidebar stays flat**: a feature with multiple sub-pages gets exactly ONE top-level sidebar entry (same as every other item, no chevron/expand-in-sidebar). Sub-page switching happens *inside* the feature's pages via an in-page nav rendered at the top of `DashboardLayout`'s content — see `FinanceiroNav.tsx` (pill-style `NavLink` row) used by all `src/features/financeiro/pages/*`. Do not nest sub-items inside the sidebar itself — **nem para o seletor de dashboard, que deixou de existir**: o grupo "Geral" que aninhava Resumo/Meta Ads/Vendas/UTM/Tendências foi desfeito quando os funis saíram da barra e o recorte por conta virou filtro do cabeçalho. Hoje a sidebar não tem exceção: nenhum item abre.
