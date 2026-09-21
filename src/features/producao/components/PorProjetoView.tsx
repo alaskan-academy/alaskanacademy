@@ -17,7 +17,7 @@ interface CriativoRow {
   fase: string;
   avaliacao: string | null;
   projeto_id: string | null;
-  funil_video: string | null;
+  metodo_video: string | null;
   responsavel: { nome: string } | null;
 }
 
@@ -84,7 +84,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
     while (true) {
       let q = supabase
         .from('producoes')
-        .select('id,nome,tipo,fase,avaliacao,projeto_id,funil_video,responsavel:perfis!responsavel_id(nome)')
+        .select('id,nome,tipo,fase,avaliacao,projeto_id,metodo_video,responsavel:perfis!responsavel_id(nome)')
         .order('nome')
         .range(from, from + PAGE - 1);
       if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
@@ -243,7 +243,7 @@ export function PorProjetoView({ nivel, userId }: Props) {
                       <p className="text-xs text-muted-foreground py-3 px-4 italic">Nenhum item vinculado a este projeto.</p>
                     )}
                     {section.items.map(c => {
-                      const funil = c.funil_video ?? null;
+                      const funil = c.metodo_video ?? null;
                       return (
                         <button
                           key={c.id}

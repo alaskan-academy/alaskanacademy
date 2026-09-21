@@ -37,7 +37,7 @@ type OfertaEditorOption = { id: string; nome: string };
 
 type FormState = {
   nome: string; tipo: CriativoTipo; fase: string;
-  responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; funil_video: string;
+  responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; metodo_video: string;
   formato: string; plataforma: string; tipo_teste: string; nivel_consciencia: string; angulo_teste: string;
   modulo: string; ordem: string;
   copy_url: string; video_gravado_url: string; video_editado_url: string;
@@ -47,7 +47,7 @@ type FormState = {
 
 const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
   nome: '', tipo, fase: getDefaultFase(tipo),
-  responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', funil_video: '',
+  responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', metodo_video: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
   copy_url: '', video_gravado_url: '', video_editado_url: '',
@@ -97,7 +97,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
         if (pj) setProjetos(pj as OfertaEditorOption[]);
         if (op) {
           const by = (campo: string) => op.filter(d => d.campo === campo).map(d => d.valor as string);
-          const fv = by('funil_video');  if (fv.length) setOpFunilVideo(fv);
+          const fv = by('metodo_video');  if (fv.length) setOpFunilVideo(fv);
           const fm = by('formato');     if (fm.length) setOpFormato(fm);
           const pl = by('plataforma');  if (pl.length) setOpPlataforma(pl);
           const tt = by('tipo_teste');  if (tt.length) setOpTipoTeste(tt);
@@ -138,7 +138,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       tipo:              form.tipo,
       fase:              form.fase || getDefaultFase(form.tipo),
       projeto_id:        form.projeto_id        || null,
-      funil_video:       form.tipo === 'criativo' ? (form.funil_video || null) : null,
+      metodo_video:       form.tipo === 'criativo' ? (form.metodo_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
       copy_id:           form.tipo !== 'aula' ? (form.copy_id        || null) : null,
       gestor_id:         form.tipo !== 'aula' ? (form.gestor_id      || null) : null,
@@ -328,19 +328,19 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                   <Popover>
                     <PopoverTrigger asChild>
                       <button className="mt-1 h-8 text-xs w-full flex items-center px-3 rounded-md border border-input bg-background hover:bg-accent transition-colors text-left">
-                        {!form.funil_video || form.funil_video.trim() === ''
+                        {!form.metodo_video || form.metodo_video.trim() === ''
                           ? <span className="text-muted-foreground">—</span>
-                          : <span className="truncate">{form.funil_video.split(',').map(s => s.trim()).filter(Boolean).join(', ')}</span>}
+                          : <span className="truncate">{form.metodo_video.split(',').map(s => s.trim()).filter(Boolean).join(', ')}</span>}
                       </button>
                     </PopoverTrigger>
                     <PopoverContent className="w-36 p-2" align="start">
                       {opFunilVideo.map(v => {
-                        const selected = form.funil_video.split(',').map(s => s.trim()).filter(Boolean);
+                        const selected = form.metodo_video.split(',').map(s => s.trim()).filter(Boolean);
                         const toggle = () => {
                           const next = selected.includes(v)
                             ? selected.filter(x => x !== v)
                             : [...selected, v];
-                          set('funil_video', next.join(','));
+                          set('metodo_video', next.join(','));
                         };
                         return (
                           <div key={v} className="flex items-center gap-2 py-1.5 px-1 rounded hover:bg-muted cursor-pointer"

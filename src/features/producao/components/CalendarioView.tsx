@@ -192,7 +192,7 @@ function DraggableCalCard({
 
   const editor  = criativo.responsavel?.nome ?? criativo.editor_nome_historico;
   const fase    = FASES_MAP[criativo.fase] ?? criativo.fase;
-  const funil   = criativo.funil?.nome ?? criativo.funil_video ?? null;
+  const funil   = criativo.funil?.nome ?? criativo.metodo_video ?? null;
   const projeto = criativo.projeto?.nome ?? null;
 
   return (
@@ -568,7 +568,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     let q = supabase
       .from('producoes')
       .select([
-        'id,nome,tipo,fase,funil_video,data_inicio,data_prazo,editor_nome_historico,tipo_teste',
+        'id,nome,tipo,fase,metodo_video,data_inicio,data_prazo,editor_nome_historico,tipo_teste',
         'projeto:ofertas_editores!projeto_id(id,nome)',
         'responsavel:perfis!responsavel_id(id,nome)',
         'especialista:perfis!especialista_id(id,nome)',
@@ -1390,14 +1390,14 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                   else setSelectedId(e.criativo.id);
                                 }}
                                 className="flex-1 flex flex-col justify-center px-1.5 overflow-hidden hover:opacity-75 h-full gap-px"
-                                title={[e.criativo.nome, FASES_MAP[e.criativo.fase] ?? e.criativo.fase, e.criativo.projeto?.nome, e.criativo.funil?.nome ?? e.criativo.funil_video, editorName].filter(Boolean).join(' · ')}
+                                title={[e.criativo.nome, FASES_MAP[e.criativo.fase] ?? e.criativo.fase, e.criativo.projeto?.nome, e.criativo.funil?.nome ?? e.criativo.metodo_video, editorName].filter(Boolean).join(' · ')}
                               >
                                 {e.isFirst ? (
                                   <>
                                     <span className="font-medium text-[10.5px] truncate leading-tight">{e.criativo.nome}</span>
                                     <span className="text-[9.5px] opacity-70 truncate leading-tight">{FASES_MAP[e.criativo.fase] ?? e.criativo.fase}</span>
                                     {e.criativo.projeto?.nome && <span className="text-[9.5px] opacity-60 truncate leading-tight">{e.criativo.projeto.nome}</span>}
-                                    {(e.criativo.funil?.nome ?? e.criativo.funil_video) && <span className="text-[9.5px] opacity-55 truncate leading-tight">{e.criativo.funil?.nome ?? e.criativo.funil_video}</span>}
+                                    {(e.criativo.funil?.nome ?? e.criativo.metodo_video) && <span className="text-[9.5px] opacity-55 truncate leading-tight">{e.criativo.funil?.nome ?? e.criativo.metodo_video}</span>}
                                     {e.criativo.tipo_teste && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.tipo_teste}</span>}
                                     {e.criativo.especialista?.nome && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.especialista.nome}</span>}
                                     {editorName && <span className="text-[9.5px] opacity-50 truncate leading-tight">{editorName}</span>}

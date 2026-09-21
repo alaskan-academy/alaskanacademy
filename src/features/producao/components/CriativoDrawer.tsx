@@ -106,7 +106,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     ]);
     if (data) {
       const byField = (campo: string) => data.filter(d => d.campo === campo).map(d => d.valor as string);
-      const fv = byField('funil_video');
+      const fv = byField('metodo_video');
       if (fv.length) setOpFunilVideo(fv);
       const fmt = byField('formato');
       const plt = byField('plataforma');
@@ -213,13 +213,13 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     return ((criativo as unknown as Record<string, unknown> | null)?.[k] as string[] | null) ?? [];
   };
   const valFunilVideoArr = (): string[] => {
-    const raw = val('funil_video');
+    const raw = val('metodo_video');
     return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
   };
   const toggleFunilVideoItem = (item: string) => {
     const current = valFunilVideoArr();
     const next = current.includes(item) ? current.filter(x => x !== item) : [...current, item];
-    ch('funil_video', next.length > 0 ? next.join(',') : null);
+    ch('metodo_video', next.length > 0 ? next.join(',') : null);
   };
 
   const valNivelConscienciaArr = (): string[] => {
@@ -655,12 +655,12 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                       ))}
                     </PopoverContent>
                   </Popover>
-                  <GerenciarOpcoesPopover campo="funil_video" label="Métodos de Venda" onAtualizar={loadOpcoes} />
+                  <GerenciarOpcoesPopover campo="metodo_video" label="Métodos de Venda" onAtualizar={loadOpcoes} />
                 </div>
               ) : (
                 <span>
-                  {criativo.funil_video
-                    ? criativo.funil_video.split(',').map(s => s.trim()).filter(Boolean).join(', ')
+                  {criativo.metodo_video
+                    ? criativo.metodo_video.split(',').map(s => s.trim()).filter(Boolean).join(', ')
                     : '—'}
                 </span>
               )}

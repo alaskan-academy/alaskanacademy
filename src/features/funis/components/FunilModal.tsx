@@ -112,7 +112,7 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
     // Carregar opções de método de venda da mesma tabela do Funil de Vendas
     supabase.from('criativo_campos_opcoes')
       .select('valor')
-      .eq('campo', 'funil_video')
+      .eq('campo', 'metodo_video')
       .order('ordem')
       .then(({ data }) => {
         setOpMetodos(data?.map(d => d.valor as string) ?? []);
@@ -396,12 +396,12 @@ export function FunilModal({ open, onClose, onSaved, funil, projetos, funilSubof
                 </PopoverContent>
               </Popover>
               <GerenciarOpcoesPopover
-                campo="funil_video"
+                campo="metodo_video"
                 label="Métodos de Venda"
                 onAtualizar={() =>
                   supabase.from('criativo_campos_opcoes')
                     .select('valor')
-                    .eq('campo', 'funil_video')
+                    .eq('campo', 'metodo_video')
                     .order('ordem')
                     .then(({ data }) => setOpMetodos(data?.map(d => d.valor as string) ?? []))
                 }

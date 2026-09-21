@@ -13,7 +13,7 @@ export interface Criativo {
      erro nenhum. De qual REV o criativo veio agora sai de `vw_criativo_funil`,
      derivado da venda. Ver a migracao 20260921c. */
   /** TSL / VSL / QUIZ. E METODO, nao funil — o nome e divida antiga. */
-  funil_video: string | null;
+  metodo_video: string | null;
   projeto_id: string | null;
   responsavel_id: string | null;       // editor
   editor_nome_historico: string | null;
@@ -47,10 +47,15 @@ export interface Criativo {
    * linha antes disso; quando a coluna caiu, a chave caiu junto e o PostgREST
    * passou a recusar a consulta inteira, derrubando cinco telas.
    *
-   * O campo continua no tipo, opcional, porque `CriativoCard.tsx` lê
-   * `criativo.funil?.nome` e é um arquivo não commitado — tirar daqui quebraria
-   * trabalho que ainda não está no git. Sai junto com o rename de
-   * `funil_video` para `metodo_video`, quando aquele arquivo entrar.
+   * O campo continua no tipo, opcional e sempre `undefined`, porque quatro
+   * telas ainda escrevem `criativo.funil?.nome ?? criativo.metodo_video` —
+   * CalendarioView (três lugares), HojeView e PainelAprovacaoView, que agrupa
+   * por ele e por isso joga tudo em "— Sem funil —". Como o lado esquerdo
+   * nunca tem valor, o resultado já é o do lado direito: tirar o campo é
+   * limpeza de leitura, não correção de número.
+   *
+   * Sai quando alguém encostar nessas quatro telas. Não vale um commit só para
+   * isso, e não vale arrastá-lo para o commit do rename.
    */
   funil?: { id: string; nome: string; produto: string } | null;
   projeto?: { id: string; nome: string } | null;

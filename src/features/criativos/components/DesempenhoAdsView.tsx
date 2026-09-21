@@ -45,8 +45,8 @@ interface PostadoRow {
   avaliacao: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
-  /** TSL / VSL / QUIZ. É MÉTODO, não funil — ver `normalizarFunil` abaixo. */
-  funil_video: string | null;
+  /** TSL / VSL / QUIZ. É MÉTODO, não funil — ver `normalizarMetodo` abaixo. */
+  metodo_video: string | null;
   responsavel: { id: string; nome: string } | null;
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
@@ -148,7 +148,7 @@ const semDados     = (r: PostadoRow) => r.avaliacao === 'Sem dados';
 /**
  * O mesmo funil escrito de três jeitos.
  *
- * `funil_video` é texto livre com os funis separados por vírgula, e o campo
+ * `metodo_video` é texto livre com os funis separados por vírgula, e o campo
  * acumulou três grafias da MESMA combinação — medido em 31/08/2026 sobre os
  * cards postados:
  *
@@ -167,7 +167,7 @@ const semDados     = (r: PostadoRow) => r.avaliacao === 'Sem dados';
  * nova também vai cair aqui — o conserto de raiz é o campo virar uma escolha
  * em vez de texto, e isso é decisão de quem cadastra.
  */
-function normalizarFunil(v: string | null | undefined): string | null {
+function normalizarMetodo(v: string | null | undefined): string | null {
   if (!v) return null;
   const partes = v.split(",").map(x => x.trim().toUpperCase()).filter(Boolean);
   if (partes.length === 0) return null;
@@ -499,7 +499,7 @@ export function DesempenhoAdsView() {
   const [filtroProjeto, setFiltroProjeto] = useState<string[]>([]);
   const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
-  /** Método do vídeo (TSL/VSL/QUIZ) — o campo `funil_video`, que não é funil. */
+  /** Método do vídeo (TSL/VSL/QUIZ) — o campo `metodo_video`, que não é funil. */
   const [filtroMetodo, setFiltroMetodo]   = useState<string[]>([]);
   /** REV de verdade, derivado da venda em `vw_criativo_funil`. */
   const [filtroRev, setFiltroRev]         = useState<string[]>([]);
@@ -540,9 +540,9 @@ export function DesempenhoAdsView() {
        `vw_producao_estado_ads`. */
     /* `funil_ids` saiu daqui pelo mesmo motivo que `status_veiculacao` saiu: era
        carregado e nunca usado. Pior, ele está vazio em 4.098 de 4.098 cards — a
-       tela filtrava por `funil_video`, que é método. De qual REV o criativo
+       tela filtrava por `metodo_video`, que é método. De qual REV o criativo
        veio agora sai de `vw_criativo_funil`, derivado da venda. Ver 20260921b. */
-    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,data_inicio,responsavel_id,projeto_id,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
+    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,data_inicio,responsavel_id,projeto_id,metodo_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
 
     // Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
     // fora de todos os gráficos e de todas as taxas desta tela.
@@ -644,7 +644,7 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroMetodo.length  && !filtroMetodo.includes(normalizarFunil(r.funil_video) ?? '')) return false;
+    if (filtroMetodo.length  && !filtroMetodo.includes(normalizarMetodo(r.metodo_video) ?? '')) return false;
     if (filtroRev.length     && !r.revs.some(x => filtroRev.includes(x.funil_id)))            return false;
     return true;
   }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroMetodo, filtroRev]);
@@ -655,7 +655,7 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroMetodo.length  && !filtroMetodo.includes(normalizarFunil(r.funil_video) ?? '')) return false;
+    if (filtroMetodo.length  && !filtroMetodo.includes(normalizarMetodo(r.metodo_video) ?? '')) return false;
     if (filtroRev.length     && !r.revs.some(x => filtroRev.includes(x.funil_id)))            return false;
     return true;
   }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroMetodo, filtroRev]);
@@ -761,13 +761,13 @@ export function DesempenhoAdsView() {
      "TSL, VSL" como se fossem escolhas diferentes — e escolher uma esconderia
      os cards da outra. */
   const opMetodo = useMemo(() =>
-    [...new Set(rows.map(r => normalizarFunil(r.funil_video)).filter((v): v is string => Boolean(v)))].sort(),
+    [...new Set(rows.map(r => normalizarMetodo(r.metodo_video)).filter((v): v is string => Boolean(v)))].sort(),
   [rows]);
 
   const porMetodo = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
-      const fv = normalizarFunil(r.funil_video);
+      const fv = normalizarMetodo(r.metodo_video);
       if (!fv) continue;
       if (!map[fv]) map[fv] = { label: fv, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
       map[fv].testados++;

@@ -2,7 +2,7 @@
  * A fila do Gestor de Tráfego.
  *
  * A classificação (projeto → funil → família) NÃO é recalculada aqui: vem de
- * `vw_gestor_fila`, que usa `criativo_tipos_teste` e `fn_funil_video_norm` —
+ * `vw_gestor_fila`, que usa `criativo_tipos_teste` e `fn_metodo_video_norm` —
  * as mesmas da Esteira do Copy. Se este painel decidisse por conta própria o
  * que é iteração, em três meses os dois discordariam, e é literalmente a
  * primeira armadilha do CLAUDE.md.

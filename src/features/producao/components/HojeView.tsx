@@ -128,7 +128,7 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
 
       {displayCriativos.map(c => {
         const fase    = FASES_MAP[c.fase] ?? c.fase;
-        const funil   = c.funil?.nome ?? c.funil_video ?? null;
+        const funil   = c.funil?.nome ?? c.metodo_video ?? null;
         const projeto = c.projeto?.nome ?? null;
         const editor  = c.responsavel?.nome ?? c.editor_nome_historico;
         const tipoCor = TIPO_COR[c.tipo] ?? 'bg-primary/10 text-primary border-primary/20';
