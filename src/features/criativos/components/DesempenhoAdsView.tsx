@@ -45,13 +45,15 @@ interface PostadoRow {
   avaliacao: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
-  funil_ids: string[];
+  /** TSL / VSL / QUIZ. É MÉTODO, não funil — ver `normalizarFunil` abaixo. */
   funil_video: string | null;
   responsavel: { id: string; nome: string } | null;
   projeto: { id: string; nome: string } | null;
   data_inicio: string | null;
   data_inicio_hist: string | null;
   data_ref: string | null;
+  /** Os REVs em que este criativo de fato rodou, de `vw_criativo_funil`. */
+  revs: { funil_id: string; origem: string }[];
 }
 
 type Preset = 'this' | 'last' | 'custom';
@@ -438,7 +440,11 @@ export function DesempenhoAdsView() {
   const [filtroProjeto, setFiltroProjeto] = useState<string[]>([]);
   const [filtroTipo, setFiltroTipo]       = useState<string[]>([]);
   const [filtroFormato, setFiltroFormato] = useState<string[]>([]);
-  const [filtroFunil, setFiltroFunil]     = useState<string[]>([]);
+  /** Método do vídeo (TSL/VSL/QUIZ) — o campo `funil_video`, que não é funil. */
+  const [filtroMetodo, setFiltroMetodo]   = useState<string[]>([]);
+  /** REV de verdade, derivado da venda em `vw_criativo_funil`. */
+  const [filtroRev, setFiltroRev]         = useState<string[]>([]);
+  const [revs, setRevs]                   = useState<{ id: string; nome: string }[]>([]);
 
   const { startStr, endStr } = useMemo(() => {
     if (preset === 'this')  return { startStr: toYMD(startOfMonth(0)),  endStr: toYMD(endOfMonth(0)) };
@@ -473,7 +479,11 @@ export function DesempenhoAdsView() {
        que trafega sem aparecer é campo que alguém vai acabar mostrando sem
        saber que ele é digitado à mão — e ele erra. O fato mora em
        `vw_producao_estado_ads`. */
-    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,data_inicio,responsavel_id,projeto_id,funil_ids,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
+    /* `funil_ids` saiu daqui pelo mesmo motivo que `status_veiculacao` saiu: era
+       carregado e nunca usado. Pior, ele está vazio em 4.098 de 4.098 cards — a
+       tela filtrava por `funil_video`, que é método. De qual REV o criativo
+       veio agora sai de `vw_criativo_funil`, derivado da venda. Ver 20260921b. */
+    const SEL = 'id,nome,tipo,formato,angulo_teste,nivel_consciencia,avaliacao,data_inicio,responsavel_id,projeto_id,funil_video,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)';
 
     // Eram duas páginas fixas de mil, e há 2.916 cards postados: 916 ficavam
     // fora de todos os gráficos e de todas as taxas desta tela.
@@ -525,6 +535,30 @@ export function DesempenhoAdsView() {
       if (!postMap[h.criativo_id]) postMap[h.criativo_id] = h.criado_em.slice(0, 10);
     }
 
+    /* De qual REV cada criativo veio. Mesmos blocos de 300 do histórico, pela
+       mesma razão: URL longa demais derruba a consulta. */
+    const revResults = await Promise.all(
+      Array.from({ length: Math.ceil(ids.length / CHUNK) }, (_, i) =>
+        supabase.from('vw_criativo_funil')
+          .select('producao_id,funil_id,origem')
+          .in('producao_id', ids.slice(i * CHUNK, (i + 1) * CHUNK)),
+      )
+    );
+    const revMap: Record<string, { funil_id: string; origem: string }[]> = {};
+    for (const r of revResults.flatMap(x => x.data ?? [])) {
+      (revMap[r.producao_id] ??= []).push({ funil_id: r.funil_id, origem: r.origem });
+    }
+
+    /* Os nomes vêm de `funis` pelos ids encontrados, e NÃO de `fetchFunis()`:
+       aquele filtra `.eq('ativo', true)`, que é exatamente o filtro que já
+       escondeu 4 REVs por meses. Um criativo que rodou num REV encerrado
+       precisa continuar aparecendo com o nome do REV, não com um id cru. */
+    const revIds = [...new Set(Object.values(revMap).flat().map(r => r.funil_id))];
+    const { data: revNomes } = revIds.length
+      ? await supabase.from('funis').select('id,nome').in('id', revIds)
+      : { data: [] as { id: string; nome: string }[] };
+    setRevs((revNomes ?? []).map(r => ({ id: r.id, nome: r.nome })));
+
     setRows(crs.map(c => {
       const data_inicio_hist = postMap[c.id] ?? null;
       const raw = c as unknown as PostadoRow;
@@ -532,6 +566,7 @@ export function DesempenhoAdsView() {
         ...raw,
         data_inicio_hist,
         data_ref: data_inicio_hist ?? raw.data_inicio ?? null,
+        revs: revMap[c.id] ?? [],
       };
     }));
     setLoading(false);
@@ -546,9 +581,10 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroFunil.length   && !filtroFunil.includes(normalizarFunil(r.funil_video) ?? '')) return false;
+    if (filtroMetodo.length  && !filtroMetodo.includes(normalizarFunil(r.funil_video) ?? '')) return false;
+    if (filtroRev.length     && !r.revs.some(x => filtroRev.includes(x.funil_id)))            return false;
     return true;
-  }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
+  }), [rows, startStr, endStr, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroMetodo, filtroRev]);
 
   // Escalados = todos os ads atualmente em "Escalado", sem filtro de data de postagem
   const filteredSemData = useMemo(() => rows.filter(r => {
@@ -556,9 +592,10 @@ export function DesempenhoAdsView() {
     if (filtroProjeto.length && !filtroProjeto.includes(r.projeto_id ?? ''))     return false;
     if (filtroTipo.length    && !filtroTipo.includes(r.tipo))                    return false;
     if (filtroFormato.length && !filtroFormato.includes(r.formato ?? ''))        return false;
-    if (filtroFunil.length   && !filtroFunil.includes(normalizarFunil(r.funil_video) ?? '')) return false;
+    if (filtroMetodo.length  && !filtroMetodo.includes(normalizarFunil(r.funil_video) ?? '')) return false;
+    if (filtroRev.length     && !r.revs.some(x => filtroRev.includes(x.funil_id)))            return false;
     return true;
-  }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroFunil]);
+  }), [rows, filtroEditor, filtroProjeto, filtroTipo, filtroFormato, filtroMetodo, filtroRev]);
 
   const totals = useMemo(() => {
     const testados  = filtered.length;
@@ -660,11 +697,11 @@ export function DesempenhoAdsView() {
   /* Normalizado aqui também, senão a lista de filtro ofereceria "TSL,VSL" e
      "TSL, VSL" como se fossem escolhas diferentes — e escolher uma esconderia
      os cards da outra. */
-  const opFunilVideo = useMemo(() =>
+  const opMetodo = useMemo(() =>
     [...new Set(rows.map(r => normalizarFunil(r.funil_video)).filter((v): v is string => Boolean(v)))].sort(),
   [rows]);
 
-  const porFunil = useMemo(() => {
+  const porMetodo = useMemo(() => {
     const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
     for (const r of filtered) {
       const fv = normalizarFunil(r.funil_video);
@@ -677,6 +714,37 @@ export function DesempenhoAdsView() {
     }
     return Object.values(map).sort((a, b) => b.testados - a.testados);
   }, [filtered]);
+
+  /**
+   * Por REV, e com a linha que a tabela de método não tem: "não dá para saber".
+   *
+   * A derivação alcança 457 dos 4.098 cards — o resto nunca virou anúncio, ou
+   * rodou em campanha sem venda atribuída. Somar só os 457 daria taxas lindas
+   * sobre uma fatia escolhida pelo dado, que é como o DRE escondeu R$ 10.065.
+   * A linha do fim diz quantos ficaram de fora, para ninguém ler a tabela como
+   * se ela cobrisse a produção inteira.
+   */
+  const porRev = useMemo(() => {
+    const nome = Object.fromEntries(revs.map(r => [r.id, r.nome]));
+    const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
+    let semRev = 0;
+    for (const r of filtered) {
+      if (r.revs.length === 0) { semRev++; continue; }
+      for (const { funil_id } of r.revs) {
+        const k = nome[funil_id] ?? funil_id.slice(0, 8);
+        if (!map[k]) map[k] = { label: k, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
+        map[k].testados++;
+        if (isValidado(r)) map[k].validados++;
+        if (isEscalado(r)) map[k].escalados++;
+        if (isAprovado(r)) map[k].aprovados++;
+      }
+    }
+    const linhas = Object.values(map).sort((a, b) => b.testados - a.testados);
+    if (semRev > 0) {
+      linhas.push({ label: 'sem REV identificado', testados: semRev, validados: 0, escalados: 0, aprovados: 0 });
+    }
+    return linhas;
+  }, [filtered, revs]);
 
   /*
     A vida útil IGNORA o filtro de datas, e isso não é descuido.
@@ -812,16 +880,35 @@ export function DesempenhoAdsView() {
               width="w-36"
             />
           )}
-          {opFunilVideo.length > 0 && (
+          {/* "Método", e não "funil": o campo guarda TSL/VSL/QUIZ, que é como o
+              vídeo foi feito, não para onde ele manda. Enquanto ele se chamasse
+              funil ao lado do filtro de REV, a palavra teria dois donos. */}
+          {opMetodo.length > 0 && (
             <MultiFilter
-              label="Todos os funis"
-              options={opFunilVideo.map(f => ({ id: f, nome: f }))}
-              value={filtroFunil}
-              onChange={setFiltroFunil}
+              label="Todos os métodos"
+              options={opMetodo.map(f => ({ id: f, nome: f }))}
+              value={filtroMetodo}
+              onChange={setFiltroMetodo}
               width="w-44"
             />
           )}
+          {revs.length > 0 && (
+            <MultiFilter
+              label="Todos os REVs"
+              options={[...revs].sort((a, b) => a.nome.localeCompare(b.nome))}
+              value={filtroRev}
+              onChange={setFiltroRev}
+              width="w-56"
+            />
+          )}
         </div>
+        {filtroRev.length > 0 && (
+          <p className="text-[11px] text-muted-foreground">
+            O REV é derivado da venda do anúncio — 457 dos 4.098 cards têm essa
+            ligação. Filtrar por REV esconde quem nunca virou anúncio e quem rodou
+            em campanha sem venda atribuída.
+          </p>
+        )}
       </div>
 
       {/*
@@ -912,7 +999,8 @@ export function DesempenhoAdsView() {
             coisa que alguém teria de manter em dia sem ganhar nada com isso.
           */}
           <div className="lg:columns-2 lg:gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
-              {porFunil.length > 0 && <BreakdownTable title="Por funil de vendas" coluna="Funil" rows={porFunil} />}
+              {porMetodo.length > 0 && <BreakdownTable title="Por método do vídeo" coluna="Método" rows={porMetodo} />}
+              {porRev.length > 0 && <BreakdownTable title="Por REV" coluna="REV" rows={porRev} />}
 
               {/* Quanto tempo o criativo ficou no ar */}
               <div className="bg-card border border-border rounded-lg overflow-hidden">
