@@ -791,8 +791,11 @@ export function DesempenhoAdsView() {
       }
       for (const { funil_id } of r.revs) conta(rotulo[funil_id] ?? funil_id.slice(0, 8), r);
     }
+    /* Por acertividade, como "Por formato" e "Por ângulo" já fazem. O desempate
+       de `porTaxaValidacao` é a amostra, senão 1 de 1 empataria com 8 de 8 e a
+       ordem viraria sorteio. */
     return {
-      linhas: Object.values(map).sort((a, b) => b.testados - a.testados),
+      linhas: Object.values(map).sort(porTaxaValidacao),
       sem,
     };
   }, [filtered, revs]);
