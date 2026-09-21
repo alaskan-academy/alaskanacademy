@@ -84,6 +84,27 @@ function endOfMonth(offset = 0): Date {
 const toYMD = paraYmd;
 
 // Pure functions — definidas fora do componente para evitar recriação
+/** O que vem do banco: o embed do projeto chega como objeto ou array. */
+interface RevBruto { id: string; nome: string; projeto: { nome: string } | { nome: string }[] | null }
+interface Rev { id: string; nome: string; projeto: string | null }
+
+/**
+ * O nome do REV sozinho não identifica o REV.
+ *
+ * Medido em 21/09/2026: "REV1 - Original" existe em CINCO projetos (Decorama
+ * Crochê, Handify, Velarte Essencial, Velas Lembrancinhas, Workshop Buquê),
+ * "Mini PV da Bio" em cinco, "REV3" em quatro, "REV2" em três.
+ *
+ * Isso não é só rótulo ambíguo — a primeira versão desta tela agrupava a tabela
+ * pelo NOME e somava REVs de projetos diferentes na mesma linha: "REV1 -
+ * Original, 208 testados" eram na verdade Workshop Buquê (109) e Velas
+ * Lembrancinhas (99), dois REVs que não têm nada a ver um com o outro.
+ *
+ * Por isso a tabela agrupa por `funil_id`, que é único, e o rótulo carrega o
+ * projeto. Chave e rótulo são coisas diferentes, e confundi-los foi o defeito.
+ */
+const rotuloRev = (r: Rev) => (r.projeto ? `${r.nome} · ${r.projeto}` : r.nome);
+
 const isEscalado  = (r: PostadoRow) => r.avaliacao === 'Escalado';
 const isValidado  = (r: PostadoRow) => r.avaliacao === 'Validado';
 const isAprovado  = (r: PostadoRow) => r.avaliacao === 'Validado' || r.avaliacao === 'Escalado';
@@ -340,12 +361,15 @@ function BreakdownTable({
   title,
   coluna,
   rows,
+  rodape,
 }: {
   title: string;
   /** O que a primeira coluna lista — "Ângulo", "Editor". Curto: é ele que
    *  decide a largura da tabela inteira. */
   coluna: string;
   rows: LinhaBreakdown[];
+  /** O que a tabela NÃO cobre. Fica fora do corte de `LIMITE`. */
+  rodape?: React.ReactNode;
 }) {
   const [verTodas, setVerTodas] = useState(false);
   if (rows.length === 0) return null;
@@ -406,6 +430,20 @@ function BreakdownTable({
         </table>
       </div>
 
+      {/*
+        O rodapé fica FORA do corte de `LIMITE`, e é para isso que ele existe.
+
+        A primeira versão da tabela por REV punha "sem REV identificado" como
+        uma linha comum, no fim. Com 8 linhas de limite ela caía atrás do "Ver
+        todas" — justamente a linha que diz o tamanho do que a tabela NÃO está
+        mostrando. Esconder o excluído é como o DRE perdeu R$ 10.065.
+      */}
+      {rodape && (
+        <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+          {rodape}
+        </div>
+      )}
+
       {rows.length > LIMITE && (
         <button
           onClick={() => setVerTodas(v => !v)}
@@ -444,7 +482,7 @@ export function DesempenhoAdsView() {
   const [filtroMetodo, setFiltroMetodo]   = useState<string[]>([]);
   /** REV de verdade, derivado da venda em `vw_criativo_funil`. */
   const [filtroRev, setFiltroRev]         = useState<string[]>([]);
-  const [revs, setRevs]                   = useState<{ id: string; nome: string }[]>([]);
+  const [revs, setRevs]                   = useState<Rev[]>([]);
 
   const { startStr, endStr } = useMemo(() => {
     if (preset === 'this')  return { startStr: toYMD(startOfMonth(0)),  endStr: toYMD(endOfMonth(0)) };
@@ -555,9 +593,13 @@ export function DesempenhoAdsView() {
        precisa continuar aparecendo com o nome do REV, não com um id cru. */
     const revIds = [...new Set(Object.values(revMap).flat().map(r => r.funil_id))];
     const { data: revNomes } = revIds.length
-      ? await supabase.from('funis').select('id,nome').in('id', revIds)
-      : { data: [] as { id: string; nome: string }[] };
-    setRevs((revNomes ?? []).map(r => ({ id: r.id, nome: r.nome })));
+      ? await supabase.from('funis')
+          .select('id,nome,projeto:ofertas_editores!projeto_id(nome)').in('id', revIds)
+      : { data: [] as RevBruto[] };
+    setRevs(((revNomes ?? []) as unknown as RevBruto[]).map(r => {
+      const p = Array.isArray(r.projeto) ? r.projeto[0] : r.projeto;
+      return { id: r.id, nome: r.nome, projeto: p?.nome ?? null };
+    }));
 
     setRows(crs.map(c => {
       const data_inicio_hist = postMap[c.id] ?? null;
@@ -725,25 +767,34 @@ export function DesempenhoAdsView() {
    * se ela cobrisse a produção inteira.
    */
   const porRev = useMemo(() => {
-    const nome = Object.fromEntries(revs.map(r => [r.id, r.nome]));
-    const map: Record<string, { label: string; testados: number; validados: number; escalados: number; aprovados: number }> = {};
-    let semRev = 0;
+    /* Chave = `funil_id`, que é único. Agrupar pelo NOME somava REVs de
+       projetos diferentes na mesma linha — ver `rotuloRev`. */
+    const rotulo = Object.fromEntries(revs.map(r => [r.id, rotuloRev(r)]));
+    const map: Record<string, LinhaBreakdown> = {};
+    const conta = (k: string, r: PostadoRow) => {
+      if (!map[k]) map[k] = { label: k, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
+      map[k].testados++;
+      if (isValidado(r)) map[k].validados++;
+      if (isEscalado(r)) map[k].escalados++;
+      if (isAprovado(r)) map[k].aprovados++;
+    };
+    /* O que a tabela não cobre vai para o RODAPÉ, não para uma linha.
+       Como linha ele competia por uma vaga no corte de `LIMITE` e sumia atrás
+       do "Ver todas" — e é a linha que mede o silêncio da tabela. Também não dá
+       para zerá-lo: dos 2.523 sem REV, 156 são validados e 2 escalados. */
+    const sem = { testados: 0, aprovados: 0 };
     for (const r of filtered) {
-      if (r.revs.length === 0) { semRev++; continue; }
-      for (const { funil_id } of r.revs) {
-        const k = nome[funil_id] ?? funil_id.slice(0, 8);
-        if (!map[k]) map[k] = { label: k, testados: 0, validados: 0, escalados: 0, aprovados: 0 };
-        map[k].testados++;
-        if (isValidado(r)) map[k].validados++;
-        if (isEscalado(r)) map[k].escalados++;
-        if (isAprovado(r)) map[k].aprovados++;
+      if (r.revs.length === 0) {
+        sem.testados++;
+        if (isAprovado(r)) sem.aprovados++;
+        continue;
       }
+      for (const { funil_id } of r.revs) conta(rotulo[funil_id] ?? funil_id.slice(0, 8), r);
     }
-    const linhas = Object.values(map).sort((a, b) => b.testados - a.testados);
-    if (semRev > 0) {
-      linhas.push({ label: 'sem REV identificado', testados: semRev, validados: 0, escalados: 0, aprovados: 0 });
-    }
-    return linhas;
+    return {
+      linhas: Object.values(map).sort((a, b) => b.testados - a.testados),
+      sem,
+    };
   }, [filtered, revs]);
 
   /*
@@ -895,10 +946,14 @@ export function DesempenhoAdsView() {
           {revs.length > 0 && (
             <MultiFilter
               label="Todos os REVs"
-              options={[...revs].sort((a, b) => a.nome.localeCompare(b.nome))}
+              /* O rótulo leva o projeto: "REV1 - Original" existe em cinco
+                 projetos, e a lista sem ele ofereceria cinco opções idênticas. */
+              options={revs
+                .map(r => ({ id: r.id, nome: rotuloRev(r) }))
+                .sort((a, b) => a.nome.localeCompare(b.nome))}
               value={filtroRev}
               onChange={setFiltroRev}
-              width="w-56"
+              width="w-64"
             />
           )}
         </div>
@@ -1000,7 +1055,22 @@ export function DesempenhoAdsView() {
           */}
           <div className="lg:columns-2 lg:gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
               {porMetodo.length > 0 && <BreakdownTable title="Por método do vídeo" coluna="Método" rows={porMetodo} />}
-              {porRev.length > 0 && <BreakdownTable title="Por REV" coluna="REV" rows={porRev} />}
+              {porRev.linhas.length > 0 && (
+                <BreakdownTable
+                  title="Por REV"
+                  coluna="REV"
+                  rows={porRev.linhas}
+                  rodape={porRev.sem.testados > 0 ? (
+                    <>
+                      <strong>{porRev.sem.testados}</strong> criativo(s) sem REV identificado
+                      {porRev.sem.aprovados > 0 && <> — {porRev.sem.aprovados} aprovado(s) entre eles</>}
+                      <span className="opacity-70">
+                        {' '}· o REV vem da venda do anúncio, então quem nunca virou anúncio fica fora
+                      </span>
+                    </>
+                  ) : null}
+                />
+              )}
 
               {/* Quanto tempo o criativo ficou no ar */}
               <div className="bg-card border border-border rounded-lg overflow-hidden">
