@@ -49,7 +49,6 @@ export function HojeView({ nivel, setorId: _setorId, userId, fixedField, fixedVa
 
     const sel = [
       '*',
-      'funil:funis(id,nome,produto)',
       'projeto:ofertas_editores!projeto_id(id,nome)',
       'responsavel:perfis!responsavel_id(id,nome)',
     ].join(',');

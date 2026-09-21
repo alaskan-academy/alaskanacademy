@@ -163,7 +163,6 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
       supabase.from('producoes')
         .select([
           '*',
-          'funil:funis(id,nome,produto)',
           'projeto:ofertas_editores!projeto_id(id,nome)',
           'responsavel:perfis!responsavel_id(id,nome)',
           'copy:perfis!copy_id(id,nome)',

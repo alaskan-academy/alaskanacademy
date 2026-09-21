@@ -38,6 +38,20 @@ export interface Criativo {
   avaliacao: string | null;
   criado_em: string;
   atualizado_em: string;
+  /**
+   * VESTIGIAL: hoje sempre `undefined`.
+   *
+   * Vinha do embed `funil:funis(...)`, que só existia por causa da chave
+   * estrangeira de `producoes.funil_id` — coluna apagada em 21/09/2026 porque
+   * estava vazia em 4.098 de 4.098 linhas. O embed já devolvia `null` em toda
+   * linha antes disso; quando a coluna caiu, a chave caiu junto e o PostgREST
+   * passou a recusar a consulta inteira, derrubando cinco telas.
+   *
+   * O campo continua no tipo, opcional, porque `CriativoCard.tsx` lê
+   * `criativo.funil?.nome` e é um arquivo não commitado — tirar daqui quebraria
+   * trabalho que ainda não está no git. Sai junto com o rename de
+   * `funil_video` para `metodo_video`, quando aquele arquivo entrar.
+   */
   funil?: { id: string; nome: string; produto: string } | null;
   projeto?: { id: string; nome: string } | null;
   responsavel?: { id: string; nome: string } | null;

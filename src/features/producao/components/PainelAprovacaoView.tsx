@@ -54,7 +54,7 @@ export function PainelAprovacaoView({ nivel, setor, userId }: Props) {
     setLoading(true);
     let q = supabase
       .from('producoes')
-      .select('*, funil:funis(id,nome,produto), responsavel:perfis!responsavel_id(id,nome), copy:perfis!copy_id(id,nome), gestor:perfis!gestor_id(id,nome)')
+      .select('*, responsavel:perfis!responsavel_id(id,nome), copy:perfis!copy_id(id,nome), gestor:perfis!gestor_id(id,nome)')
       .in('fase', fasesVisiveis)
       .order('data_prazo', { ascending: true, nullsFirst: false });
     if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
