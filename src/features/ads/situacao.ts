@@ -113,6 +113,63 @@ export function situacaoDe(s: string | null | undefined) {
   };
 }
 
+/**
+ * De quais tipos de card faz sentido perguntar "virou anúncio?".
+ *
+ * ── Por que a pergunta não se aplica a aula e VSL ──────────────────────────
+ *
+ * `fn_fixar_vinculo_ads` — a ÚNICA coisa que escreve em `producao_ads`, e
+ * portanto a única origem de `vw_producao_estado_ads` — casa anúncio com card
+ * exigindo `p.fase = 'postado' AND p.tipo = 'criativo'`. Uma aula ou uma VSL
+ * nunca pode ganhar vínculo, por construção.
+ *
+ * Logo `ads_ligados = 0` nesses dois tipos não é notícia sobre o trabalho de
+ * ninguém: é a regra de vínculo refletida de volta. Medido em 21/09/2026:
+ *
+ *   criativo   3.784 cards   521 com anúncio   13,8%
+ *   aula         221 cards     0 com anúncio    0,0%
+ *   vsl           98 cards     0 com anúncio    0,0%
+ *
+ * A tela "O que eu aprovei" mostrava "nunca virou anúncio" em laranja para uma
+ * Aula — acusando alguém de não ter feito algo que o tipo do card nunca faz — e
+ * ainda punha os 319 cards de aula e VSL no denominador de "viraram anúncio
+ * (x%)", afundando a porcentagem.
+ *
+ * ── Por que isto é um Set e não `tipo === 'criativo'` espalhado ────────────
+ *
+ * Porque já há duas definições de "roda como anúncio" no projeto e elas
+ * DISCORDAM — a primeira armadilha do CLAUDE.md, em pleno vigor:
+ *
+ *   `fn_fixar_vinculo_ads`  → só `criativo`
+ *   `CriativoFormModal`     → `isAdType = criativo || vsl`, e por isso 66 das
+ *                             98 VSLs têm `avaliacao` preenchida e 21 estão
+ *                             marcadas Validado/Escalado — julgadas à mão como
+ *                             se rodassem, enquanto as views de esteira
+ *                             (`tipo = 'criativo'`) não as enxergam.
+ *
+ * Esta é a definição de quem PERGUNTA pelo anúncio, e ela segue o vínculo, que
+ * é o lado que manda. A divergência do formulário está anotada, não resolvida:
+ * decidir se VSL entra na esteira é pergunta dela, não refactor de passagem.
+ *
+ * `src/test/aula-e-vsl-nao-viram-anuncio.test.ts` trava as duas pontas: se o
+ * banco ganhar um quarto tipo, ou se alguém afrouxar o vínculo, o teste quebra
+ * — terceira armadilha, lista no código que envelhece em silêncio.
+ */
+export const VIRA_ANUNCIO: ReadonlySet<string> = new Set(['criativo']);
+
+/** Os tipos de card de que NÃO se pergunta "virou anúncio?". Ver `VIRA_ANUNCIO`. */
+export const NAO_VIRA_ANUNCIO: ReadonlySet<string> = new Set(['aula', 'vsl']);
+
+/**
+ * Este card pode ter anúncio ligado?
+ *
+ * `false` significa "a pergunta não se aplica", nunca "a resposta é não" — a
+ * distinção é a diferença entre um traço cinza e uma acusação em laranja.
+ */
+export function rodaComoAnuncio(tipo: string | null | undefined): boolean {
+  return !!tipo && VIRA_ANUNCIO.has(tipo);
+}
+
 /** O estado de um objeto, como a tela do Meta Ads precisa dele. */
 export interface EstadoDoObjeto {
   nivel: string;

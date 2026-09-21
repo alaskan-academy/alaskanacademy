@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import type { ProducaoNivel, Perfil, Funil } from './types';
 import { useFases, fasesQueAprova, rotuloDaFase } from '../useFases';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
-import { situacaoDe } from '@/features/ads/situacao';
+import { situacaoDe, rodaComoAnuncio } from '@/features/ads/situacao';
 import { CriativoDrawer } from './CriativoDrawer';
 
 /**
@@ -43,6 +43,17 @@ import { CriativoDrawer } from './CriativoDrawer';
  * responder é "virou anúncio?", e ela vem de `vw_producao_estado_ads`, nunca de
  * `producoes.status_veiculacao`, que é digitado à mão e erra em 32% dos cards
  * marcados "Pausado".
+ *
+ * E A COLUNA SÓ PERGUNTA A QUEM PODE RESPONDER
+ *
+ * Em 21/09/2026 esta tela dizia "nunca virou anúncio", em laranja, sobre uma
+ * Aula. O vínculo anúncio↔card exige `tipo = 'criativo'`, então aula e VSL não
+ * têm como ter anúncio — 0 de 221 e 0 de 98, contra 521 de 3.784 criativos.
+ * O campo `tipo` já chegava aqui e nunca era lido: os 319 cards entravam no
+ * denominador de "viraram anúncio (x%)" e na conta de "nunca subiram".
+ *
+ * Quem decide é `rodaComoAnuncio`, em `features/ads/situacao.ts`, ao lado da
+ * regra de vínculo que ela espelha.
  */
 
 interface Props {
@@ -79,7 +90,7 @@ const BLOCO = 300;
  * card candidato. Um aprovado ontem pode simplesmente ainda não ter linha em
  * `producao_ads` — e a tela diria uma mentira sobre o trabalho de alguém.
  */
-const DIAS_DE_CARENCIA = 7;
+export const DIAS_DE_CARENCIA = 7;
 
 function diaCurto(iso: string): string {
   const [a, m, d] = iso.slice(0, 10).split('-');
@@ -89,6 +100,40 @@ function diaCurto(iso: string): string {
 function diasAtras(iso: string): number {
   const d = new Date(iso.slice(0, 10) + 'T00:00:00');
   return Math.round((Date.now() - d.getTime()) / 86_400_000);
+}
+
+/** O que a coluna "Virou anúncio?" tem a dizer sobre um card. */
+export type RespostaDoAnuncio =
+  /** O tipo do card não ganha vínculo de anúncio — a pergunta não se aplica. */
+  | 'nao_se_aplica'
+  /** Pode virar, ainda está na carência: o vínculo é automático e demora. */
+  | 'cedo_demais'
+  /** Podia ter virado, passou da carência, e não virou. */
+  | 'nunca_subiu'
+  | 'tem_anuncio';
+
+/**
+ * A ÚNICA decisão desta coluna — e também a do resumo lá em cima.
+ *
+ * Nasceu como função em 21/09/2026 porque a mesma regra estava escrita duas
+ * vezes, uma na célula e outra no `useMemo` do resumo, e as duas discordavam:
+ * a célula já sabia esperar a carência, e a conta de "nunca subiram" contava
+ * aula e VSL. Dois lugares decidindo a mesma coisa é a primeira armadilha do
+ * CLAUDE.md, e ela aparecia como a tela dizendo um número e a lista abaixo
+ * mostrando outro.
+ *
+ * A ORDEM DOS TESTES IMPORTA. `nao_se_aplica` vem primeiro porque os dois
+ * casos seguintes partem de `ads_ligados === 0`, que numa aula é a regra de
+ * vínculo (`tipo = 'criativo'`) refletida de volta — nunca um sintoma.
+ */
+export function respostaDoAnuncio(
+  tipo: string | null | undefined,
+  adsLigados: number,
+  dias: number,
+): RespostaDoAnuncio {
+  if (!rodaComoAnuncio(tipo)) return 'nao_se_aplica';
+  if (adsLigados > 0) return 'tem_anuncio';
+  return dias <= DIAS_DE_CARENCIA ? 'cedo_demais' : 'nunca_subiu';
 }
 
 export function AprovadosView({ nivel, setor, userId, funis, perfis }: Props) {
@@ -196,14 +241,27 @@ export function AprovadosView({ nivel, setor, userId, funis, perfis }: Props) {
      da função, é só o sinal que o drawer manda depois de gravar. */
   useEffect(() => { carregar(); }, [carregar, recarregar]);
 
+  /*
+    A CONTA DO ANÚNCIO SÓ CORRE SOBRE QUEM PODE TER ANÚNCIO.
+
+    `total` continua sendo tudo que ela aprovou — é o que a aba promete. Mas
+    numerador de anúncio com denominador de "todo card" é conta errada: aula e
+    VSL nunca ganham vínculo (ver `rodaComoAnuncio`), então cada uma delas só
+    empurrava a porcentagem para baixo e engordava "nunca subiram" com uma
+    acusação impossível de responder.
+  */
   const resumo = useMemo(() => {
-    const virou = itens.filter(i => i.ads_ligados > 0).length;
+    const respostas = itens.map(i => respostaDoAnuncio(i.tipo, i.ads_ligados, diasAtras(i.aprovado_em)));
+    const base = itens.filter((_, n) => respostas[n] !== 'nao_se_aplica');
+    const virou = respostas.filter(r => r === 'tem_anuncio').length;
     return {
       total: itens.length,
+      base: base.length,
+      foraDaConta: itens.length - base.length,
       virou,
-      pct: itens.length ? Math.round((100 * virou) / itens.length) : 0,
-      noAr: itens.filter(i => i.estado === 'rodando').length,
-      nuncaSubiu: itens.filter(i => i.ads_ligados === 0 && diasAtras(i.aprovado_em) > DIAS_DE_CARENCIA).length,
+      pct: base.length ? Math.round((100 * virou) / base.length) : 0,
+      noAr: base.filter(i => i.estado === 'rodando').length,
+      nuncaSubiu: respostas.filter(r => r === 'nunca_subiu').length,
     };
   }, [itens]);
 
@@ -243,9 +301,14 @@ export function AprovadosView({ nivel, setor, userId, funis, perfis }: Props) {
           <b className="tabular-nums">{resumo.total}</b>{' '}
           <span className="text-muted-foreground">aprovados</span>
         </span>
+        {/* O denominador aparece escrito quando não é `total` — número de
+            porcentagem sem base visível é como o erro passou despercebido. */}
         <span className="text-sm">
           <b className="tabular-nums">{resumo.virou}</b>{' '}
-          <span className="text-muted-foreground">viraram anúncio ({resumo.pct}%)</span>
+          <span className="text-muted-foreground">
+            viraram anúncio ({resumo.pct}%
+            {resumo.foraDaConta > 0 && ` dos ${resumo.base} criativos`})
+          </span>
         </span>
         <span className="text-sm">
           <b className="tabular-nums text-emerald-400">{resumo.noAr}</b>{' '}
@@ -294,12 +357,13 @@ export function AprovadosView({ nivel, setor, userId, funis, perfis }: Props) {
               {itens.map(i => {
                 const dias = diasAtras(i.aprovado_em);
                 const s = i.estado ? situacaoDe(i.estado) : null;
-                /* Sem linha na view não é "sem anúncio": é sem VÍNCULO ainda.
-                   A distinção importa porque o vínculo é automático e leva até
-                   uma hora — dizer "nunca virou anúncio" no mesmo dia seria
-                   afirmar algo sobre o trabalho de alguém sem ter como saber. */
-                const semVinculo = i.ads_ligados === 0;
-                const cedoDemais = semVinculo && dias <= DIAS_DE_CARENCIA;
+                /* A mesma função que alimenta o resumo — ver `respostaDoAnuncio`.
+                   Sem linha na view não é "sem anúncio": ou é sem VÍNCULO ainda
+                   (o vínculo é automático e leva até uma hora), ou é um tipo de
+                   card que nunca ganha vínculo. Dizer "nunca virou anúncio" nos
+                   dois casos afirma algo sobre o trabalho de alguém sem ter
+                   como saber. */
+                const resposta = respostaDoAnuncio(i.tipo, i.ads_ligados, dias);
                 return (
                   <tr
                     key={i.id}
@@ -322,11 +386,18 @@ export function AprovadosView({ nivel, setor, userId, funis, perfis }: Props) {
                       {rotuloDaFase(fases, i.fase)}
                     </td>
                     <td className="px-3 py-2">
-                      {cedoDemais ? (
+                      {resposta === 'nao_se_aplica' ? (
+                        <span
+                          className="text-muted-foreground/50"
+                          title={'Este tipo de card não roda como anúncio: o vínculo automático só liga anúncio a card do tipo Criativo. Ele fica fora da conta de "viraram anúncio".'}
+                        >
+                          não roda como anúncio
+                        </span>
+                      ) : resposta === 'cedo_demais' ? (
                         <span className="text-muted-foreground/60" title="O vínculo anúncio↔card é automático e roda de hora em hora. Ainda pode aparecer.">
                           ainda não subiu
                         </span>
-                      ) : semVinculo ? (
+                      ) : resposta === 'nunca_subiu' ? (
                         <span className="text-warning" title={`Aprovado há ${dias} dias e sem nenhum anúncio ligado a este card.`}>
                           nunca virou anúncio
                         </span>
