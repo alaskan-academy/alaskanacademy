@@ -261,6 +261,88 @@ function PontoDeSituacao({ estado }: { estado?: EstadoDoObjeto }) {
  * objetos e não mostrar a contagem em lugar nenhum seria criar o dado e nunca
  * mais voltar nele.
  */
+/** Uma linha de `vw_ad_morrendo`. A regra mora na view — ver 20260924b. */
+interface AdMorrendo {
+  ad_id: string;
+  nome: string | null;
+  conta: string | null;
+  empresa_id: string | null;
+  producao_id: string | null;
+  gasto_antes: number;
+  vendas_antes: number;
+  roas_antes: number;
+  gasto_agora: number;
+  vendas_agora: number;
+  roas_agora: number;
+  queda_pct: number | null;
+}
+
+/**
+ * "Este anúncio está se pagando?" — e não "está entregando?".
+ *
+ * Fica FORA da fila de selos de propósito. `situacao` responde sobre entrega;
+ * isto responde sobre resultado, e o caso que mais importa é justamente o que é
+ * as duas coisas ao mesmo tempo: Rodando E morrendo. Um anúncio não pode ter de
+ * escolher entre os dois rótulos — seria a primeira armadilha do CLAUDE.md, com
+ * dois vocabulários disputando o mesmo campo.
+ *
+ * A lista é curta por construção (6 de 102 no dia em que nasceu). Se um dia
+ * encher, o problema não é a tela: é a regra da view ter afrouxado.
+ */
+function AvisoAdMorrendo({ ads, onAbrirCard }: {
+  ads: AdMorrendo[];
+  onAbrirCard: (producaoId: string) => void;
+}) {
+  if (ads.length === 0) return null;
+  const total = ads.reduce((s, a) => s + Number(a.gasto_agora), 0);
+
+  return (
+    <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="text-sm font-medium text-warning">
+          {ads.length === 1 ? '1 anúncio deixou' : `${ads.length} anúncios deixaram`} de se pagar
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {formatCurrency(total)} nos últimos 7 dias · ainda no ar, e abaixo do empate de 1,6
+        </span>
+      </div>
+
+      <div className="mt-2 flex flex-col gap-1">
+        {ads.map(a => (
+          <div key={a.ad_id} className="flex flex-wrap items-baseline gap-x-2.5 text-xs">
+            {a.producao_id ? (
+              <button
+                type="button"
+                onClick={() => onAbrirCard(a.producao_id!)}
+                title="Abrir o card em Produção"
+                className="font-medium text-foreground hover:text-primary hover:underline"
+              >
+                {a.nome ?? a.ad_id}
+              </button>
+            ) : (
+              <span className="font-medium text-foreground">{a.nome ?? a.ad_id}</span>
+            )}
+            <span className="tabular-nums text-muted-foreground">
+              {formatCurrency(Number(a.gasto_agora))}
+            </span>
+            {/* O antes ao lado do agora: "ROAS 0,58" sozinho não diz se caiu ou
+                se sempre foi assim, e é a QUEDA que justifica o aviso. */}
+            <span className="tabular-nums">
+              <span className="text-muted-foreground/70">ROAS {Number(a.roas_antes).toFixed(2)}</span>
+              <span className="text-muted-foreground/40"> → </span>
+              <span className="font-medium text-warning">{Number(a.roas_agora).toFixed(2)}</span>
+            </span>
+            <span className="tabular-nums text-muted-foreground/70">
+              {a.vendas_antes} → {a.vendas_agora} vendas
+            </span>
+            <span className="text-muted-foreground/50">{a.conta}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LinhaDeSituacoes({ contagem, semEstado, filtro, onFiltrar }: {
   contagem: Map<string, number>;
   semEstado: number;
@@ -391,6 +473,7 @@ export default function MetaAdsPage() {
     : perfil?.cargo?.pode_aprovar ? 'head' : 'membro';
   const [cardDeAd, setCardDeAd] = useState<Map<string, string>>(new Map());
   const [cardAberto, setCardAberto] = useState<string | null>(null);
+  const [morrendo, setMorrendo] = useState<AdMorrendo[]>([]);
 
   /*
     A soma acontece no banco, e não aqui.
@@ -498,6 +581,35 @@ export default function MetaAdsPage() {
     };
     void carregarEstado();
   }, [contaIds]);
+
+  /*
+    Quem deixou de se pagar. A janela é fixa em 7 dias contra os 7 anteriores e
+    NÃO segue o filtro de datas do cabeçalho: o aviso responde "o que está
+    queimando dinheiro agora", e recortá-lo por um mês passado devolveria a
+    resposta de outra pergunta. Mesma razão pela qual a vida útil do AD ignora o
+    período em Criativos → Desempenho.
+
+    Empresa e conta, sim: são recortes de "o que é meu", não de tempo.
+  */
+  useEffect(() => {
+    const carregarMorrendo = async () => {
+      let q = supabase
+        .from('vw_ad_morrendo')
+        .select('ad_id,nome,conta,empresa_id,producao_id,gasto_antes,vendas_antes,roas_antes,gasto_agora,vendas_agora,roas_agora,queda_pct')
+        .order('gasto_agora', { ascending: false });
+      if (contaIds && contaIds.length > 0) q = q.in('ad_account_id', contaIds);
+      if (empresaId) q = q.eq('empresa_id', empresaId);
+      const { data, error } = await q;
+      if (error) {
+        /* Falha não vira bloco vazio em silêncio: sem aviso a tela diz
+           "está tudo bem", que é a leitura mais cara possível aqui. */
+        console.error('vw_ad_morrendo:', error.message);
+        return;
+      }
+      setMorrendo((data ?? []) as AdMorrendo[]);
+    };
+    void carregarMorrendo();
+  }, [contaIds, empresaId]);
 
   /*
     Filtra o nível e calcula as razões — a soma já veio pronta.
@@ -961,6 +1073,7 @@ export default function MetaAdsPage() {
         </TabsContent>
 
         <TabsContent value="anuncios">
+          <AvisoAdMorrendo ads={morrendo} onAbrirCard={setCardAberto} />
           {selectedAdset.size > 0 && (
             <div className="mb-3 text-xs text-primary">
               Mostrando anúncios de {selectedAdset.size} conjunto(s) selecionado(s)
