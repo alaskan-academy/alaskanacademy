@@ -283,9 +283,33 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="_">Nenhum</SelectItem>
+                  {/*
+                    O PROJETO AO LADO DO REV, E NÃO SÓ NA LISTA FILTRADA.
+
+                    "REV5" sozinho não identifica funil nenhum: há CINCO funis
+                    chamados "REV1 - Original", um por produto. Aqui a lista já
+                    vem filtrada pelo projeto, então repetir parece redundante —
+                    e não é, por dois motivos. O seletor fechado passa a mostrar
+                    "REV5 · Saponaria Brasil" em vez de "REV5", que é o que
+                    sobra na tela depois de escolher. E se o projeto estiver
+                    errado, a lista inteira parece plausível: o nome do produto
+                    ao lado é o que denuncia.
+
+                    Sai de `projetos`, pela CHAVE — a mesma lista que alimenta o
+                    seletor de Projeto. `funis.produto` é um texto que diz a
+                    mesma coisa (nos 10 funis ativos os dois batem hoje), e usar
+                    a cópia em vez da chave é como os dois começam a divergir.
+                  */}
                   {funis
                     .filter(f => f.projeto_id === form.projeto_id)
-                    .map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+                    .map(f => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.nome}
+                        <span className="ml-1.5 text-muted-foreground">
+                          · {projetos.find(p => p.id === f.projeto_id)?.nome ?? '—'}
+                        </span>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

@@ -18,6 +18,7 @@ interface Linha {
   responsavel: string | null;
   funil_alvo_id: string | null;
   funil_alvo: string | null;
+  funil_alvo_produto: string | null;
   estado: 'pronto' | 'descartado' | 'validado' | 'arquivado' | 'rodou_sem_veredito' | 'em_producao';
 }
 
@@ -94,7 +95,7 @@ export function PorAnguloView({ userId }: { userId: string }) {
       const { linhas: todas, erro: falha } = await todasAsLinhas<Linha>((de, ate) => {
         let q = supabase
           .from('vw_criativo_por_angulo')
-          .select('producao_id,nome,projeto,angulo,metodo_video,formato,fase,avaliacao,responsavel,estado,funil_alvo_id,funil_alvo')
+          .select('producao_id,nome,projeto,angulo,metodo_video,formato,fase,avaliacao,responsavel,estado,funil_alvo_id,funil_alvo,funil_alvo_produto')
           .order('angulo')
           .range(de, ate);
         if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
@@ -115,7 +116,7 @@ export function PorAnguloView({ userId }: { userId: string }) {
       /* O funil alvo entra na busca: digitar "REV5" tem de achar os cards
          feitos para ele — que é a pergunta original dela, e a única forma de
          respondê-la enquanto o alvo não for um agrupamento próprio. */
-      if (filtro && !(`${l.angulo} ${l.projeto ?? ''} ${l.nome} ${l.funil_alvo ?? ''}`
+      if (filtro && !(`${l.angulo} ${l.projeto ?? ''} ${l.nome} ${l.funil_alvo ?? ''} ${l.funil_alvo_produto ?? ''}`
                         .toLowerCase().includes(filtro))) continue;
       const proj = l.projeto ?? '— sem projeto —';
       if (!mapa.has(proj)) mapa.set(proj, new Map());
@@ -258,7 +259,13 @@ export function PorAnguloView({ userId }: { userId: string }) {
                                   dois discordarem é o caso que interessa. */}
                               {c.funil_alvo && (
                                 <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-primary/80">
+                                  {/* O produto junto: "REV5" sozinho não
+                                      identifica funil nenhum — há cinco
+                                      "REV1 - Original", um por produto. */}
                                   ⌖ {c.funil_alvo}
+                                  {c.funil_alvo_produto && (
+                                    <span className="text-primary/50"> · {c.funil_alvo_produto}</span>
+                                  )}
                                 </span>
                               )}
                               {c.metodo_video && <span className="text-muted-foreground/70">{c.metodo_video}</span>}
