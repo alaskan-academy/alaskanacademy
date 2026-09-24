@@ -5,8 +5,9 @@ import { cn } from '@/lib/utils';
 import { AvaliacaoView } from '../components/AvaliacaoView';
 import { DesempenhoAdsView } from '../components/DesempenhoAdsView';
 import { PorProjetoView } from '@/features/producao/components/PorProjetoView';
+import { PorAnguloView } from '../components/PorAnguloView';
 
-const TABS = ['Avaliação', 'Por Projeto', 'Desempenho'] as const;
+const TABS = ['Avaliação', 'Por Projeto', 'Por Ângulo', 'Desempenho'] as const;
 type Tab = typeof TABS[number];
 
 export default function CriativosPage() {
@@ -35,6 +36,7 @@ export default function CriativosPage() {
 
       {activeTab === 'Avaliação'   && <AvaliacaoView userId={userId} />}
       {activeTab === 'Por Projeto' && <PorProjetoView nivel="socio" userId={userId} />}
+      {activeTab === 'Por Ângulo'  && <PorAnguloView userId={userId} />}
       {activeTab === 'Desempenho'  && <DesempenhoAdsView />}
     </DashboardLayout>
   );
