@@ -73,7 +73,7 @@ describe('status_veiculacao é intenção, não fato', () => {
    * olha o nome da função em volta, e não só a comparação.
    */
   const VOCABULARIO_META = [
-    'rodando', 'parado', 'barrado_pelo_pai', 'bloqueado', 'sem_anuncio',
+    'rodando', 'parado', 'parado_recente', 'barrado_pelo_pai', 'bloqueado', 'sem_anuncio',
     'ativo_sem_entregar', 'ativo_nunca_entregou', 'em_analise', 'sem_dado',
   ];
 

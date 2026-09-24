@@ -249,6 +249,11 @@ function diaCurto(iso: string): string {
 /**
  * A marcação dela contradiz o Meta? É o caso que custa dinheiro.
  *
+ * `parado_recente` entrou em 24/09/2026 junto com o selo âmbar: é a mesma
+ * afirmação que `parado` — alguém desligou —, só que recente. Fora da lista,
+ * a contradição pararia de ser acusada justamente nos casos mais quentes, que
+ * é o oposto do que esta tela existe para fazer.
+ *
  * `ALGUEM_DESLIGOU` existe porque o vocabulário novo separa o que o antigo
  * juntava: "parado" é o anúncio desligado e "barrado_pelo_pai" é o conjunto
  * desligado por cima dele. Os dois contradizem quem marcou "Rodando", e omitir
@@ -258,7 +263,7 @@ function diaCurto(iso: string): string {
  * anúncio ESTÁ ligado — quem marcou "Rodando" não errou, a entrega é que não
  * saiu. Acusar contradição ali mandaria a pessoa desmarcar o que está certo.
  */
-const ALGUEM_DESLIGOU = ['parado', 'barrado_pelo_pai', 'sem_anuncio'];
+const ALGUEM_DESLIGOU = ['parado', 'parado_recente', 'barrado_pelo_pai', 'sem_anuncio'];
 
 function contradiz(marcado: string | null, estado: string | null): boolean {
   if (!marcado || !estado) return false;

@@ -52,12 +52,32 @@ export const SITUACAO: Record<string, { rotulo: string; ponto: string; selo: str
     texto: 'text-emerald-400',
     explica: 'Ligado e entregando.',
   },
+  /**
+   * Desligado, mas entregando até anteontem. É a única fatia de "parado" sobre
+   * a qual ainda há o que fazer hoje, e por isso é a única em âmbar.
+   *
+   * Pintar TODO parado de âmbar foi a primeira ideia e estava errada: dos 5.988
+   * parados medidos em 24/09/2026, 5.041 nunca entregaram uma impressão e 845
+   * pararam há mais de duas semanas. O aviso teria nascido aceso em 99% dos
+   * casos, e aviso sempre aceso o olho para de ver — a mesma razão pela qual o
+   * vermelho fica fora da interface no CLAUDE.md.
+   *
+   * A regra mora em `vw_meta_status`, não aqui: `status <> 'ACTIVE' AND
+   * ultima_entrega >= current_date - 7`. Ver a migração 20260924a.
+   */
+  parado_recente: {
+    rotulo: 'Recém-parado',
+    ponto: 'bg-amber-500',
+    selo: 'bg-amber-500/15 text-amber-400',
+    texto: 'text-warning',
+    explica: 'Entregava até poucos dias atrás e alguém desligou — o corte é 7 dias.',
+  },
   parado: {
     rotulo: 'Parado',
     ponto: 'bg-muted-foreground/40',
     selo: 'bg-secondary text-muted-foreground',
     texto: 'text-muted-foreground',
-    explica: 'Alguém desligou.',
+    explica: 'Desligado, e sem entregar há mais de uma semana.',
   },
   sem_dado: {
     rotulo: 'Sem dado',
