@@ -31,7 +31,8 @@
 -- "Não validado", e ninguém julga o que não rodou. Por isso o estado sai da
 -- avaliação e da fase, não do vínculo.
 
-CREATE OR REPLACE VIEW public.vw_criativo_por_angulo AS
+CREATE OR REPLACE VIEW public.vw_criativo_por_angulo
+  WITH (security_invoker = on) AS
 SELECT p.id                AS producao_id,
        p.nome,
        p.projeto_id,

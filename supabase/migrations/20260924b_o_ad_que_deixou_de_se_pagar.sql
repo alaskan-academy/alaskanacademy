@@ -53,7 +53,8 @@
 -- e o REPLACE so aceita coluna nova no fim. A view nasceu nesta mesma migracao
 -- e nada depende dela, entao derrubar e recriar nao alcanca ninguem.
 DROP VIEW IF EXISTS public.vw_ad_morrendo;
-CREATE VIEW public.vw_ad_morrendo AS
+CREATE VIEW public.vw_ad_morrendo
+  WITH (security_invoker = on) AS
 WITH midia AS (
   SELECT m.ad_id,
          sum(m.investimento) FILTER (WHERE m.data >= CURRENT_DATE - 7) AS inv_7,

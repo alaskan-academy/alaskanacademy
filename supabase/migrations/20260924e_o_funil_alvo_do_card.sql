@@ -56,7 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_producoes_funil_alvo
   ON producoes (funil_alvo_id) WHERE funil_alvo_id IS NOT NULL;
 
 -- A prateleira passa a saber o alvo.
-CREATE OR REPLACE VIEW public.vw_criativo_por_angulo AS
+CREATE OR REPLACE VIEW public.vw_criativo_por_angulo
+  WITH (security_invoker = on) AS
 SELECT p.id                AS producao_id,
        p.nome,
        p.projeto_id,

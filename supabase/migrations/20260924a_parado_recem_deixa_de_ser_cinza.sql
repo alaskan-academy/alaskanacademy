@@ -43,7 +43,8 @@
 -- "sem anuncio" e uma frase plausivel. A prova 4 la embaixo existe para isso.
 
 -- ── 1. vw_meta_status: a situacao nova, antes do `parado` generico ──────────
-CREATE OR REPLACE VIEW public.vw_meta_status AS
+CREATE OR REPLACE VIEW public.vw_meta_status
+  WITH (security_invoker = on) AS
 WITH entrega AS (
   SELECT metricas_meta.nivel,
          COALESCE(metricas_meta.ad_id, metricas_meta.adset_id, metricas_meta.campanha_id) AS objeto_id,
@@ -104,7 +105,8 @@ SELECT o.id,
   LEFT JOIN entrega e ON e.nivel = o.nivel AND e.objeto_id = o.objeto_id;
 
 -- ── 2. vw_producao_estado_ads: o card tambem precisa saber ──────────────────
-CREATE OR REPLACE VIEW public.vw_producao_estado_ads AS
+CREATE OR REPLACE VIEW public.vw_producao_estado_ads
+  WITH (security_invoker = on) AS
 WITH gasto AS (
   SELECT m.ad_id, max(m.data) FILTER (WHERE m.investimento > 0::numeric) AS ultimo_dia
     FROM metricas_meta m

@@ -59,7 +59,8 @@
 -- e estava errado. A view devolve `produto` junto, e a tela tem de mostrar os
 -- dois — "REV1 - Original" sozinho é ambíguo em 5 lugares.
 
-CREATE OR REPLACE VIEW public.vw_rev_tendencia AS
+CREATE OR REPLACE VIEW public.vw_rev_tendencia
+  WITH (security_invoker = on) AS
 WITH janelas AS (
   /* 1 = mais antiga, 3 = a que terminou ontem. Ontem, e não hoje: dia em curso
      entra pela metade e faz toda métrica parecer pior. */
