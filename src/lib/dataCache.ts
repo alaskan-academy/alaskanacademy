@@ -20,7 +20,7 @@ export function invalidateCache(key?: string) {
 export const fetchFunis = () =>
   cached('funis', async () => {
     const { data } = await supabase
-      .from('funis').select('id,nome,produto,ativo').eq('ativo', true).order('nome');
+      .from('funis').select('id,nome,produto,ativo,projeto_id').eq('ativo', true).order('nome');
     return data ?? [];
   });
 

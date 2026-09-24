@@ -37,7 +37,7 @@ type OfertaEditorOption = { id: string; nome: string };
 
 type FormState = {
   nome: string; tipo: CriativoTipo; fase: string;
-  responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; metodo_video: string;
+  responsavel_id: string; copy_id: string; gestor_id: string; especialista_id: string; projeto_id: string; metodo_video: string; funil_alvo_id: string;
   formato: string; plataforma: string; tipo_teste: string; nivel_consciencia: string; angulo_teste: string;
   modulo: string; ordem: string;
   copy_url: string; video_gravado_url: string; video_editado_url: string;
@@ -47,7 +47,7 @@ type FormState = {
 
 const makeEmpty = (tipo: CriativoTipo = 'criativo'): FormState => ({
   nome: '', tipo, fase: getDefaultFase(tipo),
-  responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', metodo_video: '',
+  responsavel_id: '', copy_id: '', gestor_id: '', especialista_id: '', projeto_id: '', metodo_video: '', funil_alvo_id: '',
   formato: '', plataforma: '', tipo_teste: '', nivel_consciencia: '', angulo_teste: '',
   modulo: '', ordem: '',
   copy_url: '', video_gravado_url: '', video_editado_url: '',
@@ -86,7 +86,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       // quando há período.
       setForm({ ...makeEmpty(), data_inicio: defaultDate ?? '' });
       Promise.all([
-        funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto').eq('ativo', true).order('nome'),
+        funisProp  ? Promise.resolve({ data: funisProp  }) : supabase.from('funis').select('id,nome,produto,projeto_id').eq('ativo', true).order('nome'),
         perfisProp ? Promise.resolve({ data: perfisProp }) : supabase.from('perfis').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('ofertas_editores').select('id,nome').eq('ativo', true).order('nome'),
         supabase.from('criativo_campos_opcoes').select('campo,valor').order('ordem'),
@@ -138,6 +138,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
       tipo:              form.tipo,
       fase:              form.fase || getDefaultFase(form.tipo),
       projeto_id:        form.projeto_id        || null,
+      funil_alvo_id:     form.funil_alvo_id     || null,
       metodo_video:       form.tipo === 'criativo' ? (form.metodo_video || null) : null,
       responsavel_id:    form.responsavel_id    || null,
       copy_id:           form.tipo !== 'aula' ? (form.copy_id        || null) : null,
@@ -235,15 +236,59 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
             </div>
           </div>
 
-          <div>
-            <Label className="text-xs">Projeto</Label>
-            <Select value={form.projeto_id || '_'} onValueChange={v => set('projeto_id', v === '_' ? '' : v)}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_">Nenhum</SelectItem>
-                {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Projeto</Label>
+              <Select
+                value={form.projeto_id || '_'}
+                onValueChange={v => {
+                  /* Trocar de projeto derruba o funil escolhido: o funil
+                     pertence a um projeto, e deixar o antigo gravaria um alvo
+                     de outro produto sem nada na tela denunciando. */
+                  setForm(prev => ({ ...prev, projeto_id: v === '_' ? '' : v, funil_alvo_id: '' }));
+                }}
+              >
+                <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue placeholder="Nenhum" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Nenhum</SelectItem>
+                  {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/*
+              PARA QUAL FUNIL ESTE CARD FOI FEITO.
+
+              É a condição que ela pôs para recriar a ligação card→funil: a
+              coluna anterior morreu com 0 de 4.098 preenchidas porque nada a
+              preenchia. Cadastro sem quem cadastre é a segunda armadilha do
+              CLAUDE.md, e o campo aqui é o que impede a repetição.
+
+              É INTENÇÃO, não fato. De qual REV a venda veio continua saindo de
+              `vw_criativo_funil`, e os dois discordarem é o ponto: ad feito
+              para o funil X que acabou rodando contra a página Y.
+            */}
+            <div>
+              <Label className="text-xs">
+                Funil alvo
+                <span className="ml-1 font-normal text-muted-foreground/60">· para qual foi feito</span>
+              </Label>
+              <Select
+                value={form.funil_alvo_id || '_'}
+                onValueChange={v => set('funil_alvo_id', v === '_' ? '' : v)}
+                disabled={!form.projeto_id}
+              >
+                <SelectTrigger className="mt-1 h-8 text-xs">
+                  <SelectValue placeholder={form.projeto_id ? 'Nenhum' : 'Escolha o projeto antes'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Nenhum</SelectItem>
+                  {funis
+                    .filter(f => f.projeto_id === form.projeto_id)
+                    .map(f => <SelectItem key={f.id} value={f.id}>{f.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Equipe */}

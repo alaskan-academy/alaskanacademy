@@ -98,6 +98,9 @@ export interface Funil {
   nome: string;
   produto: string;
   ativo: boolean;
+  /** De qual projeto o funil e. Opcional porque nem toda tela precisa dele;
+   *  o formulario usa para so oferecer funil do projeto escolhido. */
+  projeto_id?: string | null;
 }
 
 export interface Comentario {

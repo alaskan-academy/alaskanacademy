@@ -16,6 +16,8 @@ interface Linha {
   fase: string;
   avaliacao: string | null;
   responsavel: string | null;
+  funil_alvo_id: string | null;
+  funil_alvo: string | null;
   estado: 'pronto' | 'descartado' | 'validado' | 'arquivado' | 'rodou_sem_veredito' | 'em_producao';
 }
 
@@ -46,17 +48,24 @@ const ORDEM = ['pronto', 'descartado', 'validado', 'rodou_sem_veredito', 'em_pro
  * incongruência de ângulo, e morreram. Quando a página certa subir, eles
  * deveriam voltar à mesa — e hoje ninguém lembra que existem.
  *
- * ELA PEDIU "ADS DAQUELE FUNIL", E ISSO NÃO DÁ PARA RESPONDER.
+ * POR QUE O AGRUPAMENTO É POR ÂNGULO, E NÃO POR FUNIL
  *
- * A ligação card↔funil não existe: era `producoes.funil_id`, apagada em
- * 21/09/2026 por estar vazia em 4.098 de 4.098 linhas. Reconstruir por
- * `projeto_id + metodo` devolve o MESMO conjunto para REVs irmãos — REV9 e
- * REV5, ambos Saponaria/TSL, dão os mesmos 197 cards, o que responde "ads do
- * projeto com este método" e não "ads deste funil".
+ * Quando esta tela nasceu não havia ligação card↔funil: `producoes.funil_id`
+ * tinha sido apagada em 21/09/2026, vazia em 4.098 de 4.098 linhas. E
+ * reconstruí-la por `projeto_id + metodo` não servia — REV9 e REV5, ambos
+ * Saponaria/TSL, devolvem os MESMOS 197 cards, o que responde "ads do projeto
+ * com este método" e não "ads deste funil".
  *
- * Então a tela é por ÂNGULO, que é o eixo que o cenário dela realmente tem: a
- * incongruência que matou os ads era de ângulo, não de funil. Ela escolhe o
- * ângulo da página que vai subir e vê a prateleira inteira.
+ * Em 24/09/2026 ela autorizou recriar a ligação, e ela existe: `funil_alvo_id`,
+ * preenchida no formulário ao criar o card. O agrupamento continua por ÂNGULO
+ * por dois motivos: é o eixo que o cenário dela tem — a incongruência que matou
+ * os ads era de ângulo —, e o alvo é nulo nos 3.794 cards antigos, que não
+ * foram backfilled de propósito (ver 20260924e). Agrupar pelo alvo hoje jogaria
+ * quase tudo num balde "sem funil".
+ *
+ * O alvo aparece no card (⌖) e entra na busca: digitar "REV5" acha os cards
+ * feitos para ele. E a contagem de quantos já têm alvo fica no topo, que é o
+ * que denuncia se o campo voltar a não ser preenchido.
  *
  * `angulo_teste` é texto livre — 213 valores distintos, vazio em 2.010 de
  * 3.794. Por isso há busca, e por isso os sem ângulo aparecem num grupo
@@ -85,7 +94,7 @@ export function PorAnguloView({ userId }: { userId: string }) {
       const { linhas: todas, erro: falha } = await todasAsLinhas<Linha>((de, ate) => {
         let q = supabase
           .from('vw_criativo_por_angulo')
-          .select('producao_id,nome,projeto,angulo,metodo_video,formato,fase,avaliacao,responsavel,estado')
+          .select('producao_id,nome,projeto,angulo,metodo_video,formato,fase,avaliacao,responsavel,estado,funil_alvo_id,funil_alvo')
           .order('angulo')
           .range(de, ate);
         if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
@@ -103,7 +112,11 @@ export function PorAnguloView({ userId }: { userId: string }) {
     const filtro = busca.trim().toLowerCase();
     const mapa = new Map<string, Map<string, Linha[]>>();
     for (const l of linhas) {
-      if (filtro && !(`${l.angulo} ${l.projeto ?? ''} ${l.nome}`.toLowerCase().includes(filtro))) continue;
+      /* O funil alvo entra na busca: digitar "REV5" tem de achar os cards
+         feitos para ele — que é a pergunta original dela, e a única forma de
+         respondê-la enquanto o alvo não for um agrupamento próprio. */
+      if (filtro && !(`${l.angulo} ${l.projeto ?? ''} ${l.nome} ${l.funil_alvo ?? ''}`
+                        .toLowerCase().includes(filtro))) continue;
       const proj = l.projeto ?? '— sem projeto —';
       if (!mapa.has(proj)) mapa.set(proj, new Map());
       const porAngulo = mapa.get(proj)!;
@@ -150,6 +163,7 @@ export function PorAnguloView({ userId }: { userId: string }) {
   }
 
   const totalProntos = linhas.filter(l => l.estado === 'pronto').length;
+  const comAlvo      = linhas.filter(l => l.funil_alvo_id).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -162,6 +176,21 @@ export function PorAnguloView({ userId }: { userId: string }) {
             agrupados pelo ângulo · quando a página de um ângulo subir, a prateleira dele está aqui
           </span>
         </div>
+
+        {/*
+          A COLUNA DE RESULTADO DO CAMPO NOVO.
+
+          `funil_alvo_id` nasceu em 24/09/2026 e a coluna que ele substitui
+          morreu com 0 de 4.098 preenchidas. Mostrar a adesão aqui é o que faz
+          alguém PERCEBER se ela não está subindo — sem isto, o campo voltaria a
+          ser um lugar vazio, e o vazio só apareceria quando alguém procurasse.
+          Segunda armadilha do CLAUDE.md: nenhum cadastro sem o resultado ao lado.
+        */}
+        <p className="mt-1 text-xs text-muted-foreground/70">
+          {comAlvo === 0
+            ? 'Nenhum card diz ainda para qual funil foi feito — o campo é novo, e aparece ao criar o card.'
+            : `${comAlvo} de ${linhas.length} dizem para qual funil foram feitos.`}
+        </p>
         <div className="relative mt-3">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -224,6 +253,14 @@ export function PorAnguloView({ userId }: { userId: string }) {
                                 {ESTADO[c.estado].rotulo.replace(/s$/, '')}
                               </span>
                               <span className="font-medium text-foreground">{c.nome}</span>
+                              {/* Para qual funil o card foi FEITO. Não é de onde
+                                  veio a venda — isso é `vw_criativo_funil`, e os
+                                  dois discordarem é o caso que interessa. */}
+                              {c.funil_alvo && (
+                                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-primary/80">
+                                  ⌖ {c.funil_alvo}
+                                </span>
+                              )}
                               {c.metodo_video && <span className="text-muted-foreground/70">{c.metodo_video}</span>}
                               {c.formato && <span className="text-muted-foreground/70">{c.formato}</span>}
                               {c.responsavel && <span className="text-muted-foreground/50">{c.responsavel}</span>}
