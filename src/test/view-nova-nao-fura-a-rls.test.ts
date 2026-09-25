@@ -61,9 +61,21 @@ describe('view nova não fura a RLS', () => {
          falso — foi assim que o teste do empate quase passou cego hoje. */
       const sql = bruto.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
-      /* Cada `CREATE [OR REPLACE] VIEW <nome>` e o que vem até o `AS`. */
+      /*
+        Cada `CREATE [OR REPLACE] VIEW <nome>` e o que vem até o `AS`.
+
+        O `(?![.\w])` depois do nome não é enfeite. Sem ele, a regex casava com
+        `create or replace view public.%I as %s` — o `format()` da migração
+        20260925b, que recria views dinamicamente — e, como `public\.` era
+        opcional, ela voltava atrás e lia o NOME da view como "public". Acusava
+        uma migração que na verdade preserva as reloptions e prova isso.
+
+        Falso positivo aqui é caro: este teste existe para ser levado a sério
+        depois de eu ter aberto três buracos de RLS num dia. Teste que acusa
+        inocente é teste que alguém desliga.
+      */
       for (const m of sql.matchAll(
-        /create\s+(?:or\s+replace\s+)?view\s+(?:public\.)?([a-z_]+)([\s\S]*?)\bas\b/gi,
+        /create\s+(?:or\s+replace\s+)?view\s+(?:public\.)?([a-z_][a-z0-9_]*)(?![.\w])([\s\S]*?)\bas\b/gi,
       )) {
         const [, view, entre] = m;
         if (/security_invoker/i.test(entre)) continue;
