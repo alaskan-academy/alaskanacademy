@@ -11,7 +11,14 @@ import { cn } from '@/lib/utils';
  * sempre no fim.
  */
 
-export type TipoBloco = 'texto' | 'imagem' | 'video' | 'html';
+export type TipoBloco = 'texto' | 'imagem' | 'video' | 'html' | 'checklist';
+
+/** Uma linha do bloco de checklist: item para marcar, ou titulo de grupo. */
+export interface ItemChecklist {
+  texto: string;
+  /** `true` separa um grupo ('Passo 1'), e nao e marcavel. */
+  grupo?: boolean;
+}
 
 export interface Bloco {
   tipo: TipoBloco;
@@ -19,6 +26,7 @@ export interface Bloco {
     html?: string;
     url?: string;
     legenda?: string;
+    itens?: ItemChecklist[];
   };
 }
 
@@ -27,7 +35,10 @@ export function lerBlocos(v: unknown): Bloco[] {
   if (!Array.isArray(v)) return [];
   return v.filter((b): b is Bloco =>
     !!b && typeof b === 'object' &&
-    ['texto', 'imagem', 'video', 'html'].includes((b as Bloco).tipo));
+    /* A LISTA VIVE AQUI E EM `semVazios`, e esquecer um dos dois e caro: sem
+       este, o bloco some ao LER; sem o outro, ele e APAGADO ao salvar, em
+       silencio. Ha um teste de ida-e-volta por tipo justamente por isso. */
+    ['texto', 'imagem', 'video', 'html', 'checklist'].includes((b as Bloco).tipo));
 }
 
 /** Os títulos de dentro dos blocos de texto, para o sumário lateral. */
@@ -63,6 +74,11 @@ export function semVazios(blocos: Bloco[]): Bloco[] {
       return semTags.length > 0;
     }
     if (b.tipo === 'html') return (b.dados.html ?? '').trim().length > 0;
+    /* Sem este ramo o checklist cairia no `return b.dados.url` la embaixo — e,
+       nao tendo url, seria apagado do banco no salvamento seguinte. */
+    if (b.tipo === 'checklist') {
+      return (b.dados.itens ?? []).some(i => (i?.texto ?? '').trim().length > 0);
+    }
     return (b.dados.url ?? '').trim().length > 0;
   });
 }
@@ -200,9 +216,152 @@ export function BlocosRenderer({ blocos, titulo, onAmpliar }: {
           case 'html':   return <BlocoHtml   key={i} html={b.dados.html ?? ''} />;
           case 'imagem': return <BlocoImagem key={i} url={b.dados.url ?? ''} legenda={b.dados.legenda} onAmpliar={onAmpliar} />;
           case 'video':  return <BlocoVideo  key={i} url={b.dados.url ?? ''} titulo={titulo} />;
+          case 'checklist': return <BlocoChecklist key={i} itens={b.dados.itens ?? []} chave={`${titulo}#${i}`} />;
           default:       return null;
         }
       })}
     </>
+  );
+}
+
+/**
+ * O checklist marcável, no fim de um processo.
+ *
+ * ── O que a marcação é, e o que ela NÃO é ──────────────────────────────────
+ *
+ * É um rascunho pessoal: fica no navegador de quem marcou, não sai dali e não
+ * registra nada. Serve para não perder o lugar no meio de 43 itens com o vídeo
+ * aberto do lado — que é exatamente o pedido.
+ *
+ * A tela diz isso em voz alta em vez de deixar a pessoa supor que alguém do
+ * outro lado está vendo. Um checklist que parece registrar e não registra é
+ * pior do que um que assume ser rascunho: o primeiro dá uma garantia falsa
+ * sobre trabalho conferido.
+ *
+ * ── Por que não dá para escrever isso como texto ───────────────────────────
+ *
+ * O editor tem um botão de checklist (Tiptap TaskList), mas `sanitizarHtml`
+ * não permite `input` nem `label`, e não tem entrada para `ul`/`li` — então
+ * `data-type` e `data-checked` são removidos junto. Medido em 28/09/2026:
+ *
+ *   gravado:  <ul data-type="taskList"><li data-checked="false"><label><input…
+ *   publicado: <ul><li><span></span><div>…
+ *
+ * Você veria as caixinhas ao editar e a equipe receberia bolinhas. Por isso o
+ * checklist é um TIPO DE BLOCO, com dado próprio, e não HTML.
+ */
+function BlocoChecklist({ itens, chave }: { itens: ItemChecklist[]; chave: string }) {
+  const armazem = `checklist:${chave}`;
+
+  const [marcados, setMarcados] = useState<Set<string>>(() => {
+    /* localStorage falha em aba anônima e com cookies bloqueados. A lista tem
+       de aparecer de qualquer jeito — marcação é conforto, não requisito. */
+    try {
+      const cru = window.localStorage.getItem(armazem);
+      return new Set(cru ? (JSON.parse(cru) as string[]) : []);
+    } catch { return new Set(); }
+  });
+
+  /*
+   * A chave leva a POSICAO, e nao so o texto.
+   *
+   * Os rotulos se repetem entre passos de proposito: 'Estilo' esta no Passo 1
+   * (Legendas) e no Passo 3 (Headline); 'Safezone' esta no 4 e no 5. Guardando
+   * so pelo texto, marcar um marcaria o outro — e a pessoa veria um item
+   * conferido que ela nunca olhou, num checklist cujo trabalho e justamente
+   * dizer o que ja foi olhado.
+   *
+   * O texto entra junto de proposito: reescrever um item limpa a marca dele,
+   * que e o certo — item diferente, conferencia diferente.
+   */
+  const chaveDoItem = (i: number, texto: string) => `${i}:${texto}`;
+  const marcaveis = useMemo(
+    () => itens.map((item, i) => ({ item, i })).filter(({ item }) => !item.grupo && item.texto.trim()),
+    [itens],
+  );
+
+  const alternar = (id: string) => {
+    setMarcados(prev => {
+      const proximo = new Set(prev);
+      if (proximo.has(id)) proximo.delete(id); else proximo.add(id);
+      try { window.localStorage.setItem(armazem, JSON.stringify([...proximo])); } catch { /* sem espaço ou sem permissão: a marcação vale só para esta sessão */ }
+      return proximo;
+    });
+  };
+
+  const limpar = () => {
+    setMarcados(new Set());
+    try { window.localStorage.removeItem(armazem); } catch { /* idem */ }
+  };
+
+  const feitos = marcaveis.filter(({ item, i }) => marcados.has(chaveDoItem(i, item.texto))).length;
+
+  if (marcaveis.length === 0) return null;
+
+  return (
+    <div className="my-6 rounded-xl border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+        <div>
+          <p className="text-sm font-medium">{feitos} de {marcaveis.length}</p>
+          <p className="text-[11px] text-muted-foreground">
+            Marcação pessoal, só neste navegador. Não registra a revisão em lugar nenhum.
+          </p>
+        </div>
+        {feitos > 0 && (
+          <button
+            type="button"
+            onClick={limpar}
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
+      <ul className="divide-y divide-border">
+        {itens.map((item, i) => {
+          if (item.grupo) {
+            return (
+              <li
+                key={i}
+                className="px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground bg-secondary/30"
+              >
+                {item.texto}
+              </li>
+            );
+          }
+          const id = chaveDoItem(i, item.texto);
+          const feito = marcados.has(id);
+          return (
+            <li key={i}>
+              {/* Botão, e não div com onClick: assim o Tab chega, o Enter e o
+                  espaço funcionam, e o leitor de tela anuncia o estado. */}
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={feito}
+                onClick={() => alternar(id)}
+                className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    'mt-0.5 h-4 w-4 rounded border shrink-0 flex items-center justify-center text-[10px] leading-none',
+                    feito
+                      ? 'bg-primary border-primary text-primary-foreground'
+                      : 'border-muted-foreground/40',
+                  )}
+                >
+                  {feito ? '✓' : ''}
+                </span>
+                <span className={cn('text-sm', feito && 'line-through text-muted-foreground')}>
+                  {item.texto}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

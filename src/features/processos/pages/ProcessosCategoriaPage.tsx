@@ -35,7 +35,21 @@ interface CategoriaNav {
 interface Artigo {
   id: string;
   titulo: string;
-  video_url: string | null;
+  /*
+   * O selo de vídeo sai dos BLOCOS, e não da coluna `video_url`.
+   *
+   * `video_url` é a coluna antiga, e o salvamento a ZERA de propósito
+   * (ProcessosArtigoPage.tsx:199, com o comentário citando a armadilha 1: duas
+   * versões do mesmo dado divergem na primeira edição). Mas o selo desta lista
+   * continuava lendo ela — então a primeira vez que alguém editasse "Manual da
+   * Marca Handify" pela tela, o selo viraria "documento" com o Canva ainda
+   * dentro da página. A coluna morre, o selo lia o cadáver.
+   *
+   * Medido em 28/09/2026: 9 artigos, todos com blocos; só os 2 do Canva tinham
+   * `video_url`. Lendo o bloco, os dois continuam com selo de vídeo e a coluna
+   * pode ir a nulo sem nada mudar na tela.
+   */
+  tem_video: boolean;
   criado_em: string;
 }
 
@@ -90,7 +104,7 @@ export default function ProcessosCategoriaPage() {
         .maybeSingle(),
       supabase
         .from('processos_artigos')
-        .select('id, titulo, video_url, criado_em')
+        .select('id, titulo, blocos, criado_em')
         .or(`categoria_id.eq.${categoriaId},categorias_adicionais.cs.{${categoriaId}}`)
         .eq('ativo', true)
         .order('criado_em', { ascending: false }),
@@ -103,7 +117,11 @@ export default function ProcessosCategoriaPage() {
 
     if (!cat) { navigate('/processos'); return; }
     setCategoria(cat);
-    setArtigos(arts || []);
+    /* O selo de video vem do bloco. Ver o comentario em `Artigo`. */
+    setArtigos((arts || []).map((x: { id: string; titulo: string; blocos: unknown; criado_em: string }) => ({
+      id: x.id, titulo: x.titulo, criado_em: x.criado_em,
+      tem_video: Array.isArray(x.blocos) && x.blocos.some((b: { tipo?: string }) => b?.tipo === 'video'),
+    })));
     setTodasCategorias(allCats || []);
     setLoading(false);
   };
@@ -327,7 +345,7 @@ export default function ProcessosCategoriaPage() {
                     <div className="w-0.5 h-8 rounded-full bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-center shrink-0" />
 
                     {/* Video badge */}
-                    {a.video_url ? (
+                    {a.tem_video ? (
                       <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
                         <Video className="h-3.5 w-3.5 text-primary" />
                       </div>

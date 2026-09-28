@@ -5,9 +5,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { RichTextEditor } from '@/components/RichTextEditor';
 import { cn } from '@/lib/utils';
 import {
-  Type, ImageIcon, Video, Code2, Trash2, ChevronUp, ChevronDown, Plus, Eye,
+  Type, ImageIcon, Video, Code2, Trash2, ChevronUp, ChevronDown, Plus, Eye, ListChecks,
 } from 'lucide-react';
-import { Bloco, TipoBloco } from './BlocosRenderer';
+import { Bloco, TipoBloco, type ItemChecklist } from './BlocosRenderer';
 import { sanitizarHtml } from '@/lib/sanitizar';
 
 /**
@@ -23,6 +23,7 @@ const TIPOS: { tipo: TipoBloco; nome: string; icone: typeof Type; ajuda: string 
   { tipo: 'imagem', nome: 'Imagem', icone: ImageIcon, ajuda: 'Um print, com legenda' },
   { tipo: 'video',  nome: 'Vídeo',  icone: Video,     ajuda: 'Embed do Panda' },
   { tipo: 'html',   nome: 'HTML',   icone: Code2,     ajuda: 'Tabela, embed de fora' },
+  { tipo: 'checklist', nome: 'Checklist', icone: ListChecks, ajuda: 'Lista para marcar ao ler' },
 ];
 
 function blocoVazio(tipo: TipoBloco): Bloco {
@@ -31,6 +32,7 @@ function blocoVazio(tipo: TipoBloco): Bloco {
     case 'html':   return { tipo, dados: { html: '' } };
     case 'imagem': return { tipo, dados: { url: '', legenda: '' } };
     case 'video':  return { tipo, dados: { url: '' } };
+    case 'checklist': return { tipo, dados: { itens: [] } };
   }
 }
 
@@ -90,6 +92,37 @@ function CorpoDoBloco({ bloco, onMudar }: { bloco: Bloco; onMudar: (b: Bloco) =>
         placeholder="Escreva o passo…"
         minHeight="120px"
       />
+    );
+  }
+
+  if (bloco.tipo === 'checklist') {
+    /*
+     * Editado como texto puro: uma linha por item, `## ` para separar um grupo.
+     *
+     * É o formato que a autora já tem na mão quando está copiando de um
+     * documento — colar 43 linhas e pronto. Uma interface de arrastar caixinha
+     * seria mais bonita e muito mais lenta de usar para o caso real.
+     */
+    const paraTexto = (itens: ItemChecklist[]) =>
+      itens.map(i => (i.grupo ? `## ${i.texto}` : i.texto)).join('\n');
+
+    const paraItens = (txt: string): ItemChecklist[] =>
+      txt.split('\n').map(l => l.trim()).filter(Boolean).map(l =>
+        l.startsWith('## ') ? { texto: l.slice(3).trim(), grupo: true } : { texto: l });
+
+    return (
+      <div className="p-3 space-y-2">
+        <Textarea
+          className="text-sm font-mono min-h-[160px]"
+          value={paraTexto(bloco.dados.itens ?? [])}
+          onChange={e => onMudar({ ...bloco, dados: { ...bloco.dados, itens: paraItens(e.target.value) } })}
+          placeholder={'Um item por linha.\n## Comece com ## para separar um grupo'}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Uma linha por item. Linha começando com <code>## </code> vira título de grupo e não é
+          marcável. A marcação é pessoal, fica no navegador de quem lê e não registra nada.
+        </p>
+      </div>
     );
   }
 
