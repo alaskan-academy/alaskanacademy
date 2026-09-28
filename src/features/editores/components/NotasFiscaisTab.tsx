@@ -106,8 +106,24 @@ export function NotasFiscaisTab() {
         const { data } = await supabase
           .from('editores').select('id, nome').eq('ativo', true).order('nome');
         if (!vivo) return;
-        setEditores((data ?? []) as Editor[]);
-        setEditorId(prev => prev || (data?.[0]?.id ?? ''));
+        const lista = (data ?? []) as Editor[];
+        setEditores(lista);
+        /*
+         * Era `prev || lista[0].id`: escolhia a primeira pessoa em ordem
+         * alfabética sozinho. Parece inofensivo com dois editores — e não é,
+         * porque a ordem muda quando alguém entra.
+         *
+         * O upload grava `fornecedor: editorAtual.nome` E monta o nome do
+         * arquivo com ele, e dispara direto do seletor de arquivo, sem
+         * confirmação. Com um "Gabriel Nartey" na lista, o padrão deixaria de
+         * ser "Jaqueline Coelho" e a nota dela seria arquivada no nome dele —
+         * com sucesso na tela.
+         *
+         * Escolhe sozinho só quando NÃO HÁ escolha a fazer: uma pessoa só. Com
+         * mais de uma, a tela espera. Ficar esperando é visível; arquivar no
+         * nome errado, não.
+         */
+        setEditorId(prev => prev || (lista.length === 1 ? lista[0].id : ''));
       } else {
         const { data } = await supabase.rpc('fn_meu_editor');
         if (!vivo) return;
@@ -224,7 +240,17 @@ export function NotasFiscaisTab() {
   function avancar() { if (mes === 11) { setMes(0); setAno(a => a + 1); } else setMes(m => m + 1); }
   function voltar()  { if (mes === 0)  { setMes(11); setAno(a => a - 1); } else setMes(m => m - 1); }
 
-  if (!carregando && !editorId) {
+  /*
+   * Este retorno antecipado some com a tela INTEIRA, seletor junto. Antes ele
+   * disparava sempre que `editorId` estava vazio — e isso só acontecia quando
+   * não havia editor nenhum, porque a tela escolhia um sozinho. Agora, com mais
+   * de uma pessoa, vazio passou a significar "ainda não escolhi", e sumir com o
+   * seletor deixaria a escolha impossível de fazer.
+   *
+   * Então ele fica só para o caso em que realmente não há o que escolher.
+   */
+  const nadaParaEscolher = ehAdmin ? editores.length === 0 : !editorId;
+  if (!carregando && nadaParaEscolher) {
     return (
       <div className="bg-card border border-border rounded-lg p-8 text-center">
         <p className="text-sm text-muted-foreground">
@@ -257,7 +283,12 @@ export function NotasFiscaisTab() {
             uma opção seria ruído — a RLS já garante que ele não veria outro. */}
         {ehAdmin && editores.length > 0 && (
           <Select value={editorId} onValueChange={setEditorId}>
-            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+            {/* O placeholder importa: sem ele, "nenhum escolhido" fica igual a
+                "escolhido e sem nome", e a pessoa manda a nota sem saber para
+                quem vai. */}
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Escolha o editor" />
+            </SelectTrigger>
             <SelectContent>
               {editores.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
             </SelectContent>
@@ -279,6 +310,12 @@ export function NotasFiscaisTab() {
 
         {carregando ? (
           <p className="text-sm text-muted-foreground text-center py-8">Carregando…</p>
+        ) : !editorId ? (
+          /* Estado vazio obrigatório: sem ele a tela ficaria em branco e se
+             leria como "não tem nota nenhuma este mês", que é outra coisa. */
+          <p className="text-sm text-muted-foreground text-center py-8">
+            Escolha o editor acima para ver as notas do mês.
+          </p>
         ) : (
           <>
             {faltam > 0 && (
