@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { PermissoesTab } from './PermissoesTab';
 import { UsuarioPerfisTab } from './UsuarioPerfisTab';
+import { PonteEditoresAviso } from './PonteEditoresAviso';
 
 /*
   A aba se chamava "Acessos", e /acessos é o cofre de senhas — duas coisas com
@@ -19,6 +20,11 @@ export function GerenciarUsuariosTab() {
       <div>
         <h3 className="text-base font-semibold">Usuários</h3>
       </div>
+
+      {/* Fica acima das duas sub-abas de propósito: quem some da tela de
+          Editores some por causa do que se faz AQUI, e o aviso não pode
+          depender de a pessoa ter escolhido a aba certa. */}
+      <PonteEditoresAviso />
 
       {/* Sub-tabs */}
       <div className="flex gap-1 p-1 bg-secondary/50 rounded-lg w-fit">
