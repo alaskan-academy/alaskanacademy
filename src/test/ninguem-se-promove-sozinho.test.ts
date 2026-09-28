@@ -81,6 +81,38 @@ describe('ninguém se promove sozinho', () => {
     expect(sql, 'a migração não falha se a escalada passar').toMatch(/A BRECHA CONTINUA ABERTA/);
   });
 
+  it('nenhuma migração posterior reescreve a função e perde uma das colunas', () => {
+    /*
+     * A guarda abaixo só vigia quem APAGA o gatilho. Mas o jeito natural de
+     * desfazer isto sem perceber não é apagar: é um `CREATE OR REPLACE
+     * FUNCTION` mais adiante, mexendo noutra coisa, que deixe cair uma das
+     * comparações. Achado por revisão adversarial em 28/09, no mesmo dia em que
+     * esta guarda nasceu — ela estava vigiando a porta e não a janela.
+     *
+     * `cargo_id` sozinho já vale o multiplicador de comissão e o percentual de
+     * liderança, então perder UMA coluna é meia brecha, não um detalhe.
+     */
+    const COLUNAS = ['is_admin', 'cargo_id', 'setor_id', 'ativo', 'radar_pode_criar'];
+    const posteriores = arquivos.filter(n => n.slice(0, 9) > ORIGEM);
+    const culpadas: string[] = [];
+
+    for (const nome of posteriores) {
+      const sql = semComentarios(readFileSync(join(MIGRACOES, nome), 'utf8'));
+      if (!new RegExp(`create\\s+or\\s+replace\\s+function\\s+public\\.${FUNCAO}`, 'i').test(sql)) continue;
+      const faltando = COLUNAS.filter(
+        c => !new RegExp(`NEW\\.${c}\\s+IS\\s+DISTINCT\\s+FROM\\s+OLD\\.${c}`, 'i').test(sql),
+      );
+      if (faltando.length) culpadas.push(`${nome} (sem: ${faltando.join(', ')})`);
+    }
+
+    expect(
+      culpadas,
+      `${culpadas.join(' | ')} reescreve \`${FUNCAO}\` deixando cair coluna de ` +
+        `privilégio. Cada uma que sai é um caminho de volta: \`is_admin\` dá ` +
+        `administrador, \`cargo_id\` dá o multiplicador de comissão.`,
+    ).toEqual([]);
+  });
+
   it('nenhuma migração posterior derruba o gatilho sem recriá-lo', () => {
     const posteriores = arquivos.filter(n => n.slice(0, 9) > ORIGEM);
     const culpadas: string[] = [];

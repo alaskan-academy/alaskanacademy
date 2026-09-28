@@ -75,6 +75,51 @@ describe('zero é um multiplicador', () => {
   });
 });
 
+describe('ler o que está gravado não é o mesmo que decidir o que gravar', () => {
+  /*
+   * ── O defeito que o próprio remédio tinha ─────────────────────────────────
+   *
+   * `fmtMult` e `multiplicadorEfetivo` chamavam `lerMultiplicador`, que RECUSA
+   * negativo devolvendo o neutro. Como o `.erro` era descartado nesse caminho,
+   * um `-1` gravado aparecia na tela como **1.00x**.
+   *
+   * E chegar ao banco era fácil: `UsuarioPerfisTab` salvava com `parseFloat`
+   * cru, e não há CHECK em `editores_remuneracao` nem em `cargos` (medido).
+   * Banco com -1, tela com 1,00 — a forma exata do defeito que estes commits
+   * foram matar, sobrevivendo dentro da correção. Achado em revisão
+   * adversarial em 28/09.
+   *
+   * As duas perguntas são diferentes e agora têm respostas diferentes:
+   *   "posso gravar isto?" -> lerMultiplicador, que recusa
+   *   "o que está lá?"     -> o número, inclusive quando está errado
+   *
+   * Mascarar valor ruim é pior que mostrá-lo: enquanto -1 aparece como 1.00x,
+   * ninguém conserta, porque ninguém vê.
+   */
+  it('um negativo gravado APARECE, em vez de virar 1.00x', () => {
+    expect(fmtMult(-1)).toBe('-1.00x');
+    expect(fmtMult('-0.5')).toBe('-0.50x');
+  });
+
+  it('e chega à conta como negativo, sem ser normalizado no caminho', () => {
+    expect(multiplicadorEfetivo(-1, 1.2)).toBe(-1);
+    expect(multiplicadorEfetivo(null, -2)).toBe(-2);
+  });
+
+  it('mas gravar um negativo continua sendo recusado', () => {
+    /* A recusa é trabalho de quem ESCREVE. Se ela também morasse na leitura,
+       a tela mentiria sobre o que está no banco — que é justamente o defeito. */
+    expect(lerMultiplicador(-1).erro).toBeTruthy();
+    expect(lerMultiplicador('-0.5').erro).toBeTruthy();
+  });
+
+  it('texto que não é número continua caindo no neutro, não em NaN', () => {
+    expect(fmtMult('abc')).toBe('1.00x');
+    expect(fmtMult(null)).toBe('1.00x');
+    expect(multiplicadorEfetivo('abc', null)).toBe(MULT_PADRAO);
+  });
+});
+
 describe('o multiplicador do cargo vale para quem não tem individual', () => {
   it('individual ganha do cargo', () => {
     expect(multiplicadorEfetivo(1.1, 1.2)).toBe(1.1);
@@ -169,8 +214,22 @@ describe('a regra mora num lugar só', () => {
   });
 
   it('as telas que salvam multiplicador importam a regra', () => {
-    for (const tela of ['src/features/admin/components/SetoresTab.tsx']) {
+    /* `UsuarioPerfisTab` entrou nesta lista em 28/09, depois de uma revisão
+       adversarial mostrar que ela gravava o multiplicador INDIVIDUAL com
+       `parseFloat` cru — fora da regra, e sem CHECK nenhum no banco atrás. */
+    for (const tela of ['src/features/admin/components/SetoresTab.tsx',
+                        'src/features/admin/components/UsuarioPerfisTab.tsx']) {
       expect(ler(tela), `${tela} não usa lerMultiplicador`).toMatch(/lerMultiplicador/);
+    }
+
+    /* E nenhuma delas pode voltar a converter texto em número por fora. */
+    for (const tela of ['src/features/admin/components/SetoresTab.tsx',
+                        'src/features/admin/components/UsuarioPerfisTab.tsx']) {
+      const codigo = ler(tela).replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(
+        /parseFloat\s*\(\s*String\s*\(\s*f?\.?\w*[Mm]ultiplicador/.test(codigo),
+        `${tela} converte o multiplicador com parseFloat cru, fora de lerMultiplicador`,
+      ).toBe(false);
     }
     expect(
       ler('src/features/editores/components/AvaliacoesTab.tsx'),

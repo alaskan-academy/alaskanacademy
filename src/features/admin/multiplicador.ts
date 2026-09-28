@@ -57,14 +57,43 @@ export function lerMultiplicador(texto: string | number | null | undefined): Mul
 }
 
 /**
+ * O número que ESTÁ GRAVADO, para ler e para calcular.
+ *
+ * ── Por que não é `lerMultiplicador` ───────────────────────────────────────
+ *
+ * Porque as duas funções respondem perguntas diferentes, e usar uma no lugar
+ * da outra reintroduz o defeito que este arquivo existe para matar.
+ *
+ *   `lerMultiplicador` responde "posso GRAVAR isto?" — e por isso recusa
+ *   negativo, devolvendo o neutro junto com um `erro` para quem chamou avisar.
+ *
+ *   `valorGravado` responde "o que está LÁ?" — e aí o negativo tem que
+ *   aparecer. Uma revisão adversarial em 28/09 mediu o estrago da confusão:
+ *   `UsuarioPerfisTab` gravava com `parseFloat` cru, então um `-1` digitado
+ *   chegava ao banco (não há CHECK em `editores_remuneracao` nem em `cargos`);
+ *   e a tela, lendo por `lerMultiplicador`, mostrava **1.00x**. Banco com -1,
+ *   tela com 1,00 — exatamente a forma do defeito de hoje de manhã, só que
+ *   com o meu próprio remédio.
+ *
+ * Mascarar um valor ruim é pior que mostrá-lo: enquanto -1 aparece como 1.00x,
+ * ninguém conserta, porque ninguém vê.
+ */
+function valorGravado(m: string | number | null | undefined): number {
+  const n = parseFloat(String(m ?? '').replace(',', '.'));
+  return Number.isFinite(n) ? n : MULT_PADRAO;
+}
+
+/**
  * Como o multiplicador aparece na tela.
  *
  * Estava duplicado em TRÊS arquivos, idêntico — `SetoresTab`,
  * `UsuarioPerfisTab` e a tela de cargos já removida — e foi lado a lado com a
  * duplicação do `|| 1` que o defeito nasceu duas vezes.
+ *
+ * Mostra o que está gravado, inclusive quando está errado. Ver `valorGravado`.
  */
 export function fmtMult(m: string | number | null | undefined): string {
-  return `${lerMultiplicador(m).valor.toFixed(2)}x`;
+  return `${valorGravado(m).toFixed(2)}x`;
 }
 
 /**
@@ -101,7 +130,10 @@ export function multiplicadorEfetivo(
   individual: number | string | null | undefined,
   doCargo: number | string | null | undefined,
 ): number {
-  if (individual != null && individual !== '') return lerMultiplicador(individual).valor;
-  if (doCargo != null && doCargo !== '') return lerMultiplicador(doCargo).valor;
+  /* `valorGravado`, não `lerMultiplicador`: aqui a pergunta é o que ESTÁ
+     gravado, e um valor ruim tem que chegar à conta e à tela em vez de virar
+     1 no caminho. Recusar negativo é trabalho de quem GRAVA. */
+  if (individual != null && individual !== '') return valorGravado(individual);
+  if (doCargo != null && doCargo !== '') return valorGravado(doCargo);
   return MULT_PADRAO;
 }

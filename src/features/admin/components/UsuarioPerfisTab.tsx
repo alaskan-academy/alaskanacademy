@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
-import { fmtMult } from '../multiplicador';
+import { fmtMult, lerMultiplicador } from '../multiplicador';
 
 type Cargo = { id: string; nome: string; multiplicador: string; cor: string };
 type EditorDetalhe = {
@@ -82,9 +82,19 @@ export function UsuarioPerfisTab() {
   const handleSave = async (ed: EditorDetalhe) => {
     const f = getForm(ed.id);
     setSavingMap(prev => ({ ...prev, [ed.id]: true }));
-    const multiplicador = (f.multiplicador !== '' && f.multiplicador != null)
-      ? parseFloat(String(f.multiplicador))
+    /* Era `parseFloat` cru, e isso deixava um `-1` digitado chegar ao banco —
+       não há CHECK em `editores_remuneracao`. A tela então mostrava 1.00x, e o
+       número visto deixava de ser o número gravado: a mesma forma do defeito
+       que o conserto de 28/09 foi matar, sobrevivendo na tela vizinha.
+       Quem grava passa por `lerMultiplicador`; quem lê mostra o que está lá. */
+    const lido = (f.multiplicador !== '' && f.multiplicador != null)
+      ? lerMultiplicador(f.multiplicador)
       : null;
+    if (lido?.erro) {
+      setSavingMap(prev => ({ ...prev, [ed.id]: false }));
+      return toast({ title: lido.erro, variant: 'destructive' });
+    }
+    const multiplicador = lido ? lido.valor : null;
 
     const { error } = await supabase.from('editores').update({
       nome: f.nome ?? ed.nome,

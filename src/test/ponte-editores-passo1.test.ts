@@ -32,7 +32,17 @@ const origem = arquivos.find(n => n.startsWith(ORIGEM));
 const semComentarios = (sql: string) =>
   sql.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
-const ler = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
+/*
+ * Sem comentários, e isto não é detalhe: três verificações deste arquivo liam o
+ * .tsx inteiro, comentários junto. Comentar o componente — que é o jeito mais
+ * comum de desligar algo "só por um minuto" — deixava as três verdes. Achado em
+ * revisão adversarial em 28/09, no mesmo dia em que nasceram.
+ */
+const lerCodigo = (p: string) =>
+  readFileSync(join(process.cwd(), p), 'utf8')
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '');
 
 describe('passo 1 da ponte perfis → editores', () => {
   it('a migração continua no repositório', () => {
@@ -89,7 +99,17 @@ describe('passo 1 da ponte perfis → editores', () => {
     const culpadas: string[] = [];
     for (const nome of posteriores) {
       const sql = semComentarios(readFileSync(join(MIGRACOES, nome), 'utf8'));
-      if (/create\s+policy[^;]*on\s+editores[^;]*for\s+(all|delete)/i.test(sql)) {
+      /*
+       * `(?:public\.)?` não é enfeite: a policy que ESTA migração removeu está
+       * escrita na baseline como `create policy authenticated_write on
+       * public.editores for ALL ...`. Sem o prefixo opcional, colar exatamente
+       * ela de volta passava batido — a guarda vigiava uma grafia que metade do
+       * repositório não usa. Encontrado por revisão adversarial em 28/09, no
+       * mesmo dia em que a guarda nasceu.
+       *
+       * O `\b` no fim impede casar com `ofertas_editores`, que é outra tabela.
+       */
+      if (/create\s+policy[^;]*\bon\s+(?:public\.)?editores\b[^;]*for\s+(all|delete)/i.test(sql)) {
         culpadas.push(nome);
       }
     }
@@ -108,7 +128,7 @@ describe('passo 1 da ponte perfis → editores', () => {
      * vazio aqui se lê como "está tudo certo". É a quarta armadilha invertida:
      * o retrato continua bonito porque parou de ser tirado.
      */
-    const tsx = ler('src/features/admin/components/PonteEditoresAviso.tsx');
+    const tsx = lerCodigo('src/features/admin/components/PonteEditoresAviso.tsx');
     expect(tsx, 'o componente não olha setores_marcados').toMatch(/setores_marcados\s*===?\s*0/);
     expect(tsx, 'a view de saúde não é consultada').toMatch(/vw_ponte_editores_saude/);
     expect(tsx, 'a lista de pendentes não é consultada').toMatch(/vw_ponte_editores_pendente/);
@@ -118,7 +138,7 @@ describe('passo 1 da ponte perfis → editores', () => {
     /* `|| []` transformando falha em lista vazia é o defeito que já apagou o
        calendário da Produção e os gráficos de Desempenho. Numa faixa cujo
        trabalho é DENUNCIAR ausência, sumir em silêncio é o pior desfecho. */
-    const tsx = ler('src/features/admin/components/PonteEditoresAviso.tsx');
+    const tsx = lerCodigo('src/features/admin/components/PonteEditoresAviso.tsx');
     expect(tsx, 'o componente não trata erro da consulta').toMatch(/\.error/);
     expect(tsx, 'o erro não chega à tela').toMatch(/setErro/);
   });
@@ -126,7 +146,7 @@ describe('passo 1 da ponte perfis → editores', () => {
   it('a faixa está montada na tela de Usuários', () => {
     /* Componente que ninguém monta é a tela de cadastro sem a de resultado —
        exatamente o que deixou isso invisível por 69 dias. */
-    const tab = ler('src/features/admin/components/GerenciarUsuariosTab.tsx');
+    const tab = lerCodigo('src/features/admin/components/GerenciarUsuariosTab.tsx');
     expect(tab, 'PonteEditoresAviso não está montado em GerenciarUsuariosTab').toMatch(
       /<PonteEditoresAviso\s*\/>/,
     );
