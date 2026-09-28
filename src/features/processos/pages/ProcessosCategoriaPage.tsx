@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { BlocosEditor } from '../components/BlocosEditor';
 import { lerBlocos, semVazios, type Bloco } from '../components/BlocosRenderer';
 import {
-  ChevronRight, Plus, Edit2, Trash2, Loader2, FileText, Video, ArrowLeft,
+  ChevronRight, ChevronUp, ChevronDown, Plus, Edit2, Trash2, Loader2, FileText, Video, ArrowLeft,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ interface Artigo {
    */
   tem_video: boolean;
   criado_em: string;
+  ordem: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -80,6 +81,41 @@ export default function ProcessosCategoriaPage() {
   const [fTitulo, setFTitulo] = useState('');
   const [fBlocos, setFBlocos] = useState<Bloco[]>([]);
   const [fCategoriasAdicionais, setFCategoriasAdicionais] = useState<string[]>([]);
+  const [fCategoria, setFCategoria] = useState<string>('');
+
+  /*
+   * ── O Esc que apagava uma hora de digitação ──────────────────────────────
+   *
+   * O diálogo era `onOpenChange={setFormOpen}` puro: Esc, clique fora e o X
+   * fechavam sem perguntar nada, e não existe rascunho — o que não foi salvo
+   * não existe em lugar nenhum. Escrever um processo de 43 itens aqui dentro
+   * era apostar uma hora num clique errado.
+   *
+   * O retrato é tirado ao ABRIR e comparado ao fechar, então o aviso só
+   * aparece quando há o que perder. Confirmação que aparece sempre vira
+   * clique automático, e aí não protege mais nada.
+   */
+  const retrato = useRef('');
+  const instantaneo = () => JSON.stringify([fTitulo, fBlocos, fCategoriasAdicionais, fCategoria]);
+
+  /** Um só ponto de saída: `onOpenChange(false)` cobre Esc, clique fora e o X. */
+  const pedirParaFechar = async (aberto: boolean) => {
+    if (aberto) { setFormOpen(true); return; }
+    if (instantaneo() === retrato.current) { setFormOpen(false); return; }
+    /* O `setTimeout` nao e enfeite: o Esc que abre este caminho AINDA esta
+       sendo processado, e o dialogo de confirmacao montava e era fechado pela
+       mesma tecla, no mesmo instante. O resultado era o pior desfecho: nada
+       acontecia e ninguem sabia por que. Um tique depois, a tecla ja acabou. */
+    await new Promise(r => setTimeout(r, 0));
+    const ok = await confirm({
+      title: 'Descartar o que você escreveu?',
+      description: 'Este processo ainda não foi salvo. Fechar agora perde as alterações.',
+      confirmText: 'Descartar',
+      destructive: true,
+    });
+    if (ok) setFormOpen(false);
+  };
+
   const [saving, setSaving] = useState(false);
 
   // ── Data ────────────────────────────────────────────────────────────────────
@@ -104,9 +140,13 @@ export default function ProcessosCategoriaPage() {
         .maybeSingle(),
       supabase
         .from('processos_artigos')
-        .select('id, titulo, blocos, criado_em')
+        .select('id, titulo, blocos, criado_em, ordem')
         .or(`categoria_id.eq.${categoriaId},categorias_adicionais.cs.{${categoriaId}}`)
         .eq('ativo', true)
+        /* Por `ordem`, e nao por data: o tutorial de entrada do Radar aparecia
+           por ULTIMO, porque era o mais antigo. `nullsFirst: false` manda quem
+           ainda nao tem ordem para o fim, em vez de para o topo. */
+        .order('ordem', { ascending: true, nullsFirst: false })
         .order('criado_em', { ascending: false }),
       supabase
         .from('processos_categorias')
@@ -118,8 +158,8 @@ export default function ProcessosCategoriaPage() {
     if (!cat) { navigate('/processos'); return; }
     setCategoria(cat);
     /* O selo de video vem do bloco. Ver o comentario em `Artigo`. */
-    setArtigos((arts || []).map((x: { id: string; titulo: string; blocos: unknown; criado_em: string }) => ({
-      id: x.id, titulo: x.titulo, criado_em: x.criado_em,
+    setArtigos((arts || []).map((x: { id: string; titulo: string; blocos: unknown; criado_em: string; ordem: number | null }) => ({
+      id: x.id, titulo: x.titulo, criado_em: x.criado_em, ordem: x.ordem,
       tem_video: Array.isArray(x.blocos) && x.blocos.some((b: { tipo?: string }) => b?.tipo === 'video'),
     })));
     setTodasCategorias(allCats || []);
@@ -138,6 +178,8 @@ export default function ProcessosCategoriaPage() {
     // primeiro passo.
     setFBlocos([{ tipo: 'texto', dados: { html: '' } }]);
     setFCategoriasAdicionais([]);
+    setFCategoria(categoriaId ?? '');
+    retrato.current = JSON.stringify(['', [{ tipo: 'texto', dados: { html: '' } }], [], categoriaId ?? '']);
     setFormOpen(true);
   };
 
@@ -145,7 +187,7 @@ export default function ProcessosCategoriaPage() {
     e.stopPropagation();
     supabase
       .from('processos_artigos')
-      .select('id, titulo, blocos, categorias_adicionais')
+      .select('id, titulo, blocos, categorias_adicionais, categoria_id')
       .eq('id', a.id)
       .single()
       .then(({ data, error }) => {
@@ -162,6 +204,8 @@ export default function ProcessosCategoriaPage() {
         setFTitulo(data.titulo);
         setFBlocos(lerBlocos(data.blocos));
         setFCategoriasAdicionais(data.categorias_adicionais || []);
+        setFCategoria(data.categoria_id ?? '');
+        retrato.current = JSON.stringify([data.titulo, lerBlocos(data.blocos), data.categorias_adicionais || [], data.categoria_id ?? '']);
         setFormOpen(true);
       });
   };
@@ -191,6 +235,37 @@ export default function ProcessosCategoriaPage() {
     load();
   };
 
+  /*
+   * Trocar de posicao com quem esta ao lado.
+   *
+   * Grava os DOIS numeros porque a ordem e relativa: mexer so num deles pode
+   * empatar com um terceiro, e empate devolve a decisao ao banco — que e
+   * exatamente de onde estamos saindo.
+   */
+  const mover = async (a: Artigo, passo: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const i = artigos.findIndex(x => x.id === a.id);
+    const j = i + passo;
+    if (i < 0 || j < 0 || j >= artigos.length) return;
+    const outro = artigos[j];
+    const ordemA = a.ordem ?? (i + 1) * 10;
+    const ordemB = outro.ordem ?? (j + 1) * 10;
+    /* Otimista na tela, para a lista nao piscar a cada clique. */
+    setArtigos(prev => {
+      const novo = [...prev];
+      [novo[i], novo[j]] = [novo[j], novo[i]];
+      return novo;
+    });
+    const [r1, r2] = await Promise.all([
+      supabase.from('processos_artigos').update({ ordem: ordemB }).eq('id', a.id),
+      supabase.from('processos_artigos').update({ ordem: ordemA }).eq('id', outro.id),
+    ]);
+    if (r1.error || r2.error) {
+      toast({ title: 'Não consegui reordenar', description: (r1.error ?? r2.error)?.message, variant: 'destructive' });
+      load();
+    }
+  };
+
   const handleSave = async () => {
     if (!fTitulo.trim() || !categoriaId) return;
     setSaving(true);
@@ -209,6 +284,9 @@ export default function ProcessosCategoriaPage() {
           conteudo: null,
           video_url: null,
           imagens: [],
+          /* Mover de categoria so era possivel na criacao: arquivou errado,
+             arquivou para sempre, e o unico conserto era recriar o artigo. */
+          categoria_id: fCategoria,
           categorias_adicionais: fCategoriasAdicionais,
           atualizado_por: user?.id,
           atualizado_em: now,
@@ -223,6 +301,9 @@ export default function ProcessosCategoriaPage() {
           blocos,
           categorias_adicionais: fCategoriasAdicionais,
           criado_por: user?.id,
+          /* No fim da lista: quem escreve decide a posicao depois, com as setas.
+             Nascer no topo empurraria o passo 1 para baixo a cada passo novo. */
+          ordem: Math.max(0, ...artigos.map(x => x.ordem ?? 0)) + 10,
         }));
     }
 
@@ -325,7 +406,7 @@ export default function ProcessosCategoriaPage() {
               </div>
             ) : (
               <div className="bg-card border border-border rounded-xl overflow-hidden divide-y divide-border/50">
-                {artigos.map(a => (
+                {artigos.map((a, i) => (
                   <div
                     key={a.id}
                     // Mesma razão do card de categoria: tem botões dentro, então
@@ -366,7 +447,26 @@ export default function ProcessosCategoriaPage() {
 
                     {/* Admin actions */}
                     {isAdmin && (
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-1">
+                      <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity mr-1">
+                        {/* Setas e não arrastar, pelo mesmo motivo do editor de
+                            blocos: arrastar numa lista de links briga com o
+                            clique que abre o processo. */}
+                        <button
+                          onClick={e => mover(a, -1, e)}
+                          disabled={i === 0}
+                          className="p-1.5 rounded-md hover:bg-background border border-transparent hover:border-border text-muted-foreground hover:text-foreground transition-all disabled:opacity-30 disabled:pointer-events-none"
+                          title="Subir"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={e => mover(a, 1, e)}
+                          disabled={i === artigos.length - 1}
+                          className="p-1.5 rounded-md hover:bg-background border border-transparent hover:border-border text-muted-foreground hover:text-foreground transition-all disabled:opacity-30 disabled:pointer-events-none"
+                          title="Descer"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           onClick={e => openEdit(a, e)}
                           className="p-1.5 rounded-md hover:bg-background border border-transparent hover:border-border text-muted-foreground hover:text-foreground transition-all"
@@ -394,7 +494,7 @@ export default function ProcessosCategoriaPage() {
       </div>
 
       {/* ── Article form dialog ── */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog open={formOpen} onOpenChange={pedirParaFechar}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editArtigo ? 'Editar Processo' : 'Novo Processo'}</DialogTitle>
@@ -410,6 +510,32 @@ export default function ProcessosCategoriaPage() {
                 onChange={e => setFTitulo(e.target.value)}
                 placeholder="Ex: Como criar uma campanha no Meta Ads"
               />
+            </div>
+
+            {/*
+              Trocar de categoria só era possível na CRIAÇÃO: o campo vinha da
+              categoria onde a pessoa clicou "Novo Processo" e nunca mais
+              aparecia. Arquivou errado, arquivou para sempre — o único conserto
+              era recriar o artigo do zero.
+            */}
+            <div>
+              <Label htmlFor="art-categoria">Categoria principal</Label>
+              <select
+                id="art-categoria"
+                className="mt-1.5 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={fCategoria}
+                onChange={e => setFCategoria(e.target.value)}
+              >
+                {todasCategorias.map(c => (
+                  <option key={c.id} value={c.id}>{c.icone} {c.nome}</option>
+                ))}
+              </select>
+              {editArtigo && fCategoria !== categoriaId && (
+                <p className="mt-1.5 text-[11px] text-amber-500">
+                  Ao salvar, este processo sai desta lista e passa para{' '}
+                  {todasCategorias.find(c => c.id === fCategoria)?.nome}.
+                </p>
+              )}
             </div>
 
             <div>
@@ -462,7 +588,7 @@ export default function ProcessosCategoriaPage() {
             )}
 
             <div className="flex gap-2 justify-end pt-2 border-t border-border">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>
+              <Button variant="outline" onClick={() => pedirParaFechar(false)}>
                 Cancelar
               </Button>
               <Button onClick={handleSave} disabled={saving || !fTitulo.trim()}>

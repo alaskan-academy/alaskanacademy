@@ -48,8 +48,9 @@ export function sumarioDosBlocos(blocos: Bloco[]): { id: string; text: string; l
     `<body>${blocos.filter(b => b.tipo === 'texto').map(b => b.dados.html ?? '').join('')}</body>`,
     'text/html',
   );
+  const vistos = new Map<string, number>();
   return Array.from(doc.querySelectorAll('h2, h3')).map(h => ({
-    id: idDoTitulo(h.textContent ?? ''),
+    id: idComContador(h.textContent ?? '', vistos),
     text: h.textContent ?? '',
     level: h.tagName === 'H2' ? 2 : 3,
   }));
@@ -59,6 +60,28 @@ export function sumarioDosBlocos(blocos: Bloco[]): { id: string; text: string; l
 export function idDoTitulo(texto: string): string {
   return texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60);
+}
+
+/**
+ * O id com desempate, quando o mesmo título aparece mais de uma vez.
+ *
+ * O id sai do TEXTO, então título repetido dava o mesmo endereço e o sumário
+ * levava sempre ao primeiro. O "Checklist de Revisão de ADs" tem "Safezone" em
+ * quatro passos: clicar no do Passo 5 desceria para o Passo 4, e a pessoa
+ * conferiria o critério de lipsync achando que está conferindo o de imagem.
+ * Errado, e sem nada na tela denunciando.
+ *
+ * O primeiro fica sem sufixo de propósito, para não quebrar link já existente.
+ *
+ * O `vistos` vem de FORA porque a contagem é do artigo inteiro: o sumário lê
+ * todos os blocos juntos e o corpo é renderizado bloco a bloco. Numerando
+ * separado, os dois discordariam — que é o defeito, só que invertido.
+ */
+export function idComContador(texto: string, vistos: Map<string, number>): string {
+  const base = idDoTitulo(texto);
+  const n = vistos.get(base) ?? 0;
+  vistos.set(base, n + 1);
+  return n === 0 ? base : `${base}-${n + 1}`;
 }
 
 /**
@@ -93,11 +116,11 @@ export function textoDosBlocos(blocos: Bloco[]): string {
     .trim();
 }
 
-function comIdsNosTitulos(html: string): string {
+function comIdsNosTitulos(html: string, vistos: Map<string, number>): string {
   if (typeof window === 'undefined' || !window.DOMParser) return html;
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
   doc.querySelectorAll('h2, h3').forEach(h => {
-    h.setAttribute('id', idDoTitulo(h.textContent ?? ''));
+    h.setAttribute('id', idComContador(h.textContent ?? '', vistos));
   });
   return doc.body.innerHTML;
 }
@@ -106,7 +129,11 @@ function BlocoTexto({ html }: { html: string }) {
   // Sanitizar SEMPRE, inclusive o que veio do editor rico. O editor produz HTML
   // limpo hoje; passar direto seria confiar que ele nunca vai mudar, e que o
   // valor no banco nunca foi tocado por outro caminho.
-  const limpo = useMemo(() => comIdsNosTitulos(sanitizarHtml(html)), [html]);
+  /* O id dos titulos NAO e feito aqui: a numeracao tem de ser do artigo
+     inteiro, senao um titulo repetido em DOIS blocos recebe o mesmo id e o
+     sumario — que le tudo junto — aponta para o lugar errado. Quem prepara e
+     `BlocosRenderer`, num passe so. */
+  const limpo = useMemo(() => sanitizarHtml(html), [html]);
   return (
     <div
       className={cn(
@@ -208,11 +235,25 @@ function BlocoVideo({ url, titulo }: { url: string; titulo: string }) {
 export function BlocosRenderer({ blocos, titulo, onAmpliar }: {
   blocos: Bloco[]; titulo: string; onAmpliar?: (url: string) => void;
 }) {
+  /*
+   * Os ids dos títulos são gerados AQUI, num passe só sobre o artigo inteiro.
+   *
+   * Feito bloco a bloco, a contagem reiniciava a cada bloco e um título
+   * repetido em dois blocos diferentes recebia o mesmo id — enquanto o sumário,
+   * que lê tudo junto, numerava direito. Os dois discordariam, e o clique
+   * levaria ao lugar errado.
+   */
+  const htmlPorBloco = useMemo(() => {
+    const vistos = new Map<string, number>();
+    return blocos.map(b =>
+      b.tipo === 'texto' ? comIdsNosTitulos(sanitizarHtml(b.dados.html ?? ''), vistos) : '');
+  }, [blocos]);
+
   return (
     <>
       {blocos.map((b, i) => {
         switch (b.tipo) {
-          case 'texto':  return <BlocoTexto  key={i} html={b.dados.html ?? ''} />;
+          case 'texto':  return <BlocoTexto  key={i} html={htmlPorBloco[i]} />;
           case 'html':   return <BlocoHtml   key={i} html={b.dados.html ?? ''} />;
           case 'imagem': return <BlocoImagem key={i} url={b.dados.url ?? ''} legenda={b.dados.legenda} onAmpliar={onAmpliar} />;
           case 'video':  return <BlocoVideo  key={i} url={b.dados.url ?? ''} titulo={titulo} />;

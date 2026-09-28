@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -219,6 +219,41 @@ export function BlocosEditor({
    */
   onChange: React.Dispatch<React.SetStateAction<Bloco[]>>;
 }) {
+  /*
+   * ── Uma chave estável por bloco, e por que ela não pode ser o índice ──────
+   *
+   * O bloco não tem id no jsonb, então a chave era `i`. Parece inofensivo — a
+   * lista só muda de ordem — e não é, porque o filho guarda estado PRÓPRIO: o
+   * `RichTextEditor` recebe `content` uma única vez, quando o Tiptap nasce, e
+   * nada o ressincroniza depois.
+   *
+   * Com a chave sendo o índice, o React reaproveita a instância que está
+   * naquela posição e só troca as props. Depois de subir um bloco, o editor de
+   * cima continua exibindo o texto ANTIGO; digitar um caractere ali grava esse
+   * texto por cima do bloco que veio para a posição. Sem erro, sem confirmação
+   * e sem desfazer.
+   *
+   * A chave vive aqui, fora do dado: ela não é gravada no banco e some quando o
+   * diálogo fecha. O que ela precisa é sobreviver à reordenação — e para isso
+   * é reordenada JUNTO com os blocos, no mesmo `setState`.
+   */
+  const proximaChave = useRef(0);
+  const [chaves, setChaves] = useState<number[]>(() => blocos.map(() => proximaChave.current++));
+
+  /* A lista de chaves acompanha a de blocos em tamanho, sempre. Um bloco novo
+     (ou um artigo trocado por baixo) ganha chave nova em vez de herdar a de
+     quem estava ali. */
+  useEffect(() => {
+    setChaves(prev => {
+      if (prev.length === blocos.length) return prev;
+      if (prev.length < blocos.length) {
+        const faltam = blocos.length - prev.length;
+        return [...prev, ...Array.from({ length: faltam }, () => proximaChave.current++)];
+      }
+      return prev.slice(0, blocos.length);
+    });
+  }, [blocos.length]);
+
   const trocar = (i: number, j: number) => {
     onChange(prev => {
       if (j < 0 || j >= prev.length) return prev;
@@ -226,19 +261,33 @@ export function BlocosEditor({
       [novo[i], novo[j]] = [novo[j], novo[i]];
       return novo;
     });
+    /* O mesmo movimento nas chaves: é isso que faz a instância do editor VIAJAR
+       com o bloco em vez de ficar parada na posição. */
+    setChaves(prev => {
+      if (j < 0 || j >= prev.length) return prev;
+      const novo = [...prev];
+      [novo[i], novo[j]] = [novo[j], novo[i]];
+      return novo;
+    });
+  };
+
+  const remover = (i: number) => {
+    onChange(prev => prev.filter((_, k) => k !== i));
+    setChaves(prev => prev.filter((_, k) => k !== i));
   };
 
   return (
     <div className="space-y-2">
       {blocos.map((b, i) => (
-        // A chave é o índice porque o bloco não tem id, e reordenar troca as
-        // posições de propósito -- é o mesmo bloco mudando de lugar.
-        <div key={i} className="rounded-md border border-border overflow-hidden bg-background">
+        <div
+          key={chaves[i] ?? `novo-${i}`}
+          className="rounded-md border border-border overflow-hidden bg-background"
+        >
           <Cabecalho
             bloco={b} indice={i} total={blocos.length}
             onSubir={() => trocar(i, i - 1)}
             onDescer={() => trocar(i, i + 1)}
-            onRemover={() => onChange(prev => prev.filter((_, k) => k !== i))}
+            onRemover={() => remover(i)}
           />
           <CorpoDoBloco
             bloco={b}

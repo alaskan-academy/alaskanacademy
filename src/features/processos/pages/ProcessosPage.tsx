@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { supabase } from '@/lib/supabase';
@@ -12,7 +12,7 @@ import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import {
-  Search, Plus, Edit2, Trash2, Loader2, FileText, ChevronRight,
+  Search, Plus, Edit2, Trash2, Loader2, FileText, ChevronRight, ChevronLeft,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -23,6 +23,7 @@ interface Categoria {
   icone: string;
   descricao: string | null;
   ativo: boolean;
+  ordem: number | null;
   artigo_count: number;
 }
 
@@ -123,6 +124,9 @@ export default function ProcessosPage() {
         .from('processos_categorias')
         .select('*')
         .eq('ativo', true)
+        /* Por `ordem`: a grade era por data de criacao, entao a categoria mais
+           nova sempre furava a fila. Quem ainda nao tem ordem vai para o fim. */
+        .order('ordem', { ascending: true, nullsFirst: false })
         .order('criado_em', { ascending: false }),
       // Só o que a contagem precisa. O texto dos artigos não vem mais para cá:
       // a busca acontece no banco, e baixar o conteúdo de tudo a cada abertura
@@ -193,11 +197,60 @@ export default function ProcessosPage() {
 
   // ── Category CRUD ─────────────────────────────────────────────────────────
 
+  /* Mesma guarda do formulario de processo: Esc, clique fora e o X passam por
+     `onOpenChange(false)`, e so pergunta quando ha o que perder. */
+  const retrato = useRef('');
+  const instantaneo = () => JSON.stringify([fNome, fIcone, fDesc]);
+
+  const pedirParaFechar = async (aberto: boolean) => {
+    if (aberto) { setFormOpen(true); return; }
+    if (instantaneo() === retrato.current) { setFormOpen(false); return; }
+    /* O `setTimeout` nao e enfeite: o Esc que abre este caminho AINDA esta
+       sendo processado, e o dialogo de confirmacao montava e era fechado pela
+       mesma tecla, no mesmo instante. O resultado era o pior desfecho: nada
+       acontecia e ninguem sabia por que. Um tique depois, a tecla ja acabou. */
+    await new Promise(r => setTimeout(r, 0));
+    const ok = await confirm({
+      title: 'Descartar o que você escreveu?',
+      description: 'Esta categoria ainda não foi salva. Fechar agora perde as alterações.',
+      confirmText: 'Descartar',
+      destructive: true,
+    });
+    if (ok) setFormOpen(false);
+  };
+
+  /* Troca de posicao com a categoria vizinha. Grava os DOIS numeros: mexer so
+     num deles pode empatar com uma terceira, e empate devolve a ordem ao
+     banco — que e de onde estamos saindo. */
+  const mover = async (cat: Categoria, passo: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const i = categorias.findIndex(x => x.id === cat.id);
+    const j = i + passo;
+    if (i < 0 || j < 0 || j >= categorias.length) return;
+    const outra = categorias[j];
+    const ordemA = cat.ordem ?? (i + 1) * 10;
+    const ordemB = outra.ordem ?? (j + 1) * 10;
+    setCategorias(prev => {
+      const novo = [...prev];
+      [novo[i], novo[j]] = [novo[j], novo[i]];
+      return novo;
+    });
+    const [r1, r2] = await Promise.all([
+      supabase.from('processos_categorias').update({ ordem: ordemB }).eq('id', cat.id),
+      supabase.from('processos_categorias').update({ ordem: ordemA }).eq('id', outra.id),
+    ]);
+    if (r1.error || r2.error) {
+      toast({ title: 'Não consegui reordenar', description: (r1.error ?? r2.error)?.message, variant: 'destructive' });
+      load();
+    }
+  };
+
   const openNew = () => {
     setEditCat(null);
     setFNome('');
     setFIcone('📋');
     setFDesc('');
+    retrato.current = JSON.stringify(['', '📋', '']);
     setFormOpen(true);
   };
 
@@ -207,6 +260,7 @@ export default function ProcessosPage() {
     setFNome(cat.nome);
     setFIcone(cat.icone);
     setFDesc(cat.descricao || '');
+    retrato.current = JSON.stringify([cat.nome, cat.icone, cat.descricao || '']);
     setFormOpen(true);
   };
 
@@ -323,6 +377,8 @@ export default function ProcessosPage() {
           nome: payload.nome,
           icone: payload.icone,
           descricao: payload.descricao,
+          /* No fim da grade, e nao no comeco. */
+          ordem: Math.max(0, ...categorias.map(c => c.ordem ?? 0)) + 10,
         });
     setSaving(false);
     if (error) {
@@ -471,7 +527,7 @@ export default function ProcessosPage() {
                 Categorias
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categorias.map(cat => (
+                {categorias.map((cat, i) => (
                   <div
                     key={cat.id}
                     // `div` e não `button` porque há botões de editar/excluir
@@ -491,7 +547,23 @@ export default function ProcessosPage() {
                   >
                     {/* Admin controls */}
                     {isAdmin && (
-                      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <div className="absolute top-3 right-3 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity z-10">
+                        <button
+                          onClick={e => mover(cat, -1, e)}
+                          disabled={i === 0}
+                          className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          title="Mover para trás"
+                        >
+                          <ChevronLeft className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={e => mover(cat, 1, e)}
+                          disabled={i === categorias.length - 1}
+                          className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-accent text-muted-foreground hover:text-foreground transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          title="Mover para frente"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                        </button>
                         <button
                           onClick={e => openEdit(cat, e)}
                           className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
@@ -537,7 +609,7 @@ export default function ProcessosPage() {
       </div>
 
       {/* ── Category form dialog ── */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog open={formOpen} onOpenChange={pedirParaFechar}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editCat ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
@@ -602,7 +674,7 @@ export default function ProcessosPage() {
             </div>
 
             <div className="flex gap-2 justify-end pt-1">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>
+              <Button variant="outline" onClick={() => pedirParaFechar(false)}>
                 Cancelar
               </Button>
               <Button onClick={handleSave} disabled={saving || !fNome.trim()}>
