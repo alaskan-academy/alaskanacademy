@@ -27,7 +27,15 @@ import { useFases, fasesDoSetor } from '../useFases';
  */
 const TABS: { chave: string; label: string; niveis: ProducaoNivel[] }[] = [
   { chave: 'painel',    label: 'Meu Painel',          niveis: ['socio', 'head', 'membro'] },
-  { chave: 'calendario', label: 'Calendário Geral',    niveis: ['socio'] },
+  /*
+    O Geral abriu para o head junto com a regra de reprogramar entrega: ele
+    altera data de qualquer editor, e para isso precisa ALCANÇAR o card. O
+    Setor sozinho não alcança — ele corta duas vezes, pelas pessoas do setor
+    e pelas fases dele, então um card parado numa fase de outro setor some da
+    tela sem nada dizendo que sumiu.
+    As duas abas convivem: o Setor continua sendo a vista focada do dia.
+  */
+  { chave: 'calendario', label: 'Calendário Geral',    niveis: ['socio', 'head'] },
   { chave: 'setor',     label: 'Calendário do Setor',  niveis: ['head'] },
   { chave: 'aprovacao', label: 'Painel de Aprovação',  niveis: ['socio', 'head'] },
   /*

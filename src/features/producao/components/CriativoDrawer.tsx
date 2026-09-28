@@ -62,7 +62,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [historico, setHistorico]       = useState<HistoricoEntry[]>([]);
   const [comentarios, setComentarios]   = useState<Comentario[]>([]);
   const [loading, setLoading]           = useState(false);
-  const [editing, setEditing]           = useState(false);
+  const [modoEdicao, setModoEdicao]           = useState(false);
   const [changes, setChanges]           = useState<Record<string, string | null | string[]>>({});
   const [movingFase, setMovingFase]     = useState(false);
   const [expanded, setExpanded]         = useState(false);
@@ -185,7 +185,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   useEffect(() => {
     load();
     loadComentarios();
-    setEditing(false);
+    setModoEdicao(false);
     setChanges({});
     setShowCloseWarning(false);
   }, [load, loadComentarios]); // nivel is intentionally excluded — it doesn't change independently
@@ -233,7 +233,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   };
 
   const handleSave = async () => {
-    if (!criativo || Object.keys(changes).length === 0) { setEditing(false); return; }
+    if (!criativo || Object.keys(changes).length === 0) { setModoEdicao(false); return; }
     const { error } = await supabase.from('producoes').update(changes).eq('id', criativo.id);
     if (error) { toast({ title: 'Erro ao salvar', variant: 'destructive' }); return; }
     const stringify = (v: unknown): string | null =>
@@ -248,7 +248,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
     }));
     if (entries.length) await supabase.from('criativo_historico').insert(entries);
     toast({ title: 'Salvo' });
-    setEditing(false);
+    setModoEdicao(false);
     setChanges({});
     load(true);
     onUpdate();
@@ -382,7 +382,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   };
 
   const handleAttemptClose = () => {
-    if (editing && Object.keys(changes).length > 0) {
+    if (modoEdicao && Object.keys(changes).length > 0) {
       setShowCloseWarning(true);
     } else {
       onClose();
@@ -392,7 +392,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const handleDiscardAndClose = () => {
     setShowCloseWarning(false);
     setChanges({});
-    setEditing(false);
+    setModoEdicao(false);
     onClose();
   };
 
@@ -468,8 +468,21 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const motivoDaFase = historico.find(
     h => h.campo_alterado === 'fase' && h.valor_novo === criativo.fase && h.motivo,
   )?.motivo ?? null;
-  const canEdit   = nivel === 'socio';
+  /*
+    Head reprograma entrega de qualquer card — a regra combinada: quem lidera
+    mexe na data, de qualquer editor. O card ficava só de leitura para ele, e
+    arrastar no calendário era a única saída: um gesto que ninguém descobre
+    sozinho. O relato veio assim, "não consigo alterar as datas por aqui".
+
+    O RESTO do formulário continua do sócio, porque reprogramar não é o mesmo
+    que reatribuir — trocar responsável, projeto ou nome de um card é outra
+    decisão, e ela não foi delegada.
+  */
+  const canEdit   = nivel === 'socio' || nivel === 'head';
   const canDelete = nivel === 'socio';
+  /* `modoEdicao` é o botão ligado; estes dois dizem QUAIS campos abrem nele. */
+  const editing      = modoEdicao && nivel === 'socio';
+  const editandoData = modoEdicao;
 
   // ─── layout helpers ──────────────────────────────────────────────────────────
 
@@ -612,8 +625,8 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
         {/* Um campo no lugar de "Início" + "Prazo (fim)". A leitura mostra o
             período quando existe e a data sozinha quando não — mesma frase
             que o seletor usa, vinda da mesma função. */}
-        <Field label="Data" editing={editing}>
-          {editing ? (
+        <Field label="Data" editing={editandoData}>
+          {editandoData ? (
             <div className="mt-0.5">
               <SeletorDePrazo
                 inicio={val('data_inicio') || null}
@@ -1057,7 +1070,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
                 ? <Minimize2 className="h-3.5 w-3.5" />
                 : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
-            {editing ? (
+            {modoEdicao ? (
               <>
                 <Button size="sm" className="h-7 px-3" onClick={handleSave}>
                   <Save className="h-3.5 w-3.5 mr-1" />Salvar
@@ -1067,8 +1080,12 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
               <>
                 {canEdit && (
                   <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
-                    onClick={() => setEditing(true)}>
-                    <Pencil className="h-3 w-3 mr-1" />Editar
+                    onClick={() => setModoEdicao(true)}>
+                    {/* O rótulo diz o que o botão faz de verdade: para o head
+                        só o Cronograma abre, e "Editar" prometeria o resto. */}
+                    {nivel === 'socio'
+                      ? <><Pencil className="h-3 w-3 mr-1" />Editar</>
+                      : <><Clock className="h-3 w-3 mr-1" />Alterar data</>}
                   </Button>
                 )}
                 {canDelete && (
