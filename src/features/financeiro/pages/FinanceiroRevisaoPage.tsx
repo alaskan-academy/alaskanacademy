@@ -345,25 +345,70 @@ export default function FinanceiroRevisaoPage() {
       }
 
       if (criarRegra && padraoRegra.trim()) {
-        // `upsert` e não `insert`: confirmar duas vezes o mesmo fornecedor
-        // criava duas regras concorrentes com confiança 1,00, e qual ganhava
-        // dependia do comprimento do padrão. Agora a segunda corrige a primeira.
-        await supabase.from('regras_categoria').upsert({
+        /*
+         * `upsert` e não `insert`: confirmar duas vezes o mesmo fornecedor
+         * criava duas regras concorrentes com confiança 1,00, e qual ganhava
+         * dependia do comprimento do padrão. Agora a segunda corrige a primeira.
+         *
+         * ── POR QUE ISTO ESTAVA MORTO DESDE 01/09/2026 ────────────────────
+         *
+         * O `onConflict` listava DUAS colunas e o índice tem TRÊS: a migração
+         * 20260901b recriou `uq_regras_categoria_padrao` como
+         * `(padrao, tipo_match, sinal)` e esta tela não acompanhou. O Postgres
+         * responde 42P10 ("no unique or exclusion constraint matching the ON
+         * CONFLICT specification"), e como o `error` não era conferido — ao
+         * contrário das duas gravações acima nesta mesma função — a tela
+         * mostrava "Transação categorizada" e nenhuma regra nascia.
+         *
+         * Medido em 28/09: 113 regras, a última de 01/09, ZERO desde então,
+         * contra 266 transações importadas no período. Como as regras também
+         * categorizam sozinhas na importação, o trabalho vinha sendo feito duas
+         * vezes: a regra não nascia e, por isso, nunca se aplicava.
+         *
+         * ── POR QUE A REGRA NASCE COM DIREÇÃO ─────────────────────────────
+         *
+         * `sinal` nulo vale nos dois sentidos (`rr.sinal is null or rr.sinal =
+         * ...` em `aplicar_categorizacao`). Mandar nulo faria o upsert
+         * funcionar — e reintroduziria exatamente o caso que criou a coluna:
+         * em 01/09 um PIX de R$ 2.000 ENTRANDO na conta nova da Aeliss foi
+         * rotulado "Retirada de Lucro", porque uma regra aprendida das SAÍDAS
+         * da Alaskan casou pelo nome com confiança 1,00.
+         *
+         * A regra é aprendida de UMA transação, e essa transação tem direção.
+         * Carimbá-la é o que impede a regra de disparar no sentido contrário.
+         * E os dois erros não custam igual: uma regra direcionada demais deixa
+         * a transação SEM categoria, que aparece nesta mesma fila; uma regra
+         * ampla demais categoriza ERRADO, calada. Entre as duas, a que grita.
+         */
+        const sinal = selected.valor >= 0 ? 'entrada' : 'saida';
+        const { error } = await supabase.from('regras_categoria').upsert({
           padrao: padraoRegra.trim(),
           tipo_match: 'contains',
           categoria: formCateg,
           centro_custo: formCentro || null,
           confianca: 1.0,
           ativo: true,
-        }, { onConflict: 'padrao,tipo_match' });
+          sinal,
+        }, { onConflict: 'padrao,tipo_match,sinal' });
+        /* Conferir o erro é metade do conserto: sem isto, a próxima divergência
+           entre o índice e o `onConflict` volta a passar por 27 dias dizendo
+           "categorizada". */
+        if (error) throw error;
       }
 
       toast({ title: 'Transação categorizada' });
       setSelected(null);
       setVersao(v => v + 1);
       load();
-    } catch {
-      toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    } catch (e) {
+      /* A mensagem vai junto: "Erro ao salvar" sozinho não distingue rede caída
+         de `42P10`, e foi assim que uma divergência entre o índice e o
+         `onConflict` sobreviveu 27 dias sem ninguém saber o que perguntar. */
+      toast({
+        title: 'Erro ao salvar',
+        description: e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e),
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -1017,7 +1062,15 @@ export default function FinanceiroRevisaoPage() {
                       placeholder="Texto que aparece na descrição…"
                       className="text-sm"
                     />
-                    <p className="text-[11px] text-muted-foreground">Qualquer descrição que contenha este texto será auto-categorizada.</p>
+                    {/* Dizer a direção não é detalhe: a regra passa a valer só
+                        nesse sentido, e a pessoa precisa saber disso para não
+                        esperar que ela pegue o oposto. Ver o comentário do
+                        upsert. */}
+                    <p className="text-[11px] text-muted-foreground">
+                      Qualquer <strong>{selected.valor >= 0 ? 'entrada' : 'saída'}</strong> cuja
+                      descrição contenha este texto será auto-categorizada. O sentido oposto
+                      não é afetado — o mesmo nome pode significar outra coisa.
+                    </p>
                   </div>
                 )}
               </div>
