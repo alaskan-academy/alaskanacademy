@@ -12,7 +12,7 @@ import {
   BlocosRenderer, lerBlocos, sumarioDosBlocos, textoDosBlocos, semVazios, type Bloco,
 } from '../components/BlocosRenderer';
 import { BlocosEditor } from '../components/BlocosEditor';
-import { ChevronRight, Edit2, Loader2, ArrowLeft, Clock, History } from 'lucide-react';
+import { ChevronRight, ChevronDown, Edit2, Loader2, ArrowLeft, Clock, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -91,6 +91,9 @@ export default function ProcessosArtigoPage() {
   const [artigo, setArtigo] = useState<Artigo | null>(null);
   const [loading, setLoading] = useState(true);
   const [toc, setToc] = useState<{ id: string; text: string; level: number }[]>([]);
+  /* O sumário de cima nasce FECHADO: aberto, ele empurraria o texto
+     para baixo da dobra justo em quem tem a tela menor. */
+  const [tocAberto, setTocAberto] = useState(false);
 
   // Edit form
   const [formOpen, setFormOpen] = useState(false);
@@ -224,6 +227,23 @@ export default function ProcessosArtigoPage() {
     }
   };
 
+  /*
+    O sumário de cima FECHA ao escolher, e fechar encurta a página ACIMA do
+    destino. Rolando no mesmo instante do clique, o `scrollIntoView` mede a
+    posição de antes e o alvo sobe depois: medido em 28/09/2026, parava 513px
+    além do título, já dentro da seção seguinte — que é o tipo de erro que a
+    pessoa não atribui ao sumário, ela só acha que leu errado.
+
+    Guardando o destino num estado, o scroll acontece no efeito, com o DOM já
+    sem a lista. A lateral nunca teve isso porque ela não fecha.
+  */
+  const [irPara, setIrPara] = useState<string | null>(null);
+  useEffect(() => {
+    if (!irPara) return;
+    scrollToHeading(irPara);
+    setIrPara(null);
+  }, [irPara]);
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -329,6 +349,57 @@ export default function ProcessosArtigoPage() {
                 )}
               </div>
             </div>
+
+            {/* Sumário de cima, para quem não alcança o da lateral.
+                O da direita é `hidden xl:block`: abaixo de 1280px ele não
+                existe, e num artigo de oito seções isso tira a navegação
+                INTEIRA de quem abre no notebook menor ou no celular — que é
+                justamente quem mais precisa pular direto para o passo certo.
+                Aqui ele ocupa uma linha fechado e abre no toque. */}
+            {toc.length > 1 && (
+              <div className="xl:hidden mb-4 rounded-xl border border-border bg-card overflow-hidden">
+                <button
+                  onClick={() => setTocAberto(v => !v)}
+                  aria-expanded={tocAberto}
+                  className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-accent/50 transition-colors"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                    Neste artigo
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 text-muted-foreground/60 transition-transform',
+                      tocAberto && 'rotate-180',
+                    )}
+                  />
+                </button>
+                {tocAberto && (
+                  <nav className="px-5 pb-4 pt-3 space-y-0.5 border-t border-border/50">
+                    {toc.map(item => (
+                      <button
+                        key={item.id}
+                        /* Fecha ao escolher: no celular, a lista aberta cobriria
+                           o começo da seção para onde a pessoa acabou de ir.
+                           O destino vai para `irPara` em vez de rolar já —
+                           ver o comentário do efeito lá em cima. */
+                        onClick={() => { setTocAberto(false); setIrPara(item.id); }}
+                        className={cn(
+                          'w-full text-left text-xs py-1.5 rounded transition-colors',
+                          'text-muted-foreground hover:text-foreground',
+                          item.level === 1 && 'font-semibold',
+                          item.level === 3 && 'pl-3',
+                        )}
+                      >
+                        {item.level === 3 && (
+                          <span className="inline-block w-1 h-1 rounded-full bg-muted-foreground/40 mr-1.5 mb-0.5" />
+                        )}
+                        {item.text}
+                      </button>
+                    ))}
+                  </nav>
+                )}
+              </div>
+            )}
 
             {/* Os blocos, na ordem que a autora montou. Vídeo, texto e imagem
                 deixaram de ter posição fixa no código: onde cada um aparece é

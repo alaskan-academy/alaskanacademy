@@ -137,13 +137,30 @@ function BlocoTexto({ html }: { html: string }) {
   return (
     <div
       className={cn(
-        'text-[14.5px] leading-7 text-foreground/85',
-        '[&>h2]:text-[18px] [&>h2]:font-bold [&>h2]:text-foreground [&>h2]:mt-10 [&>h2]:mb-3',
-        '[&>h2]:pb-2.5 [&>h2]:border-b [&>h2]:border-border/50 [&>h2]:first:mt-0 [&>h2]:scroll-mt-6',
-        '[&>h3]:text-[15px] [&>h3]:font-semibold [&>h3]:text-foreground [&>h3]:mt-7 [&>h3]:mb-2 [&>h3]:scroll-mt-6',
+        /*
+          A hierarquia estava quase plana, e dava para medir: h2 tinha 18px e
+          h3 tinha 15px contra 14.5px do corpo. A razão do h3 para o texto era
+          de 1,03 — subtítulo do mesmo tamanho do parágrafo, separado só pelo
+          peso. Num artigo como a Segunda Criativa, onde os cinco passos são
+          h3, os passos sumiam no meio do texto e o documento virava um bloco
+          só para quem bate o olho em vez de ler linha a linha.
+
+          Agora são 21 / 17 / 14.5, ou seja 1,45 e 1,17. A cor faz o resto: o
+          corpo desceu para 80% e os títulos ficaram em 100%.
+
+          Sem cor de marca nos títulos de propósito. O azul é o que se clica e
+          o vermelho é marca e prejuízo — título colorido gastaria um dos dois
+          sinais para dizer algo que tamanho e peso já dizem.
+        */
+        'text-[14.5px] leading-7 text-foreground/80',
+        '[&>h2]:text-[21px] [&>h2]:font-bold [&>h2]:tracking-tight [&>h2]:text-foreground [&>h2]:mt-12 [&>h2]:mb-4',
+        '[&>h2]:pb-2.5 [&>h2]:border-b [&>h2]:border-border [&>h2]:first:mt-0 [&>h2]:scroll-mt-20',
+        '[&>h3]:text-[17px] [&>h3]:font-semibold [&>h3]:text-foreground [&>h3]:mt-8 [&>h3]:mb-2.5 [&>h3]:scroll-mt-20',
         '[&>p]:my-4',
         '[&>ul]:list-disc [&>ol]:list-decimal [&>ul]:pl-6 [&>ol]:pl-6 [&>ul]:my-5 [&>ol]:my-5',
-        '[&_li]:my-2 [&_li]:pl-1',
+        // O marcador some no fundo escuro quando fica na cor do texto: ele
+        // marca o ritmo da lista, então vale enxergar sem competir com ela.
+        '[&_li]:my-2 [&_li]:pl-1 [&_li]:marker:text-foreground/35',
         '[&>blockquote]:border-l-2 [&>blockquote]:border-primary/40 [&>blockquote]:pl-4 [&>blockquote]:my-5 [&>blockquote]:text-muted-foreground',
         '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
         '[&_strong]:text-foreground [&_strong]:font-semibold',

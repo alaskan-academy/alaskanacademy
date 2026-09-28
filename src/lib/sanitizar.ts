@@ -34,7 +34,26 @@ const ATRIBUTOS: Record<string, Set<string>> = {
   iframe: new Set(['src', 'title', 'width', 'height', 'allow', 'allowfullscreen', 'loading']),
   th:     new Set(['colspan', 'rowspan']),
   td:     new Set(['colspan', 'rowspan']),
+  /*
+    O `id` do título é a âncora do sumário, e precisa sobreviver a uma segunda
+    passada do sanitizador.
+
+    Em 28/09/2026 os 17 títulos de "Segunda Criativa" estavam SEM id nenhum na
+    tela, e o mesmo valia para os outros artigos: `comIdsNosTitulos` escrevia o
+    id em cima do HTML já limpo, e o `BlocoTexto` sanitizava de novo, apagando.
+    O sumário continuava aparecendo inteiro e o clique não ia a lugar nenhum,
+    porque o destino simplesmente não existia. Nada na tela denunciava.
+
+    Sanitizar duas vezes tem de dar o mesmo que sanitizar uma. O valor é
+    filtrado no laço abaixo para o alfabeto do slug, então um `id` escrito à
+    mão não consegue sombrear propriedade de `document` nem de `window`.
+  */
+  h2:     new Set(['id']),
+  h3:     new Set(['id']),
 };
+
+/** O alfabeto que `idDoTitulo` produz. Nada fora disso vira âncora. */
+const ID_DE_ANCORA = /^[a-z0-9-]+$/;
 
 /**
  * `style` e `class` ficam de fora de propósito, e não por descuido.
@@ -111,6 +130,13 @@ export function sanitizarHtml(html: string): string {
         const ok = urlSegura(attr.value, nome === 'href' ? ESQUEMAS_DE_LINK : ESQUEMAS_DE_MIDIA);
         if (ok === null) no.removeAttribute(attr.name);
         else no.setAttribute(attr.name, ok);
+      }
+
+      // O id passa, mas só no formato que o sumário gera. Qualquer outra coisa
+      // sai: id é inerte para script, e ainda assim um valor arbitrário serve
+      // para sombrear propriedade do documento.
+      if (nome === 'id' && !ID_DE_ANCORA.test(attr.value)) {
+        no.removeAttribute(attr.name);
       }
     }
 
