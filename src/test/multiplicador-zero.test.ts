@@ -3,10 +3,15 @@
  *
  * ── O defeito ──────────────────────────────────────────────────────────────
  *
- * `parseFloat(x) || 1` estava em `CargosTab` e em `SetoresTab`, duplicado. O
+ * `parseFloat(x) || 1` estava duplicado em duas telas de cargo (`SetoresTab`, a
+ * viva, e `CargosTab`, que já não era montada por ninguém e foi removida). O
  * `||` não distingue "não informado" de "informado como zero", porque zero é
  * falsy: `parseFloat('0')` dá `0`, e `0 || 1` dá `1`. Digitar 0 salvava 1, sem
  * erro, sem aviso, e a prévia "Valor atual" mentia junto — dizia 1.00x.
+ *
+ * O zero tinha TRÊS esconderijos, não dois, e o terceiro sobreviveu ao primeiro
+ * conserto: o pré-preenchimento do formulário em `SetoresTab`. Ver o teste
+ * "usa `multiplicador` como condição de ternário", lá embaixo.
  *
  * Zero é legítimo: o contratado em período de teste não ganha comissão. O banco
  * já aceitava (`numeric NOT NULL DEFAULT 1.0`, sem CHECK) e o campo também
@@ -103,7 +108,6 @@ describe('a regra mora num lugar só', () => {
    * escrito à mão em cada tela, consertar um lugar não conserta os outros.
    */
   const TELAS = [
-    'src/features/admin/components/CargosTab.tsx',
     'src/features/admin/components/SetoresTab.tsx',
     'src/features/admin/components/UsuarioPerfisTab.tsx',
     'src/features/editores/components/AvaliacoesTab.tsx',
@@ -129,6 +133,28 @@ describe('a regra mora num lugar só', () => {
       if (/multiplicador[^;\n]*\?[^;\n]*:\s*1\s*[),;]/i.test(codigo)) {
         culpados.push(`${tela}: cai no literal 1 em vez do multiplicador do cargo`);
       }
+      /*
+       * O terceiro esconderijo, que os dois de cima NÃO pegavam e por isso
+       * sobreviveu ao conserto de 28/09: testar `multiplicador` pela
+       * VERACIDADE, não por nulidade.
+       *
+       *   useState(initial?.multiplicador ? String(initial.multiplicador) : '1.00')
+       *
+       * O regex de cima procura `: 1` e aqui vem `: '1.00'` entre aspas, então
+       * passava batido. Medido na tela: o card do cargo "Novato" mostrava
+       * 0.00x e o formulário de edição abria com 1,00 — quem mexesse na cor e
+       * salvasse zerava a correção sem ver.
+       *
+       * A regra geral, que não depende de adivinhar o valor do outro lado dos
+       * dois-pontos: `multiplicador` nunca é condição sozinho. Sempre `!= null`
+       * (ou `??`, que este regex deixa passar de propósito — nullish não engole
+       * zero).
+       */
+      if (/multiplicador\s*\?(?![.?])/i.test(codigo)) {
+        culpados.push(
+          `${tela}: usa \`multiplicador\` como condição de ternário — zero é falsy. Compare com \`!= null\`.`,
+        );
+      }
       if (/const\s+fmtMult\s*=/.test(codigo)) {
         culpados.push(`${tela}: cópia local de \`fmtMult\` — use a de multiplicador.ts`);
       }
@@ -143,8 +169,7 @@ describe('a regra mora num lugar só', () => {
   });
 
   it('as telas que salvam multiplicador importam a regra', () => {
-    for (const tela of ['src/features/admin/components/CargosTab.tsx',
-                        'src/features/admin/components/SetoresTab.tsx']) {
+    for (const tela of ['src/features/admin/components/SetoresTab.tsx']) {
       expect(ler(tela), `${tela} não usa lerMultiplicador`).toMatch(/lerMultiplicador/);
     }
     expect(

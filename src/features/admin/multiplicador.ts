@@ -3,10 +3,18 @@
  *
  * ── Por que isto existe ────────────────────────────────────────────────────
  *
- * Porque `parseFloat(x) || 1` estava em dois lugares — `CargosTab` e
- * `SetoresTab` — e os dois tinham o mesmo defeito: **zero é falsy**.
- * `parseFloat('0')` dá `0`, e `0 || 1` dá `1`. Digitar 0 salvava 1, sem erro e
- * sem aviso, e a prévia "Valor atual" mentia junto.
+ * Porque `parseFloat(x) || 1` estava em duas telas de cargo — a viva,
+ * `SetoresTab`, e uma segunda que ninguém montava e foi removida junto — e as
+ * duas tinham o mesmo defeito: **zero é falsy**. `parseFloat('0')` dá `0`, e
+ * `0 || 1` dá `1`. Digitar 0 salvava 1, sem erro e sem aviso, e a prévia
+ * "Valor atual" mentia junto.
+ *
+ * Havia um TERCEIRO esconderijo, que sobreviveu ao primeiro conserto por não
+ * ter a forma `|| 1`: o pré-preenchimento do formulário,
+ * `initial?.multiplicador ? String(...) : '1.00'`. O card mostrava 0.00x e o
+ * formulário abria com 1,00 — quem editasse a cor e salvasse zerava a correção
+ * sem ver. É por isso que a guarda em `multiplicador-zero.test.ts` proíbe usar
+ * `multiplicador` como condição sozinho, e não só as duas formas conhecidas.
  *
  * Isso importa porque zero É um valor legítimo: o contratado em período de
  * teste não ganha comissão. O campo até aceitava (`min="0"` no input); quem
@@ -51,9 +59,9 @@ export function lerMultiplicador(texto: string | number | null | undefined): Mul
 /**
  * Como o multiplicador aparece na tela.
  *
- * Estava duplicado em TRÊS arquivos, idêntico — `CargosTab`, `SetoresTab` e
- * `UsuarioPerfisTab` — e foi lado a lado com a duplicação do `|| 1` que o
- * defeito nasceu duas vezes.
+ * Estava duplicado em TRÊS arquivos, idêntico — `SetoresTab`,
+ * `UsuarioPerfisTab` e a tela de cargos já removida — e foi lado a lado com a
+ * duplicação do `|| 1` que o defeito nasceu duas vezes.
  */
 export function fmtMult(m: string | number | null | undefined): string {
   return `${lerMultiplicador(m).valor.toFixed(2)}x`;

@@ -32,7 +32,12 @@ function CargoForm({
   onCancel: () => void;
 }) {
   const [nome, setNome]         = useState(initial?.nome ?? '');
-  const [mult, setMult]         = useState(initial?.multiplicador ? String(initial.multiplicador) : '1.00');
+  /* `initial?.multiplicador ? ... : '1.00'` engolia o zero aqui também, e este era
+     o último esconderijo dele: o card mostrava 0.00x e o formulário abria com 1,00.
+     Quem editasse a cor e salvasse zerava a correção sem ver. `numeric` chega do
+     PostgREST como NÚMERO, então 0 é falsy — por isso `!= null`, o mesmo dos dois
+     degraus de `multiplicadorEfetivo`. */
+  const [mult, setMult]         = useState(initial?.multiplicador != null ? String(initial.multiplicador) : '1.00');
   const [cor, setCor]           = useState(initial?.cor ?? '#6366f1');
   const [saving, setSaving]     = useState(false);
 
