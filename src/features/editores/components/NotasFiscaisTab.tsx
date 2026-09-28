@@ -316,6 +316,22 @@ export function NotasFiscaisTab() {
           <p className="text-sm text-muted-foreground text-center py-8">
             Escolha o editor acima para ver as notas do mês.
           </p>
+        ) : notas.length === 0 ? (
+          /*
+           * Estado vazio obrigatorio. Ele passou a ser alcancavel no dia em que
+           * `fn_nfs_do_editor` comecou a respeitar `data_inicio`: voltando o mes
+           * para antes da entrada da pessoa, a lista fica vazia com razao — e
+           * sem esta mensagem a tela ficaria em branco, que se le como "nao
+           * carregou" ou "o sistema esqueceu de cobrar".
+           */
+          <p className="text-sm text-muted-foreground text-center py-8">
+            Nenhuma nota esperada neste mês
+            {editorAtual?.nome ? ` para ${editorAtual.nome}` : ''}.
+            <br />
+            <span className="text-xs">
+              A cobrança começa no mês em que a pessoa entrou.
+            </span>
+          </p>
         ) : (
           <>
             {faltam > 0 && (

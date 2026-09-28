@@ -175,12 +175,41 @@ export function AvaliacoesTab() {
     : multiplicadorEfetivo(editorSel?.multiplicador, cargoSel?.multiplicador);
   const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null
     || editorSel?.multiplicador != null || cargoSel?.multiplicador != null;
-  const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
-  // Avaliação existente → usa % congelado no snapshot; nova → usa % atual do editor (fallback 20%)
+  /*
+   * Quem e lider sai da TABELA, nao do nome do cargo.
+   *
+   * Era `cargoNome.includes('head') || includes('lider')` — texto livre
+   * decidindo dinheiro. Dois problemas medidos em 28/09/2026:
+   *
+   *   · `cargos.comissao_time_pct` existe e diz exatamente isto: Head/Lider
+   *     20%, Lider Estrategico 10%, Gerente Criativo 0%. Ninguem lia.
+   *   · e renomear um cargo — que qualquer pessoa com acesso a Configuracoes
+   *     consegue — apagava a lideranca de quem ja era lider na proxima vez que
+   *     a avaliacao fosse salva.
+   *
+   * Terceira armadilha do CLAUDE.md: lista no codigo que envelhece em
+   * silencio, aqui na forma de casamento por substring.
+   */
+  const pctDoCargo = cargoSel?.comissao_time_pct != null
+    ? Number(cargoSel.comissao_time_pct) / 100
+    : null;
+  const isHeadOuLider = (pctDoCargo ?? 0) > 0;
+  /*
+   * O percentual segue o mesmo degrau do multiplicador: individual → cargo →
+   * neutro. O `0.2` fixo ignorava o cargo, entao um Lider Estrategico sem
+   * valor individual receberia 20% onde o cadastro diz 10% — o dobro.
+   *
+   * Hoje esta latente (a unica lider tem os dois em 20%), e e por isso que
+   * vale consertar agora: latente e o estado em que da para consertar sem
+   * mexer em nada que ja foi pago.
+   *
+   * Avaliacao existente continua usando o % congelado no snapshot.
+   */
   const pctLideranca = form.pct_lideranca_snapshot != null
     ? form.pct_lideranca_snapshot
-    : (editorSel?.percentual_lideranca != null ? Number(editorSel.percentual_lideranca) / 100 : 0.2);
+    : (editorSel?.percentual_lideranca != null
+        ? Number(editorSel.percentual_lideranca) / 100
+        : (pctDoCargo ?? 0.2));
   const responsaveisDisponiveis = editores.filter(e => e.id !== form.editor_id);
   const mesReferenciaPayload = form.mes_referencia ? `${form.mes_referencia.slice(0, 7)}-01` : null;
 

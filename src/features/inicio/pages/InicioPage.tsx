@@ -59,6 +59,23 @@ function diaDaSemana(ymd: string): string {
   return `${n === 0 || n === 6 ? 'no' : 'na'} ${DIA_SEMANA[n]}`;
 }
 
+/**
+ * Dia da semana só vale para a semana que vem. Depois dela, a data.
+ *
+ * A faixa lê uma janela de uma semana ALÉM do mês aberto na agenda, então com
+ * setembro na tela ela mostrava o aniversário de 07/10 como "na quarta". Lado a
+ * lado com um calendário de setembro, isso se lê como a quarta DESTA semana —
+ * e a única folga visível em setembro era a de 08/09, que já passou. O aviso
+ * parecia estar anunciando coisa vencida.
+ *
+ * Não estava: a data era futura. O defeito era o rótulo, que dizia o dia da
+ * semana sem dizer QUAL. Para além de 6 dias, "7 de out" não tem como ser lido
+ * errado.
+ */
+export function quandoDizer(ymd: string): string {
+  return ymd <= emDias(6) ? diaDaSemana(ymd) : diaCurto(ymd);
+}
+
 /** A data de daqui a `n` dias, em `yyyy-MM-dd`. */
 function emDias(n: number): string {
   const d = new Date();
@@ -305,8 +322,8 @@ export default function InicioPage() {
             que passou a ser só sobre o que vem. O que a pessoa precisa saber é
             até quando.
           */
-          quando: de === ate ? diaDaSemana(de)
-                : de < hoje  ? `até ${diaDaSemana(ate)}`
+          quando: de === ate ? quandoDizer(de)
+                : de < hoje  ? `até ${quandoDizer(ate)}`
                 : `de ${periodoCurto(de, ate)}`,
         };
       });
