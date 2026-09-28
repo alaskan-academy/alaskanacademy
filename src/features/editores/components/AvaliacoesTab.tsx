@@ -13,6 +13,7 @@ import { formatCurrency } from '@/lib/formatters';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { aoClicarSemArrastar } from '@/lib/clique';
+import { multiplicadorEfetivo } from '@/features/admin/multiplicador';
 
 type Opcao = { id: string; criterio_id: string; label: string; valor: number; folgas: number; ordem: number; ativo: boolean };
 type Categoria = 'individual' | 'grupo' | 'meta';
@@ -165,11 +166,15 @@ export function AvaliacoesTab() {
 
   const editorSel = editores.find(e => e.id === form.editor_id);
   const cargoSel = editorSel?.cargo_id ? cargoMap[editorSel.cargo_id] : null;
-  // Avaliação existente → usa snapshot congelado; nova → usa multiplicador atual do editor
+  /* Avaliação existente → usa o snapshot congelado; nova → individual, senão o
+     do cargo, senão 1. O degrau do cargo faltava: `UsuarioPerfisTab` chama o
+     número do cargo de "padrão do cargo" e ele não era padrão de nada. Ver
+     `multiplicadorEfetivo`. */
   const multiplicador = form.multiplicador_snapshot != null
     ? Number(form.multiplicador_snapshot)
-    : (editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : 1);
-  const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null || editorSel?.multiplicador != null;
+    : multiplicadorEfetivo(editorSel?.multiplicador, cargoSel?.multiplicador);
+  const multiplicadorDefinido = multiplicador !== 1 || form.multiplicador_snapshot != null
+    || editorSel?.multiplicador != null || cargoSel?.multiplicador != null;
   const cargoNome = String(cargoSel?.nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const isHeadOuLider = cargoNome.includes('head') || cargoNome.includes('lider');
   // Avaliação existente → usa % congelado no snapshot; nova → usa % atual do editor (fallback 20%)
@@ -315,8 +320,8 @@ export function AvaliacoesTab() {
     const editorDaAval = editores.find(e => e.id === a.editor_id);
     // Multiplicador: usa snapshot congelado; legados usam atual como fallback
     const snapshotSalvo = a.multiplicador_snapshot != null ? Number(a.multiplicador_snapshot) : null;
-    const multFallback  = editorDaAval?.multiplicador != null ? Number(editorDaAval.multiplicador) : 1;
-    const multEfetivo   = snapshotSalvo ?? multFallback;
+    const cargoDaAval   = editorDaAval?.cargo_id ? cargoMap[editorDaAval.cargo_id] : null;
+    const multFallback  = multiplicadorEfetivo(editorDaAval?.multiplicador, cargoDaAval?.multiplicador);
     // % liderança: lê o percentual gravado no snapshot da avaliação; legados usam atual como fallback
     const pctSalvo    = snap[CHAVE_RESPONSAVEIS]?.percentual != null ? Number(snap[CHAVE_RESPONSAVEIS].percentual) : null;
     const pctFallback = editorDaAval?.percentual_lideranca != null ? Number(editorDaAval.percentual_lideranca) / 100 : 0.2;
@@ -433,10 +438,17 @@ export function AvaliacoesTab() {
       folgas: folgasAuto,
       feedback: form.feedback || null,
       respostas: respostasSnapshot,
-      // Nova avaliação → congela o multiplicador atual; edição → preserva o snapshot já salvo
+      /* Nova avaliação → congela o multiplicador que valeu; edição → preserva o
+         snapshot já salvo.
+
+         Antes, quando não havia individual, gravava NULL e deixava o banco
+         resolver com `coalesce(multiplicador_snapshot, 1)` lá em
+         `fn_sincronizar_bonus_do_lider`. Com o degrau do cargo isso vira um
+         buraco: um cargo zerado viraria 1 no recálculo da liderança, pagando
+         cheio quem não devia receber nada. O snapshot grava o número. */
       multiplicador_snapshot: editingId
         ? form.multiplicador_snapshot   // não altera o que já estava salvo
-        : (editorSel?.multiplicador != null ? Number(editorSel.multiplicador) : null),
+        : multiplicadorEfetivo(editorSel?.multiplicador, cargoSel?.multiplicador),
     };
     const { error } = editingId
       ? await supabase.from('avaliacoes_mensais').update(payload).eq('id', editingId)

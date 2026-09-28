@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
+import { fmtMult } from '../multiplicador';
 
 type Cargo = { id: string; nome: string; multiplicador: string; cor: string };
 type EditorDetalhe = {
@@ -16,7 +17,6 @@ type EditorDetalhe = {
   multiplicador: string;
 };
 
-const fmtMult = (m: string | number) => `${parseFloat(String(m)).toFixed(2)}x`;
 
 /*
  * O  morava aqui — 130 linhas de contentEditable com

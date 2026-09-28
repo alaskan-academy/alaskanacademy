@@ -9,6 +9,7 @@ import { Pencil, Trash2, Plus, ChevronDown, Check } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { PAGINAS_CONFIGURAVEIS } from '@/contexts/AuthContext';
+import { lerMultiplicador, fmtMult } from '../multiplicador';
 
 type Setor = { id: string; nome: string; cor: string | null; ordem: number };
 type Cargo = { id: string; nome: string; multiplicador: string; cor: string | null; ordem: number; setor_id: string | null };
@@ -18,7 +19,6 @@ const PRESET_COLORS = [
   '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#06b6d4', '#3b82f6',
 ];
-const fmtMult = (m: string | number) => `${parseFloat(String(m)).toFixed(2)}x`;
 
 // ── Formulário de cargo ───────────────────────────────────────────────────────
 
@@ -39,7 +39,12 @@ function CargoForm({
   const handleSave = async () => {
     if (!nome.trim()) return toast({ title: 'Nome obrigatório', variant: 'destructive' });
     setSaving(true);
-    await onSave({ nome: nome.trim(), multiplicador: parseFloat(mult) || 1, cor });
+    const m = lerMultiplicador(mult);
+    if (m.erro) {
+      setSaving(false);
+      return toast({ title: m.erro, variant: 'destructive' });
+    }
+    await onSave({ nome: nome.trim(), multiplicador: m.valor, cor });
     setSaving(false);
   };
 

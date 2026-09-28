@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Pencil, Trash2, Plus } from 'lucide-react';
 import { useConfirm } from '@/hooks/use-confirm';
+import { lerMultiplicador, fmtMult } from '../multiplicador';
 
 type Cargo = { id: string; nome: string; multiplicador: string; cor: string; ordem: number };
 
@@ -15,8 +16,6 @@ const PRESET_COLORS = [
   '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#06b6d4', '#3b82f6',
 ];
-
-const fmtMult = (m: string | number) => `${parseFloat(String(m)).toFixed(2)}x`;
 
 export function CargosTab() {
   const confirm = useConfirm();
@@ -56,9 +55,18 @@ export function CargosTab() {
     if (!nome.trim()) return toast({ title: 'Nome obrigatório', variant: 'destructive' });
     setSaving(true);
     const maxOrdem = cargos.length > 0 ? Math.max(...cargos.map(c => c.ordem)) + 1 : 0;
+    /* `parseFloat(x) || 1` estava aqui e engolia o zero: `0 || 1` é 1, então
+       digitar 0 salvava 1 sem erro nenhum. E zero é legítimo — contratado em
+       período de teste não ganha comissão. Ver `lerMultiplicador`. */
+    const mult = lerMultiplicador(multiplicador);
+    if (mult.erro) {
+      setSaving(false);
+      return toast({ title: mult.erro, variant: 'destructive' });
+    }
+
     const payload = {
       nome: nome.trim(),
-      multiplicador: parseFloat(multiplicador) || 1,
+      multiplicador: mult.valor,
       cor,
       ordem: editing?.ordem ?? maxOrdem,
     };
@@ -149,7 +157,7 @@ export function CargosTab() {
                 className="mt-1"
               />
               <p className="text-[10px] text-muted-foreground mt-1">
-                Valor atual: {fmtMult(multiplicador || 1)}
+                Valor atual: {fmtMult(multiplicador)}
               </p>
             </div>
             <div>
