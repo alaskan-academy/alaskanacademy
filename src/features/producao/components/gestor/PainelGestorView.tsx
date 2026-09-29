@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { cn } from '@/lib/utils';
 import { hoje, emDias, deYmd } from '@/lib/datas';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { useFases, rotuloDaFase } from '../../useFases';
  */
 export function PainelGestorView({ userId }: { userId: string }) {
   const { fases } = useFases();
+  const confirm = useConfirm();
   const [cards, setCards] = useState<CardDaFila[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -162,6 +164,56 @@ export function PainelGestorView({ userId }: { userId: string }) {
     void carregar();
   }
 
+  /*
+    Remarcar um dia inteiro da esteira.
+
+    A trava contra o zero silencioso é o ponto desta função. `fn_remarcar_esteira`
+    só age sobre card que JÁ está em `esteira_teste` e cuja data MUDA, então ela
+    pode devolver 0 legitimamente. Sem checar isso, o toast diria "remarcado" e
+    nada teria mudado — que é como `fn_enviar_para_esteira` se comportaria se
+    alguém tentasse reusá-la aqui.
+  */
+  const remarcarDia = useCallback(async (
+    de: string, para: string, ids: string[], ads: number,
+  ) => {
+    const nomeDe   = de ? deYmd(de).toLocaleDateString('pt-BR') : 'sem data';
+    const nomePara = deYmd(para).toLocaleDateString('pt-BR');
+    const ok = await confirm({
+      title: `Mover ${ads} ${ads === 1 ? 'AD' : 'ADs'} para ${nomePara}?`,
+      description: `${ids.length} ${ids.length === 1 ? 'card sai' : 'cards saem'} de ${nomeDe} e ${ids.length === 1 ? 'passa' : 'passam'} para ${nomePara}. O prazo de cada um acompanha, mantendo a mesma duração.`,
+      confirmText: 'Mover',
+      /* `useConfirm` pinta o botão de vermelho por padrão, porque quase todo
+         chamador dele é exclusão. Aqui não se perde nada: a data volta com
+         outro clique. Vermelho é marca e prejuízo; se ele aparecer onde não
+         há prejuízo, deixa de avisar onde há. */
+      destructive: false,
+    });
+    if (!ok) return;
+
+    const { data: n, error } = await supabase.rpc('fn_remarcar_esteira', {
+      p_ids: ids, p_data: para, p_usuario: userId,
+    });
+    if (error) {
+      toast({ title: 'Não foi possível mover', description: error.message, variant: 'destructive' });
+      return;
+    }
+    if (!n) {
+      toast({
+        title: 'Nada foi movido',
+        description: 'Nenhum destes cards está na esteira de teste, ou todos já estavam nessa data.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    toast({
+      title: `${n} ${n === 1 ? 'card movido' : 'cards movidos'} para ${nomePara}`,
+      description: n < ids.length
+        ? `${ids.length - n} ${ids.length - n === 1 ? 'card já estava' : 'cards já estavam'} nessa data.`
+        : undefined,
+    });
+    void carregar();
+  }, [userId, carregar, confirm]);
+
   if (carregando) {
     return <p className="py-8 text-center text-sm text-muted-foreground">Carregando a fila…</p>;
   }
@@ -244,7 +296,7 @@ export function PainelGestorView({ userId }: { userId: string }) {
             {emTeste.length} {emTeste.length === 1 ? 'card' : 'cards'}
           </span>
         </div>
-        <EsteiraPorDia cards={emTeste} onAbrirCard={abrirCard} />
+        <EsteiraPorDia cards={emTeste} onAbrirCard={abrirCard} onRemarcar={remarcarDia} />
       </section>
 
       {/*

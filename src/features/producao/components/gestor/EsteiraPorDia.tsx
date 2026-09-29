@@ -23,9 +23,18 @@ const DIA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
  * Cards sem `data_inicio` ganham um bloco próprio no fim em vez de sumirem: um
  * AD em teste sem dia marcado é justamente o que se perde de vista.
  */
-export function EsteiraPorDia({ cards, onAbrirCard }: {
+export function EsteiraPorDia({ cards, onAbrirCard, onRemarcar }: {
   cards: CardDaFila[];
   onAbrirCard: (id: string) => void;
+  /**
+   * Mover um dia inteiro para outra data.
+   *
+   * O gestor marca o teste com antecedência e nem sempre sobe no dia marcado.
+   * Sem isto, remarcar oito ADs era abrir oito cards, um a um — e o que
+   * acontecia na prática era o dia ficar mentindo: a esteira dizia 21/09 e os
+   * anúncios subiram no 28.
+   */
+  onRemarcar?: (de: string, para: string, ids: string[], ads: number) => Promise<void>;
 }) {
   /*
     A pergunta é "a demanda da SEMANA", e a esteira pode acumular meses de
@@ -46,6 +55,12 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
     exatamente a lista comprida que o agrupamento existe para evitar.
   */
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
+
+  /* Qual dia está com o seletor de data aberto, e se a gravação está em voo.
+     Um por vez: dois abertos ao mesmo tempo só serviriam para a pessoa
+     escolher a data no cabeçalho errado. */
+  const [remarcando, setRemarcando] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
   const alternar = (chave: string) => setAbertos(prev => {
     const n = new Set(prev);
     if (n.has(chave)) n.delete(chave); else n.add(chave);
@@ -128,6 +143,52 @@ export function EsteiraPorDia({ cards, onAbrirCard }: {
               <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
                 {ads.length} {ads.length === 1 ? 'AD' : 'ADs'} · {d.cards.length} {d.cards.length === 1 ? 'card' : 'cards'}
               </span>
+
+              {/*
+                Mover o dia inteiro. Fica no cabeçalho do dia porque é ali que
+                a pergunta nasce: "isto não subiu no dia 21". O alvo é o bloco,
+                não o card, então o controle tem de morar no bloco.
+              */}
+              {onRemarcar && (
+                remarcando === d.data ? (
+                  <span className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      defaultValue={d.data || undefined}
+                      autoFocus
+                      disabled={salvando}
+                      onChange={async e => {
+                        const nova = e.target.value;
+                        if (!nova || nova === d.data) { setRemarcando(null); return; }
+                        setSalvando(true);
+                        await onRemarcar(d.data, nova, d.cards.map(c => c.id), ads.length);
+                        setSalvando(false);
+                        setRemarcando(null);
+                      }}
+                      className="h-6 rounded border border-border bg-background px-1.5 text-[11px] text-foreground"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRemarcando(null)}
+                      disabled={salvando}
+                      className="text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      cancelar
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setRemarcando(d.data)}
+                    className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    title={d.data
+                      ? `Mover os ${d.cards.length} cards deste dia para outra data`
+                      : 'Marcar uma data de teste para estes cards'}
+                  >
+                    {d.data ? 'Mover dia' : 'Marcar data'}
+                  </button>
+                )
+              )}
             </div>
 
             {/* Um AD por linha, com o mesmo recuo e ritmo da fila acima. */}
