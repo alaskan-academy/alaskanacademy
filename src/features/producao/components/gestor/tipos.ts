@@ -40,6 +40,8 @@ export interface AdAgrupado {
   ad_num: number | null;
   tipo_teste: string | null;
   familia: string;
+  /** O projeto do AD, para ordenar por ele na esteira. */
+  projeto: string | null;
   cards: CardDaFila[];
   /** O maior tempo de espera entre os hooks — o AD está parado desde o pior. */
   dias: number;
@@ -100,7 +102,18 @@ export function rotuloDoHook(c: CardDaFila): string {
 export function agruparEmAds(cards: CardDaFila[]): AdAgrupado[] {
   const mapa = new Map<string, CardDaFila[]>();
   for (const c of cards) {
-    const k = `${c.ad_num ?? 'x'}|${c.tipo_teste ?? ''}`;
+    /*
+      O PROJETO entra na chave.
+
+      Hoje o número do AD é global — conferido em 28/09/2026: nenhum `ad_num`
+      aparece em dois projetos ativos —, então isto não muda agrupamento
+      nenhum. Entra porque a garantia era de convenção e não de construção: no
+      dia em que alguém reiniciar a numeração por projeto, dois ADs diferentes
+      virariam UMA linha, com os hooks dos dois misturados e o nome de um só.
+      E na esteira, onde o dia junta projetos, isso apareceria como um AD que
+      trocou de dono.
+    */
+    const k = `${c.projeto_id ?? ''}|${c.ad_num ?? 'x'}|${c.tipo_teste ?? ''}`;
     if (!mapa.has(k)) mapa.set(k, []);
     mapa.get(k)!.push(c);
   }
@@ -109,7 +122,26 @@ export function agruparEmAds(cards: CardDaFila[]): AdAgrupado[] {
     ad_num: cs[0].ad_num,
     tipo_teste: cs[0].tipo_teste,
     familia: cs[0].familia,
+    projeto: cs[0].projeto,
     cards: cs.sort((a, b) => (a.hook ?? 99) - (b.hook ?? 99)),
     dias: Math.max(...cs.map(c => c.dias_na_fase ?? 0)),
-  })).sort((a, b) => (b.ad_num ?? 0) - (a.ad_num ?? 0));
+  }))
+    /*
+      Projeto primeiro, AD depois.
+
+      A esteira junta num dia só os ADs de todos os projetos, e ordenada por
+      número ela embaralhava: Guia, Saponaria, Velas, Saponaria, Buquê, Velas.
+      Quem sobe os anúncios trabalha por projeto, um de cada vez, então ler o
+      dia exigia varrer a lista inteira e juntar de cabeça.
+
+      Dentro do projeto o número segue decrescente, que é o mais novo primeiro.
+      `localeCompare` com `pt` para "Área" não cair depois de "Zona".
+
+      Na fila de aprovados isto é inócuo: lá o agrupamento já chega recortado
+      por projeto, funil e tipo, então a primeira comparação sempre empata e
+      vale o número, como antes.
+    */
+    .sort((a, b) =>
+      (a.projeto ?? '').localeCompare(b.projeto ?? '', 'pt')
+      || (b.ad_num ?? 0) - (a.ad_num ?? 0));
 }
