@@ -72,9 +72,12 @@ export interface AcaoHistorico {
   funil_id: string;
   texto: string;
   expectativa: string | null;
+  resultado: string | null;
   feita: boolean;
   feita_em: string | null;
   feita_por_nome: string | null;
+  cancelada_em: string | null;
+  cancelada_por_nome: string | null;
 }
 
 const TODOS = '_todos_';
@@ -104,7 +107,7 @@ export default function HistoricoPage() {
       supabase.from('vw_mapa_revs').select('id,rev,projeto'),
       supabase.from('funis').select('id,metodo'),
       supabase.from('analise_acoes')
-        .select('id,analise_id,funil_id,texto,expectativa,feita,feita_em,perfis:feita_por(nome)')
+        .select('id,analise_id,funil_id,texto,expectativa,resultado,feita,feita_em,cancelada_em,perfis:feita_por(nome),cancelou:cancelada_por(nome)')
         .order('criada_em'),
     ]);
 
@@ -118,9 +121,11 @@ export default function HistoricoPage() {
     // relação; normalizar aqui evita o nome sumir sem erro nenhum.
     const listaAcoes = ((acoesData ?? []) as unknown as Array<AcaoHistorico & {
       perfis: { nome: string | null } | { nome: string | null }[] | null;
+      cancelou: { nome: string | null } | { nome: string | null }[] | null;
     }>).map(a => ({
       ...a,
       feita_por_nome: (Array.isArray(a.perfis) ? a.perfis[0] : a.perfis)?.nome ?? null,
+      cancelada_por_nome: (Array.isArray(a.cancelou) ? a.cancelou[0] : a.cancelou)?.nome ?? null,
     }));
     setAcoes(listaAcoes);
 
@@ -176,7 +181,8 @@ export default function HistoricoPage() {
           retencao: comoLista(item?.retencao)[0] ?? null,
           leitura: item?.leitura ?? '',
           acoes: daRodada.filter(a => a.funil_id === funilId).map(a => ({
-            texto: a.texto, expectativa: a.expectativa, feita: a.feita,
+            texto: a.texto, expectativa: a.expectativa, resultado: a.resultado, feita: a.feita,
+            cancelada: a.cancelada_em != null,
             feita_em: a.feita_em, feita_por_nome: a.feita_por_nome,
           })),
         });
@@ -192,6 +198,32 @@ export default function HistoricoPage() {
    * aconteceu, não opinião sobre isso. Desmarcar e marcar de novo refaz o
    * carimbo, pelo gatilho no banco.
    */
+  /* O gatilho carimba e limpa o outro estado; aqui só viaja a intenção. */
+  async function cancelarAcao(id: string, cancelada: boolean) {
+    const { error } = await supabase.from('analise_acoes')
+      .update({
+        cancelada_em: cancelada ? new Date().toISOString() : null,
+        cancelada_por: cancelada ? user?.id ?? null : null,
+      })
+      .eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao cancelar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    await carregar();
+  }
+
+  /* Avaliar não reescreve o registro de antes: só o veredito viaja. */
+  async function salvarResultado(id: string, resultado: string | null) {
+    const { error } = await supabase.from('analise_acoes')
+      .update({ resultado }).eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao salvar o resultado', description: error.message, variant: 'destructive' });
+      return;
+    }
+    await carregar();
+  }
+
   async function salvarAcao(id: string, texto: string, expectativa: string | null) {
     const { error } = await supabase.from('analise_acoes')
       .update({ texto, expectativa }).eq('id', id);
@@ -564,6 +596,7 @@ export default function HistoricoPage() {
                     key={c.funilId} item={c.item} acoes={c.acoes}
                     nome={revs[c.funilId] ?? 'REV removido'}
                     onSalvar={salvarAcao} onMarcar={marcarAcao} onApagar={apagarAcao}
+                    onResultado={salvarResultado} onCancelar={cancelarAcao}
                     onAdicionar={(texto, expectativa) =>
                       adicionarAcao(rodada.id, c.funilId, texto, expectativa)}
                     onSalvarLeitura={salvarLeitura}
@@ -581,9 +614,11 @@ export default function HistoricoPage() {
 
 /** Um REV dentro de uma rodada: o que ela leu, e os números que estavam na tela. */
 function ItemDaRodada(
-  { item, nome, acoes, onSalvar, onMarcar, onApagar, onAdicionar, onSalvarLeitura, onApagarItem }: {
+  { item, nome, acoes, onSalvar, onMarcar, onApagar, onResultado, onCancelar, onAdicionar, onSalvarLeitura, onApagarItem }: {
     item: ItemHistorico | null; nome: string; acoes: AcaoHistorico[];
     onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
+    onResultado: (id: string, resultado: string | null) => Promise<void>;
+    onCancelar: (id: string, cancelada: boolean) => Promise<void>;
     onMarcar: (id: string, feita: boolean) => Promise<void>;
     onApagar: (id: string) => Promise<void>;
     onAdicionar: (texto: string, expectativa: string) => Promise<void>;
@@ -680,6 +715,7 @@ function ItemDaRodada(
           <AcaoEditavel
             key={ac.id} acao={ac}
             onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+            onResultado={onResultado} onCancelar={onCancelar}
           />
         ))}
         <NovaAcao onAdicionar={onAdicionar} />

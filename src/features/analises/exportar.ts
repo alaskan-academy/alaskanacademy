@@ -24,6 +24,10 @@ const PASTA = 'Análises Alaskan';
 export interface AcaoParaExportar {
   texto: string;
   expectativa: string | null;
+  /** O veredito, escrito depois. Vazio enquanto não houver dados. */
+  resultado: string | null;
+  /** Decidimos não fazer. Vira `[-]` na nota, que o Obsidian risca. */
+  cancelada: boolean;
   feita: boolean;
   feita_em: string | null;
   feita_por_nome: string | null;
@@ -163,7 +167,11 @@ export function montarNota(r: RodadaParaExportar): string {
     for (const ac of r.acoes) {
       // Checkbox de markdown: o Obsidian marca e desmarca nativamente, então a
       // nota continua útil mesmo lida fora do dashboard.
-      corpo.push(`- [${ac.feita ? 'x' : ' '}] ${ac.texto}`);
+      /* `[-]` é a convenção de tarefa cancelada que o Obsidian risca. Sem
+         isso, a cancelada sairia como `[ ]` e a nota diria que ela continua
+         aberta — o vault discordando do painel sem nada denunciando. */
+      const caixa = ac.cancelada ? '-' : ac.feita ? 'x' : ' ';
+      corpo.push(`- [${caixa}] ${ac.texto}`);
       if (ac.expectativa) corpo.push(`    - 🎯 ${ac.expectativa}`);
       if (ac.feita && ac.feita_em) {
         const q = new Date(ac.feita_em).toLocaleString('pt-BR', {
@@ -171,6 +179,10 @@ export function montarNota(r: RodadaParaExportar): string {
         });
         corpo.push(`    - ✅ feita em ${q}${ac.feita_por_nome ? ` por ${ac.feita_por_nome}` : ''}`);
       }
+      /* O veredito vai DEPOIS do carimbo, na mesma ordem em que a coisa
+         aconteceu: o que se esperava, quando se fez, o que deu. Lida no vault
+         meses depois, a nota conta a decisão inteira sem precisar do painel. */
+      if (ac.resultado) corpo.push(`    - 📊 ${ac.resultado}`);
     }
     corpo.push('');
   }
@@ -333,7 +345,7 @@ export async function reenviarTudoParaObsidian(): Promise<{ notas: number }> {
       .select('id,data,analise_itens(funil_id,leitura,metricas,retencao)')
       .order('data', { ascending: false }),
     supabase.from('analise_acoes')
-      .select('funil_id,analise_id,texto,expectativa,feita,feita_em,perfis:feita_por(nome)')
+      .select('funil_id,analise_id,texto,expectativa,resultado,feita,feita_em,cancelada_em,perfis:feita_por(nome)')
       .order('criada_em'),
     supabase.from('vw_mapa_revs').select('id,rev,projeto'),
     supabase.from('funis').select('id,metodo'),
@@ -346,7 +358,8 @@ export async function reenviarTudoParaObsidian(): Promise<{ notas: number }> {
 
   type LinhaAcao = {
     funil_id: string; analise_id: string | null; texto: string;
-    expectativa: string | null; feita: boolean; feita_em: string | null;
+    expectativa: string | null; resultado: string | null; feita: boolean; feita_em: string | null;
+    cancelada_em: string | null;
     perfis: { nome: string | null } | { nome: string | null }[] | null;
   };
   const todasAcoes = (acoes ?? []) as unknown as LinhaAcao[];
@@ -378,7 +391,8 @@ export async function reenviarTudoParaObsidian(): Promise<{ notas: number }> {
         retencao: comoLista(item?.retencao)[0] ?? null,
         leitura: item?.leitura ?? '',
         acoes: daRodada.filter(a => a.funil_id === funilId).map(a => ({
-          texto: a.texto, expectativa: a.expectativa, feita: a.feita,
+          texto: a.texto, expectativa: a.expectativa, resultado: a.resultado, feita: a.feita,
+          cancelada: a.cancelada_em != null,
           feita_em: a.feita_em,
           feita_por_nome: (Array.isArray(a.perfis) ? a.perfis[0] : a.perfis)?.nome ?? null,
         })),

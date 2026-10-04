@@ -208,7 +208,7 @@ export default function AnalisesPage() {
   const carregarAcoes = useCallback(async (funilId: string) => {
     const { data } = await supabase
       .from('analise_acoes')
-      .select('id,texto,expectativa,feita,feita_em,criada_em,analise_id,analises(data),perfis:feita_por(nome)')
+      .select('id,texto,expectativa,resultado,feita,feita_em,cancelada_em,criada_em,analise_id,analises(data),perfis:feita_por(nome),cancelou:cancelada_por(nome)')
       .eq('funil_id', funilId)
       .order('criada_em');
 
@@ -217,13 +217,15 @@ export default function AnalisesPage() {
     const um = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
 
     const linhas = (data ?? []) as unknown as Array<{
-      id: string; texto: string; expectativa: string | null;
-      feita: boolean; feita_em: string | null; criada_em: string;
+      id: string; texto: string; expectativa: string | null; resultado: string | null;
+      feita: boolean; feita_em: string | null; cancelada_em: string | null; criada_em: string;
+      cancelou: { nome: string | null } | { nome: string | null }[] | null;
       analises: { data: string } | { data: string }[] | null;
       perfis: { nome: string | null } | { nome: string | null }[] | null;
     }>;
     const lista: Acao[] = linhas.map(l => ({
-      id: l.id, texto: l.texto, expectativa: l.expectativa,
+      id: l.id, texto: l.texto, expectativa: l.expectativa, resultado: l.resultado,
+      cancelada_em: l.cancelada_em, cancelada_por_nome: um(l.cancelou)?.nome ?? null,
       feita: l.feita, feita_em: l.feita_em, criada_em: l.criada_em,
       feita_por_nome: um(l.perfis)?.nome ?? null,
       data_origem: um(l.analises)?.data ?? null,
@@ -356,6 +358,48 @@ export default function AnalisesPage() {
     if (atual) espelhar(await carregarAcoes(atual.id));
   }
 
+  /**
+   * O resultado, gravado sozinho.
+   *
+   * Separado de `salvarAcao` porque é outro momento: o texto e a expectativa
+   * são o registro de ANTES, e avaliar não pode reescrevê-los sem querer. Aqui
+   * só o campo do veredito viaja.
+   */
+  async function salvarResultado(id: string, resultado: string | null) {
+    // Otimista pelo mesmo motivo da caixinha: a recarga logo abaixo corrige se
+    // o banco recusar, e o toast conta o que houve.
+    setAcoes(prev => prev.map(a => (a.id === id ? { ...a, resultado } : a)));
+    const { error } = await supabase.from('analise_acoes')
+      .update({ resultado }).eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao salvar o resultado', description: error.message, variant: 'destructive' });
+    }
+    if (atual) espelhar(await carregarAcoes(atual.id));
+  }
+
+  /**
+   * Cancelar, ou reabrir.
+   *
+   * O gatilho do banco cuida do carimbo e de limpar o outro estado, então aqui
+   * só viaja a intenção. Mandar `cancelada_em: now()` do cliente deixaria a
+   * hora na mão do relógio de quem clicou.
+   */
+  async function cancelarAcao(id: string, cancelada: boolean) {
+    setAcoes(prev => prev.map(a => (a.id === id
+      ? { ...a, cancelada_em: cancelada ? new Date().toISOString() : null, feita: false }
+      : a)));
+    const { error } = await supabase.from('analise_acoes')
+      .update({
+        cancelada_em: cancelada ? new Date().toISOString() : null,
+        cancelada_por: cancelada ? user?.id ?? null : null,
+      })
+      .eq('id', id);
+    if (error) {
+      toast({ title: 'Erro ao cancelar', description: error.message, variant: 'destructive' });
+    }
+    if (atual) espelhar(await carregarAcoes(atual.id));
+  }
+
   async function apagarAcao(id: string) {
     const ok = await confirmar({
       title: 'Apagar esta ação?',
@@ -483,7 +527,8 @@ export default function AnalisesPage() {
       retencao: retencoes[0] ?? null,
       leitura,
       acoes: acoesAgora.map(a => ({
-        texto: a.texto, expectativa: a.expectativa, feita: a.feita,
+        texto: a.texto, expectativa: a.expectativa, resultado: a.resultado, feita: a.feita,
+        cancelada: a.cancelada_em != null,
         feita_em: a.feita_em, feita_por_nome: a.feita_por_nome,
       })),
     }, setEspelho);
@@ -869,6 +914,7 @@ export default function AnalisesPage() {
           <AcoesFeitas
             acoes={acoes} fimDaJanela={janela.fim}
             onMarcar={marcarAcao} onSalvar={salvarAcao} onApagar={apagarAcao}
+            onResultado={salvarResultado}
           />
 
           {/* O que se digita — e só isto.
@@ -910,6 +956,7 @@ export default function AnalisesPage() {
             acoes={acoes} dataRodada={dataRodada}
             onAdicionar={adicionarAcao} onMarcar={marcarAcao}
             onSalvar={salvarAcao} onApagar={apagarAcao}
+            onResultado={salvarResultado} onCancelar={cancelarAcao}
           />
         </div>
       </div>

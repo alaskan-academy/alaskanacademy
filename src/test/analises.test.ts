@@ -202,8 +202,10 @@ describe('nota do Obsidian', () => {
     leitura: 'Escalamos 4x e a margem caiu.',
     acoes: [
       { texto: 'Segurar a escala', expectativa: 'Margem voltar a 30%',
+        resultado: null, cancelada: false,
         feita: false, feita_em: null, feita_por_nome: null },
       { texto: 'Trocar a headline', expectativa: null,
+        resultado: 'Sem mudança significativa em 25 dias, mantivemos a antiga.', cancelada: false,
         feita: true, feita_em: '2026-08-20T14:02:00-03:00', feita_por_nome: 'Jessica' },
     ],
   };

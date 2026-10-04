@@ -23,7 +23,12 @@ export interface Acao {
   id: string;
   texto: string;
   expectativa: string | null;
+  /** O que aconteceu depois. Escrito na lista das feitas. */
+  resultado: string | null;
   feita: boolean;
+  /** Decidimos NÃO fazer. Excludente com `feita`, por CHECK no banco. */
+  cancelada_em: string | null;
+  cancelada_por_nome: string | null;
   feita_em: string | null;
   feita_por_nome: string | null;
   criada_em: string;
@@ -37,13 +42,18 @@ interface Props {
   onMarcar: (id: string, feita: boolean) => Promise<void>;
   onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
   onApagar: (id: string) => Promise<void>;
+  onResultado: (id: string, resultado: string | null) => Promise<void>;
+  onCancelar: (id: string, cancelada: boolean) => Promise<void>;
   /** Data da rodada em foco, para saber o que é herdado e o que é desta. */
   dataRodada: string | null;
 }
 
 export function ListaAcoes({
-  acoes, onAdicionar, onMarcar, onSalvar, onApagar, dataRodada,
+  acoes, onAdicionar, onMarcar, onSalvar, onApagar, onResultado, onCancelar, dataRodada,
 }: Props) {
+  /* As canceladas nascem recolhidas: elas não são trabalho, mas sumir de vez
+     faria a decisão de desistir desaparecer da tela em que ela foi tomada. */
+  const [verCanceladas, setVerCanceladas] = useState(false);
   const [texto, setTexto] = useState('');
   const [expectativa, setExpectativa] = useState('');
   const [abrindoExpectativa, setAbrindo] = useState(false);
@@ -60,8 +70,13 @@ export function ListaAcoes({
 
   // Só as abertas moram aqui: as feitas viram histórico e sobem para o bloco de
   // resultado, ao lado dos números que elas deveriam ter mexido.
-  const abertas = acoes.filter(a => !a.feita)
+  const abertas = acoes.filter(a => !a.feita && a.cancelada_em == null)
     .sort((a, b) => a.criada_em.localeCompare(b.criada_em));
+
+  /* Cancelada não conta como "em aberto": era isso que fazia a ação de 08/09
+     piscar "desde 08/09" por um mês depois de a equipe já ter desistido dela. */
+  const canceladas = acoes.filter(a => a.cancelada_em != null)
+    .sort((a, b) => (b.cancelada_em ?? '').localeCompare(a.cancelada_em ?? ''));
 
   return (
     <div className="space-y-2">
@@ -84,6 +99,7 @@ export function ListaAcoes({
             <div key={a.id} className="px-3 py-2 hover:bg-secondary/30">
               <AcaoEditavel
                 acao={a} onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+                onCancelar={onCancelar}
                 direita={deOutraRodada ? (
                   <span className="shrink-0 inline-flex items-center gap-1 text-xs text-amber-400/90 mt-1">
                     <Clock className="h-3 w-3" />
@@ -135,6 +151,33 @@ export function ListaAcoes({
           )}
         </div>
       </div>
+
+      {canceladas.length > 0 && (
+        <div className="rounded-lg border border-border/60 bg-secondary/10">
+          <button
+            type="button"
+            onClick={() => setVerCanceladas(v => !v)}
+            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs
+                       text-muted-foreground hover:text-foreground"
+            aria-expanded={verCanceladas}
+          >
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', verCanceladas && 'rotate-180')} />
+            {canceladas.length === 1 ? '1 cancelada' : `${canceladas.length} canceladas`}
+          </button>
+          {verCanceladas && (
+            <div className="divide-y divide-border/40 border-t border-border/40">
+              {canceladas.map(a => (
+                <div key={a.id} className="px-3 py-2">
+                  <AcaoEditavel
+                    acao={a} onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+                    onResultado={onResultado} onCancelar={onCancelar}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -148,12 +191,13 @@ export function ListaAcoes({
  * período já tem dados suficientes para julgar, em vez de decidir no escuro.
  */
 export function AcoesFeitas({
-  acoes, fimDaJanela, onMarcar, onSalvar, onApagar,
+  acoes, fimDaJanela, onMarcar, onSalvar, onApagar, onResultado,
 }: {
   acoes: Acao[]; fimDaJanela: string;
   onMarcar: (id: string, feita: boolean) => Promise<void>;
   onSalvar: (id: string, texto: string, expectativa: string | null) => Promise<void>;
   onApagar: (id: string) => Promise<void>;
+  onResultado: (id: string, resultado: string | null) => Promise<void>;
 }) {
   const feitas = acoes.filter(a => a.feita && a.feita_em)
     .sort((a, b) => (b.feita_em ?? '').localeCompare(a.feita_em ?? ''));
@@ -179,6 +223,7 @@ export function AcoesFeitas({
             <div key={a.id} className="px-3 py-2">
               <AcaoEditavel
                 acao={a} onSalvar={onSalvar} onMarcar={onMarcar} onApagar={onApagar}
+                onResultado={onResultado}
                 direita={
                   /* A análise de 24/08 dizia "não saberemos muito bem o
                      impacto, poucos dias". A tela diz isso sozinha agora. */
