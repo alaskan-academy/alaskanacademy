@@ -56,6 +56,12 @@ function Trilha({ rotulo, valores, formato }: {
  * leituras seguidas de "piorou um pouco" não somam sozinhas na cabeça de
  * ninguém. Três janelas na mesma direção somam.
  *
+ * MORA NO HISTÓRICO, e não no Comparar, desde 04/10/2026. O Comparar responde
+ * "qual REV eu corto HOJE": é uma foto, com todos os REVs lado a lado no mesmo
+ * período. Este aviso é o contrário — um REV só, ao longo do tempo. Posto lá,
+ * ele disputava a atenção com a tabela que a pessoa foi ver, e o eixo dele é o
+ * do Histórico.
+ *
  * A SÉRIE MISTURA DUAS FONTES, e isso está à mostra de propósito. O retrato da
  * análise tem preferência; onde não houve análise, a janela é recalculada
  * agora. Foi decisão dela em 24/09/2026, com o risco dito: são duas fontes

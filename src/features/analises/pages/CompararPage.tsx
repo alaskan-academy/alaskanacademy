@@ -10,7 +10,6 @@ import { cn } from '@/lib/utils';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { AlertTriangle, ArrowDown, ArrowUp, Check, CheckCircle2, ChevronDown, Columns3, X } from 'lucide-react';
 import { AnalisesNav } from '../components/AnalisesNav';
-import { AvisoTendencia } from '../components/AvisoTendencia';
 import { CelulaTripla } from '../components/ListaMetricas';
 import { TabelaLadoALado } from '../components/TabelaLadoALado';
 import { ResumoComparacao } from '../components/ResumoComparacao';
@@ -148,7 +147,6 @@ export default function CompararPage() {
   return (
     <DashboardLayout title="Análises" hideFilters hideTitle>
       <AnalisesNav />
-      <AvisoTendencia />
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">

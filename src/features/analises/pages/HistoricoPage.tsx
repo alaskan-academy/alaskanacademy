@@ -18,6 +18,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { AcaoEditavel } from '../components/AcaoEditavel';
+import { AvisoTendencia } from '../components/AvisoTendencia';
 import { MetricasDoRev } from '../metricas';
 import { RetencaoVsl, comoLista } from '../retencao';
 import { formatarData } from '../periodo';
@@ -472,6 +473,7 @@ export default function HistoricoPage() {
   return (
     <DashboardLayout title="Análises" hideFilters hideTitle>
       <AnalisesNav />
+      <AvisoTendencia />
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
