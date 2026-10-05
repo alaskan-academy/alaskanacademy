@@ -53,8 +53,32 @@ const MARCOS: { rotulo: string; campo: keyof RetencaoVsl }[] = [
  * unidade diferente no meio de uma tela inteira obriga a parar e traduzir, e
  * isso custa mais do que a precisão ganha.
  */
+/**
+ * Um lado só tem número se alguém deu play nele.
+ *
+ * Em 04/10/2026 os dois lados do teste MicroLead estavam com ZERO plays — a
+ * segunda fonte, a sincronização de testes do próprio VTurb, confirmou views 0
+ * e plays 0 nos dois. E mesmo assim a linha do Pitch mostrava 9,1% contra
+ * 23,3%, com um ↑156,7% em VERDE na coluna de comparação.
+ *
+ * Esse é o número perigoso da tela: os outros campos ao menos apareciam como
+ * `—` ou `0.0%`, que se lê como vazio. O verde se lê como achado. Quem olhasse
+ * só aquela linha concluiria que o lado B ganhou por 156%, de um teste em que
+ * ninguém assistiu a nada.
+ *
+ * O rodapé do bloco já promete que "diferença pequena em poucos dias é ruído".
+ * A mesma regra tem de valer para nenhum dia.
+ */
+function semBase(r: RetencaoVsl): boolean {
+  return r.plays == null || r.plays === 0;
+}
+
 function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
   const dois = rs.length === 2;
+  /* Comparar exige base DOS DOIS: um lado com play e outro sem não é um teste,
+     é um lado só com um número ao lado de nada. */
+  const podeComparar = dois && rs.every(r => !semBase(r));
+  const comErro = rs.filter(r => r.erro);
   return (
     <section className="space-y-1.5">
       <div className="flex items-baseline gap-2 flex-wrap">
@@ -86,16 +110,25 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
                 <span className="block truncate normal-case tracking-normal" title={r.nome ?? undefined}>
                   {r.nome ?? '—'}
                 </span>
+                {/* O motivo de a coluna estar vazia, na própria coluna. Sem
+                    isto a pessoa procura o defeito no painel. */}
+                {semBase(r) && (
+                  <span className="block normal-case tracking-normal text-amber-400/80">
+                    sem play no período
+                  </span>
+                )}
               </span>
             ))}
             {dois && <span className="w-20 shrink-0 text-right">B vs A</span>}
           </div>
 
           {MARCOS.map(({ rotulo, campo }) => {
-            const vals = rs.map(r => r[campo] as number | null);
+            // Sem play não há taxa: o que a API devolve nesse caso é resto de
+            // divisão por quase nada, não medida.
+            const vals = rs.map(r => (semBase(r) ? null : r[campo] as number | null));
             // B contra A, na mesma conta do resto da página: o "anterior" aqui
             // é o lado A. Retenção maior é melhor, então subir é verde.
-            const v = dois ? variacao(vals[1], vals[0]) : null;
+            const v = podeComparar ? variacao(vals[1], vals[0]) : null;
             const Seta = v?.direcao === 'subiu' ? ArrowUp : ArrowDown;
             const destaque = campo === 'conversao_pct';
             return (
@@ -149,6 +182,14 @@ function Comparacao({ rs }: { rs: RetencaoVsl[] }) {
       {/* Um teste A/B não se decide por diferença pequena, e a tela não deve
           sugerir que sim. Ela mostra os dois lados e cala o veredito — a mesma
           regra da sincronização de testes do VTurb. */}
+      {comErro.length > 0 && (
+        /* "Falhou" e "não houve dado" tinham a mesma cara. Agora o que falhou
+           diz que falhou, e com a mensagem que o VTurb devolveu. */
+        <p className="text-xs text-amber-400/90 px-0.5">
+          O VTurb não respondeu{comErro.length < rs.length ? ' para um dos lados' : ''}:{' '}
+          {comErro.map(r => r.erro).join(' · ')}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground/70 px-0.5">
         Os dois lados, sem veredito: diferença pequena em poucos dias é ruído, e
         significância não é calculada aqui.
@@ -273,16 +314,33 @@ export function BlocoVsl({ rs, anteriores, vendas, vendasAntes }: {
      o que se está comparando. */
   if (rs.length > 1) return <Comparacao rs={rs} />;
 
-  const r = rs[0];
+  const bruto = rs[0];
   const anterior = anteriores[0] ?? null;
+
+  /* A mesma regra da comparação A/B, e pelo mesmo motivo: sem play não há taxa.
+     Aqui o estrago seria menor — não há seta verde —, mas "Pitch 9,1%" sem
+     ninguém ter assistido continua sendo um número que não existe. */
+  const vazio = semBase(bruto);
+  const r: RetencaoVsl = vazio
+    ? { ...bruto, conversao_pct: null, play_rate_pct: null, um_minuto_pct: null,
+        fim_da_lead_pct: null, pitch_pct: null, final_pct: null }
+    : bruto;
 
   return (
     <>
     <VendasVsl v={vendas} anterior={vendasAntes} />
     <ListaMetricas
       titulo="A VSL"
-      nota={<>ao vivo do VTurb{r.nome ? ` · ${r.nome}` : ''}</>}
+      nota={<>
+        ao vivo do VTurb{r.nome ? ` · ${r.nome}` : ''}
+        {vazio && <span className="text-amber-400/80"> · sem play no período</span>}
+      </>}
     >
+      {r.erro && (
+        <p className="px-3 pt-2 text-xs text-amber-400/90">
+          O VTurb não respondeu: {r.erro}
+        </p>
+      )}
       {/* A conversão DA VSL, que é outra pergunta que a do checkout logo
           acima: aquela mede o checkout (pedido iniciado que virou venda), esta
           mede o vídeo (quem viu e comprou). Não são versões do mesmo número, e

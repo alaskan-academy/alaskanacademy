@@ -54,6 +54,20 @@ export interface RetencaoVsl {
   conversao_pct: number | null;
   /** Quem apertou play no período — a base da conversão acima. */
   plays: number | null;
+
+  /**
+   * O que o VTurb respondeu quando não respondeu.
+   *
+   * A edge function devolve `{ erro }` com status 200 — um 429 por excesso de
+   * chamadas, chave vencida, formato mudado. Isto aqui NÃO era lido: o campo
+   * caía no chão e todas as linhas viravam `—` e `0.0%`, idênticas a "não
+   * houve dado no período".
+   *
+   * Em 04/10/2026 foi exatamente essa a dúvida: a tela estava vazia e não
+   * havia como saber, sem ir ao banco, se o VTurb tinha falhado ou se ninguém
+   * tinha dado play. Eram coisas diferentes com a mesma cara.
+   */
+  erro: string | null;
 }
 
 interface Vsl {
@@ -138,7 +152,25 @@ export async function buscarRetencao(
   const s = (stats.data?.dados ?? {}) as Record<string, unknown>;
   const hist = ((curva.data?.dados as { grouped_timed?: Balde[] })?.grouped_timed ?? []);
 
+  /*
+    A falha vem por dois caminhos e os dois chegavam calados: `error` é a
+    chamada que não completou, `data.erro` é a edge function dizendo que o
+    VTurb recusou — ela responde 200 com a mensagem dentro.
+
+    Juntar as duas numa frase só, dizendo QUAL das duas consultas falhou: sem
+    isso, "o VTurb não respondeu" manda procurar nos dois lugares.
+  */
+  const falhas = [
+    stats.error?.message ?? (stats.data as { erro?: string } | null)?.erro,
+    curva.error?.message ?? (curva.data as { erro?: string } | null)?.erro,
+  ];
+  const erro = [
+    falhas[0] && `métricas: ${falhas[0]}`,
+    falhas[1] && `curva de retenção: ${falhas[1]}`,
+  ].filter(Boolean).join(' · ') || null;
+
   return {
+    erro,
     play_rate_pct: comoPct(s.play_rate),
     um_minuto_pct: retencaoEm(hist, 60),
     fim_da_lead_pct: retencaoEm(hist, vsl.lead_fim_seg),

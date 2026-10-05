@@ -197,7 +197,7 @@ describe('nota do Obsidian', () => {
       lead_fim_seg: null, pitch_seg: 801, duracao_seg: 1347, nome: 'VSL 02',
       // A conversão da VSL vem do VTurb, no bloco dele: mede o VÍDEO (quem deu
       // play e comprou), não o checkout. As duas convivem sem se cruzarem.
-      conversao_pct: 3.6, plays: 4189,
+      conversao_pct: 3.6, plays: 4189, erro: null,
     },
     leitura: 'Escalamos 4x e a margem caiu.',
     acoes: [
