@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { sanitizarHtml } from '@/lib/sanitizar';
 import { cn } from '@/lib/utils';
 
@@ -266,8 +267,45 @@ export function BlocosRenderer({ blocos, titulo, onAmpliar }: {
       b.tipo === 'texto' ? comIdsNosTitulos(sanitizarHtml(b.dados.html ?? ''), vistos) : '');
   }, [blocos]);
 
+  /*
+   * Link de um processo para outro é navegação do router, não recarga.
+   *
+   * O HTML dos blocos é string: um `<a href="/processos/...">` dentro dele é
+   * âncora de verdade, e o navegador recarrega a aplicação inteira no clique.
+   * Numa SPA com rota em `lazy()` isso custa o bundle de novo, e justo no
+   * lugar onde mais se clica: o SOP de Edição é um hub com quatro módulos que
+   * apontam entre si, e a matriz de navegação existe para ser usada.
+   *
+   * Não dá para trocar por `<Link>` porque o conteúdo não é JSX, é texto que
+   * alguém escreveu no editor. Então o clique é interceptado aqui, uma vez,
+   * para todos os blocos.
+   *
+   * O que NÃO é interceptado, de propósito:
+   *
+   * - clique com ctrl, cmd, shift ou alt, e clique que não é do botão
+   *   esquerdo: a pessoa está pedindo outra aba, e tirar isso dela seria
+   *   quebrar um gesto que todo navegador tem;
+   * - link externo, que o sanitizador já marcou com `target="_blank"`;
+   * - clique que alguém já tratou (`defaultPrevented`), como o do lightbox.
+   */
+  const navigate = useNavigate();
+  const aoClicarNoLink = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+    const alvo = (e.target as HTMLElement | null)?.closest?.('a');
+    if (!alvo || alvo.getAttribute('target')) return;
+
+    const href = alvo.getAttribute('href');
+    // Só caminho interno. `//outro.site` é externo apesar da barra inicial.
+    if (!href || !href.startsWith('/') || href.startsWith('//')) return;
+
+    e.preventDefault();
+    navigate(href);
+  };
+
   return (
-    <>
+    <div onClick={aoClicarNoLink}>
       {blocos.map((b, i) => {
         switch (b.tipo) {
           case 'texto':  return <BlocoTexto  key={i} html={htmlPorBloco[i]} />;
@@ -278,7 +316,7 @@ export function BlocosRenderer({ blocos, titulo, onAmpliar }: {
           default:       return null;
         }
       })}
-    </>
+    </div>
   );
 }
 
