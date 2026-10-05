@@ -134,7 +134,7 @@ describe('o aviso de tendência acusa e explica', () => {
     // Vazio aqui seria perda de informação: "nenhuma causa conhecida" é um
     // achado, e some se a linha simplesmente não aparecer.
     expect(codigo, `${TELA}: sumiu o caso de nenhuma explicação`).toMatch(
-      /as outras métricas seguraram/,
+      /nenhuma outra métrica acompanhou/,
     );
   });
 });
