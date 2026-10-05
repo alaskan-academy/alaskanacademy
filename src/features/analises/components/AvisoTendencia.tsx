@@ -13,6 +13,81 @@ interface Ponto {
   vendas: number | null;
   cpa: number | null;
   roas: number | null;
+  aov: number | null;
+  /* As que explicam. Vivem só aqui, e não como colunas c1/c2/c3: aquelas
+     existem porque os booleanos precisam delas, e duplicar o que já está na
+     série seria o mesmo número em dois lugares. */
+  cpv: number | null;
+  conv_funil_pct: number | null;
+  conv_checkout_pct: number | null;
+  bump_adesao_pct: number | null;
+  upsell_adesao_pct: number | null;
+  margem_pct: number | null;
+}
+
+/**
+ * O que explica, sem virar alarme.
+ *
+ * Cada uma separa uma causa diferente do que o alarme acusou. `pior` é a
+ * direção que conta como piora, e é o que impede "margem subiu" de aparecer
+ * como explicação de alarme.
+ */
+export const EXPLICAM = [
+  { campo: 'cpv',               rotulo: 'CPV',                 pior: 'sobe', moeda: true  },
+  { campo: 'conv_funil_pct',    rotulo: 'conversão do funil',  pior: 'desce', moeda: false },
+  { campo: 'conv_checkout_pct', rotulo: 'conversão do checkout', pior: 'desce', moeda: false },
+  { campo: 'bump_adesao_pct',   rotulo: 'adesão ao bump',      pior: 'desce', moeda: false },
+  { campo: 'upsell_adesao_pct', rotulo: 'adesão ao upsell',    pior: 'desce', moeda: false },
+  { campo: 'margem_pct',        rotulo: 'margem',              pior: 'desce', moeda: false },
+] as const;
+
+/** Três janelas na mesma direção ruim — o mesmo teste dos alarmes. */
+export function pioraSeguida(vals: (number | null)[], pior: 'sobe' | 'desce'): boolean {
+  if (vals.length !== 3 || vals.some(v => v == null)) return false;
+  const [a, b, c] = vals as number[];
+  return pior === 'sobe' ? b > a && c > b : b < a && c < b;
+}
+
+/**
+ * O que andou junto do alarme.
+ *
+ * Mostra SÓ as que também pioraram nas três janelas, e não todas as seis: a
+ * linha existe para apontar onde olhar, e seis séries em cinza por REV viram a
+ * mesma parede de número que o aviso veio evitar.
+ *
+ * Quando nenhuma anda junto, isso é um achado e não um vazio: significa que a
+ * queda não veio de nenhuma das causas conhecidas, e a tela diz isso em vez de
+ * sumir com a linha.
+ */
+function Explicacao({ pontos }: { pontos: Ponto[] }) {
+  const juntas = EXPLICAM
+    .map(e => ({ ...e, vals: pontos.map(p => p[e.campo] as number | null) }))
+    .filter(e => pioraSeguida(e.vals, e.pior));
+
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pl-0.5 text-[11px]">
+      {juntas.length === 0 ? (
+        <span className="text-muted-foreground/50">
+          as outras métricas seguraram — a queda não veio das causas que a tela conhece
+        </span>
+      ) : (
+        <>
+          <span className="text-muted-foreground/50">e junto:</span>
+          {juntas.map(e => (
+            <span key={e.campo} className="inline-flex items-baseline gap-1 tabular-nums text-muted-foreground/70">
+              <span className="text-muted-foreground/50">{e.rotulo}</span>
+              {e.vals.map((v, i) => (
+                <span key={i} className="inline-flex items-baseline gap-1">
+                  {i > 0 && <span className="text-muted-foreground/30">→</span>}
+                  {v == null ? '—' : e.moeda ? formatCurrency(v) : `${v.toFixed(1)}%`}
+                </span>
+              ))}
+            </span>
+          ))}
+        </>
+      )}
+    </div>
+  );
 }
 
 interface Tendencia {
@@ -24,8 +99,14 @@ interface Tendencia {
   menor_investimento: number | null;
   cpa1: number | null; cpa2: number | null; cpa3: number | null;
   roas1: number | null; roas2: number | null; roas3: number | null;
+  aov1: number | null; aov2: number | null; aov3: number | null;
   cpa_piorando: boolean;
   roas_piorando: boolean;
+  /* AOV é o terceiro alarme porque NÃO é consequência dos outros dois: ele cai
+     quando o mix de oferta muda, e isso acontece com o ROAS firme. Medido em
+     04/10/2026: o REV3 - VSL do Saponaria estava com 89,33 → 88,32 → 87,84 e
+     CPA e ROAS parados — invisível até existir este alarme. */
+  aov_piorando: boolean;
 }
 
 /** Uma métrica acusada, já com a série na ordem e a direção certa. */
@@ -93,7 +174,7 @@ export function AvisoTendencia({ aoAbrir }: { aoAbrir?: (funilId: string) => voi
         console.error('vw_rev_tendencia:', error.message);
         return;
       }
-      setItens(((data ?? []) as Tendencia[]).filter(t => t.cpa_piorando || t.roas_piorando));
+      setItens(((data ?? []) as Tendencia[]).filter(t => t.cpa_piorando || t.roas_piorando || t.aov_piorando));
     };
     void carregar();
   }, []);
@@ -115,7 +196,8 @@ export function AvisoTendencia({ aoAbrir }: { aoAbrir?: (funilId: string) => voi
         {itens.map(t => {
           const deAnalise = t.pontos_de_analise;
           return (
-            <div key={t.funil_id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
+            <div key={t.funil_id} className="space-y-0.5">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
               {/* O nome do REV sozinho é ambíguo: há CINCO funis chamados
                   "REV1 - Original", um por produto. */}
               {aoAbrir ? (
@@ -138,6 +220,9 @@ export function AvisoTendencia({ aoAbrir }: { aoAbrir?: (funilId: string) => voi
               {t.roas_piorando && (
                 <Trilha rotulo="ROAS" valores={[t.roas1, t.roas2, t.roas3]} formato={n => n.toFixed(2)} />
               )}
+              {t.aov_piorando && (
+                <Trilha rotulo="AOV" valores={[t.aov1, t.aov2, t.aov3]} formato={formatCurrency} />
+              )}
 
               {/* De onde vieram os números. Sem isto a linha parece uma série só. */}
               <span
@@ -151,6 +236,8 @@ export function AvisoTendencia({ aoAbrir }: { aoAbrir?: (funilId: string) => voi
               >
                 {deAnalise === 0 ? 'tudo recalculado' : `${deAnalise}/3 de análise`}
               </span>
+            </div>
+            <Explicacao pontos={t.pontos} />
             </div>
           );
         })}
