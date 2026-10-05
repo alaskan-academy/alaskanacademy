@@ -166,6 +166,43 @@ function BlocoTexto({ html }: { html: string }) {
         '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
         '[&_strong]:text-foreground [&_strong]:font-semibold',
         '[&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px]',
+        /*
+          O <pre> NAO tinha estilo nenhum, e o padrao do navegador e
+          `white-space: pre`: nao quebra linha.
+
+          Medido em 05/10/2026, no Módulo 3 do SOP de Edição: os prompts que a
+          pessoa COPIA E COLA no ChatGPT renderizavam como UMA linha de
+          35.921px de largura por 28px de altura, dentro de um container de
+          528px. O conteúdo estava inteiro no banco e conferido caractere a
+          caractere contra o PDF; a tela o tornava ilegível e impossível de
+          selecionar, sem nada denunciando. São 4.507, 3.861 e 1.554
+          caracteres, os três blocos mais importantes daquele artigo.
+
+          `whitespace-pre-wrap` quebra preservando as quebras que existem, que
+          é o que um prompt precisa. O `max-h` com rolagem existe porque 4.500
+          caracteres quebrados dariam 1.400px de parede no meio do artigo: o
+          painel vira um painel, e quem quer o texto inteiro rola dentro dele.
+        */
+        '[&_pre]:whitespace-pre-wrap [&_pre]:break-words',
+        '[&_pre]:bg-muted/40 [&_pre]:border [&_pre]:border-border [&_pre]:rounded-lg',
+        '[&_pre]:px-4 [&_pre]:py-3.5 [&_pre]:my-5',
+        '[&_pre]:text-[12.5px] [&_pre]:leading-[1.7] [&_pre]:text-foreground/90',
+        '[&_pre]:max-h-[22rem] [&_pre]:overflow-y-auto',
+        /*
+          O <mark> caía no amarelo puro do navegador (#FFFF00, texto preto):
+          um bloco neon no tema escuro, e um hex que não existe em token
+          nenhum da marca.
+
+          Âmbar porque "atenção" é a convenção que o olho traz de fora, como o
+          CLAUDE.md diz. Não vermelho: vermelho aqui é marca e prejuízo, e
+          gastá-lo num destaque de texto tira o único sinal que um número
+          negativo tem.
+
+          `box-decoration-clone` para o fundo acompanhar a quebra de linha em
+          vez de virar uma faixa só atravessando o parágrafo.
+        */
+        '[&_mark]:bg-warning/20 [&_mark]:text-foreground [&_mark]:rounded',
+        '[&_mark]:px-1 [&_mark]:py-px [&_mark]:box-decoration-clone',
         '[&>hr]:border-border [&>hr]:my-7',
         '[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0',
       )}
@@ -188,6 +225,15 @@ function BlocoHtml({ html }: { html: string }) {
         '[&_th]:uppercase [&_th]:tracking-wider [&_th]:text-muted-foreground [&_th]:border-b [&_th]:border-border',
         '[&_td]:px-4 [&_td]:py-2.5 [&_td]:border-b [&_td]:border-border/40',
         '[&_iframe]:w-full [&_iframe]:aspect-video [&_iframe]:rounded-xl [&_iframe]:border [&_iframe]:border-border',
+        /*
+          Link dentro de tabela parecia texto comum: o estilo de link morava só
+          no BlocoTexto, e a matriz de navegação do SOP de Edição é uma tabela.
+          Ou seja, a peça feita para rotear o editor para o módulo da demanda
+          dele não tinha nada dizendo que era clicável. Mesmo tratamento dos
+          dois lados, senão a diferença volta no próximo artigo com tabela.
+        */
+        '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
+        '[&_mark]:bg-warning/20 [&_mark]:text-foreground [&_mark]:rounded [&_mark]:px-1 [&_mark]:py-px',
         'overflow-x-auto rounded-xl border border-border',
       )}
       dangerouslySetInnerHTML={{ __html: limpo }}
