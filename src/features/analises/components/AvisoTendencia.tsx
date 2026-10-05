@@ -60,15 +60,26 @@ export function pioraSeguida(vals: (number | null)[], pior: 'sobe' | 'desce'): b
  * sumir com a linha.
  */
 function Explicacao({ pontos }: { pontos: Ponto[] }) {
-  const juntas = EXPLICAM
-    .map(e => ({ ...e, vals: pontos.map(p => p[e.campo] as number | null) }))
-    .filter(e => pioraSeguida(e.vals, e.pior));
+  const todas = EXPLICAM.map(e => {
+    const vals = pontos.map(p => p[e.campo] as number | null);
+    return {
+      ...e, vals,
+      // Série incompleta não é "segurou": é "não sei". REV sem upsell tem a
+      // adesão nula nas três janelas, e listá-la como quem segurou seria
+      // inventar uma estabilidade que ninguém mediu.
+      completa: vals.length === 3 && vals.every(v => v != null),
+    };
+  });
+
+  const juntas   = todas.filter(e => e.completa && pioraSeguida(e.vals, e.pior));
+  const seguram  = todas.filter(e => e.completa && !pioraSeguida(e.vals, e.pior));
+  const semDado  = todas.filter(e => !e.completa);
 
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pl-0.5 text-[11px]">
       {juntas.length === 0 ? (
         <span className="text-muted-foreground/50">
-          as outras métricas seguraram — a queda não veio das causas que a tela conhece
+          nenhuma outra métrica acompanhou — a queda não veio das causas que a tela conhece
         </span>
       ) : (
         <>
@@ -85,6 +96,36 @@ function Explicacao({ pontos }: { pontos: Ponto[] }) {
             </span>
           ))}
         </>
+      )}
+
+      {/*
+        O que SEGUROU, e é metade do diagnóstico.
+
+        A linha de cima sozinha diz o que piorou; é a ausência que fecha a
+        leitura. No REV1 de 04/10/2026 o CPV subiu e a margem caiu, mas a
+        conversão do funil ficou parada em 2,1% — e foi isso que mostrou que a
+        página não piorou, o tráfego é que ficou caro.
+
+        Sem esta parte, uma métrica estável simplesmente não aparecia, e
+        ausência é invisível: quem lê não tem como distinguir "segurou" de
+        "nem está na lista".
+
+        Nomes sem série de propósito. O que importa aqui é QUAIS seguraram; pôr
+        três números em cada uma devolveria a parede de número que o aviso veio
+        evitar, e a série está a um clique no REV.
+      */}
+      {seguram.length > 0 && (
+        <span className="inline-flex items-baseline gap-1 text-muted-foreground/40">
+          <span>segurou:</span>
+          <span>{seguram.map(e => e.rotulo).join(' · ')}</span>
+          {/* Sem isto, "segurou: X" daria a entender que as outras cinco
+              pioraram — inclusive as que ninguém mediu. */}
+          {semDado.length > 0 && (
+            <span className="text-muted-foreground/30">
+              ({semDado.length} sem dado)
+            </span>
+          )}
+        </span>
       )}
     </div>
   );

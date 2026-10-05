@@ -106,6 +106,30 @@ describe('o aviso de tendência acusa e explica', () => {
     }
   });
 
+  it('o que SEGUROU também aparece', () => {
+    /*
+      Metade do diagnóstico mora na ausência. No REV1 o CPV subiu e a margem
+      caiu, mas a conversão do funil ficou parada em 2,1% — e foi isso que
+      mostrou que a página não piorou. Sem listar quem segurou, uma métrica
+      estável simplesmente não aparece, e ausência é invisível.
+    */
+    expect(codigo, `${TELA}: sumiu a lista do que segurou`).toMatch(/segurou:/);
+    expect(codigo, 'segurou precisa sair das completas que NÃO pioraram').toMatch(
+      /seguram\s*=\s*todas\.filter\(e => e\.completa && !pioraSeguida/,
+    );
+  });
+
+  it('série incompleta não entra como "segurou"', () => {
+    // REV sem upsell tem a adesão nula nas três janelas. Listá-la como quem
+    // segurou seria inventar uma estabilidade que ninguém mediu.
+    expect(codigo, `${TELA}: a trava de série completa sumiu`).toMatch(
+      /completa: vals\.length === 3 && vals\.every\(v => v != null\)/,
+    );
+    expect(codigo, 'o que não tem dado precisa ser contado à parte').toMatch(
+      /sem dado/,
+    );
+  });
+
   it('quando nada anda junto, a tela diz isso', () => {
     // Vazio aqui seria perda de informação: "nenhuma causa conhecida" é um
     // achado, e some se a linha simplesmente não aparecer.
