@@ -241,6 +241,34 @@ Quando a pressa for real, o desfazer mais rápido é pelo banco, não pelo deplo
 devolver a coluna vazia e a chave estrangeira destrava na hora
 (`20260921d`/`20260921e`), e aí o DROP definitivo espera a ordem certa.
 
+### Migração sem arquivo passa por fora de TODA catraca
+
+> **Aplicar no banco e não escrever o `.sql` em `supabase/migrations/` não é
+> dívida de organização: é desligar os testes.**
+
+Vários testes deste projeto leem as MIGRAÇÕES, não o banco —
+`view-nova-nao-fura-a-rls`, `analises-tendencia`, `o-empate-e-um-so`. Uma
+migração que existe só no banco é invisível para todos eles, e eles continuam
+passando verdes sobre a definição antiga.
+
+Em 04/10/2026 nove migrações ficaram assim, e o preço apareceu na mesma hora:
+`CREATE OR REPLACE VIEW` **redefine** as reloptions — omitir
+`with (security_invoker = on)` APAGA a opção que estava lá —, e dois replaces
+feitos direto no banco derrubaram o invoker de `vw_alertas` e
+`vw_rev_tendencia`. As duas voltaram a rodar com os direitos do dono, legíveis
+por `anon`, com faturamento por REV dentro. A catraca que existe exatamente
+para isso não viu nada, porque não havia arquivo para ela ler.
+
+Duas consequências práticas:
+
+- **Toda view escreve `with (security_invoker = on)` na própria instrução.**
+  `alter view ... set` numa migração à parte conserta uma vez e perde no
+  replace seguinte. O conserto tem de estar no arquivo que recria a view.
+- **O SQL aplicado é recuperável**, se alguém esquecer:
+  `select array_to_string(statements, E'\n') from
+  supabase_migrations.schema_migrations where version = '...'`. Comparar
+  `left(version,8)` com a contagem de arquivos por dia encontra o que falta.
+
 ## UX/UI guidelines
 
 - **Sidebar stays flat**: a feature with multiple sub-pages gets exactly ONE top-level sidebar entry (same as every other item, no chevron/expand-in-sidebar). Sub-page switching happens *inside* the feature's pages via an in-page nav rendered at the top of `DashboardLayout`'s content — see `FinanceiroNav.tsx` (pill-style `NavLink` row) used by all `src/features/financeiro/pages/*`. Do not nest sub-items inside the sidebar itself — **nem para o seletor de dashboard, que deixou de existir**: o grupo "Geral" que aninhava Resumo/Meta Ads/Vendas/UTM/Tendências foi desfeito quando os funis saíram da barra e o recorte por conta virou filtro do cabeçalho. Hoje a sidebar não tem exceção: nenhum item abre.
