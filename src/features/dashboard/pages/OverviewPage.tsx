@@ -539,8 +539,32 @@ export default function OverviewPage() {
       ),
     );
 
+    /*
+      O que o cliente PAGOU inclui os juros do parcelamento. `fat_bruto` nao os
+      inclui: ele e a soma de `valor_sem_juros`, que e a base que a Payt reporta
+      e com a qual a conferencia compara.
+
+      Sao dois numeros legitimos e diferentes, e a tela estava usando um com o
+      nome do outro. Medido em 06/10/2026, no periodo 05/09 a 05/10: o card
+      dizia R$ 211.765,02 e o cliente pagou R$ 218.208,35, R$ 6.443,33 a menos,
+      3,04%. O proprio subtitulo prometia "inclui R$ 6.443,33 de juros" sobre um
+      numero que os exclui.
+
+      A cascata "Do pago ao lucro" provava o defeito sozinha: ela SUBTRAI os
+      juros desta linha para chegar na Receita, entao com `fat_bruto` em cima os
+      juros saiam duas vezes e as linhas nao fechavam.
+
+      `fatBruto` continua existindo e sem juros, porque e ele que vai no `share`
+      contra `fat_bruto_total` e e ele que a conferencia compara com a Payt.
+
+      E o imposto nao sai de nenhum dos dois: sai de `base_simples`, que e o
+      liquido de coproducao MAIS os juros, porque o fisco cobra sobre eles ainda
+      que nao cheguem na conta. Ver a migracao 20260917a.
+    */
+    const pagoClientes = fatBruto + juros;
+
     setKpis({
-      juros, coproducao, semDadoCopro, receita, fatBruto, fatLiquido, lucro, lucroCC,
+      juros, coproducao, semDadoCopro, receita, fatBruto, pagoClientes, fatLiquido, lucro, lucroCC,
       cpa: cpaPeriodo, roas: roasPeriodo, roasSemUpsell, ticketMedio: ticketMedioPeriodo,
       taxaPlat, taxaPlatPct, impSimples, impMeta,
       investimento, custoFixo, custoMensal,
@@ -560,6 +584,8 @@ export default function OverviewPage() {
     const antInv = segmento === "backend" ? 0 : num(a?.fiscal?.investimento_meta);
     setKpisAnt({
       fatBruto: num(a?.fat_bruto),
+      // A seta de variacao tem de comparar a MESMA grandeza que o card mostra.
+      pagoClientes: num(a?.fat_bruto) + num(a?.juros),
       qtdAprov: antQtd,
       ticketMedio: ticketMedio(antReceita, antQtd),
       roas: roas(antReceita, antInv),
@@ -749,9 +775,9 @@ export default function OverviewPage() {
             <div className="lg:col-span-2 grid grid-cols-2 gap-4 xl:grid-cols-4">
               <Metrica
                 rotulo="Pago pelos clientes"
-                valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))}
+                valor={formatCurrency(Math.max(0, kpis.pagoClientes || 0))}
                 detalhe={(kpis.juros || 0) > 0 ? `inclui ${formatCurrency(kpis.juros)} de juros` : undefined}
-                rodape={<VarBadge atual={kpis.fatBruto} anterior={kpisAnt.fatBruto} />}
+                rodape={<VarBadge atual={kpis.pagoClientes} anterior={kpisAnt.pagoClientes} />}
               />
               <Metrica
                 rotulo="Faturamento líquido"
@@ -867,8 +893,8 @@ export default function OverviewPage() {
               <div className="space-y-1.5 text-sm tabular-nums">
                 <Linha
                   rotulo="Pago pelos clientes"
-                  valor={formatCurrency(Math.max(0, kpis.fatBruto || 0))}
-                  pct={pctReceita(kpis.fatBruto)}
+                  valor={formatCurrency(Math.max(0, kpis.pagoClientes || 0))}
+                  pct={pctReceita(kpis.pagoClientes)}
                   forte
                 />
                 {(kpis.juros || 0) > 0 && (
