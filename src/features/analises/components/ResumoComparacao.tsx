@@ -20,6 +20,11 @@ import { ColunaRev } from './TabelaLadoALado';
  *
  * Front que não se paga desqualifica a sugestão de escala, mesmo com lucro
  * total no azul: escalar tráfego que não se paga só aumenta o buraco.
+ *
+ * Desde 06/10/2026 "se paga" é LÍQUIDO (sobra depois de mídia, imposto e taxa),
+ * porque é a pergunta da operação. O bruto virou `trafego_se_paga` e serve para
+ * distinguir os dois motivos de não escalar: o anúncio não traz o suficiente,
+ * ou traz e o que vem depois leva. São consertos diferentes.
  */
 
 interface Props {
@@ -88,7 +93,14 @@ export function ResumoComparacao({ colunas }: Props) {
             {escalavel
               ? ', e o front dele se paga. É para onde o próximo real rende mais.'
               : maisEficiente.atual.front_se_paga === false
-                ? '. Mas o front dele não se paga: escalar tráfego que não se paga só aumenta o buraco.'
+                /*
+                  Os dois motivos para não escalar pedem consertos diferentes, e
+                  dizer "não se paga" nos dois casos mandaria mexer no criativo
+                  de um REV cujo tráfego está de pé.
+                */
+                ? (maisEficiente.atual.trafego_se_paga === true
+                    ? '. Mas o front dele não sobra depois de imposto e taxa: escalar assim multiplica o custo antes do lucro.'
+                    : '. Mas o front dele nem cobre a mídia: escalar tráfego que não se paga só aumenta o buraco.')
                 : '. Nenhum dos comparados devolve lucro no período.'}
           </p>
         </div>

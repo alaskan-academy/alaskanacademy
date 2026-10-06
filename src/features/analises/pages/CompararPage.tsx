@@ -273,9 +273,14 @@ export default function CompararPage() {
           <p className="text-sm text-amber-400/90 flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <span>
+              {/* "não paga o próprio tráfego" era verdade enquanto o selo era
+                  bruto. Hoje ele é líquido (20261006d), e o caso mais comum é
+                  justamente o REV que paga o tráfego e não sobra depois de
+                  imposto e taxa — dizer que ele não paga o tráfego manda mexer
+                  no criativo errado. */}
               {emRisco === 1
-                ? '1 REV não paga o próprio tráfego com o front'
-                : `${emRisco} REVs não pagam o próprio tráfego com o front`}
+                ? '1 REV não fecha o front no azul'
+                : `${emRisco} REVs não fecham o front no azul`}
               {' '}— o upsell é que sustenta. Total no azul ali não quer dizer página saudável.
             </span>
           </p>

@@ -76,6 +76,7 @@ export function montarNota(r: RodadaParaExportar): string {
     `roas_com_upsell: ${a?.roas_com_upsell ?? ''}`,
     `lucro: ${a?.lucro_liquido ?? ''}`,
     `lucro_com_upsell: ${a?.lucro_com_upsell ?? ''}`,
+    `trafego_se_paga: ${a?.trafego_se_paga ?? ''}`,
     `front_se_paga: ${a?.front_se_paga ?? ''}`,
     'tags: [analise, alaskan]',
     '---',
@@ -94,9 +95,16 @@ export function montarNota(r: RodadaParaExportar): string {
     // A frase que a tela diz sozinha vai junto: sem ela a nota é só uma tabela,
     // e a leitura de "o front se paga?" teria que ser refeita de cabeça.
     if (a.front_se_paga != null) {
-      corpo.push(a.front_se_paga
-        ? `> ✅ **O front se paga.** O upsell aqui é lucro em cima — ROAS ${a.roas?.toFixed(2)} vira ${a.roas_com_upsell?.toFixed(2)}.`
-        : `> ⚠️ **O front não se paga.** Quem sustenta este REV é o upsell — ROAS ${a.roas?.toFixed(2)} sobe para ${a.roas_com_upsell?.toFixed(2)}.`);
+      // Os mesmos três estados da tela. O do meio é o que a nota precisa
+      // carregar: sem ele, quem lê depois manda mexer no criativo de um REV
+      // cujo tráfego está de pé.
+      const sobe = `ROAS ${a.roas?.toFixed(2)} sobe para ${a.roas_com_upsell?.toFixed(2)}`;
+      corpo.push(
+        a.front_se_paga
+          ? `> ✅ **O front se paga.** O upsell aqui é lucro em cima — ROAS ${a.roas?.toFixed(2)} vira ${a.roas_com_upsell?.toFixed(2)}.`
+          : a.trafego_se_paga === true
+            ? `> ⚠️ **O tráfego se paga, o front não.** O faturamento cobre a mídia; quem consome a sobra é imposto e taxa. Quem sustenta este REV é o upsell — ${sobe}.`
+            : `> ⚠️ **O front não se paga.** O faturamento nem chega a cobrir a mídia. Quem sustenta este REV é o upsell — ${sobe}.`);
       corpo.push('');
     }
 

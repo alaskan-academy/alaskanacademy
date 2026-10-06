@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { AnalisesNav } from '../components/AnalisesNav';
 import { AcaoEditavel } from '../components/AcaoEditavel';
 import { AvisoTendencia } from '../components/AvisoTendencia';
-import { MetricasDoRev } from '../metricas';
+import { MetricasDoRev, retratoLegivel } from '../metricas';
 import { RetencaoVsl, comoLista } from '../retencao';
 import { formatarData } from '../periodo';
 import {
@@ -115,7 +115,16 @@ export default function HistoricoPage() {
     if (error) {
       toast({ title: 'Erro ao carregar o histórico', description: error.message, variant: 'destructive' });
     }
-    const listaRodadas = (rodadasData ?? []) as unknown as Rodada[];
+    /*
+      Os selos saem derivados AQUI, na entrada, e não em cada lugar que lê o
+      retrato: assim a tela e a re-exportação para o Obsidian contam a mesma
+      história. Retrato gravado antes de 06/10/2026 não tem `trafego_se_paga` e
+      traz o `front_se_paga` bruto — ver `selosDoRetrato`.
+    */
+    const listaRodadas = ((rodadasData ?? []) as unknown as Rodada[]).map(r => ({
+      ...r,
+      analise_itens: (r.analise_itens ?? []).map(i => ({ ...i, metricas: retratoLegivel(i.metricas) })),
+    }));
     setRodadas(listaRodadas);
 
     // `perfis` chega como objeto ou array conforme o PostgREST resolve a

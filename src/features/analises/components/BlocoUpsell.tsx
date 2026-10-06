@@ -31,6 +31,14 @@ export function BlocoUpsell({ a, ant }: { a: BlocoMetricas; ant: BlocoMetricas }
   if (a.upsell_qtd === 0 && ant.upsell_qtd === 0) return null;
 
   const sustentadoPeloUp = a.front_se_paga === false;
+  /*
+    O caso do meio, e o mais informativo dos três: o faturamento cobre a mídia,
+    mas imposto e taxa levam a sobra. Dizer só "o front não se paga" mandaria
+    mexer no criativo quando o criativo está de pé — o que come o resultado
+    está em outro lugar. Era exatamente aqui que o selo antigo errava, porque
+    perguntava no bruto e respondia como se fosse no líquido.
+  */
+  const soFaltaODepois = sustentadoPeloUp && a.trafego_se_paga === true;
 
   return (
     <div className="space-y-1.5">
@@ -47,7 +55,18 @@ export function BlocoUpsell({ a, ant }: { a: BlocoMetricas; ant: BlocoMetricas }
           <span>
             {sustentadoPeloUp ? (
               <>
-                <strong>O front não se paga.</strong> Quem sustenta este REV é o upsell
+                {soFaltaODepois ? (
+                  <>
+                    <strong>O tráfego se paga, o front não.</strong> O faturamento
+                    cobre a mídia; quem consome a sobra é imposto e taxa.{' '}
+                  </>
+                ) : (
+                  <>
+                    <strong>O front não se paga.</strong> O faturamento nem chega
+                    a cobrir a mídia.{' '}
+                  </>
+                )}
+                Quem sustenta este REV é o upsell
                 {a.roas != null && a.roas_com_upsell != null &&
                   ` — ROAS ${num2(a.roas)} sobe para ${num2(a.roas_com_upsell)} com ele`}.{' '}
                 {/* Dizer "o total pode estar no azul" quando ele está no

@@ -166,6 +166,38 @@ Toda métrica de otimização (ROAS, CPA, EPC, lucro) é de **front + order bump
 O upsell entra num bloco próprio, com `front_se_paga` decidindo a frase que a
 tela diz sozinha. É a única leitura automática do módulo inteiro.
 
+### "Se paga" são duas perguntas, e cada uma tem o seu nível
+
+Desde 06/10/2026 são **dois** sinalizadores, porque um só estava respondendo
+duas coisas e errando numa delas:
+
+| campo | pergunta | nível | conta |
+|---|---|---|---|
+| `trafego_se_paga` | o faturamento cobre a mídia? | tráfego | `faturamento >= investimento` (bruto) |
+| `front_se_paga` | sobra algo depois de tudo? | operação | `lucro_liquido >= 0` (líquido) |
+
+O bruto é o certo para o tráfego: **imposto e taxa não são decisão do anúncio**,
+e cobrá-los do criativo não diz a ele o que mudar. O líquido é o certo para a
+operação: é ele que decide se o upsell é lucro em cima ou muleta, e se escalar
+aumenta o bolso ou o buraco.
+
+**O caso do meio é o que justifica os dois existirem.** Tráfego de pé com front
+no vermelho pede um conserto diferente de "o anúncio não traz o suficiente", e a
+tela diz qual dos dois é.
+
+O preço de não ter essa separação: enquanto a coprodução entrava como receita,
+o faturamento vinha inflado e o selo bruto quase nunca discordava do lucro.
+Quando ela saiu (`20261006a`), **quatro REVs apareceram com o selo verde e
+R$ 9.941,46 de prejuízo mensal somado** — no REV4 a contradição estava dentro do
+mesmo cartão, com o selo verde três linhas acima de "só front: −R$ 334,93".
+
+A expressão do lucro do front existe **uma vez só** na função, como `u.lucro`
+(`20261006d`). Eram duas cópias, e o selo seria a terceira: o selo não pode
+poder discordar do número que está embaixo dele.
+
+Travado por `src/test/trafego-e-front-sao-perguntas-diferentes.test.tsx`, que
+renderiza o bloco nos três estados.
+
 **O upsell é assinatura anual** — caixa que entrou, não receita recorrente do
 período. A renovação reaparece em 12 meses como venda nova.
 

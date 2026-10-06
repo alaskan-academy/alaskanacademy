@@ -57,11 +57,23 @@ export interface BlocoMetricas {
   lucro_com_upsell: number;
   margem_com_upsell_pct: number | null;
   /**
-   * Se o faturamento do front já cobre o investimento.
+   * Se o faturamento do front cobre a MÍDIA. A pergunta de quem compra tráfego,
+   * e por isso feita no bruto: imposto e taxa não são decisão do anúncio, e
+   * cobrá-los do criativo não diz a ele o que mudar.
+   */
+  trafego_se_paga: boolean | null;
+  /**
+   * Se sobra alguma coisa DEPOIS de mídia, imposto e taxa — ou seja,
+   * `lucro_liquido >= 0`. A pergunta da operação.
    *
    * É a regra de decisão do módulo: front que se paga significa que o upsell é
    * lucro em cima; front que não se paga significa que o funil está de pé sobre
    * uma perna só, e a otimização é urgente mesmo com o total no azul.
+   *
+   * Até 06/10/2026 este campo era o bruto (o que hoje é `trafego_se_paga`), e
+   * os dois conviviam porque a coprodução entrava como receita e empurrava o
+   * faturamento para cima. Com ela fora, quatro REVs apareceram com selo verde
+   * e R$ 9.941,46 de prejuízo mensal somado. Ver a migração `20261006d`.
    */
   front_se_paga: boolean | null;
   /** Fatia do faturamento que veio dos order bumps — o 21,59% da planilha. */
@@ -109,6 +121,41 @@ export interface MetricasDoRev {
   fim: string;
   atual: BlocoMetricas;
   anterior: BlocoMetricas;
+}
+
+/**
+ * Os dois selos de um RETRATO gravado antes de 06/10/2026.
+ *
+ * Até ali `trafego_se_paga` não existia e `front_se_paga` respondia no bruto
+ * (`faturamento >= investimento`). Os 14 retratos no banco são todos assim, e
+ * **4 deles dizem verde sobre prejuízo** — a contradição que a separação dos
+ * selos veio consertar, congelada no histórico.
+ *
+ * Os NÚMEROS do retrato não se tocam: é documento histórico, e recalculá-los
+ * faria uma análise de agosto mudar sozinha quando uma venda fosse
+ * recategorizada em setembro. O que se deriva é o VEREDITO, e a partir dos
+ * números do próprio retrato — `faturamento`, `investimento` e `lucro_liquido`
+ * estão em todos os 14.
+ *
+ * Derivar na leitura em vez de preencher o jsonb por backfill é de propósito:
+ * carga inicial sem gatilho é a quarta armadilha do CLAUDE.md. Um retrato
+ * gravado depois por código antigo voltaria a mentir, e nada na tela diria.
+ */
+export function selosDoRetrato(b: BlocoMetricas): BlocoMetricas {
+  const cru = b as BlocoMetricas & { trafego_se_paga?: boolean | null };
+  if (cru.trafego_se_paga !== undefined) return b;
+  const temInvestimento = b.investimento > 0;
+  return {
+    ...b,
+    trafego_se_paga: temInvestimento ? b.faturamento >= b.investimento : null,
+    front_se_paga:   temInvestimento ? b.lucro_liquido >= 0 : null,
+  };
+}
+
+/** O mesmo, para o retrato inteiro. Sem métricas gravadas não há o que derivar. */
+export function retratoLegivel(m: MetricasDoRev | null | undefined): MetricasDoRev | null {
+  if (!m) return null;
+  return { ...m, atual: selosDoRetrato(m.atual), anterior: selosDoRetrato(m.anterior) };
 }
 
 export type Direcao = 'subiu' | 'caiu' | 'igual';
