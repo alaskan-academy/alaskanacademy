@@ -48,10 +48,10 @@ Every page follows this pattern:
 |---|---|---|
 | `/` | OverviewPage | Financial KPIs: revenue, costs, profit, margin, OBs, upsells |
 | `/meta-ads` | MetaAdsPage | Meta Ads spend and performance |
-| `/funil` | FunnelPage | Funnel conversion |
+| `/funil` | — | **Removida.** Redireciona para `/meta-ads` |
 | `/vendas` | SalesPage | Sales list |
 | `/utm` | UTMPage | UTM attribution analysis |
-| `/clientes` | ClientsPage | Customer list |
+| `/clientes` | — | **Removida.** Redireciona para `/vendas` |
 | `/editores` | EditorsPage | Video editor performance tracking |
 | `/configuracoes` | SettingsPage | Tax parameters + dashboard settings |
 | `/financeiro/revisao` | FinanceiroRevisaoPage | Daily transaction review (pending categorization) |
