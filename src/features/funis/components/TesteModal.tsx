@@ -42,10 +42,22 @@ const VENCEDORES = [
   { value: 'inconclusivo', label: 'Inconclusivo' },
 ];
 
+/**
+ * A meta que o REV novo precisa bater, tirada do REV ativo de maior volume do
+ * projeto. Janela móvel de 30 dias, recalculada a cada abertura — nada aqui é
+ * gravado: o que vai para `testes_funis` é o texto que a pessoa escreve
+ * olhando para estes números.
+ *
+ * `faturamento` e `ticket_medio` são LÍQUIDOS de juros de parcelamento e de
+ * coprodução, porque nenhum dos dois chega na conta (`20261006g`). Até
+ * 06/10/2026 eram `valor_total`, e o ticket do REV4 aparecia 13,9% acima do
+ * real — meta nascendo acima do que o REV de referência entrega.
+ */
 interface LinhaDeBase {
   rev: string;
   dias: number;
   vendas: number;
+  /** Calculado, mas não exibido: a tela mostra vendas/dia, ticket e vendas. */
   faturamento: number;
   ticket_medio: number;
   vendas_por_dia: number;
