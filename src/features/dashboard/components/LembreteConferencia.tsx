@@ -264,10 +264,21 @@ function DialogoConferencia({ aberto, setAberto, aoSalvar, ultima, cadencia }: {
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">—</p>
             )}
+            {/*
+              Este texto dizia "com juros de parcelamento", e contradizia o comentário
+              de `buscarNossos` logo acima, que diz o contrário. Medido em 06/10/2026:
+              `fat_bruto` devolve 211.765,02 num período em que `valor_sem_juros` soma
+              211.765,02 e `valor_total` soma 218.208,35. Ou seja, é SEM juros.
+
+              A frase errada é a única que a pessoa lê enquanto digita o número da Payt,
+              e é exatamente a suposição que deixou passar os 2,98% de 05/09/2026.
+            */}
             <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground/70">
-              Faturamento bruto, com juros de parcelamento — a mesma base do relatório da
-              Payt. Order bumps não contam como venda separada aqui; se o relatório contar,
-              o número de vendas vai divergir sem que nada esteja errado.
+              Faturamento bruto <strong className="font-medium">sem</strong> os juros de
+              parcelamento, que é a mesma base da coluna "Valor da Venda" da Payt: os juros
+              ficam com a adquirente e nunca chegam na conta. Order bumps não contam como
+              venda separada aqui; se o relatório contar, o número de vendas vai divergir
+              sem que nada esteja errado.
             </p>
           </div>
 
