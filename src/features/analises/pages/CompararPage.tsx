@@ -318,6 +318,20 @@ export default function CompararPage() {
                 {ordenadas.map(l => {
                   const a = l.atual, ant = l.anterior;
                   const sustentado = a.front_se_paga === false;
+                  /*
+                    A cor marca o número que está ruim, e cada coluna tem o seu
+                    dono. ROAS front é `faturamento / investimento`, então ele
+                    só é ruim quando o TRÁFEGO não se paga — e ROAS < 1 é a
+                    mesma condição que `trafego_se_paga === false`.
+
+                    Enquanto o selo era bruto os dois coincidiam. Agora não:
+                    pintar o ROAS por `front_se_paga` colocava âmbar no 1,31 do
+                    REV4 (um número bom) e deixava sem cor o "-R$ 334,93" ao
+                    lado, que é o que de fato está no vermelho. Apontar o olho
+                    para a métrica que o tráfego entrega bem é o "mandar mexer
+                    no criativo errado" que a separação existe para evitar.
+                  */
+                  const trafegoRuim = a.trafego_se_paga === false;
                   return (
                     <tr key={l.funil_id} className="border-b border-border/40 last:border-0 align-top">
                       <td className="px-3 py-2">
@@ -348,11 +362,11 @@ export default function CompararPage() {
                           direita, com a adesão no meio explicando a travessia. */}
                       <td className={cn(
                         'px-3 py-2 text-right',
-                        sustentado && 'bg-amber-500/5',
+                        trafegoRuim && 'bg-amber-500/5',
                       )}>
                         <CelulaTripla
                           principal={
-                            <span className={cn(sustentado && 'text-amber-300')}>
+                            <span className={cn(trafegoRuim && 'text-amber-300')}>
                               {a.roas != null ? num2(a.roas) : '—'}
                             </span>
                           }
@@ -384,7 +398,12 @@ export default function CompararPage() {
                             </span>
                           }
                           base={<>
-                            só front: {formatCurrency(a.lucro_liquido)}
+                            {/* O âmbar que saiu do ROAS vem para cá: é este o
+                                número que o selo do REV está julgando. */}
+                            só front:{' '}
+                            <span className={cn(sustentado && 'text-amber-300')}>
+                              {formatCurrency(a.lucro_liquido)}
+                            </span>
                           </>}
                         />
                       </td>

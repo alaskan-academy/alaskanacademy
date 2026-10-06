@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { MetricasDoRev } from './metricas';
+import { MetricasDoRev, retratoLegivel } from './metricas';
 import { RetencaoVsl, comoLista } from './retencao';
 import { formatarData } from './periodo';
 
@@ -55,8 +55,21 @@ const num = (v: number | null | undefined) => v == null ? '—' : v.toLocaleStri
 
 /** Markdown da rodada, no formato que o Obsidian lê como nota. */
 export function montarNota(r: RodadaParaExportar): string {
-  const a = r.metricas?.atual;
-  const ant = r.metricas?.anterior;
+  /*
+    Os selos saem derivados AQUI, e não em quem chama, porque há DOIS caminhos
+    que escrevem a mesma nota: o salvar da rodada e o `reenviarTudoParaObsidian`
+    logo abaixo, que relê `analise_itens` cru do banco. Consertar só um deixava
+    o vault dizendo uma coisa ou outra conforme qual botão rodou por último — e
+    o botão de reenviar é justamente o que se usa quando o Obsidian estava
+    fechado, que o módulo documenta como comum.
+
+    Retrato gravado antes de 06/10/2026 não tem `trafego_se_paga` e traz o
+    `front_se_paga` bruto; quatro dos quatorze dizem verde sobre prejuízo. Ver
+    `selosDoRetrato` em metricas.ts: deriva o veredito, nunca os números.
+  */
+  const metricas = retratoLegivel(r.metricas);
+  const a = metricas?.atual;
+  const ant = metricas?.anterior;
   const janela = r.metricas?.inicio && r.metricas?.fim
     ? `${formatarData(r.metricas.inicio)} a ${formatarData(r.metricas.fim)}`
     : '';

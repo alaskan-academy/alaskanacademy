@@ -30,7 +30,9 @@
  * Se alguém apagar esse ramo, a tela volta a mandar mexer no criativo errado.
  */
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { BlocoUpsell } from '@/features/analises/components/BlocoUpsell';
 import { montarNota, type RodadaParaExportar } from '@/features/analises/exportar';
 import { selosDoRetrato, retratoLegivel, type BlocoMetricas } from '@/features/analises/metricas';
@@ -156,6 +158,30 @@ describe('tráfego e front são perguntas diferentes', () => {
       return b;
     }
 
+    /*
+      Há DOIS caminhos que escrevem a mesma nota do Obsidian: o salvar da
+      rodada e o `reenviarTudoParaObsidian`, que relê `analise_itens` cru do
+      banco. Por isso a derivação mora DENTRO de `montarNota` e não em quem
+      chama — senão o vault diz uma coisa ou outra conforme o botão.
+    */
+    it('montarNota deriva sozinha, mesmo recebendo o jsonb cru', () => {
+      const md = nota(antigo({ front_se_paga: true }));
+      expect(md, 'o selo verde voltou pelo caminho de reenviar tudo')
+        .not.toContain('✅ **O front se paga.**');
+      expect(md).toContain('**O tráfego se paga, o front não.**');
+      expect(md).toContain('trafego_se_paga: true');
+      expect(md).toContain('front_se_paga: false');
+    });
+
+    it('montarNota não mexe nos números do retrato antigo', () => {
+      // O mesmo contrato do retrato: veredito deriva, número não. A asserção
+      // olha só os dígitos porque `toLocaleString` separa o "R$" com espaço
+      // não separável, e o teste não é sobre isso.
+      const md = nota(antigo({ front_se_paga: true }));
+      expect(md).toContain('10.727,82');  // faturamento gravado
+      expect(md).toContain('8.212,63');   // investimento gravado
+    });
+
     it('deriva os dois selos dos números do próprio retrato', () => {
       // O caso dos 4: bruto positivo (10.727 >= 8.212), líquido negativo.
       const r = selosDoRetrato(antigo({ front_se_paga: true }));
@@ -191,6 +217,30 @@ describe('tráfego e front são perguntas diferentes', () => {
       for (const b of [MEIO, bloco({ trafego_se_paga: null, front_se_paga: null })]) {
         expect(selosDoRetrato(b)).toBe(b);
       }
+    });
+
+    it('a tabela do Comparar pinta o ROAS pelo tráfego, não pelo front', () => {
+      /*
+        Lido do código-fonte porque a página busca dados e não se renderiza
+        isolada. O que isto trava: a tarja âmbar da coluna "ROAS front" tem de
+        seguir `trafegoRuim`. Com `sustentado` ali, o REV4 aparecia com o 1,31
+        pintado de alerta — um ROAS bom — enquanto o "-R$ 334,93" ao lado
+        ficava sem cor. A cor mandava mexer no criativo errado.
+      */
+      const src = readFileSync(
+        join(process.cwd(), 'src/features/analises/pages/CompararPage.tsx'), 'utf8');
+
+      const celulaRoas = src.slice(src.indexOf('trafegoRuim && \'bg-amber-500/5\''));
+      const ateProximaCelula = celulaRoas.slice(0, celulaRoas.indexOf('</td>'));
+      expect(ateProximaCelula, 'a célula do ROAS voltou a seguir o selo do front')
+        .not.toMatch(/sustentado/);
+      expect(ateProximaCelula, 'o ROAS deixou de ser pintado pelo tráfego')
+        .toMatch(/trafegoRuim && 'text-amber-300'/);
+
+      expect(src, 'o âmbar sumiu da linha do lucro do front')
+        .toMatch(/só front:[\s\S]{0,160}sustentado && 'text-amber-300'/);
+      expect(src, 'trafegoRuim deixou de sair de trafego_se_paga')
+        .toMatch(/const trafegoRuim = a\.trafego_se_paga === false;/);
     });
 
     it('retratoLegivel cobre os dois períodos, e aguenta retrato ausente', () => {

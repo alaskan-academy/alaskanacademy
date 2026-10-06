@@ -116,10 +116,16 @@ export default function HistoricoPage() {
       toast({ title: 'Erro ao carregar o histórico', description: error.message, variant: 'destructive' });
     }
     /*
-      Os selos saem derivados AQUI, na entrada, e não em cada lugar que lê o
-      retrato: assim a tela e a re-exportação para o Obsidian contam a mesma
-      história. Retrato gravado antes de 06/10/2026 não tem `trafego_se_paga` e
-      traz o `front_se_paga` bruto — ver `selosDoRetrato`.
+      Os selos saem derivados na entrada, para o que a TELA mostra. A nota do
+      Obsidian não depende disto: `montarNota` deriva por dentro, porque há um
+      segundo caminho que relê o banco cru (`reenviarTudoParaObsidian`) e
+      consertar só este deixava o vault dizendo uma coisa ou outra conforme
+      qual botão rodou por último.
+
+      `retratoLegivel` é idempotente — devolve o mesmo objeto quando o retrato
+      já traz os dois selos —, então aplicar nas duas pontas não duplica nada.
+      Retrato gravado antes de 06/10/2026 não tem `trafego_se_paga` e traz o
+      `front_se_paga` bruto; ver `selosDoRetrato`.
     */
     const listaRodadas = ((rodadasData ?? []) as unknown as Rodada[]).map(r => ({
       ...r,
