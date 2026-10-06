@@ -120,10 +120,32 @@ export default function FinanceiroResultadoPage() {
       c.coproducao        += Number(r.coproducao ?? 0);
       c.vendasSemDadoCoproducao += Number(r.vendas_sem_dado_coproducao ?? 0);
       c.vendas            += Number(r.vendas_aprovadas ?? 0);
-      /* `faturamento_bruto` e `valor_total`, que ja inclui a coproducao — ela sai
-         na linha propria, abaixo. So as perdas precisam ser somadas de volta,
-         porque a view as exclui do bruto ao filtrar por status. */
+      /*
+        `faturamento_bruto` NAO e `valor_total`: e
+        `sum(coalesce(valor_sem_juros, valor_total))`, ou seja SEM os juros do
+        parcelamento. O comentario que estava aqui afirmava o contrario, e foi
+        ele que manteve o defeito vivo por um mes.
+
+        A migracao 20260905d se chama, em maiusculas, "FATURAMENTO E O QUE A
+        VENDA VALEU, NAO O QUE A CLIENTE PAGOU", e lista esta coluna entre as
+        que ela trocou DE PROPOSITO para sem juros. O rotulo da tela diz
+        exatamente o oposto: "Pago pelos clientes".
+
+        Medido em 06/10/2026, periodo 05/09 a 05/10: a tela mostrava
+        R$ 216.293,73 e a cliente desembolsou R$ 222.737,06. Faltavam os
+        R$ 6.443,33 de juros, 2,98%.
+
+        E a cascata denunciava sozinha: ela subtrai "Juros de parcelamento" tres
+        linhas abaixo para chegar na Receita, entao com o bruto sem juros em
+        cima eles desciam DUAS vezes e sobrava um buraco de R$ 6.443,33 contra a
+        linha "Receita" que a propria tela exibia.
+
+        A coproducao continua dentro, porque ela TAMBEM saiu do bolso da cliente
+        e sai na linha propria logo abaixo. As perdas voltam porque a view as
+        exclui do bruto ao filtrar por status.
+      */
       c.pagoPelosClientes += Number(r.faturamento_bruto ?? 0)
+                           + Number(r.juros_parcelamento ?? 0)
                            + Number(r.perda_reembolso ?? 0)
                            + Number(r.perda_chargeback ?? 0);
       c.juros             += Number(r.juros_parcelamento ?? 0);
