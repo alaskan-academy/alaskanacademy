@@ -27,6 +27,11 @@ const DRIVE_SYNC_SECRET      = env('DRIVE_SYNC_SECRET');
  *  Drive da propria conta de servico, que ninguem consegue abrir. */
 const DRIVE_PASTA_RAIZ       = env('DRIVE_PASTA_RAIZ');
 
+/** Onde a estrutura anterior a 08/10/2026 foi guardada. A data no nome diz na
+ *  hora do que se trata, para ninguem abrir procurando nota recente -- era
+ *  exatamente essa confusao que motivou arquivar. */
+const ABRIGO = '_antigo-ate-2026-10-08';
+
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -147,7 +152,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const corpoReq = await req.json() as { documento_id?: string; acao?: string; drive_id?: string; lote?: number };
+    const corpoReq = await req.json() as { documento_id?: string; acao?: string; drive_id?: string; lote?: number; so_olhar?: boolean };
 
     // ── Apagar a copia ──────────────────────────────────────────────────────
     if (corpoReq.acao === 'apagar') {
@@ -211,6 +216,117 @@ Deno.serve(async (req) => {
       const { count: restam } = await supabase
         .from('vw_documentos_a_mover').select('id', { count: 'exact', head: true });
       return json({ ok: true, movidos, ja_estavam: jaEstavam, erros, olhados: alvos.length, restam });
+    }
+
+    /* ── Arquivar a estrutura antiga ─────────────────────────────────────
+       Depois da mudanca de 08/10/2026, `comprovantes/`, `ferramentas/` e
+       `servicos/` ficaram sem nenhum documento. Vazias na raiz da
+       contabilidade elas nao sao sujeira inofensiva: alguem abre
+       `comprovantes/2026-09/`, nao encontra nada e conclui que as notas
+       sumiram. Era isso que se queria resolver.
+
+       A primeira versao disto APAGAVA (`PATCH {trashed:true}`) depois de
+       conferir que a pasta estava vazia. Uma revisao adversarial derrubou a
+       ideia por tres motivos, e os tres estavam certos:
+
+       - A lixeira e da CONTA DE SERVICO, nao dela. A arvore e My Drive da
+         conta de servico, que nao tem navegador e onde ninguem clica em nada.
+         "Restaura num clique" era falso.
+       - 30 dias e um relogio, nao uma rede.
+       - A conferencia de "esta vazia" tinha duas cegueiras que falhavam as
+         duas na direcao de destruir: `trashed = false` esconde filho que esta
+         na lixeira, e "zero arquivos" e indistinguivel de "nao consegui ver"
+         porque o `fields` suprime o `incompleteSearch` que denunciaria.
+
+       MOVER resolve o mesmo problema e dissolve os tres: nada e destruido,
+       entao a pergunta "alguem largou um arquivo aqui?" para de importar --
+       se largou, o arquivo vai junto e continua onde sempre esteve, um nivel
+       mais fundo. O desfazer e arrastar de volta, sem prazo.
+
+       So as pastas de TOPO sao movidas: o Drive leva a arvore inteira com
+       elas, e os meses vao de carona. Quais sao as de topo e DERIVADO -- um
+       nivel so, e o nome nao e slug de empresa. Listar
+       `['comprovantes','ferramentas','servicos']` seria a terceira armadilha.
+
+       `so_olhar: true` diz o que faria sem fazer. Aqui o ensaio nao mente,
+       diferente da versao que apagava: nao ha cascata de que depender, porque
+       as pastas movidas sao independentes entre si. */
+    if (corpoReq.acao === 'arquivar-estrutura-antiga') {
+      const { data: empresas } = await supabase.from('empresas').select('slug');
+      const slugs = new Set((empresas ?? []).map((e: { slug: string }) => e.slug));
+      if (!slugs.size) return json({ error: 'nao consegui ler os slugs das empresas' }, 500);
+
+      const { data: todas } = await supabase.from('drive_pastas').select('caminho, drive_id');
+      const topoAntigo = (todas ?? []).filter((p: { caminho: string; drive_id: string | null }) =>
+        p.drive_id && !p.caminho.includes('/') && !slugs.has(p.caminho));
+
+      if (!topoAntigo.length) return json({ ok: true, nada_a_fazer: true, motivo: 'nenhuma pasta de topo fora das empresas' });
+      if (corpoReq.so_olhar) {
+        return json({
+          ok: true, so_olhar: true, abrigo: ABRIGO,
+          mover: topoAntigo.map(p => ({ de: p.caminho, para: `${ABRIGO}/${p.caminho}`, drive_id: p.drive_id })),
+          // Os descendentes vao de carona, mas a linha deles em `drive_pastas`
+          // tambem e reescrita -- e isso que mantem o cache honesto.
+          linhas_reescritas: (todas ?? []).filter(p =>
+            topoAntigo.some(t => p.caminho === t.caminho || p.caminho.startsWith(t.caminho + '/'))).length,
+        });
+      }
+
+      const idAbrigo = await garantirPasta(token, ABRIGO, DRIVE_PASTA_RAIZ);
+      const resultado: Record<string, unknown>[] = [];
+
+      for (const p of topoAntigo) {
+        const atual = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${p.drive_id}?fields=parents&supportsAllDrives=true`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!atual.ok) {
+          resultado.push({ caminho: p.caminho, acao: 'erro ao ler o pai', detalhe: `[${atual.status}] ${await atual.text()}` });
+          continue;
+        }
+        const pais: string[] = (await atual.json()).parents ?? [];
+        if (pais.length === 1 && pais[0] === idAbrigo) {
+          resultado.push({ caminho: p.caminho, acao: 'ja estava arquivada' });
+          continue;
+        }
+
+        const params = new URLSearchParams({ addParents: idAbrigo, supportsAllDrives: 'true', fields: 'id,parents' });
+        if (pais.length) params.set('removeParents', pais.join(','));
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${p.drive_id}?${params}`,
+          { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!res.ok) {
+          resultado.push({ caminho: p.caminho, acao: 'erro ao mover', detalhe: `[${res.status}] ${await res.text()}` });
+          continue;
+        }
+
+        /* O cache passa a dizer onde a pasta esta DE VERDADE, ela e os
+           descendentes. Sem isto `drive_pastas` guardaria `comprovantes` para
+           uma pasta que ja esta em `${ABRIGO}/comprovantes`, e
+           `garantirPasta('comprovantes/2026-09')` devolveria do cache o id de
+           uma pasta que ninguem mais procura ali. Com a reescrita, quem pedir
+           o caminho velho nao acha linha e cria pasta nova -- que e o certo. */
+        const descendentes = (todas ?? []).filter(x =>
+          x.caminho === p.caminho || x.caminho.startsWith(p.caminho + '/'));
+        for (const d of descendentes) {
+          await supabase.from('drive_pastas')
+            .update({ caminho: `${ABRIGO}/${d.caminho}` }).eq('caminho', d.caminho);
+        }
+
+        console.log(`[drive-espelho] arquivada: ${p.caminho} -> ${ABRIGO}/${p.caminho} (${descendentes.length} linhas)`);
+        resultado.push({
+          caminho: p.caminho, acao: 'arquivada',
+          para: `${ABRIGO}/${p.caminho}`, linhas_reescritas: descendentes.length,
+        });
+      }
+
+      return json({
+        ok: true, abrigo: ABRIGO,
+        arquivadas: resultado.filter(r => r.acao === 'arquivada').length,
+        erros: resultado.filter(r => String(r.acao).startsWith('erro')).length,
+        resultado,
+      });
     }
 
     // ── Espelhar em lote ────────────────────────────────────────────────

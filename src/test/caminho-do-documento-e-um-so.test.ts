@@ -23,6 +23,21 @@ import { caminhoDoDocumento } from '@/lib/documentos';
 const raiz = join(__dirname, '..', '..');
 const ler = (p: string) => readFileSync(join(raiz, p), 'utf-8');
 
+/** Todo `.ts`/`.tsx` sob um diretório, recursivo. A lista de arquivos a
+ *  conferir sai do repositório e não de uma enumeração à mão — é a terceira
+ *  armadilha, e foi assim que uma edge function escapou da primeira versão
+ *  deste teste. */
+function varrer(dir: string): string[] {
+  const achados: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+    const cheio = join(dir, e.name);
+    if (e.isDirectory()) achados.push(...varrer(cheio));
+    else if (/\.tsx?$/.test(e.name)) achados.push(cheio.slice(raiz.length + 1).replace(/\\/g, '/'));
+  }
+  return achados;
+}
+
 const HELPER  = 'src/lib/documentos.ts';
 const ESPELHO = 'supabase/functions/drive-espelho/index.ts';
 
@@ -119,6 +134,44 @@ describe('o caminho do documento fiscal é um só', () => {
       // a função cai na recusa "documento sem empresa" e não espelha nada.
       if (!s.includes('tipo')) continue;
       expect(s, 'select de documento sem empresas(slug)').toContain('empresas(slug)');
+    }
+  });
+
+  /*
+    Esta é a parte do teste que nasceu de um furo no próprio teste.
+
+    A primeira versão olhava as duas telas React e mais nada, porque a busca que
+    a precedeu procurou por `${pasta}/${competencia}` em `src/` e parou ali. Havia
+    um TERCEIRO escritor de `storage_path`: `cs-comprovantes`, uma edge function,
+    montando `comprovantes/${mes}/${nome}` na linha 174 — e um cron chamando ela
+    às 10:30 e às 22:30 todo dia. A migração dos 212 teria começado a se desfazer
+    pela beirada no mesmo dia em que foi feita, com o Storage voltando para a
+    estrutura antiga e o Drive indo para a nova, em cada comprovante novo.
+
+    Quem achou foi uma revisão adversarial, não eu. A lição que cabe num teste:
+    **a varredura tem de cobrir todo lugar que escreve `storage_path`, e não os
+    que eu lembro de ter escrito** — derivar a lista do repositório, não da
+    memória, que é a terceira armadilha aplicada ao próprio teste.
+  */
+  it('todo lugar que escreve storage_path usa a estrutura com empresa', () => {
+    const fontes = [
+      ...varrer(join(raiz, 'src')),
+      ...varrer(join(raiz, 'supabase', 'functions')),
+    ];
+    expect(fontes.length).toBeGreaterThan(50); // a varredura achou o repositório
+
+    const escritores = fontes.filter(f => /storage_path\s*:/.test(ler(f)));
+    expect(escritores.length, 'ninguém escreve storage_path — a varredura quebrou')
+      .toBeGreaterThan(0);
+
+    for (const f of escritores) {
+      const src = ler(f);
+      // Um template de caminho que começa pelo nome da pasta é a estrutura
+      // antiga, em qualquer linguagem.
+      expect(src, `${f} monta o caminho pela pasta, sem a empresa na frente`)
+        .not.toMatch(/`(servicos|comprovantes|ferramentas)\/\$\{/);
+      expect(src, `${f} monta o caminho pela pasta, sem a empresa na frente`)
+        .not.toMatch(/`\$\{(pasta|tipo)\}\//);
     }
   });
 

@@ -189,10 +189,79 @@ três: os tipos que o helper traduz saem do `check` da migração que criou a
 tabela, as pastas do Drive têm de ser as mesmas do Storage, e nenhuma das duas
 telas pode voltar a montar o caminho à mão.
 
-## O que ficou para trás, de propósito
+## Havia um TERCEIRO escritor de `storage_path`
 
-As pastas antigas no Drive (`comprovantes/`, `ferramentas/`, `servicos/`) e suas
-19 linhas em `drive_pastas`. Estão sem nenhum documento — está provado, porque
-os 212 têm pai novo —, mas apagar uma pasta do Drive compartilhado não se
-desfaz, e não há como verificar daqui se alguém largou um arquivo lá à mão.
-Fica como decisão dela.
+`cs-comprovantes`, a edge function que baixa o comprovante dos PIX da Conta
+Simples, montava `comprovantes/${mes}/${nome}` na linha 174 — e um cron a chama
+às **10:30 e 22:30 todo dia**. A unificação deste arquivo dizia "os dois lugares
+que montam o caminho hoje", e estava errada: eram três.
+
+O preço, se tivesse passado: no mesmo dia da migração, o Storage voltaria a
+receber `comprovantes/2026-10/` enquanto a cópia do *mesmo* documento ia para
+`alaskan/2026-10/comprovantes/` no Drive. Os dois sistemas divergindo em cada
+comprovante novo, a migração dos 212 desfazendo-se pela beirada, e nada na tela
+denunciando.
+
+Quem achou foi uma **revisão adversarial**, não a busca que precedeu a
+implementação — ela procurou em `src/` e parou ali. A lição está num teste:
+`caminho-do-documento-e-um-so` varre `src/` **e** `supabase/functions/`, deriva
+a lista de arquivos do repositório em vez de enumerá-la, e reprova qualquer
+arquivo que escreva `storage_path` montando o caminho pela pasta. Foi conferido
+que ele pega a versão anterior do `cs-comprovantes`.
+
+O conserto usa `conta.slug`, que já é o slug da empresa dona do PIX: o mapa
+`contaPorEmpresa` casa `conta.slug` com `empresas.slug`, então buscar o slug de
+novo por `p.empresa_id` seria o segundo campo da primeira armadilha.
+
+A prova foi funcional, não lida: um comprovante devolvido à fila, uma rodada com
+`limite: 1`, e o arquivo caiu em `alaskan/2026-10/comprovantes/` com **zero**
+objetos na estrutura velha — com o código antigo haveria um.
+
+## E um quarto espelho, sem leitor
+
+`comprovantes_buscados.storage_path` é uma segunda cópia do mesmo caminho,
+chaveada por `referencia_externa`. A migração dos 212 atualizou
+`documentos_fiscais` e deixou essa coluna com o caminho velho em **168 de 168**
+linhas — cem por cento de divergência, invisível, porque ninguém lê a coluna: o
+que a tabela precisa responder é "este PIX já foi baixado?", e isso é a chave
+primária.
+
+A coluna é `not null` desde `20260825s`, então parar de escrevê-la é um DROP, e
+DROP espera a ordem do deploy. A migração `20261008b` faz o que o CLAUDE.md
+prescreve para os dois que têm de coexistir: carga para o passado, **gatilho**
+para o presente (`trg_caminho_do_comprovante`). O gatilho foi provado mexendo —
+a migração altera um `storage_path`, confere que propagou, e desfaz —, porque a
+carga sozinha passaria na conta mesmo sem gatilho nenhum, que é o engano da
+quarta armadilha.
+
+## As pastas antigas: arquivadas, não apagadas
+
+`comprovantes/`, `ferramentas/` e `servicos/` ficaram sem nenhum documento, mas
+vazias na raiz da contabilidade não eram inofensivas: alguém abre
+`comprovantes/2026-09/`, não encontra nada e conclui que as notas sumiram.
+
+A primeira ideia foi **apagar** depois de conferir que estavam vazias. A revisão
+adversarial derrubou, e estava certa nos três pontos:
+
+- A lixeira é da **conta de serviço**, não dela. A árvore é My Drive da conta de
+  serviço, que não tem navegador e onde ninguém clica em nada. "Restaura num
+  clique" era falso.
+- 30 dias é um relógio, não uma rede.
+- A conferência de "está vazia" tinha duas cegueiras que falhavam as duas na
+  direção de destruir: `trashed = false` esconde filho que está na lixeira, e
+  "zero arquivos" é indistinguível de "não consegui ver", porque o `fields`
+  suprime o `incompleteSearch` que denunciaria.
+
+**Mover dissolve os três.** Nada é destruído, então a pergunta "alguém largou um
+arquivo aqui?" para de importar — se largou, o arquivo vai junto e continua onde
+sempre esteve, um nível mais fundo. O desfazer é arrastar de volta, sem prazo.
+
+As três pastas de topo foram para `_antigo-ate-2026-10-08/` (a data no nome para
+ninguém abrir procurando nota recente), levando os meses de carona, e as 19
+linhas de `drive_pastas` foram reescritas com o prefixo. Reescritas e não
+apagadas: assim o cache diz onde a pasta está **de verdade**, e quem pedir
+`comprovantes/2026-09` não acha linha e cria pasta nova — que é o certo se
+alguém algum dia reverter o commit desta mudança.
+
+Depois: 52 linhas em `drive_pastas` (32 da estrutura nova + 19 arquivadas + o
+abrigo), zero fora, e os 212 documentos conferidos ainda na pasta certa.

@@ -171,7 +171,26 @@ async function buscarUm(p: Pendente, conta: ContaCS, token: string): Promise<str
 
   const mes = String(p.data).slice(0, 7);
   const nome = nomeDoArquivo(String(p.data), p.descricao ?? '', p.referencia_externa);
-  const caminho = `comprovantes/${mes}/${nome}`;
+
+  /* `{empresa}/{competencia}/{tipo}/{arquivo}` desde 08/10/2026 — a MESMA
+     estrutura de `caminhoDoDocumento` em src/lib/documentos.ts e de
+     `drive-espelho`. Ver docs/estrutura-de-pastas-dos-documentos.md.
+
+     `conta.slug` e o slug da empresa dona do PIX, nao uma segunda resposta para
+     a mesma pergunta: o mapa `contaPorEmpresa` e montado casando
+     `conta.slug === empresas.slug`, entao toda conta que chega aqui tem slug que
+     existe em `empresas`. Buscar o slug de novo por `p.empresa_id` seria o
+     segundo campo da primeira armadilha.
+
+     Esta funcao era o TERCEIRO escritor de `storage_path` e ficou de fora da
+     unificacao do dia -- a busca cobriu as duas telas e nao as edge functions.
+     Enquanto ela montava `comprovantes/{mes}`, o cron das 10:30 e 22:30
+     recriava a estrutura antiga no Storage todo dia, com a copia do mesmo
+     documento indo para a nova no Drive: os dois sistemas divergindo em cada
+     comprovante novo, e a migracao dos 212 desfazendo-se sozinha pela beirada.
+     Por isso `caminho-do-documento-e-um-so` passou a varrer
+     `supabase/functions/` tambem. */
+  const caminho = `${conta.slug}/${mes}/comprovantes/${nome}`;
 
   const { error: erroUp } = await supabase.storage
     .from('documentos').upload(caminho, bytes, { contentType: 'application/pdf', upsert: true });
