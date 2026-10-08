@@ -166,6 +166,19 @@ function FiscalTab() {
   const [taxaPlat, setTaxaPlat]     = useState(0);
   const [investMeta, setInvestMeta] = useState(0);
   const [reembolsos, setReembolsos] = useState(0);
+  /*
+    A alíquota do Simples que está EM VIGOR.
+
+    Desde 08/10/2026 ela é medida, não digitada: `vw_aliquota_simples_mes`
+    divide o imposto pago em M+1 pela base de M, em janela de 3 meses, e
+    `vw_faturamento_liquido` usa isso. O campo abaixo virou FALLBACK, e só vale
+    para empresa que ainda não tem histórico.
+
+    Esta tela precisa dizer qual dos dois está valendo. Um campo editável que
+    não manda em nada é a primeira armadilha em estado puro — dois lugares
+    dizendo a alíquota, e quem digita acredita no que digitou.
+  */
+  const [simplesEmVigor, setSimplesEmVigor] = useState<{ pct: number; medido: boolean } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -180,12 +193,22 @@ function FiscalTab() {
         .select("receita_tributavel,base_simples,taxa_plataforma,investimento_meta,reembolsos");
       if (empresaId) qFat = qFat.eq("empresa_id", empresaId);
 
-      const [r1, r2, r3] = await Promise.all([
+      const [r1, r2, r3, r4] = await Promise.all([
         empresaId
           ? supabase.from("vw_config_por_empresa").select("chave,valor,origem").eq("empresa_id", empresaId)
           : supabase.from("configuracoes").select("chave,valor").is("empresa_id", null),
         qFat,
         supabase.rpc("fn_sugestao_parametros", { p_empresa: empresaId }),
+        /* A alíquota medida mais recente desta empresa. Em "Ambas" não se
+           pergunta: a alíquota é de UM CNPJ, e somar duas não significa nada. */
+        empresaId
+          ? supabase.from("vw_aliquota_simples_mes")
+              .select("aliquota_vigente")
+              .eq("empresa_id", empresaId)
+              .not("aliquota_vigente", "is", null)
+              .order("mes", { ascending: false })
+              .limit(1)
+          : Promise.resolve({ data: null }),
       ]);
       const cfgMap: Record<string, number> = {};
       const orig: Record<string, string> = {};
@@ -197,6 +220,12 @@ function FiscalTab() {
       setSugestoes(Object.fromEntries(
         ((r3.data ?? []) as Sugestao[]).map(x => [x.chave, x]),
       ));
+      const medida = (r4.data as { aliquota_vigente: number | string }[] | null)?.[0];
+      setSimplesEmVigor(
+        medida?.aliquota_vigente != null
+          ? { pct: Number(medida.aliquota_vigente), medido: true }
+          : { pct: cfgMap["imposto_simples_nacional_pct"] ?? 0, medido: false },
+      );
       setForm({
         imposto_simples_nacional_pct: cfgMap["imposto_simples_nacional_pct"] ?? 0,
         imposto_meta_ads_pct:         cfgMap["imposto_meta_ads_pct"]         ?? 0,
@@ -279,8 +308,14 @@ function FiscalTab() {
 
   const taxaPlatPct   = receita > 0 ? (taxaPlat / receita) * 100 : 0;
   /* Sobre a BASE, não sobre a receita: o Simples incide no bruto, juros do
-     parcelamento inclusos. Ver a migração 20260917a. */
-  const impostoSimples = baseSimples * (form.imposto_simples_nacional_pct / 100);
+     parcelamento inclusos. Ver a migração 20260917a.
+
+     E com a alíquota EM VIGOR, não com a digitada: desde 08/10/2026 quem manda
+     é a medida, e uma prévia calculada pelo campo mostraria um número que a
+     tela de Resultado não confirma. Prévia que diverge do produto é pior que
+     prévia nenhuma — ela convida a ajustar o campo até "bater". */
+  const simplesPct     = simplesEmVigor?.pct ?? form.imposto_simples_nacional_pct;
+  const impostoSimples = baseSimples * (simplesPct / 100);
   const impostoMeta    = investMeta * (form.imposto_meta_ads_pct / 100);
   /*
     O reembolso NÃO entra nesta cascata, e é de propósito.
@@ -359,20 +394,57 @@ function FiscalTab() {
             )}
 
             {key === "imposto_simples_nacional_pct" && (
+              /*
+                Não há mais sugestão para "aplicar" aqui, e o botão que existia
+                saiu junto: ele copiava um número para um campo que, desde
+                08/10/2026, só vale quando não há medida. Deixá-lo seria pedir
+                um clique que não muda nada.
+              */
               <div className="mt-1.5 space-y-1">
-                <p className="text-[11px] text-muted-foreground/60">
-                  {temSugestao("imposto_simples_nacional_pct")
-                    ? "Pago nos dois últimos meses fechados, sobre a receita do mês anterior"
-                    : "Sem histórico nesta empresa ainda."}
-                </p>
-                <LinhaSugestao s={sugestoes["imposto_simples_nacional_pct"]}
-                  fmt={v => `${v.toFixed(2)}%`}
-                  aplicar={v => setForm(prev => ({ ...prev, imposto_simples_nacional_pct: v }))} />
-                <p className="text-[11px] leading-snug text-muted-foreground/60">
-                  O Simples sobe com o faturamento acumulado. Se a receita cresceu,
-                  o pago no passado é menor que a alíquota que já vale — confirme com
-                  a contabilidade antes de ajustar para baixo.
-                </p>
+                {simplesEmVigor?.medido ? (
+                  <>
+                    <p className="text-[11px] leading-snug">
+                      <span className="text-foreground">
+                        Em vigor: {simplesEmVigor.pct.toFixed(2)}%
+                      </span>
+                      <span className="text-muted-foreground/60">
+                        {" — medido, não digitado."}
+                      </span>
+                    </p>
+                    <p className="text-[11px] leading-snug text-muted-foreground/60">
+                      É o imposto que saiu da conta dividido pela base que o gerou,
+                      em janela de 3 meses fechados. Acompanha a faixa do Simples
+                      sozinho, então sobe quando o faturamento sobe — sem ninguém
+                      precisar lembrar de mexer aqui.
+                    </p>
+                    <p className="text-[11px] leading-snug text-muted-foreground/60">
+                      O campo acima virou reserva: só vale enquanto uma empresa não
+                      tem histórico de pagamento.
+                    </p>
+                  </>
+                ) : !empresaId ? (
+                  /* Em "Ambas" não há alíquota a mostrar, e dizer "sem
+                     histórico nesta empresa" seria mentira: a alíquota é de UM
+                     CNPJ, e a média de duas não é a de ninguém. */
+                  <p className="text-[11px] leading-snug text-muted-foreground/60">
+                    A alíquota é medida por empresa — escolha uma no topo para ver
+                    qual está em vigor. O campo acima é a configuração geral, que
+                    vale como reserva para empresa sem histórico de pagamento.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[11px] leading-snug text-amber-500">
+                      Sem histórico de imposto pago nesta empresa — por enquanto
+                      vale o valor digitado acima.
+                    </p>
+                    <p className="text-[11px] leading-snug text-muted-foreground/60">
+                      A medida começa um mês depois do primeiro DAS pago: ela divide
+                      o imposto que saiu pela receita que o gerou. Até lá, confira
+                      com a contabilidade em que faixa a empresa está — a primeira
+                      faixa do Simples é bem menor que a de uma empresa madura.
+                    </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -408,7 +480,10 @@ function FiscalTab() {
             <span className="text-destructive">{formatCurrency(taxaPlat)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-destructive">(-) Simples ({formatPercent(form.imposto_simples_nacional_pct)})</span>
+            <span className="text-destructive">
+              (-) Simples ({formatPercent(simplesPct)})
+              {simplesEmVigor?.medido && <span className="ml-1 opacity-60">medido</span>}
+            </span>
             <span className="text-destructive">{formatCurrency(impostoSimples)}</span>
           </div>
           <div className="flex justify-between">
