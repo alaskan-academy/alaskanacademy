@@ -178,7 +178,8 @@ function FiscalTab() {
     não manda em nada é a primeira armadilha em estado puro — dois lugares
     dizendo a alíquota, e quem digita acredita no que digitou.
   */
-  const [simplesEmVigor, setSimplesEmVigor] = useState<{ pct: number; medido: boolean } | null>(null);
+  const [simplesEmVigor, setSimplesEmVigor] =
+    useState<{ pct: number; origem: 'propria' | 'grupo' | 'configurado' } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -189,26 +190,21 @@ function FiscalTab() {
         é obrigatório: sem ele o mapa por `chave` ficaria com a última linha que
         chegasse, e qual é a última é sorteio do Postgres.
       */
+      /* `simples_pct` e `simples_origem` vêm DAQUI e não de uma consulta
+         própria: a view já resolve a precedência (a medida da empresa, a do
+         grupo, o configurado), e refazer essa escolha no cliente seria um
+         segundo lugar decidindo a alíquota — exatamente o que esta mudança
+         veio desfazer. */
       let qFat = supabase.from("vw_faturamento_liquido")
-        .select("receita_tributavel,base_simples,taxa_plataforma,investimento_meta,reembolsos");
+        .select("data,receita_tributavel,base_simples,taxa_plataforma,investimento_meta,reembolsos,simples_pct,simples_origem");
       if (empresaId) qFat = qFat.eq("empresa_id", empresaId);
 
-      const [r1, r2, r3, r4] = await Promise.all([
+      const [r1, r2, r3] = await Promise.all([
         empresaId
           ? supabase.from("vw_config_por_empresa").select("chave,valor,origem").eq("empresa_id", empresaId)
           : supabase.from("configuracoes").select("chave,valor").is("empresa_id", null),
         qFat,
         supabase.rpc("fn_sugestao_parametros", { p_empresa: empresaId }),
-        /* A alíquota medida mais recente desta empresa. Em "Ambas" não se
-           pergunta: a alíquota é de UM CNPJ, e somar duas não significa nada. */
-        empresaId
-          ? supabase.from("vw_aliquota_simples_mes")
-              .select("aliquota_vigente")
-              .eq("empresa_id", empresaId)
-              .not("aliquota_vigente", "is", null)
-              .order("mes", { ascending: false })
-              .limit(1)
-          : Promise.resolve({ data: null }),
       ]);
       const cfgMap: Record<string, number> = {};
       const orig: Record<string, string> = {};
@@ -220,11 +216,23 @@ function FiscalTab() {
       setSugestoes(Object.fromEntries(
         ((r3.data ?? []) as Sugestao[]).map(x => [x.chave, x]),
       ));
-      const medida = (r4.data as { aliquota_vigente: number | string }[] | null)?.[0];
+      /* A alíquota do MÊS MAIS RECENTE com dado. A view entrega uma por dia, e
+         a que interessa à tela é a que vale agora — não uma média de meses em
+         que a faixa era outra. Em "Ambas" não se pergunta: a alíquota é de um
+         CNPJ, e a de duas empresas somadas não é a de ninguém. */
+      type LinhaFat = { data: string; simples_pct: number | string; simples_origem: string };
+      const maisRecente = empresaId
+        ? ((r2.data ?? []) as LinhaFat[])
+            .filter(l => l.simples_origem)
+            .sort((a, b) => (a.data < b.data ? 1 : -1))[0]
+        : undefined;
       setSimplesEmVigor(
-        medida?.aliquota_vigente != null
-          ? { pct: Number(medida.aliquota_vigente), medido: true }
-          : { pct: cfgMap["imposto_simples_nacional_pct"] ?? 0, medido: false },
+        maisRecente
+          ? {
+              pct: Number(maisRecente.simples_pct),
+              origem: maisRecente.simples_origem as 'propria' | 'grupo' | 'configurado',
+            }
+          : null,
       );
       setForm({
         imposto_simples_nacional_pct: cfgMap["imposto_simples_nacional_pct"] ?? 0,
@@ -401,14 +409,14 @@ function FiscalTab() {
                 um clique que não muda nada.
               */
               <div className="mt-1.5 space-y-1">
-                {simplesEmVigor?.medido ? (
+                {simplesEmVigor?.origem === 'propria' ? (
                   <>
                     <p className="text-[11px] leading-snug">
                       <span className="text-foreground">
                         Em vigor: {simplesEmVigor.pct.toFixed(2)}%
                       </span>
                       <span className="text-muted-foreground/60">
-                        {" — medido, não digitado."}
+                        {" — medido nesta empresa, não digitado."}
                       </span>
                     </p>
                     <p className="text-[11px] leading-snug text-muted-foreground/60">
@@ -420,6 +428,30 @@ function FiscalTab() {
                     <p className="text-[11px] leading-snug text-muted-foreground/60">
                       O campo acima virou reserva: só vale enquanto uma empresa não
                       tem histórico de pagamento.
+                    </p>
+                  </>
+                ) : simplesEmVigor?.origem === 'grupo' ? (
+                  /* O degrau do meio. Dizer "medido" aqui seria mentira — é
+                     emprestado —, e dizer "sem histórico" esconderia que o
+                     número já não é o digitado. */
+                  <>
+                    <p className="text-[11px] leading-snug">
+                      <span className="text-foreground">
+                        Em vigor: {simplesEmVigor.pct.toFixed(2)}%
+                      </span>
+                      <span className="text-muted-foreground/60">
+                        {" — emprestado da operação, enquanto esta empresa não tem a sua."}
+                      </span>
+                    </p>
+                    <p className="text-[11px] leading-snug text-muted-foreground/60">
+                      Assim que o primeiro imposto desta empresa for pago e o mês
+                      seguinte fechar, ela passa a usar a medida dela sozinha.
+                    </p>
+                    <p className="text-[11px] leading-snug text-muted-foreground/60">
+                      A faixa do Simples é de cada CNPJ, e empresa nova costuma
+                      estar numa faixa menor — então este número provavelmente
+                      cobra imposto a MAIS do que o real, e o lucro aparece menor
+                      do que é. É o lado seguro de errar enquanto não há medida.
                     </p>
                   </>
                 ) : !empresaId ? (
@@ -482,7 +514,8 @@ function FiscalTab() {
           <div className="flex justify-between">
             <span className="text-destructive">
               (-) Simples ({formatPercent(simplesPct)})
-              {simplesEmVigor?.medido && <span className="ml-1 opacity-60">medido</span>}
+              {simplesEmVigor?.origem === 'propria' && <span className="ml-1 opacity-60">medido</span>}
+              {simplesEmVigor?.origem === 'grupo'   && <span className="ml-1 opacity-60">do grupo</span>}
             </span>
             <span className="text-destructive">{formatCurrency(impostoSimples)}</span>
           </div>

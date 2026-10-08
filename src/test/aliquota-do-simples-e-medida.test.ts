@@ -76,18 +76,54 @@ describe('a alíquota do Simples é medida', () => {
       .toMatch(/rows between 2 preceding and current row/i);
   });
 
-  it('`configuracoes` sobrou como fallback, e só', () => {
-    /* Empresa nova não tem histórico — a Aeliss só terá medida em novembro.
-       Mas o configurado não pode voltar a mandar onde há medida, senão são
-       dois campos dizendo a alíquota. */
-    const fn = ultimaQueDefine('fn_aliquota_simples');
-    const ordem = fn.replace(/\s+/g, ' ');
-    const posMedida = ordem.indexOf('aliquota_vigente');
-    const posConfig = ordem.indexOf("fn_config('imposto_simples_nacional_pct'");
-    expect(posMedida, 'a função não consulta a medida').toBeGreaterThan(-1);
-    expect(posConfig, 'a função não tem o fallback').toBeGreaterThan(-1);
-    expect(posMedida, 'o configurado vem ANTES da medida no coalesce')
-      .toBeLessThan(posConfig);
+  it('a precedência é: a dela, a do grupo, o configurado', () => {
+    /* Três degraus, nesta ordem. Empresa nova herda a medida da OPERAÇÃO em
+       vez do número digitado — 9% não era de ninguém, e o comportamento
+       medido ao lado é melhor palpite. Quando ela tiver a sua, usa a sua.
+
+       A ordem do `coalesce` É a regra: inverter dois degraus faria a Aeliss
+       continuar nos 9%, ou a Alaskan passar a usar a média do grupo. */
+    const fn = ultimaQueDefine('fn_aliquota_simples').replace(/\s+/g, ' ');
+
+    const posPropria = fn.indexOf('not a.eh_grupo');
+    const posGrupo   = fn.indexOf('where a.eh_grupo');
+    const posConfig  = fn.indexOf("fn_config('imposto_simples_nacional_pct'");
+
+    expect(posPropria, 'a função não consulta a medida da empresa').toBeGreaterThan(-1);
+    expect(posGrupo,   'a função não consulta a medida do grupo').toBeGreaterThan(-1);
+    expect(posConfig,  'a função não tem o fallback configurado').toBeGreaterThan(-1);
+
+    expect(posPropria, 'o grupo vem antes da medida da própria empresa').toBeLessThan(posGrupo);
+    expect(posGrupo,   'o configurado vem antes da medida do grupo').toBeLessThan(posConfig);
+  });
+
+  it('a linha do GRUPO é derivada, não é um slug escrito no código', () => {
+    /* Hoje o grupo É a Alaskan, e escrever 'alaskan' daria o mesmo número —
+       e envelheceria no dia de uma terceira empresa, ou se a Alaskan parasse.
+       Terceira armadilha. */
+    const arquivo = ultimaQueDefine('vw_aliquota_simples_mes');
+    expect(arquivo, 'a linha do grupo não é derivada por grouping sets')
+      .toMatch(/grouping sets/i);
+
+    /* Só a DEFINIÇÃO da view, e não o arquivo inteiro: a prova no fim da
+       migração cita 'alaskan' e 'aeliss' de propósito, porque é ela que
+       confere o caso real. Teste que reprova a própria prova não serve. */
+    const inicio = arquivo.search(/create or replace view public\.vw_aliquota_simples_mes/i);
+    const fim    = arquivo.indexOf('comment on view public.vw_aliquota_simples_mes', inicio);
+    const defDaView = arquivo.slice(inicio, fim > inicio ? fim : undefined);
+    expect(defDaView.length, 'não consegui recortar a definição da view').toBeGreaterThan(200);
+    expect(defDaView, 'apareceu um slug de empresa escrito na view')
+      .not.toMatch(/'(alaskan|aeliss|ravenna)'/i);
+  });
+
+  it('a view de faturamento distingue os três casos', () => {
+    /* "medido nela" e "emprestado do grupo" não são a mesma coisa: um é fato,
+       o outro é empréstimo que vai acabar. A tela precisa poder dizer qual. */
+    const sql = ultimaQueDefine('vw_faturamento_liquido');
+    expect(sql).toMatch(/simples_origem/);
+    for (const caso of ['propria', 'grupo', 'configurado']) {
+      expect(sql, `a view não sabe dizer o caso "${caso}"`).toContain(`'${caso}'`);
+    }
   });
 
   it('a view de faturamento usa a medida, não o fn_config direto', () => {
