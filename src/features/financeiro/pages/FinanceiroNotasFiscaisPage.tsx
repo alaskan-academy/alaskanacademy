@@ -174,6 +174,25 @@ export default function FinanceiroNotasFiscaisPage() {
       return;
     }
 
+    /*
+      Em "Ambas" o upload RECUSA, e isso é a regra do CLAUDE.md aplicada aqui:
+      ler pode somar, gravar exige empresa escolhida. Documento fiscal é
+      gravação — ele vai para o pacote de UMA contabilidade, e nota da Aeliss
+      dentro do pacote da Alaskan é erro fiscal, não desorganização.
+
+      Sem esta guarda o campo ia nulo e o documento ficava sem dono. Aconteceu:
+      34 notas de ferramenta subidas em 09/09/2026, todas órfãs, descobertas só
+      quando alguém foi conferir de quem eram.
+    */
+    if (!empresaId) {
+      toast({
+        title: 'Escolha a empresa antes de anexar',
+        description: 'A nota vai para o pacote de uma contabilidade só. Selecione Alaskan ou Aeliss no topo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setEnviando(item.fornecedor);
     let enviados = 0;
     const falhas: string[] = [];

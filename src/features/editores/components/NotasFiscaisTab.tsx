@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFilters } from '@/contexts/FilterContext';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { enviarDocumento, mensagemDeEnvio } from '@/lib/documentos';
@@ -77,6 +78,14 @@ function nomeDoArquivo(competencia: string, editor: string, subtipo: string, ext
 export function NotasFiscaisTab() {
   const { perfil } = useAuth();
   const ehAdmin = perfil?.is_admin === true;
+  /*
+    A nota do editor é documento fiscal, e documento fiscal tem dono. Este
+    `upsert` nunca gravou `empresa_id` — conferi o histórico do arquivo, o
+    campo jamais existiu aqui —, e por isso as notas de serviço subiam órfãs.
+    A regra é a mesma do Financeiro e está no CLAUDE.md: ler pode somar,
+    gravar exige empresa escolhida.
+  */
+  const { empresaId } = useFilters();
 
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -165,6 +174,15 @@ export function NotasFiscaisTab() {
       return;
     }
 
+    if (!empresaId) {
+      toast({
+        title: 'Escolha a empresa antes de anexar',
+        description: 'A nota vai para o pacote de uma contabilidade só. Selecione Alaskan ou Aeliss no topo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     // Competência na chave: com duas notas de "pagamento" na tela, só o
     // subtipo marcaria as duas como enviando ao mesmo tempo.
     setEnviando(chaveDaNota(nota));
@@ -180,6 +198,7 @@ export function NotasFiscaisTab() {
         // unique or exclusion constraint matching the ON CONFLICT specification".
         const { error } = await supabase.from('documentos_fiscais').upsert({
           competencia: nota.competencia,
+          empresa_id: empresaId,
           fornecedor: editorAtual.nome,
           tipo: 'servico',
           subtipo: nota.subtipo,
