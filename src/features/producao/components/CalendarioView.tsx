@@ -54,6 +54,49 @@ const LIMITE_DE_CARDS = 2000;
  *  passarem por cima da data. */
 const ALTURA_DO_CABECALHO = 30;
 
+/*
+  ── A altura do card de período sai do conteúdo dele ──────────────────────
+
+  Ela era `h-[58px]` fixo, e o conteúdo de seis linhas precisa de 78. Num flex
+  em coluna o filho encolhe abaixo do próprio tamanho quando falta espaço, mas
+  o TEXTO não encolhe junto: ele transborda a caixa e cai por cima da linha de
+  baixo. Era isso que deixava os cards ilegíveis — medido na tela, 41 linhas
+  espremidas, com o título renderizado a 9,3px precisando de 13.
+
+  Agora as linhas são DADOS, montados uma vez por `linhasDoCardDePeriodo`: a
+  altura conta a mesma lista que o JSX desenha. Fosse uma contagem à parte,
+  seriam dois lugares dizendo quantas linhas o card tem, e quem acrescentasse
+  um campo amanhã acertaria um e esqueceria o outro — a primeira armadilha, em
+  forma de layout.
+*/
+
+/** `leading-tight` é 1.25. As duas medidas abaixo são as do JSX logo adiante. */
+const LINHA_TITULO = 10.5 * 1.25;
+const LINHA_RESTO  =  9.5 * 1.25;
+/** O `gap-px` entre as linhas, mais a folga de 1px em cima e embaixo do card. */
+const FOLGA_DO_CARD = 2;
+
+/** A altura que um card com N linhas precisa, arredondada para cima. */
+function alturaDoCard(linhas: number): number {
+  if (linhas <= 0) return 0;
+  return Math.ceil(LINHA_TITULO + (linhas - 1) * (LINHA_RESTO + 1) + FOLGA_DO_CARD);
+}
+
+/** As linhas do card de período, na ordem em que aparecem. A lista vazia é
+ *  impossível: nome e fase sempre existem. */
+function linhasDoCardDePeriodo(c: Criativo): { txt: string; cls: string }[] {
+  const editor = c.responsavel?.nome ?? c.editor_nome_historico;
+  return [
+    { txt: c.nome,                                    cls: 'font-medium text-[10.5px]' },
+    { txt: FASES_MAP[c.fase] ?? c.fase,               cls: 'text-[9.5px] opacity-70' },
+    { txt: c.projeto?.nome,                           cls: 'text-[9.5px] opacity-60' },
+    { txt: c.funil?.nome ?? c.metodo_video,           cls: 'text-[9.5px] opacity-55' },
+    { txt: c.tipo_teste,                              cls: 'text-[9.5px] opacity-50' },
+    { txt: c.especialista?.nome,                      cls: 'text-[9.5px] opacity-50' },
+    { txt: editor,                                    cls: 'text-[9.5px] opacity-50' },
+  ].filter((l): l is { txt: string; cls: string } => Boolean(l.txt));
+}
+
 /* As fases que não atrasam saíram daqui: elas vinham de `FASES_CONCLUIDAS`,
    que era uma cópia da coluna `producao_fases.concluida`. Agora a lista é
    montada dentro do componente, a partir da tabela — ver `encerradasSQL`. */
@@ -1288,8 +1331,20 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                 const laneCount   = spanEntries.length > 0
                   ? spanEntries.reduce((m, e) => Math.max(m, e.lane), 0) + 1
                   : 0;
-                const LANE_H    = 62;
-                const spanOffset = laneCount > 0 ? laneCount * LANE_H + 4 : 0;
+                /* A faixa cabe o card MAIS ALTO da semana, e não um 62 cravado.
+                   As linhas do grid têm de ser todas iguais, então o que manda
+                   é o maior — e sai da mesma lista que o card desenha, por
+                   `linhasDoCardDePeriodo`.
+
+                   Era fixo em 62 com o card em 58, e seis linhas precisam de
+                   78: o excedente não sumia, empilhava por cima. Agora a semana
+                   cresce só o que precisar, e a que não tem período nenhum
+                   continua sem custo (`laneCount` zero). */
+                const maxLinhas  = spanEntries.reduce(
+                  (m, e) => Math.max(m, linhasDoCardDePeriodo(e.criativo).length), 0);
+                const ALTURA_CARD = alturaDoCard(maxLinhas);
+                const LANE_H      = ALTURA_CARD + 4;
+                const spanOffset  = laneCount > 0 ? laneCount * LANE_H + 4 : 0;
 
                 return (
                   <div key={wIdx} className="relative">
@@ -1357,7 +1412,7 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                               key={`${e.criativo.id}-w${wIdx}`}
                               data-criativo-id={e.criativo.id}
                               className={cn(
-                                'relative flex items-center text-[10.5px] border h-[58px] self-center overflow-hidden',
+                                'relative flex items-center text-[10.5px] border self-center overflow-hidden',
                                 tipoCor,
                                 // O anel de selecionado também faltava aqui: o
                                 // card entrava no laço e não mostrava que tinha
@@ -1366,7 +1421,11 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                 e.isFirst ? 'rounded-l-[3px] ml-0.5' : 'rounded-l-none border-l-0 ml-0',
                                 e.isLast  ? 'rounded-r-[3px] mr-0.5' : 'rounded-r-none border-r-0 mr-0',
                               )}
-                              style={{ gridColumn: `${e.startCol} / ${e.endCol}`, gridRow: `${e.lane + 1}` }}
+                              style={{
+                                gridColumn: `${e.startCol} / ${e.endCol}`,
+                                gridRow: `${e.lane + 1}`,
+                                height: ALTURA_CARD,
+                              }}
                             >
                               {/* Left resize handle */}
                               {e.isFirst && (
@@ -1389,19 +1448,46 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
                                   if (selecionando || ev.shiftKey) alternar(e.criativo.id);
                                   else setSelectedId(e.criativo.id);
                                 }}
-                                className="flex-1 flex flex-col justify-center px-1.5 overflow-hidden hover:opacity-75 h-full gap-px"
+                                /* `[&>*]:shrink-0` e `safe center` consertam a
+                                   sobreposição das linhas.
+
+                                   O card de período tem altura FIXA (`h-[58px]`,
+                                   porque as faixas precisam alinhar entre si), e
+                                   num flex em coluna o filho encolhe abaixo do
+                                   próprio conteúdo quando o espaço acaba. O
+                                   texto não encolhe junto: ele transborda a
+                                   caixa e cai POR CIMA da linha de baixo. Com
+                                   seis linhas, o título era renderizado com
+                                   9,3px precisando de 13 — medido na tela, 41
+                                   linhas espremidas de uma vez.
+
+                                   `shrink-0` devolve a altura natural a cada
+                                   linha, e o `overflow-hidden` que já estava
+                                   aqui passa a CORTAR em vez de empilhar. Vai no
+                                   container e não em cada `span` de propósito:
+                                   assim a linha que alguém acrescentar amanhã já
+                                   nasce protegida.
+
+                                   E o centralizar vira `safe`: com overflow,
+                                   `center` corta pelas DUAS pontas e comeria o
+                                   título por cima. `safe center` centraliza
+                                   enquanto cabe e passa a alinhar pelo topo
+                                   quando não cabe — e navegador que não
+                                   entender `safe` ignora a declaração e cai em
+                                   `flex-start`, que é o mesmo lado seguro.
+
+                                   O que não couber continua inteiro no `title`
+                                   logo abaixo. */
+                                className="flex-1 flex flex-col [justify-content:safe_center] [&>*]:shrink-0 px-1.5 overflow-hidden hover:opacity-75 h-full gap-px"
                                 title={[e.criativo.nome, FASES_MAP[e.criativo.fase] ?? e.criativo.fase, e.criativo.projeto?.nome, e.criativo.funil?.nome ?? e.criativo.metodo_video, editorName].filter(Boolean).join(' · ')}
                               >
                                 {e.isFirst ? (
-                                  <>
-                                    <span className="font-medium text-[10.5px] truncate leading-tight">{e.criativo.nome}</span>
-                                    <span className="text-[9.5px] opacity-70 truncate leading-tight">{FASES_MAP[e.criativo.fase] ?? e.criativo.fase}</span>
-                                    {e.criativo.projeto?.nome && <span className="text-[9.5px] opacity-60 truncate leading-tight">{e.criativo.projeto.nome}</span>}
-                                    {(e.criativo.funil?.nome ?? e.criativo.metodo_video) && <span className="text-[9.5px] opacity-55 truncate leading-tight">{e.criativo.funil?.nome ?? e.criativo.metodo_video}</span>}
-                                    {e.criativo.tipo_teste && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.tipo_teste}</span>}
-                                    {e.criativo.especialista?.nome && <span className="text-[9.5px] opacity-50 truncate leading-tight">{e.criativo.especialista.nome}</span>}
-                                    {editorName && <span className="text-[9.5px] opacity-50 truncate leading-tight">{editorName}</span>}
-                                  </>
+                                  /* A MESMA lista que a altura da faixa contou.
+                                     Enquanto eram duas, a altura podia dizer
+                                     cinco linhas e o card desenhar seis. */
+                                  linhasDoCardDePeriodo(e.criativo).map((l, i) => (
+                                    <span key={i} className={cn(l.cls, 'truncate leading-tight')}>{l.txt}</span>
+                                  ))
                                 ) : (
                                   editorName && <span className="text-[9px] opacity-60 truncate leading-tight">{editorName}</span>
                                 )}
