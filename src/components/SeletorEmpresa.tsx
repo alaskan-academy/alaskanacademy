@@ -49,7 +49,9 @@ interface Empresa {
  * neutro em vez de um ponto invisível, e sem precisar de uma lista de slugs
  * conhecidos no código, que é o tipo de lista que envelhece calada.
  */
-function PontoDaEmpresa({ slug }: { slug: string | null }) {
+/** Exportado para a aba de NF dos editores usar o MESMO ponto: duas versoes
+ *  do mesmo adorno divergem, e a daqui e a que tem o fallback. */
+export function PontoDaEmpresa({ slug }: { slug: string | null }) {
   if (!slug) return null;
   return (
     <span

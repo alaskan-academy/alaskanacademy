@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFilters } from '@/contexts/FilterContext';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import { enviarDocumento, mensagemDeEnvio, caminhoDoDocumento, slugDaEmpresa } from '@/lib/documentos';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PontoDaEmpresa } from '@/components/SeletorEmpresa';
 import { ChevronLeft, ChevronRight, Check, Upload, Download, Trash2, FolderOpen } from 'lucide-react';
 
 /**
@@ -78,14 +78,6 @@ function nomeDoArquivo(competencia: string, editor: string, subtipo: string, ext
 export function NotasFiscaisTab() {
   const { perfil } = useAuth();
   const ehAdmin = perfil?.is_admin === true;
-  /*
-    A nota do editor é documento fiscal, e documento fiscal tem dono. Este
-    `upsert` nunca gravou `empresa_id` — conferi o histórico do arquivo, o
-    campo jamais existiu aqui —, e por isso as notas de serviço subiam órfãs.
-    A regra é a mesma do Financeiro e está no CLAUDE.md: ler pode somar,
-    gravar exige empresa escolhida.
-  */
-  const { empresaId } = useFilters();
 
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -105,6 +97,43 @@ export function NotasFiscaisTab() {
 
   const mesEnvio = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
   const editorAtual = editores.find(e => e.id === editorId);
+
+  /*
+    A empresa da nota NÃO vem do seletor do cabeçalho.
+
+    Até 08/10/2026 vinha, e estava errado por duas razões. A de fora: o
+    cabeçalho responde "qual operação estou olhando", e uma nota fiscal não é
+    um recorte de leitura — ela é emitida PARA um CNPJ, e esse CNPJ está
+    escrito nela. A de dentro: o padrão do cabeçalho é "Ambas" e sobrevive ao
+    recarregar, então o editor abria a aba, anexava a nota e recebia "escolha a
+    empresa" apontando para um seletor que ele não tem por que mexer.
+
+    A regra aqui é a MESMA que esta tela já aplica ao seletor de editor, três
+    blocos abaixo: escolhe sozinho só quando não há escolha a fazer. Uma
+    empresa ativa, usa; mais de uma, a tela espera. Ficar esparando é visível;
+    arquivar no CNPJ errado não é — e nota da Aeliss dentro do pacote da
+    Alaskan é erro fiscal, não desorganização.
+
+    (Dava para adivinhar o padrão por quem PAGOU o editor, que é a regra do
+    dinheiro carimbado. Não vale o preço: o casamento seria por NOME contra
+    `transacoes`, e `transacoes` é extrato bancário — um editor não pode ver
+    quanto o outro recebe. Quem sabe o CNPJ é quem emitiu a nota.)
+  */
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string; slug: string }[]>([]);
+  const [empresaId, setEmpresaId] = useState<string>('');
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { data } = await supabase
+        .from('empresas').select('id, nome, slug').eq('ativo', true).order('nome');
+      if (!vivo) return;
+      const lista = (data ?? []) as { id: string; nome: string; slug: string }[];
+      setEmpresas(lista);
+      setEmpresaId(prev => prev || (lista.length === 1 ? lista[0].id : ''));
+    })();
+    return () => { vivo = false; };
+  }, []);
 
   // Quem sou eu aqui. Admin escolhe; editor não escolhe nada, porque só existe
   // um "eu" — e um seletor de uma opção só é ruído.
@@ -176,8 +205,9 @@ export function NotasFiscaisTab() {
 
     if (!empresaId) {
       toast({
-        title: 'Escolha a empresa antes de anexar',
-        description: 'A nota vai para o pacote de uma contabilidade só. Selecione Alaskan ou Aeliss no topo.',
+        title: 'Diga para qual empresa é esta nota',
+        description: 'Escolha acima, ao lado do mês. É o CNPJ que está escrito na nota — '
+          + 'cada empresa tem a sua contabilidade, e a nota vai para o pacote de uma só.',
         variant: 'destructive',
       });
       return;
@@ -208,7 +238,7 @@ export function NotasFiscaisTab() {
           editor_id: editorAtual.id,
           storage_path: destino,
           nome_arquivo: nome,
-        }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
+        }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa,empresa_id' });
         return error;
       });
 
@@ -300,8 +330,36 @@ export function NotasFiscaisTab() {
           <span className="ml-1 text-xs text-muted-foreground">mês do envio</span>
         </div>
 
-        {/* Só admin escolhe. Para o editor existe um "eu" só, e um seletor de
-            uma opção seria ruído — a RLS já garante que ele não veria outro. */}
+        <div className="flex items-center gap-2">
+        {/* A empresa aparece para TODO MUNDO que tem mais de uma, inclusive o
+            editor: é ele quem emitiu a nota e sabe para qual CNPJ. Com uma
+            empresa ativa só, não aparece — seletor de uma opção é ruído, a
+            mesma regra do seletor de editor ao lado. */}
+        {empresas.length > 1 && (
+          <Select value={empresaId} onValueChange={setEmpresaId}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Para qual empresa?" />
+            </SelectTrigger>
+            <SelectContent>
+              {empresas.map(e => (
+                <SelectItem key={e.id} value={e.id}>
+                  {/* O MESMO ponto do seletor do cabeçalho, importado de lá:
+                      reescrevê-lo aqui seria um segundo adorno dizendo a mesma
+                      coisa, e o de lá é o que tem fallback para empresa sem
+                      token de cor cadastrado. */}
+                  <span className="flex items-center gap-2">
+                    <PontoDaEmpresa slug={e.slug} />
+                    {e.nome}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Só admin escolhe o editor. Para o editor existe um "eu" só, e um
+            seletor de uma opção seria ruído — a RLS já garante que ele não
+            veria outro. */}
         {ehAdmin && editores.length > 0 && (
           <Select value={editorId} onValueChange={setEditorId}>
             {/* O placeholder importa: sem ele, "nenhum escolhido" fica igual a
@@ -315,6 +373,7 @@ export function NotasFiscaisTab() {
             </SelectContent>
           </Select>
         )}
+        </div>
       </div>
 
       <div className="bg-card border border-border rounded-lg p-5">

@@ -200,6 +200,14 @@ async function buscarUm(p: Pendente, conta: ContaCS, token: string): Promise<str
   // fornecedor/mes como a nota fiscal. Sem ela, o segundo PIX do mes para o
   // mesmo destinatario sobrescrevia o primeiro -- 25 arquivos baixados viraram
   // 10 linhas na primeira rodada, e os PDFs ficaram orfaos.
+  //
+  // `empresa_id` entrou na chave em 08/10/2026 (migracao `20261008c`): sem ela,
+  // dois CNPJs com nota do mesmo fornecedor na mesma competencia colapsavam na
+  // MESMA linha, e a segunda trocava a empresa e o caminho da primeira. As SEIS
+  // colunas tem de aparecer aqui -- o PostgREST exige correspondencia exata, e
+  // declarar menos devolve "there is no unique or exclusion constraint matching
+  // the ON CONFLICT specification", que ja impediu TODA nota de ser gravada uma
+  // vez. O teste `chave-do-documento-fiscal` amarra esta lista a constraint.
   const { error: erroLinha } = await supabase.from('documentos_fiscais').upsert({
     competencia: `${mes}-01`,
     fornecedor: (p.descricao ?? 'PIX').slice(0, 120),
@@ -214,7 +222,7 @@ async function buscarUm(p: Pendente, conta: ContaCS, token: string): Promise<str
     // mesma pergunta, e as duas divergiriam no dia em que uma conta trocasse
     // de empresa.
     empresa_id: p.empresa_id,
-  }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
+  }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa,empresa_id' });
   if (erroLinha) return `db: ${erroLinha.message}`;
 
   await supabase.from('comprovantes_buscados')

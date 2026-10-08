@@ -89,11 +89,60 @@ const dormir = (ms: number) => new Promise(r => setTimeout(r, ms));
  *
  * Agora `fn_reservar_pasta` insere a linha com id nulo. Quem conseguiu inserir
  * ganhou o direito de criar; quem perdeu espera o vencedor preencher.
+ *
+ * E o cache e CONFERIDO, nao obedecido -- ver o comentario dentro da funcao.
  */
+
+/* Pastas cujo id ja foi conferido NESTE isolate.
+   `pastaDoDocumento` faz tres `garantirPasta` por documento, e um lote de 60
+   documentos do mesmo mes pede as mesmas tres pastas 60 vezes. Conferir uma vez
+   por id por isolate troca 180 chamadas ao Drive por 3, sem introduzir dado que
+   envelheca: o isolate vive minutos, e o que a memoria guarda e "este id existia
+   agora", nao "este caminho tem este id". */
+const pastasConferidas = new Set<string>();
+
+/** `false` so quando o Drive diz 404 ou que a pasta esta na lixeira. Erro de
+ *  rede LANCA em vez de devolver `false`: tratar indisponibilidade como
+ *  "nao existe" faria o cache ser descartado e uma pasta nova criada ao lado da
+ *  boa -- as TRES pastas "comprovantes" de novo, agora por outro caminho. */
+async function pastaExiste(token: string, driveId: string): Promise<boolean> {
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${driveId}?fields=id,trashed&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (r.status === 404) return false;
+  if (!r.ok) throw new Error(`Drive get pasta [${r.status}]: ${await r.text()}`);
+  return (await r.json()).trashed !== true;
+}
+
 async function garantirPasta(token: string, caminho: string, paiId: string): Promise<string> {
   const { data: cache } = await supabase
     .from('drive_pastas').select('drive_id').eq('caminho', caminho).maybeSingle();
-  if (cache?.drive_id) return cache.drive_id;
+
+  /* O cache e CONFERIDO, nao obedecido.
+     Ate 08/10/2026 esta funcao devolvia `cache.drive_id` direto, e a linha de
+     `drive_pastas` nunca expirava. Uma pasta apagada, movida para a lixeira ou
+     tirada do compartilhamento deixava o cache apontando para o nada, e o
+     upload seguinte ia para uma pasta que ninguem abre -- com `drive_url`
+     funcionando, porque o arquivo existe; so o lugar e que nao existe mais.
+     Sem ninguem reclamar, porque a tela nao olha o Drive.
+
+     Isto apareceu na revisao do arquivamento das pastas antigas: eu reescrevi
+     os 19 caminhos justamente para o cache nao apontar para lugar errado, e
+     reescrever caminho e remendo -- o defeito era o cache nao ser conferido. */
+  if (cache?.drive_id) {
+    if (pastasConferidas.has(cache.drive_id)) return cache.drive_id;
+    if (await pastaExiste(token, cache.drive_id)) {
+      pastasConferidas.add(cache.drive_id);
+      return cache.drive_id;
+    }
+    // Some a linha podre e cai na criacao abaixo, que passa pela reserva no
+    // banco e portanto continua a salvo de corrida.
+    console.error(
+      `[drive-espelho] ${caminho} apontava para ${cache.drive_id}, que nao existe mais no Drive; recriando`,
+    );
+    await supabase.from('drive_pastas').delete().eq('caminho', caminho);
+  }
 
   const { data: ganhou } = await supabase.rpc('fn_reservar_pasta', { p_caminho: caminho });
 
@@ -104,7 +153,12 @@ async function garantirPasta(token: string, caminho: string, paiId: string): Pro
       await dormir(400);
       const { data } = await supabase
         .from('drive_pastas').select('drive_id').eq('caminho', caminho).maybeSingle();
-      if (data?.drive_id) return data.drive_id;
+      if (data?.drive_id) {
+        // Acabou de ser criada por quem ganhou a reserva: existe, e conferir
+        // seria uma chamada ao Drive para saber o que o banco acabou de dizer.
+        pastasConferidas.add(data.drive_id);
+        return data.drive_id;
+      }
     }
     throw new Error(`Timeout esperando a pasta ${caminho} ser criada por outro processo`);
   }
@@ -127,6 +181,7 @@ async function garantirPasta(token: string, caminho: string, paiId: string): Pro
   }
 
   await supabase.from('drive_pastas').update({ drive_id: criada.id }).eq('caminho', caminho);
+  pastasConferidas.add(criada.id as string);
   return criada.id as string;
 }
 

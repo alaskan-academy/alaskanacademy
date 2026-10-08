@@ -231,16 +231,27 @@ export default function FinanceiroNotasFiscaisPage() {
       await enviarDocumento(caminho, arquivo, async (destino) => {
         // `upsert` na tabela também: reenviar corrige em vez de duplicar.
         //
-        // As CINCO colunas da constraint precisam aparecer no `onConflict` — o
+        // As SEIS colunas da constraint precisam aparecer no `onConflict` — o
         // PostgREST exige correspondência exata, e declarar quatro das cinco
         // devolvia "there is no unique or exclusion constraint matching the ON
         // CONFLICT specification". Nenhuma nota conseguia ser gravada.
         //
-        // `referencia_externa` entrou na chave depois, quando os comprovantes
-        // de PIX passaram a usar esta mesma tabela: comprovante é por
-        // TRANSAÇÃO, e sem ela o segundo PIX do mês ao mesmo destinatário
-        // sobrescrevia o primeiro. Esta tela não tem referência, mas precisa
-        // declará-la assim mesmo, senão o PostgREST não acha a constraint.
+        // `referencia_externa` entrou na chave quando os comprovantes de PIX
+        // passaram a usar esta mesma tabela: comprovante é por TRANSAÇÃO, e sem
+        // ela o segundo PIX do mês ao mesmo destinatário sobrescrevia o
+        // primeiro.
+        //
+        // `empresa_id` entrou em 08/10/2026 (migração `20261008c`), pelo mesmo
+        // motivo um nível acima: sem ela, dois CNPJs que recebem nota do mesmo
+        // fornecedor na mesma competência caíam na MESMA linha, e a segunda
+        // trocava a empresa e o caminho da primeira — com o arquivo da primeira
+        // ficando órfão na pasta da outra empresa, em silêncio. Aqui a
+        // referência é o nome do arquivo, então dependia de os dois se
+        // chamarem igual: plausível, porque fornecedor baixa `nota-fiscal.pdf`.
+        //
+        // O teste `chave-do-documento-fiscal` lê a constraint na migração e
+        // exige que todo `onConflict` do código liste exatamente as colunas
+        // dela, porque esta é a lista que já quebrou por estar incompleta.
         const { error } = await supabase
           .from('documentos_fiscais')
           .upsert({
@@ -263,7 +274,7 @@ export default function FinanceiroNotasFiscaisPage() {
             storage_path: destino,
             nome_arquivo: nome,
             valor: item.valor,
-          }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa' });
+          }, { onConflict: 'competencia,fornecedor,tipo,subtipo,referencia_externa,empresa_id' });
         return error;
       });
 

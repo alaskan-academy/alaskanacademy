@@ -265,3 +265,83 @@ alguém algum dia reverter o commit desta mudança.
 
 Depois: 52 linhas em `drive_pastas` (32 da estrutura nova + 19 arquivadas + o
 abrigo), zero fora, e os 212 documentos conferidos ainda na pasta certa.
+
+## O cache de pastas é CONFERIDO, não obedecido
+
+Reescrever os 19 caminhos era remendo. O defeito estava um nível abaixo:
+`garantirPasta` devolvia `drive_pastas.drive_id` direto, e a linha nunca
+expirava. Uma pasta apagada, movida para a lixeira ou tirada do
+compartilhamento deixava o cache apontando para o nada, e o upload seguinte ia
+para uma pasta que ninguém abre — com `drive_url` funcionando, porque o arquivo
+existe; só o lugar é que não existe mais. Sem ninguém reclamar, porque a tela
+não olha o Drive.
+
+Agora o cache passa por um `GET /files/{id}?fields=id,trashed`. Duas decisões
+dentro disso:
+
+- **Erro de rede LANÇA, não devolve `false`.** Só 404 e `trashed` significam
+  "não existe". Tratar indisponibilidade como ausência faria o cache ser
+  descartado e uma pasta nova criada ao lado da boa — as três pastas
+  `comprovantes` de novo, por outro caminho.
+- **Um `Set` por isolate.** `pastaDoDocumento` faz três `garantirPasta` por
+  documento, e um lote de 60 do mesmo mês pede as mesmas três pastas 60 vezes:
+  3 chamadas ao Drive em vez de 180. Não envelhece porque o que a memória guarda
+  é "este id existia agora", não "este caminho tem este id".
+
+Provado em produção pelo caminho feliz (um `mover` com as três pastas em cache:
+zero erro, zero pasta criada à toa) e pela premissa (o Drive devolve 404 para id
+inexistente, sondado pela ação `apagar`). O ramo do cache podre não foi testado
+ao vivo: arranjá-lo significaria apontar deliberadamente a linha de uma pasta
+real para o nada, e a recuperação envolveria criar e descartar pastas no Drive
+da contabilidade.
+
+## A empresa entra na chave, e a nota do editor para de vir do cabeçalho
+
+Duas coisas que a pergunta "como garantir que a NF do editor vai na pasta certa?"
+destravou.
+
+**A chave única não tinha a empresa.** `uq_documentos_fiscais` era
+`(competencia, fornecedor, tipo, subtipo, referencia_externa)`, e com `upsert`
+dois CNPJs com nota do mesmo fornecedor na mesma competência caíam na MESMA
+linha: a segunda trocava `empresa_id` e `storage_path` da primeira, e o arquivo
+da primeira ficava órfão na pasta da outra empresa. Com sucesso na tela.
+
+Nas notas de **serviço** — as que o editor manda — `referencia_externa` é `''`
+em 10 de 10, então a colisão era **garantida**. Na tela do Financeiro a
+referência é o nome do arquivo, então lá dependia de os dois se chamarem igual,
+o que é plausível. E a condição já existe nos dados: J. A. BATISTA JUNIOR
+recebeu das duas contas no mesmo mês, em 2026-09 e 2026-10.
+
+Migração `20261008c` cria o índice de 6 colunas **ao lado** do antigo e torna
+`empresa_id` obrigatório, na ordem que o CLAUDE.md exige para banco
+compartilhado: índice novo → deploy do código com as 6 colunas no `onConflict`
+→ e só então o `DROP` do antigo, em migração própria. O PostgREST exige
+correspondência exata, e declarar menos colunas já impediu **toda** nota de ser
+gravada uma vez. `chave-do-documento-fiscal` amarra os três `onConflict` à
+constraint lida da migração.
+
+**E a empresa da nota do editor não vem mais do seletor do cabeçalho.** O
+cabeçalho responde "qual operação estou olhando"; uma nota fiscal é emitida PARA
+um CNPJ, que está escrito nela. Pior: o padrão do cabeçalho é "Ambas" e
+sobrevive ao recarregar, então o editor anexava a nota e levava uma recusa
+apontando para um seletor que ele não tem por que mexer.
+
+A aba agora tem o seu próprio seletor, com a mesma regra que ela já aplicava ao
+seletor de editor: **escolhe sozinho só quando não há escolha a fazer.** Uma
+empresa ativa, usa; mais de uma, a tela espera. Ficar esperando é visível;
+arquivar no CNPJ errado não é.
+
+Dava para adivinhar pelo pagamento, que é a regra do dinheiro carimbado, e não
+vale o preço: o casamento seria por NOME contra `transacoes`, que é extrato
+bancário — um editor não pode ver quanto o outro recebe. Quem sabe o CNPJ é quem
+emitiu a nota.
+
+### O que fica para a próxima
+
+- O **`DROP` de `uq_documentos_fiscais`**, depois de o deploy do cliente estar
+  confirmado. Até lá, a colisão entre empresas dá erro em vez de sobrescrever —
+  que é a troca que importa, mas não é o estado final.
+- `fn_nfs_do_editor` não tem dimensão de empresa: ela gera UMA linha esperada
+  por (competência, subtipo). Se as duas empresas passarem a pagar o mesmo
+  editor, a tela vai pedir uma nota e deveria pedir duas. Hoje é teórico —
+  todos os pagamentos a editor são da Alaskan.
