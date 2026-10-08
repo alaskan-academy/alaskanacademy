@@ -128,14 +128,44 @@ describe('a chave do documento fiscal', () => {
     }
   });
 
-  it('a nota do editor não tira a empresa do filtro do cabeçalho', () => {
-    /* O cabeçalho responde "qual operação estou olhando". Uma nota fiscal é
-       emitida PARA um CNPJ, e o padrão do cabeçalho é "Ambas" — então o editor
-       anexava a nota e levava uma recusa apontando para um seletor que ele não
-       tem por que mexer. A empresa agora é escolhida na própria aba. */
+  it('a empresa da nota do editor vem da NOTA, e o editor não escolhe', () => {
+    /* Esta parte errou duas vezes em 08/10/2026, e o teste existe para as duas
+       não voltarem:
+
+       1. vinha do seletor do CABEÇALHO, que responde "qual operação estou
+          olhando" — e cujo padrão é "Ambas", então o editor anexava a nota e
+          levava uma recusa apontando para um seletor que não é para isso;
+       2. veio de um seletor PRÓPRIO na aba, que ainda pedia ao editor uma
+          decisão que é da administração: quem conhece o contrato é ela, e uma
+          escolha constante com a opção errada ao lado é como alguém clica nela.
+
+       Hoje a empresa chega por nota, de `editor_empresa` pela COMPETÊNCIA de
+       cada uma — e é por nota porque a comissão atrasa um mês em relação ao
+       serviço, então as duas de um mesmo envio podem ser de empresas
+       diferentes. */
     const src = ler('src/features/editores/components/NotasFiscaisTab.tsx');
-    expect(src, 'a aba de NF voltou a usar o filtro do cabeçalho como dono da nota')
+
+    expect(src, 'a aba voltou a usar o filtro do cabeçalho como dono da nota')
       .not.toMatch(/useFilters\(\)/);
-    expect(src).toMatch(/from\('empresas'\)[\s\S]{0,200}?eq\('ativo',\s*true\)/);
+    expect(src, 'a aba voltou a ter seletor de empresa: a decisão é da administração')
+      .not.toMatch(/setEmpresaId/);
+    expect(src, 'o upload não está usando a empresa da própria nota')
+      .toMatch(/empresa_id:\s*nota\.empresa_id/);
+  });
+
+  it('a empresa por nota é derivada no banco, não no cliente', () => {
+    /* A vigência mora em `editor_empresa` e é resolvida por
+       `fn_empresa_do_editor`, chamada dentro de `fn_nfs_do_editor`. Se alguém
+       mover essa conta para o cliente, serviço e comissão voltam a poder sair
+       com a mesma empresa — era o que um campo em `editores` faria. */
+    const dir = join(raiz, 'supabase', 'migrations');
+    const juntas = readdirSync(dir).filter(f => f.endsWith('.sql'))
+      .map(f => readFileSync(join(dir, f), 'utf-8')).join('\n');
+
+    expect(juntas, 'não achei a tabela de vigência').toMatch(/create table[^;]*editor_empresa/is);
+    expect(juntas, 'não achei a função que resolve a vigência')
+      .toMatch(/create or replace function public\.fn_empresa_do_editor/i);
+    expect(juntas, 'fn_nfs_do_editor não consulta a vigência')
+      .toMatch(/fn_nfs_do_editor[\s\S]*?fn_empresa_do_editor/i);
   });
 });

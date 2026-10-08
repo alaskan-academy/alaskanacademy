@@ -43,6 +43,19 @@ interface NotaEsperada {
   nome_arquivo: string | null;
   drive_url: string | null;
   enviada_em: string | null;
+  /*
+    Para qual empresa ESTA nota é — vem com a linha, de `editor_empresa` pela
+    COMPETÊNCIA dela (migrações 20261008d/e). Por nota, e não por editor, porque
+    a comissão atrasa um mês em relação ao serviço: em outubro de 2026 a mesma
+    pessoa deve `serviço/2026-10` para a Aeliss e `comissão/2026-09` para a
+    Alaskan, no mesmo envio. Um campo em `editores` carimbaria as duas igual.
+
+    Nulo significa "ninguém declarou ainda", e a tela diz isso em vez de
+    adivinhar — o upload recusa e manda pedir à administração.
+  */
+  empresa_id: string | null;
+  empresa_nome: string | null;
+  empresa_slug: string | null;
 }
 
 function dataCurta(iso: string): string {
@@ -99,41 +112,33 @@ export function NotasFiscaisTab() {
   const editorAtual = editores.find(e => e.id === editorId);
 
   /*
-    A empresa da nota NÃO vem do seletor do cabeçalho.
+  /*
+    A empresa de cada nota vem COM A NOTA, e o editor não escolhe nada.
 
-    Até 08/10/2026 vinha, e estava errado por duas razões. A de fora: o
-    cabeçalho responde "qual operação estou olhando", e uma nota fiscal não é
-    um recorte de leitura — ela é emitida PARA um CNPJ, e esse CNPJ está
-    escrito nela. A de dentro: o padrão do cabeçalho é "Ambas" e sobrevive ao
-    recarregar, então o editor abria a aba, anexava a nota e recebia "escolha a
-    empresa" apontando para um seletor que ele não tem por que mexer.
+    Esta parte mudou duas vezes em 08/10/2026, e as duas primeiras versões
+    estavam erradas, cada uma de um jeito:
 
-    A regra aqui é a MESMA que esta tela já aplica ao seletor de editor, três
-    blocos abaixo: escolhe sozinho só quando não há escolha a fazer. Uma
-    empresa ativa, usa; mais de uma, a tela espera. Ficar esparando é visível;
-    arquivar no CNPJ errado não é — e nota da Aeliss dentro do pacote da
-    Alaskan é erro fiscal, não desorganização.
+    1. **Do seletor do cabeçalho.** O cabeçalho responde "qual operação estou
+       olhando", e nota fiscal não é recorte de leitura — é emitida PARA um
+       CNPJ, que está escrito nela. Pior: o padrão do cabeçalho é "Ambas" e
+       sobrevive ao recarregar, então o editor anexava a nota e levava uma
+       recusa apontando para um seletor que ele não tem por que mexer.
 
-    (Dava para adivinhar o padrão por quem PAGOU o editor, que é a regra do
-    dinheiro carimbado. Não vale o preço: o casamento seria por NOME contra
-    `transacoes`, e `transacoes` é extrato bancário — um editor não pode ver
-    quanto o outro recebe. Quem sabe o CNPJ é quem emitiu a nota.)
+    2. **De um seletor próprio na aba.** Melhor, mas ainda pedia ao editor uma
+       decisão que não é dele: quem conhece o contrato é a administração. E
+       como hoje a resposta quase nunca varia, era uma escolha constante com a
+       opção errada ao lado — que é como alguém acaba clicando nela.
+
+    Agora quem define é a administração, em `editor_empresa`, e a empresa chega
+    por nota em `fn_nfs_do_editor`. POR NOTA, e não por editor, porque a
+    comissão atrasa um mês em relação ao serviço: em outubro de 2026 a Jessica
+    Maihato deve `serviço/2026-10` para a Aeliss e `comissão/2026-09` para a
+    Alaskan, no mesmo envio. Um campo em `editores` carimbaria as duas igual, e
+    a comissão de setembro sairia Aeliss — erro fiscal com sucesso na tela.
+
+    A tela MOSTRA a empresa em cada linha em vez de esconder: é o CNPJ que a
+    pessoa vai digitar na nota, então é informação dela, não detalhe interno.
   */
-  const [empresas, setEmpresas] = useState<{ id: string; nome: string; slug: string }[]>([]);
-  const [empresaId, setEmpresaId] = useState<string>('');
-
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      const { data } = await supabase
-        .from('empresas').select('id, nome, slug').eq('ativo', true).order('nome');
-      if (!vivo) return;
-      const lista = (data ?? []) as { id: string; nome: string; slug: string }[];
-      setEmpresas(lista);
-      setEmpresaId(prev => prev || (lista.length === 1 ? lista[0].id : ''));
-    })();
-    return () => { vivo = false; };
-  }, []);
 
   // Quem sou eu aqui. Admin escolhe; editor não escolhe nada, porque só existe
   // um "eu" — e um seletor de uma opção só é ruído.
@@ -203,11 +208,15 @@ export function NotasFiscaisTab() {
       return;
     }
 
-    if (!empresaId) {
+    /* Sem empresa declarada para esta competência o envio PARA, em vez de
+       escolher uma. A pessoa não tem como saber qual é, e um palpite aqui vira
+       nota no pacote da contabilidade errada. */
+    if (!nota.empresa_id) {
       toast({
-        title: 'Diga para qual empresa é esta nota',
-        description: 'Escolha acima, ao lado do mês. É o CNPJ que está escrito na nota — '
-          + 'cada empresa tem a sua contabilidade, e a nota vai para o pacote de uma só.',
+        title: 'Esta nota ainda não tem empresa definida',
+        description: 'Peça à administração para dizer de qual empresa é a nota desta '
+          + 'competência. Enquanto isso o envio fica bloqueado de propósito, para a nota '
+          + 'não entrar no pacote da contabilidade errada.',
         variant: 'destructive',
       });
       return;
@@ -220,17 +229,20 @@ export function NotasFiscaisTab() {
       const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'pdf';
       const nome = nomeDoArquivo(nota.competencia, editorAtual.nome, nota.subtipo, extensao);
       // `{empresa}/{competência}/{tipo}/{arquivo}`, montado num lugar só.
-      const slug = await slugDaEmpresa(empresaId);
+      const slug = await slugDaEmpresa(nota.empresa_id);
       const caminho = caminhoDoDocumento(slug, nota.competencia, 'servico', nome);
 
       // Arquivo e linha como uma coisa só: se a linha falhar, o arquivo que
       // acabou de subir é removido em vez de virar órfão no bucket.
       await enviarDocumento(caminho, arquivo, async (destino) => {
-        // As cinco colunas da chave única: declarar menos devolve "there is no
+        // As SEIS colunas da chave única: declarar menos devolve "there is no
         // unique or exclusion constraint matching the ON CONFLICT specification".
+        // `empresa_id` entrou nela em `20261008c` — sem ela, a nota da segunda
+        // empresa fazia UPDATE na da primeira quando a competência e o subtipo
+        // batiam, e o arquivo da primeira ficava órfão na pasta da outra.
         const { error } = await supabase.from('documentos_fiscais').upsert({
           competencia: nota.competencia,
-          empresa_id: empresaId,
+          empresa_id: nota.empresa_id,
           fornecedor: editorAtual.nome,
           tipo: 'servico',
           subtipo: nota.subtipo,
@@ -330,33 +342,6 @@ export function NotasFiscaisTab() {
           <span className="ml-1 text-xs text-muted-foreground">mês do envio</span>
         </div>
 
-        <div className="flex items-center gap-2">
-        {/* A empresa aparece para TODO MUNDO que tem mais de uma, inclusive o
-            editor: é ele quem emitiu a nota e sabe para qual CNPJ. Com uma
-            empresa ativa só, não aparece — seletor de uma opção é ruído, a
-            mesma regra do seletor de editor ao lado. */}
-        {empresas.length > 1 && (
-          <Select value={empresaId} onValueChange={setEmpresaId}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Para qual empresa?" />
-            </SelectTrigger>
-            <SelectContent>
-              {empresas.map(e => (
-                <SelectItem key={e.id} value={e.id}>
-                  {/* O MESMO ponto do seletor do cabeçalho, importado de lá:
-                      reescrevê-lo aqui seria um segundo adorno dizendo a mesma
-                      coisa, e o de lá é o que tem fallback para empresa sem
-                      token de cor cadastrado. */}
-                  <span className="flex items-center gap-2">
-                    <PontoDaEmpresa slug={e.slug} />
-                    {e.nome}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
         {/* Só admin escolhe o editor. Para o editor existe um "eu" só, e um
             seletor de uma opção seria ruído — a RLS já garante que ele não
             veria outro. */}
@@ -373,7 +358,6 @@ export function NotasFiscaisTab() {
             </SelectContent>
           </Select>
         )}
-        </div>
       </div>
 
       <div className="bg-card border border-border rounded-lg p-5">
@@ -446,6 +430,29 @@ export function NotasFiscaisTab() {
                     <span className="ml-2 text-xs text-muted-foreground">
                       competência {rotuloCompetencia(n.competencia)}
                     </span>
+                    {/* Para qual empresa ESTA nota é. Fica ao lado da
+                        competência porque é dela que a empresa sai, e as duas
+                        juntas são o que a pessoa precisa para emitir: mês e
+                        CNPJ. Sem isso o editor teria de adivinhar ou perguntar
+                        todo mês.
+
+                        Nota já enviada mostra a empresa GRAVADA nela, e não a
+                        vigente — se a vigência mudar depois, a tela continua
+                        dizendo o que está no documento, em vez de discordar
+                        dele (quem olha não teria como saber qual dos dois
+                        estava certo). A função resolve isso. */}
+                    {n.empresa_nome ? (
+                      <span className="ml-2 inline-flex items-baseline gap-1.5 text-xs text-muted-foreground">
+                        <PontoDaEmpresa slug={n.empresa_slug} />
+                        {n.empresa_nome}
+                      </span>
+                    ) : (
+                      /* Sem vigência declarada. Dito na linha, e não só na
+                         recusa do upload: a pessoa descobre antes de tentar. */
+                      <span className="ml-2 text-xs text-amber-500">
+                        empresa não definida — peça à administração
+                      </span>
+                    )}
                     {/* O prazo primeiro, o pagamento depois — nesta ordem porque
                         é essa a política: a nota vem antes do dinheiro. */}
                     <span className="block text-[11px] text-muted-foreground/70">

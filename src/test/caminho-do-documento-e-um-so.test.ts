@@ -196,14 +196,20 @@ describe('o caminho do documento fiscal é um só', () => {
   });
 
   it('upload sem empresa é recusado nas duas telas', () => {
-    // A segunda rede: o helper lança sem slug, mas a tela tem de avisar antes
-    // de o arquivo subir, não depois.
-    for (const tela of [
-      'src/features/financeiro/pages/FinanceiroNotasFiscaisPage.tsx',
-      'src/features/editores/components/NotasFiscaisTab.tsx',
-    ]) {
-      expect(ler(tela), `${tela} não recusa upload sem empresa`)
-        .toMatch(/if\s*\(\s*!empresaId\s*\)/);
-    }
+    /* A segunda rede: o helper lança sem slug, mas a tela tem de avisar ANTES
+       de o arquivo subir, não depois.
+
+       As duas telas recusam por caminhos diferentes porque a empresa vem de
+       lugares diferentes, e isso é deliberado:
+
+       - No Financeiro, a empresa é a do seletor do cabeçalho: ali quem envia é
+         a administração, e o recorte que ela está olhando É a operação de que
+         a nota é.
+       - Na aba do editor, vem com a NOTA (`fn_nfs_do_editor` → `editor_empresa`),
+         porque o editor não tem como saber e não é decisão dele. */
+    expect(ler('src/features/financeiro/pages/FinanceiroNotasFiscaisPage.tsx'))
+      .toMatch(/if\s*\(\s*!empresaId\s*\)/);
+    expect(ler('src/features/editores/components/NotasFiscaisTab.tsx'))
+      .toMatch(/if\s*\(\s*!nota\.empresa_id\s*\)/);
   });
 });

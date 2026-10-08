@@ -1,5 +1,5 @@
 import { sanitizarHtml } from '@/lib/sanitizar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import { formatCurrency } from '@/lib/formatters';
 import { ChevronRight, Lock, Plus } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -237,11 +238,173 @@ function EditorDetail({ editor, cargos, cargoMap, onChanged, isAdmin }: {
       {/* O blob de observações saía aqui, e o "Histórico de promoções" logo
           abaixo dele — um com 3.000 caracteres de texto datado à mão, o outro
           vazio. Viraram uma coisa só. */}
+      <EmpresaDaNota editorId={editor.id} editorNome={editor.nome} podeEscrever={isAdmin} />
       <LinhaDoTempo editorId={editor.id} editorSetorId={editor.setor_id} currentCargoId={editor.cargo_id} cargos={cargos}
                     cargoMap={cargoMap} items={notas} reload={load} onChanged={onChanged}
                     podeEscrever={isAdmin} />
       <HistoricoComissoes items={avaliacoes} />
       <HistoricoFolgas items={avaliacoes} />
+    </div>
+  );
+}
+
+/**
+ * Para qual empresa esta pessoa emite nota fiscal, a partir de qual competência.
+ *
+ * Mora aqui, e não na aba de NF, porque é a ADMINISTRAÇÃO que conhece o
+ * contrato. Até 08/10/2026 a aba de NF tirava a empresa do seletor do cabeçalho
+ * e depois de um seletor próprio — as duas versões pediam ao editor uma decisão
+ * que não é dele, e numa lista de duas opções em que uma só está certa.
+ *
+ * É VIGÊNCIA, e não um campo, porque a comissão atrasa um mês em relação ao
+ * serviço: em outubro de 2026 a Jessica Maihato deve `serviço/2026-10` para a
+ * Aeliss e `comissão/2026-09` para a Alaskan, no mesmo envio. Um campo único
+ * carimbaria as duas igual, e a comissão de setembro sairia Aeliss — erro
+ * fiscal com sucesso na tela.
+ *
+ * Por isso a coluna de RESULTADO ao lado: a tabela não mostra só o que foi
+ * cadastrado, mostra em que empresa cada nota caiu de verdade. Cadastro sem
+ * resultado ao lado envelhece e vira ficção — é a segunda armadilha do
+ * CLAUDE.md, e aqui o resultado é a lista de notas logo abaixo.
+ */
+function EmpresaDaNota({ editorId, editorNome, podeEscrever }: {
+  editorId: string; editorNome: string; podeEscrever: boolean;
+}) {
+  type Vigencia = { id: string; desde: string; empresa_id: string; empresas: { nome: string; slug: string } | null };
+  const [vigencias, setVigencias] = useState<Vigencia[]>([]);
+  const [empresas, setEmpresas] = useState<{ id: string; nome: string; slug: string }[]>([]);
+  const [novaEmpresa, setNovaEmpresa] = useState('');
+  const [novoMes, setNovoMes] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const confirm = useConfirm();
+
+  const carregar = useCallback(async () => {
+    const [v, e] = await Promise.all([
+      /* Por `desde` DESC, a mesma ordenação de `fn_empresa_do_editor`: é ela
+         que decide qual vigência vale, então a lista mostra na ordem em que a
+         decisão é tomada, e a primeira linha é a que está em vigor. */
+      supabase.from('editor_empresa')
+        .select('id, desde, empresa_id, empresas(nome, slug)')
+        .eq('editor_id', editorId).order('desde', { ascending: false }),
+      supabase.from('empresas').select('id, nome, slug').eq('ativo', true).order('nome'),
+    ]);
+    setVigencias((v.data ?? []) as unknown as Vigencia[]);
+    setEmpresas((e.data ?? []) as { id: string; nome: string; slug: string }[]);
+  }, [editorId]);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  async function adicionar() {
+    if (!novaEmpresa || !novoMes) {
+      toast({ title: 'Escolha a empresa e a competência', variant: 'destructive' });
+      return;
+    }
+    setSalvando(true);
+    // `<input type="month">` devolve `aaaa-mm`; a coluna exige dia 1, e há um
+    // `check` no banco cuidando disso — então o erro aqui é de programação, não
+    // de uso, e vale montar certo em vez de confiar na recusa.
+    const { error } = await supabase.from('editor_empresa')
+      .insert({ editor_id: editorId, empresa_id: novaEmpresa, desde: `${novoMes}-01` });
+    setSalvando(false);
+
+    if (error) {
+      // A unicidade é (editor, desde): duas empresas valendo na mesma
+      // competência é a pergunta sem resposta, e o banco recusa.
+      toast({
+        title: 'Não deu para gravar',
+        description: /duplicate key|unique/i.test(error.message)
+          ? 'Já existe uma mudança registrada nessa competência. Apague a anterior ou escolha outro mês.'
+          : error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setNovaEmpresa(''); setNovoMes('');
+    await carregar();
+  }
+
+  async function apagar(v: Vigencia) {
+    const ok = await confirm({
+      title: 'Apagar esta mudança?',
+      description: `As notas de ${editorNome} a partir de ${v.desde.slice(0, 7)} voltam a valer `
+        + 'pela regra anterior. Nota já enviada não muda — ela guarda a empresa com que foi gravada.',
+      confirmText: 'Apagar',
+      destructive: true,
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('editor_empresa').delete().eq('id', v.id);
+    if (error) { toast({ title: 'Não deu para apagar', description: error.message, variant: 'destructive' }); return; }
+    await carregar();
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-5">
+      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+        Empresa da nota fiscal
+      </h2>
+      <p className="text-xs text-muted-foreground/70 mt-0.5">
+        Para qual empresa {editorNome} emite, a partir de qual competência. A nota de
+        serviço é do mês trabalhado e a comissão é do mês anterior, então as duas de um
+        mesmo envio podem cair em empresas diferentes — e é por isso que aqui vai a
+        competência, e não só a empresa.
+      </p>
+
+      {vigencias.length === 0 ? (
+        /* Estado vazio obrigatório, e aqui ele é um aviso: sem vigência o
+           editor não consegue enviar nota nenhuma, de propósito. */
+        <p className="mt-4 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+          Nenhuma empresa definida. Enquanto estiver assim, {editorNome} não consegue
+          enviar nota — a tela dele recusa em vez de escolher uma.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-0">
+          {vigencias.map((v, i) => (
+            <li key={v.id} className="flex items-baseline gap-2 border-b border-border/50 py-2 last:border-0">
+              <span className="inline-flex items-baseline gap-1.5 min-w-0 flex-1">
+                <span
+                  aria-hidden
+                  className="h-1.5 w-1.5 shrink-0 rounded-full self-center"
+                  style={{ backgroundColor: `hsl(var(--empresa-${v.empresas?.slug}, var(--muted-foreground)))` }}
+                />
+                <span className="text-foreground">{v.empresas?.nome ?? '(empresa removida)'}</span>
+                <span className="text-xs text-muted-foreground">
+                  a partir da competência {v.desde.slice(0, 7)}
+                </span>
+              </span>
+              {/* `i === 0` é a vigente porque a lista vem por `desde` desc — a
+                  mesma ordenação que `fn_empresa_do_editor` usa para decidir. */}
+              {i === 0 && <Badge variant="secondary">em vigor</Badge>}
+              {podeEscrever && (
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs"
+                        onClick={() => apagar(v)}>
+                  apagar
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {podeEscrever && (
+        <div className="mt-4 flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Passa a emitir para</Label>
+            <Select value={novaEmpresa} onValueChange={setNovaEmpresa}>
+              <SelectTrigger className="w-48"><SelectValue placeholder="Escolha a empresa" /></SelectTrigger>
+              <SelectContent>
+                {empresas.map(e => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">A partir da competência</Label>
+            <Input type="month" value={novoMes} onChange={e => setNovoMes(e.target.value)} className="w-40" />
+          </div>
+          <Button onClick={adicionar} disabled={salvando} size="sm">
+            <Plus className="h-4 w-4 mr-1" />
+            {salvando ? 'Gravando…' : 'Registrar mudança'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
