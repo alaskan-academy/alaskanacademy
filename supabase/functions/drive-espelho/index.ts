@@ -7,10 +7,13 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  * O Storage e a fonte: privado, com RLS por dono, e e de onde a tela le. O Drive
  * e a copia para a contabilidade, que trabalha la e nao vai entrar no dashboard.
  *
- * Estrutura, uma pasta com tres subpastas e um nivel de mes:
- *   ferramentas/2026-08/2026-08_ElevenLabs_invoice.pdf
- *   servicos/2026-08/2026-08_Jaqueline-Coelho_NF.pdf
- *   comprovantes/2026-08/2026-08-21_Jaqueline-Coelho_83319848_comprovante.pdf
+ * Estrutura, `{empresa}/{competencia}/{tipo}/{arquivo}`:
+ *   alaskan/2026-08/ferramentas/2026-08_ElevenLabs_invoice.pdf
+ *   alaskan/2026-08/servicos/2026-08_Jaqueline-Coelho_NF.pdf
+ *   aeliss/2026-09/comprovantes/2026-09-04_J-A-BATISTA-JUNIOR_83319848.pdf
+ *
+ * A empresa virou o primeiro nivel em 08/10/2026 (antes era `{tipo}/{mes}`), e a
+ * mesma estrutura vale no Storage — ver docs/estrutura-de-pastas-dos-documentos.md.
  */
 
 /** `.trim()` em tudo: colar um segredo no painel traz quebra de linha junto com
@@ -167,6 +170,49 @@ Deno.serve(async (req) => {
     const sa = JSON.parse(GOOGLE_SERVICE_ACCOUNT) as Record<string, string>;
     const token = await getGoogleAccessToken(sa);
 
+    /* ── Mover para a pasta nova ──────────────────────────────────────────
+       A migracao de `{tipo}/{mes}` para `{empresa}/{mes}/{tipo}`, nos DOIS
+       sistemas: o arquivo no Storage e a copia no Drive. Ver `moverUm`, que tem
+       a ordem dos passos e o motivo de ela ser essa.
+
+       Mora aqui, e nao numa migracao SQL, porque mover no Storage exige a API
+       `.move()`: a chave do objeto inclui o `name`, entao trocar
+       `storage.objects.name` por SQL deixaria o banco apontando para um caminho
+       sem arquivo. Esta funcao tem a service role e pode chamar a API. */
+    if (corpoReq.acao === 'mover') {
+      // Um documento, ou um lote. O lote existe porque sao 212 na migracao, e
+      // 212 chamadas HTTP seria 212 chances de parar no meio sem saber onde.
+      //
+      // Os pendentes vem de `vw_documentos_a_mover`, que exclui quem ja tem os
+      // dois passos com `ok`. Pegar "os 60 primeiros por criado_em" olharia os
+      // mesmos 60 em toda chamada e nunca alcancaria o 61: o cursor tem de ser
+      // o que ja foi feito, nao a posicao na lista.
+      let alvos: string[];
+      if (corpoReq.documento_id) {
+        alvos = [corpoReq.documento_id];
+      } else {
+        const { data } = await supabase
+          .from('vw_documentos_a_mover').select('id')
+          .limit(Math.min(corpoReq.lote ?? 60, 60));
+        alvos = (data ?? []).map((d: { id: string }) => d.id);
+      }
+
+      // Em SERIE, pela mesma razao do espelho em lote: as pastas novas sao
+      // criadas sob demanda, e em paralelo o primeiro lote disputaria a criacao
+      // de `{empresa}` e `{empresa}/{mes}` varias vezes.
+      let movidos = 0, jaEstavam = 0;
+      const erros: string[] = [];
+      for (const id of alvos) {
+        const r = await moverUm(id, token);
+        if (r.erro) erros.push(`${id}: ${r.erro}`);
+        else if (r.movido) movidos++;
+        else jaEstavam++;
+      }
+      const { count: restam } = await supabase
+        .from('vw_documentos_a_mover').select('id', { count: 'exact', head: true });
+      return json({ ok: true, movidos, ja_estavam: jaEstavam, erros, olhados: alvos.length, restam });
+    }
+
     // ── Espelhar em lote ────────────────────────────────────────────────
     // Em SERIE de proposito: e o que garante que a primeira pasta de cada tipo
     // seja criada uma vez so. Paralelizar aqui foi o que produziu tres pastas
@@ -199,11 +245,201 @@ Deno.serve(async (req) => {
   }
 });
 
+/**
+ * A pasta de destino no Drive: `{empresa}/{competencia}/{tipo}`.
+ *
+ * A empresa entrou como primeiro nivel em 08/10/2026. Antes era
+ * `{tipo}/{competencia}`, e o pacote mensal da contabilidade — que e de UMA
+ * empresa num mes — ficava espalhado por tres pastas. Agora e uma so.
+ *
+ * Recusa sem empresa em vez de improvisar uma pasta "sem-empresa": documento
+ * fiscal sem dono foi o que colocou 38 notas em lugar nenhum ate 07/10/2026, e
+ * a tela ja passou a exigir a empresa no upload. Aqui e a segunda rede.
+ *
+ * Ver docs/estrutura-de-pastas-dos-documentos.md.
+ */
+async function pastaDoDocumento(
+  token: string,
+  doc: { tipo: string; competencia: unknown; empresas?: unknown },
+): Promise<string | { erro: string }> {
+  // O embed do PostgREST devolve objeto ou lista conforme resolve a relacao.
+  const rel = doc.empresas as { slug?: string } | { slug?: string }[] | null;
+  const slug = (Array.isArray(rel) ? rel[0]?.slug : rel?.slug)?.trim();
+  if (!slug) return { erro: 'documento sem empresa: nao sei em que pasta guardar' };
+
+  const pasta = pastaDoTipo(doc.tipo);
+  const mes = String(doc.competencia).slice(0, 7);
+
+  // Um `garantirPasta` por nivel, na ordem: cada um precisa do id do pai.
+  const idEmpresa = await garantirPasta(token, slug, DRIVE_PASTA_RAIZ);
+  const idMes     = await garantirPasta(token, `${slug}/${mes}`, idEmpresa);
+  return await garantirPasta(token, `${slug}/${mes}/${pasta}`, idMes);
+}
+
+/** `documentos_fiscais.tipo` -> nome da pasta. O mesmo mapa de
+ *  `PASTA_DO_TIPO` em src/lib/documentos.ts; o teste
+ *  `caminho-do-documento-e-um-so` amarra os dois. */
+function pastaDoTipo(tipo: string): string {
+  return tipo === 'servico' ? 'servicos'
+       : tipo === 'comprovante' ? 'comprovantes'
+       : 'ferramentas';
+}
+
+/** Grava o passo em `documentos_movidos` antes de executa-lo, e devolve o id da
+ *  linha para marcar o resultado. Sem a linha o passo nao acontece: um erro no
+ *  meio de 212 arquivos, em dois sistemas, sem registro de onde cada um estava,
+ *  e arqueologia. */
+async function registrarPasso(
+  documentoId: string, sistema: 'storage' | 'drive', de: string, para: string,
+): Promise<{ id: string } | { erro: string }> {
+  const { data, error } = await supabase.from('documentos_movidos')
+    .insert({ documento_id: documentoId, sistema, de, para })
+    .select('id').single();
+  if (error || !data) return { erro: `nao registrei o passo ${sistema}: ${error?.message}` };
+  return { id: data.id };
+}
+
+const fecharPasso = (id: string, ok: boolean, erro?: string) =>
+  supabase.from('documentos_movidos').update({ ok, erro: erro ?? null }).eq('id', id);
+
+/**
+ * Leva UM documento para a estrutura `{empresa}/{competencia}/{tipo}`, nos dois
+ * sistemas: o arquivo no Storage e a copia no Drive.
+ *
+ * Existe como acao PROPRIA porque o gatilho nao resolve. `trg_espelho_drive`
+ * dispara em `UPDATE OF storage_path`, mas `espelhar()` comeca com
+ * `if (doc.drive_url) return null` — guarda correta, que impede a contabilidade
+ * de ver a mesma nota duas vezes, e que por isso nunca reposicionaria um
+ * documento ja espelhado.
+ *
+ * ── A ordem, que e o ponto todo ──────────────────────────────────────────
+ *
+ *   1. Storage: `.move()`, a API, que COPIA o objeto. Nao da para fazer isso em
+ *      SQL trocando `storage.objects.name`: a chave do objeto no armazenamento
+ *      e `{bucket}/{name}/{version}`, entao renomear a linha sem copiar deixa o
+ *      banco apontando para um caminho sem arquivo — a tela mostra a nota e o
+ *      download da 404.
+ *   2. `storage_path`: agora Storage e banco voltam a concordar. Entre 1 e 2 o
+ *      par esta partido, e e por isso que sao dois passos seguidos e nao tres
+ *      coisas em paralelo.
+ *   3. Drive: `PATCH ?addParents&removeParents`, que so troca o pai. Nao baixa
+ *      nem sobe: o `drive_id` continua o mesmo, entao `drive_url` segue valendo
+ *      e nenhum link guardado quebra.
+ *
+ * Se 3 falhar, 1 e 2 ficaram certos e a copia do Drive esta na pasta velha —
+ * incomodo, nao estrago, e a proxima chamada conserta porque cada passo olha o
+ * estado real antes de agir.
+ *
+ * Idempotente. Passo que ja estava certo grava sentinela (`de = para`): sem ela
+ * o documento certo travaria a fila atras de si, porque a fila e justamente a
+ * ausencia de linha.
+ */
+async function moverUm(
+  documentoId: string, token: string,
+): Promise<{ movido: boolean; erro?: string }> {
+  const { data: doc, error: erroDoc } = await supabase
+    .from('documentos_fiscais')
+    .select('id, tipo, competencia, storage_path, drive_id, empresa_id, empresas(slug)')
+    .eq('id', documentoId).single();
+  if (erroDoc || !doc) return { movido: false, erro: 'documento nao encontrado' };
+  if (!doc.storage_path) return { movido: false, erro: 'documento sem arquivo' };
+
+  // O embed do PostgREST devolve objeto ou lista conforme resolve a relacao.
+  const rel = doc.empresas as { slug?: string } | { slug?: string }[] | null;
+  const slug = (Array.isArray(rel) ? rel[0]?.slug : rel?.slug)?.trim();
+  if (!slug) return { movido: false, erro: 'documento sem empresa: nao sei para que pasta levar' };
+
+  const mes = String(doc.competencia).slice(0, 7);
+  let mexeu = false;
+
+  // ── 1 e 2: o arquivo no Storage, e o caminho no banco ────────────────────
+  const nome = doc.storage_path.replace(/^.*\//, '');
+  const caminhoNovo = `${slug}/${mes}/${pastaDoTipo(doc.tipo)}/${nome}`;
+
+  const passoStorage = await registrarPasso(
+    doc.id, 'storage', doc.storage_path, caminhoNovo,
+  );
+  if ('erro' in passoStorage) return { movido: false, erro: passoStorage.erro };
+
+  if (doc.storage_path !== caminhoNovo) {
+    const { error: erroMove } = await supabase.storage
+      .from('documentos').move(doc.storage_path, caminhoNovo);
+    if (erroMove) {
+      await fecharPasso(passoStorage.id, false, erroMove.message);
+      return { movido: false, erro: `storage move: ${erroMove.message}` };
+    }
+
+    const { error: erroPath } = await supabase.from('documentos_fiscais')
+      .update({ storage_path: caminhoNovo }).eq('id', doc.id);
+    if (erroPath) {
+      // O arquivo mudou de lugar e o banco nao sabe: desfaz o Storage em vez de
+      // deixar a linha apontando para o caminho velho, que agora esta vazio.
+      await supabase.storage.from('documentos').move(caminhoNovo, doc.storage_path);
+      await fecharPasso(passoStorage.id, false, `storage_path: ${erroPath.message}`);
+      return { movido: false, erro: `storage_path: ${erroPath.message}` };
+    }
+    mexeu = true;
+    console.log(`[drive-espelho] storage ${doc.storage_path} -> ${caminhoNovo}`);
+  }
+  await fecharPasso(passoStorage.id, true);
+
+  // ── 3: a copia no Drive ──────────────────────────────────────────────────
+  if (!doc.drive_id) {
+    // Sem copia no Drive nao ha o que mover. Grava sentinela para a fila
+    // andar — `espelhar()` e quem cuida de criar a copia que falta, e ela ja
+    // nasce na estrutura nova.
+    const p = await registrarPasso(doc.id, 'drive', '(sem copia)', '(sem copia)');
+    if (!('erro' in p)) await fecharPasso(p.id, true);
+    return { movido: mexeu };
+  }
+
+  const destino = await pastaDoDocumento(token, doc);
+  if (typeof destino !== 'string') return { movido: mexeu, erro: destino.erro };
+
+  // Os pais ATUAIS vem do proprio Drive, nao de `drive_pastas` pelo caminho
+  // antigo: se alguem moveu o arquivo a mao, o banco nao sabe e o
+  // `removeParents` erraria o alvo, deixando o arquivo em duas pastas.
+  const atual = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${doc.drive_id}?fields=parents&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!atual.ok) return { movido: mexeu, erro: `drive get [${atual.status}]: ${await atual.text()}` };
+  const pais: string[] = (await atual.json()).parents ?? [];
+  const jaEstava = pais.length === 1 && pais[0] === destino;
+
+  const passoDrive = await registrarPasso(
+    doc.id, 'drive', jaEstava ? destino : (pais.join(',') || '(sem pai)'), destino,
+  );
+  if ('erro' in passoDrive) return { movido: mexeu, erro: passoDrive.erro };
+
+  if (!jaEstava) {
+    const params = new URLSearchParams({
+      addParents: destino, supportsAllDrives: 'true', fields: 'id,parents',
+    });
+    if (pais.length) params.set('removeParents', pais.join(','));
+
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${doc.drive_id}?${params}`,
+      { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) {
+      const texto = await res.text();
+      await fecharPasso(passoDrive.id, false, `[${res.status}] ${texto}`);
+      return { movido: mexeu, erro: `drive move [${res.status}]: ${texto}` };
+    }
+    mexeu = true;
+    console.log(`[drive-espelho] drive ${doc.drive_id} -> ${destino}`);
+  }
+  await fecharPasso(passoDrive.id, true);
+
+  return { movido: mexeu };
+}
+
 /** Devolve null em sucesso, ou o motivo da falha. */
 async function espelhar(documentoId: string, token: string): Promise<string | null> {
   const { data: doc, error: erroDoc } = await supabase
     .from('documentos_fiscais')
-    .select('id, tipo, competencia, nome_arquivo, storage_path, drive_url')
+    .select('id, tipo, competencia, nome_arquivo, storage_path, drive_url, empresa_id, empresas(slug)')
     .eq('id', documentoId)
     .single();
   if (erroDoc || !doc) return 'documento nao encontrado';
@@ -212,13 +448,9 @@ async function espelhar(documentoId: string, token: string): Promise<string | nu
   // mesma nota duas vezes.
   if (doc.drive_url) return null;
 
-  const pasta = doc.tipo === 'servico' ? 'servicos'
-              : doc.tipo === 'comprovante' ? 'comprovantes'
-              : 'ferramentas';
-  const mes = String(doc.competencia).slice(0, 7);
-
-  const idTipo = await garantirPasta(token, pasta, DRIVE_PASTA_RAIZ);
-  const idMes  = await garantirPasta(token, `${pasta}/${mes}`, idTipo);
+  // O ultimo nivel e a pasta do TIPO desde 08/10/2026; antes era a do mes.
+  const idPasta = await pastaDoDocumento(token, doc);
+  if (typeof idPasta !== 'string') return idPasta.erro;
 
   const { data: arquivo, error: erroArq } = await supabase.storage
     .from('documentos').download(doc.storage_path);
@@ -227,7 +459,7 @@ async function espelhar(documentoId: string, token: string): Promise<string | nu
   // Upload multipart: metadados e conteudo na mesma chamada. Em duas chamadas,
   // uma falha no meio deixaria arquivo vazio no Drive.
   const limite = `-------${crypto.randomUUID()}`;
-  const meta = JSON.stringify({ name: doc.nome_arquivo, parents: [idMes] });
+  const meta = JSON.stringify({ name: doc.nome_arquivo, parents: [idPasta] });
   const bytes = new Uint8Array(await arquivo.arrayBuffer());
 
   const cabeca = new TextEncoder().encode(

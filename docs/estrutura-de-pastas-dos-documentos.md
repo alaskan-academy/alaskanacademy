@@ -1,46 +1,9 @@
 # Estrutura de pastas dos documentos fiscais
 
-Desenho, 08/10/2026. Ainda **não implementado** — este arquivo é a decisão
-escrita, para a implementação não precisar redescobrir o terreno.
+Decisão de 08/10/2026, **implementada no mesmo dia**. Os 212 documentos estão na
+estrutura nova nos dois sistemas.
 
-## O que existe hoje
-
-São **212 documentos**, e desde 07/10/2026 todos têm `empresa_id`. A estrutura
-atual é `tipo/competência/arquivo`, e a empresa não aparece nela.
-
-```
-comprovantes/2026-09/2026-09-04_J-A-BATISTA-JUNIOR_aeliss_83....pdf
-ferramentas/2026-08/2026-08_CapCut_NF_invoice.pdf
-servicos/2026-08/2026-08_Jaqueline-Coelho_comissao.pdf
-```
-
-| empresa | documentos |
-|---|---|
-| alaskan | 210 |
-| aeliss | 2 |
-
-### São DUAS estruturas, não uma
-
-Esta é a descoberta que muda o tamanho da tarefa, e custou uma afirmação
-errada minha antes de eu ir ler o código:
-
-- **Supabase Storage** usa `documentos_fiscais.storage_path`, montado no
-  cliente (`FinanceiroNotasFiscaisPage.tsx` e `editores/NotasFiscaisTab.tsx`).
-- **Google Drive** NÃO segue esse caminho. A edge function `drive-espelho`
-  monta o dela do zero, a partir de `doc.tipo` e `doc.competencia`:
-
-  ```ts
-  const pasta = doc.tipo === 'servico' ? 'servicos'
-              : doc.tipo === 'comprovante' ? 'comprovantes'
-              : 'ferramentas';
-  const mes = String(doc.competencia).slice(0, 7);
-  const idTipo = await garantirPasta(token, pasta, DRIVE_PASTA_RAIZ);
-  const idMes  = await garantirPasta(token, `${pasta}/${mes}`, idTipo);
-  ```
-
-Mudar `storage_path` **não mexe no Drive**. Os dois precisam ser alterados.
-
-## A estrutura nova
+## A estrutura
 
 ```
 {empresa}/{competência}/{tipo}/{arquivo}
@@ -50,7 +13,7 @@ alaskan/2026-09/servicos/2026-09_Jaqueline-Coelho_pagamento.pdf
 aeliss/2026-09/comprovantes/2026-09-04_J-A-BATISTA-JUNIOR_....pdf
 ```
 
-A mesma em Storage e em Drive. Uma estrutura só para lembrar.
+A mesma no Supabase Storage e no Google Drive. Uma estrutura só para lembrar.
 
 ### Por que a empresa vem primeiro
 
@@ -63,8 +26,8 @@ junto; empresa não.
 
 Porque o produto desta área é o **pacote mensal para a contabilidade**, e o
 pacote é de uma empresa num mês. Com `empresa/competência/tipo`, o pacote é
-UMA pasta: `aeliss/2026-09/` compacta e vai. Com a estrutura de hoje
-(`tipo/competência`) ele está espalhado por três pastas, e com
+UMA pasta: `aeliss/2026-09/` compacta e vai. Com a estrutura anterior
+(`tipo/competência`) ele estava espalhado por três, e com
 `empresa/tipo/competência` continuaria espalhado por três.
 
 O preço é que "todas as notas de ferramenta" deixa de ser uma pasta. É a
@@ -80,41 +43,68 @@ nome fantasia mudar. O mesmo nome nos dois sistemas.
 
 Sai de `empresa_id` → `empresas.slug`. Se alguém puder digitar, vira um segundo
 campo dizendo o que o primeiro já diz — exatamente os 368 `centro_custo` que
-divergiram de `categorias_centro` e a primeira armadilha do CLAUDE.md.
+divergiram de `categorias_centro`, e a primeira armadilha do CLAUDE.md.
 
-## O que precisa mudar
+## São DUAS estruturas, não uma
 
-### 1. Cliente — o `storage_path`
+Esta é a descoberta que muda o tamanho da tarefa, e custou uma afirmação errada
+minha antes de eu ir ler o código:
 
-Os dois lugares que montam o caminho hoje:
+- **Supabase Storage** usa `documentos_fiscais.storage_path`.
+- **Google Drive** NÃO segue esse caminho. A edge function `drive-espelho`
+  monta o dela do zero, a partir de `doc.tipo` e `doc.competencia`.
 
-- `FinanceiroNotasFiscaisPage.tsx`: `${pasta}/${competencia}/${nome}`
-- `editores/NotasFiscaisTab.tsx`: `servicos/${competencia}/${nome}`
+Mudar `storage_path` **não mexe no Drive**. Os dois precisam ser alterados, e é
+por isso que o movimento mora num lugar que alcança os dois.
 
-Viram um helper só em `src/lib/documentos.ts`, que recebe o slug e não aceita
-vazio. Duas montagens à mão é como as duas telas divergiram em primeiro lugar.
+## Onde cada peça vive
 
-### 2. `drive-espelho` — a cadeia de pastas
+### 1. O caminho, montado num lugar só
 
-Ganha um nível antes do tipo:
+`caminhoDoDocumento(slug, competencia, tipo, nome)` em
+[src/lib/documentos.ts](../src/lib/documentos.ts). Antes havia duas montagens à
+mão — `FinanceiroNotasFiscaisPage` e `editores/NotasFiscaisTab` —, e foi assim
+que elas divergiram: uma carimbava a empresa, a outra nunca carimbou, e 38
+documentos ficaram sem dono até 07/10/2026.
 
-```ts
-const idEmpresa = await garantirPasta(token, slug, DRIVE_PASTA_RAIZ);
-const idMes     = await garantirPasta(token, `${slug}/${mes}`, idEmpresa);
-const idTipo    = await garantirPasta(token, `${slug}/${mes}/${pasta}`, idMes);
-```
+O helper **recusa** sem slug, com tipo desconhecido ou competência inválida, em
+vez de improvisar: um arquivo numa pasta que ninguém procura só aparece quando a
+contabilidade reclama da nota que falta.
 
-`garantirPasta` já é seguro contra corrida (`fn_reservar_pasta`, migração
-`20260825u`), e `drive_pastas.caminho` aceita o nível a mais sem mudança.
+### 2. A cadeia de pastas no Drive
 
-A função precisa passar a ler `empresa_id` no `select` — hoje ela busca
-`id, tipo, competencia, nome_arquivo, storage_path, drive_url`.
+`pastaDoDocumento()` em
+[supabase/functions/drive-espelho/index.ts](../supabase/functions/drive-espelho/index.ts),
+um `garantirPasta` por nível: `{slug}` → `{slug}/{mes}` → `{slug}/{mes}/{tipo}`.
+`garantirPasta` já era segura contra corrida (`fn_reservar_pasta`, migração
+`20260825u`) e `drive_pastas.caminho` aceitou o nível a mais sem mudança.
 
-### 3. A migração dos 212 — a parte difícil
+### 3. A migração dos 212
 
-**Mover no Storage é fácil**: `supabase.storage.from('documentos').move(de, para)`.
+`acao: 'mover'` na mesma edge function, em lotes, com fila em
+`vw_documentos_a_mover` e registro em `documentos_movidos` (migração
+`20261008a`).
 
-**Mover no Drive não tem código.** E tem uma armadilha: o gatilho
+## Duas coisas que a implementação descobriu
+
+### Mover no Storage NÃO dá para fazer em SQL
+
+A primeira versão da migração fazia
+`update storage.objects set name = <caminho novo>` — o que a API `.move()` faz
+na parte do banco, numa transação só, sem 212 chamadas HTTP. **Estava errado.**
+
+`storage.objects` tem uma coluna `version`, e na storage-api a chave do objeto
+no armazenamento é `{bucket}/{name}/{version}`: o `name` **é** parte da chave.
+Renomear a linha sem copiar o objeto deixaria o banco apontando para um caminho
+que não tem arquivo — a tela mostraria a nota e o download daria 404, sem nada
+denunciando até alguém clicar.
+
+Por isso o movimento inteiro mora na edge function, que tem a service role e
+pode chamar `.move()`. Era a quarta armadilha chegando pela porta do SQL:
+espelho (o `name`) tratado como se fosse a coisa (o objeto).
+
+### O gatilho não reposiciona nada
+
 `trg_espelho_drive` dispara em `AFTER INSERT OR UPDATE OF storage_path`, mas
 `espelhar()` começa com
 
@@ -124,54 +114,85 @@ A função precisa passar a ler `empresa_id` no `select` — hoje ela busca
 if (doc.drive_url) return null;
 ```
 
-Ou seja: atualizar `storage_path` dispara o gatilho e **não faz nada**. Os 212
-ficariam no lugar novo no Storage e no lugar velho no Drive — pior que antes.
+Essa guarda está certa e não deve ser removida. Consequência: atualizar
+`storage_path` dispara o gatilho e **não faz nada** — os 212 ficariam no lugar
+novo no Storage e no lugar velho no Drive, pior que antes, porque as duas
+estruturas passariam a discordar. Daí a ação própria.
 
-Essa guarda está certa e não deve ser removida. O caminho é uma ação NOVA na
-mesma função:
+## A ordem dos passos, por documento
 
-```
-POST /drive-espelho  { acao: 'mover', documento_id }
-  → calcula a pasta nova (garantirPasta)
-  → PATCH /files/{drive_id}?addParents={nova}&removeParents={velha}
-  → não baixa, não sobe, não duplica
-```
+1. **Storage**, via `.move()`. Falhou, nada mudou — pode repetir.
+2. **`storage_path`**. Agora Storage e banco voltam a concordar. Se este passo
+   falhar, o movimento do Storage é desfeito na hora, em vez de deixar a linha
+   apontando para um caminho vazio.
+3. **Drive**, via `PATCH ?addParents&removeParents`. Não baixa nem sobe: o
+   `drive_id` continua o mesmo, então `drive_url` segue valendo e nenhum link
+   guardado quebra. Falhou, 1 e 2 ficaram certos e a cópia está na pasta velha —
+   incômodo, não estrago, e a chamada seguinte conserta.
 
-`removeParents` exige saber o pai atual: vem de `drive_pastas` pelo caminho
-antigo, ou de um `GET /files/{id}?fields=parents`.
+Os pais atuais no Drive vêm de `GET /files/{id}?fields=parents`, e não de
+`drive_pastas` pelo caminho antigo: se alguém moveu o arquivo à mão, o banco não
+sabe e o `removeParents` erraria o alvo, deixando o arquivo em duas pastas.
 
-### Ordem da migração, por documento
+## A fila e o desfazer
 
-1. `move` no Storage. Falhou, nada mudou — pode repetir.
-2. `acao: 'mover'` no Drive. Falhou, o Storage já mudou mas o `storage_path`
-   ainda não: o par continua coerente.
-3. `update storage_path`. O gatilho dispara e vira no-op (`drive_url` setado),
-   que aqui é o comportamento desejado.
+`documentos_movidos` grava cada passo **antes** de executá-lo, com `ok = false`,
+e marca `ok = true` quando ele volta. Linha com `ok = false` é passo tentado e
+falhado — o que se quer ver, e não um registro que desaparece deixando a dúvida
+entre "não tentei" e "tentei e quebrou". O desfazer de verdade é
+`where ok and de <> para`.
 
-### Desfazer
-
-Antes de mover, gravar em `documentos_movidos` o `documento_id`, o
-`storage_path` antigo e o id do pai antigo no Drive — o mesmo padrão de
-`views_apagadas` (20261006j), que provou valer a pena. Sem isso, um erro no
-meio de 212 arquivos é arqueologia.
-
-### O que fica para trás
-
-As pastas antigas vazias no Drive (`comprovantes/`, `ferramentas/`,
-`servicos/`) e suas linhas em `drive_pastas`. Apagar é opcional e deve ser o
-último passo, depois de conferir que todas as 212 chegaram.
+`vw_documentos_a_mover` é a fila: documento a que falta o passo do Storage, o do
+Drive, ou os dois. **"Falta" é a ausência de linha com `ok`, nunca posição na
+lista.** A primeira versão do lote pegava "os 60 primeiros por `criado_em`" e
+olharia os mesmos 60 em toda chamada, sem nunca alcançar o 61. É também por isso
+que o passo que não precisou mexer grava sentinela (`de = para`): sem ela o
+documento já certo travaria a fila atrás de si.
 
 ## A prova de que terminou
 
-Derivada, não lista:
+Derivada, não listada. Rodada em 08/10/2026, todas as contas em zero:
 
 ```sql
 -- nenhum documento fora da estrutura nova
 select count(*) from documentos_fiscais d
 join empresas e on e.id = d.empresa_id
 where d.storage_path !~ ('^' || e.slug || '/\d{4}-\d{2}/(comprovantes|ferramentas|servicos)/');
--- tem de dar 0
+
+-- todo storage_path tem arquivo de verdade no bucket
+select count(*) from documentos_fiscais d
+where not exists (select 1 from storage.objects o
+                   where o.bucket_id = 'documentos' and o.name = d.storage_path);
+
+-- nada sobrou na estrutura velha
+select count(*) from storage.objects
+where bucket_id = 'documentos' and name ~ '^(comprovantes|ferramentas|servicos)/';
+
+-- e as três partes do caminho batem com os campos de que saíram
+select count(*) from documentos_fiscais d join empresas e on e.id = d.empresa_id
+where split_part(d.storage_path, '/', 1) <> e.slug;          -- a empresa
+-- idem split_part(..., '/', 2) contra left(competencia::text, 7)
+-- e   split_part(..., '/', 3) contra o plural do tipo
 ```
 
-E, no Drive, que a contagem de arquivos por pasta nova bata com a contagem por
-`(empresa, competência, tipo)` da tabela — 17 combinações hoje.
+No Drive, o cruzamento é por `drive_pastas.caminho`, que espelha a estrutura:
+os 212 documentos foram para a pasta correspondente ao próprio caminho, e as 17
+combinações de `(empresa, competência, tipo)` da tabela deram exatamente 17
+pastas folha.
+
+A catraca que impede a volta é
+[src/test/caminho-do-documento-e-um-so.test.ts](../src/test/caminho-do-documento-e-um-so.test.ts).
+Ela existe porque a regra passou a viver em **três** lugares que não se
+enxergam — o helper do cliente, a edge function em Deno e o SQL —, e três
+cópias da mesma regra é a primeira armadilha em estado puro. O teste amarra as
+três: os tipos que o helper traduz saem do `check` da migração que criou a
+tabela, as pastas do Drive têm de ser as mesmas do Storage, e nenhuma das duas
+telas pode voltar a montar o caminho à mão.
+
+## O que ficou para trás, de propósito
+
+As pastas antigas no Drive (`comprovantes/`, `ferramentas/`, `servicos/`) e suas
+19 linhas em `drive_pastas`. Estão sem nenhum documento — está provado, porque
+os 212 têm pai novo —, mas apagar uma pasta do Drive compartilhado não se
+desfaz, e não há como verificar daqui se alguém largou um arquivo lá à mão.
+Fica como decisão dela.

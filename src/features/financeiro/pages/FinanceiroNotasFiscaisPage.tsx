@@ -5,7 +5,7 @@ import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency } from '@/lib/formatters';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
-import { enviarDocumento, mensagemDeEnvio } from '@/lib/documentos';
+import { enviarDocumento, mensagemDeEnvio, caminhoDoDocumento, slugDaEmpresa } from '@/lib/documentos';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -193,6 +193,16 @@ export default function FinanceiroNotasFiscaisPage() {
       return;
     }
 
+    /* Resolve o slug UMA vez, antes da fila: a cada arquivo seria uma ida ao
+       banco por nota, e um erro no meio deixaria metade enviada. */
+    let slugEmpresa: string;
+    try {
+      slugEmpresa = await slugDaEmpresa(empresaId);
+    } catch (err) {
+      toast({ title: 'Não foi possível enviar', description: mensagemDeEnvio(err), variant: 'destructive' });
+      return;
+    }
+
     setEnviando(item.fornecedor);
     let enviados = 0;
     const falhas: string[] = [];
@@ -212,8 +222,8 @@ export default function FinanceiroNotasFiscaisPage() {
       const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'pdf';
       const chave = chaveDoArquivo(arquivo.name);
       const nome = nomeDoArquivo(item, competencia.slice(0, 7), extensao, chave);
-      const pasta = item.tipo === 'servico' ? 'servicos' : 'ferramentas';
-      const caminho = `${pasta}/${competencia.slice(0, 7)}/${nome}`;
+      // `{empresa}/{competência}/{tipo}/{arquivo}`, montado num lugar só.
+      const caminho = caminhoDoDocumento(slugEmpresa, competencia, item.tipo, nome);
 
       // Arquivo e linha como uma coisa só: se a linha falhar, o arquivo que
       // acabou de subir é removido em vez de virar órfão no bucket. Foi assim

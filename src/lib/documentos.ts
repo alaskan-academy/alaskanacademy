@@ -48,6 +48,78 @@ export function mensagemDeEnvio(err: unknown): string {
   return bruto;
 }
 
+/*
+  ───────────────────────────────────────────────────────────────────────────
+  O caminho do documento: `{empresa}/{competência}/{tipo}/{arquivo}`
+
+  A empresa vem primeiro porque é o único recorte que NUNCA se mistura: dois
+  CNPJs, duas apurações, e uma NF da Aeliss dentro do pacote da Alaskan é erro
+  fiscal, não desorganização.
+
+  A competência vem antes do tipo porque o produto desta área é o pacote mensal
+  da contabilidade, e o pacote é de uma empresa num mês — com esta ordem ele é
+  UMA pasta para compactar. Até 08/10/2026 era `tipo/competência`, e o pacote
+  estava espalhado por três.
+
+  Montar o caminho mora AQUI, e não em cada tela, porque havia duas montagens à
+  mão (Financeiro e aba de Editores) e foi assim que elas divergiram: uma
+  carimbava a empresa, a outra nunca carimbou, e 38 documentos ficaram sem dono.
+
+  Ver docs/estrutura-de-pastas-dos-documentos.md.
+*/
+
+/** `documentos_fiscais.tipo` -> nome da pasta. Plural, como sempre foi. */
+const PASTA_DO_TIPO: Record<string, string> = {
+  comprovante: 'comprovantes',
+  ferramenta: 'ferramentas',
+  servico: 'servicos',
+};
+
+/* O slug muda tão raramente quanto o CNPJ, e o upload acontece em rajada (uma
+   fila de arquivos). Buscar uma vez por empresa evita uma ida ao banco por
+   arquivo sem introduzir dado que possa envelhecer dentro da sessão. */
+const slugPorEmpresa = new Map<string, string>();
+
+/** O slug da empresa, de `empresas.slug`. Lança se não houver — caminho sem
+ *  empresa é exatamente o que esta estrutura existe para impedir. */
+export async function slugDaEmpresa(empresaId: string): Promise<string> {
+  const guardado = slugPorEmpresa.get(empresaId);
+  if (guardado) return guardado;
+
+  const { data, error } = await supabase
+    .from('empresas').select('slug').eq('id', empresaId).maybeSingle();
+  const slug = data?.slug?.trim();
+  if (error || !slug) {
+    throw new Error('Não consegui identificar a empresa deste documento. Recarregue a página e tente de novo.');
+  }
+  slugPorEmpresa.set(empresaId, slug);
+  return slug;
+}
+
+/**
+ * O caminho completo. `competencia` aceita `2026-09` ou `2026-09-01`.
+ *
+ * Recusa em vez de improvisar: sem slug ou com tipo desconhecido, um arquivo
+ * iria para uma pasta que ninguém procura e só apareceria quando a
+ * contabilidade reclamasse da nota que falta.
+ */
+export function caminhoDoDocumento(
+  slug: string, competencia: string, tipo: string, nomeArquivo: string,
+): string {
+  const empresa = slug.trim();
+  if (!empresa) throw new Error('caminhoDoDocumento: slug da empresa vazio');
+
+  const pasta = PASTA_DO_TIPO[tipo];
+  if (!pasta) throw new Error(`caminhoDoDocumento: tipo desconhecido "${tipo}"`);
+
+  const mes = String(competencia).slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    throw new Error(`caminhoDoDocumento: competência inválida "${competencia}"`);
+  }
+
+  return `${empresa}/${mes}/${pasta}/${nomeArquivo}`;
+}
+
 /** `true` se o caminho já tem arquivo. Usado para saber se um envio que falhou
  *  no meio pode limpar o que subiu: se já existia coisa ali, o arquivo é de um
  *  envio anterior que deu certo, e apagá-lo destruiria a nota boa. */

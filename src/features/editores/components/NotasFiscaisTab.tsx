@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFilters } from '@/contexts/FilterContext';
 import { toast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
-import { enviarDocumento, mensagemDeEnvio } from '@/lib/documentos';
+import { enviarDocumento, mensagemDeEnvio, caminhoDoDocumento, slugDaEmpresa } from '@/lib/documentos';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -189,7 +189,9 @@ export function NotasFiscaisTab() {
     try {
       const extensao = arquivo.name.split('.').pop()?.toLowerCase() || 'pdf';
       const nome = nomeDoArquivo(nota.competencia, editorAtual.nome, nota.subtipo, extensao);
-      const caminho = `servicos/${nota.competencia.slice(0, 7)}/${nome}`;
+      // `{empresa}/{competência}/{tipo}/{arquivo}`, montado num lugar só.
+      const slug = await slugDaEmpresa(empresaId);
+      const caminho = caminhoDoDocumento(slug, nota.competencia, 'servico', nome);
 
       // Arquivo e linha como uma coisa só: se a linha falhar, o arquivo que
       // acabou de subir é removido em vez de virar órfão no bucket.
