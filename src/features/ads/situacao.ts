@@ -241,25 +241,57 @@ export function chaveEstado(nivel: string, objetoId: string) {
  *
  * Fora do mapa de propósito: `ativo_sem_entregar`, `ativo_nunca_entregou` e
  * `em_analise`. Nesses três o anúncio ESTÁ ligado — quem marcou "Rodando" não
- * errou, a entrega é que não saiu. Sugerir "Encerrado" ali mandaria ela
- * desmarcar o que está certo. `sem_dado` também fica fora: a API parou de
- * confirmar o objeto, e isso não é notícia sobre a veiculação.
+ * errou, a entrega é que não saiu. Sugerir desligar ali mandaria ela desmarcar
+ * o que está certo. `sem_dado` também fica fora: a API parou de confirmar o
+ * objeto, e isso não é notícia sobre a veiculação.
+ *
+ * ── PARADO NÃO TEM UMA TRADUÇÃO SÓ, e essa foi a correção de 09/10/2026 ──
+ *
+ * A primeira versão mandava todo estado parado para "Encerrado". Estava errada,
+ * e o motivo é a definição que ela deu da marcação:
+ *
+ *   **"Pausado" é quando o anúncio está com boa performance mas não está
+ *   rodando, e devemos voltar a rodar.**
+ *
+ * Ou seja: "Pausado" e "Encerrado" descrevem o MESMO fato — o anúncio não está
+ * no ar — e pedem ações OPOSTAS. O que os separa não é o Meta: é a avaliação do
+ * criativo. Um Validado que parou é uma pendência ("volte a isto"); um Não
+ * validado que parou acabou.
+ *
+ * Por isso a função recebe `vaiBem`: sem ele, a tela oferecia `[marcar
+ * Encerrado]` em cima de criativo aprovado, desfazendo justamente a marcação
+ * que significa "retomar". Quem chama decide o que é "ir bem" lendo os níveis
+ * de aprovação de `vw_crivo_niveis_vigentes` — a lista não mora aqui, senão um
+ * nível novo no crivo nasceria invisível para esta regra.
  *
  * O valor devolvido é texto, e quem chama tem de conferir se ele está nas
  * opções vindas de `criativo_campos_opcoes` antes de oferecer o botão — se
  * alguém renomear o nível no banco, o botão deve DESAPARECER em vez de gravar
  * um valor que não é opção. Terceira armadilha.
  */
-const MARCACAO_QUE_O_FATO_SUGERE: Record<string, string> = {
-  rodando: 'Rodando',
-  parado: 'Encerrado',
-  parado_recente: 'Encerrado',
-  barrado_pelo_pai: 'Encerrado',
-  sem_anuncio: 'Encerrado',
-  bloqueado: 'Bloqueado',
+const MARCACAO_QUE_O_FATO_SUGERE: Record<string, { parado: boolean; marcacao: string }> = {
+  rodando:          { parado: false, marcacao: 'Rodando' },
+  bloqueado:        { parado: false, marcacao: 'Bloqueado' },
+  parado:           { parado: true,  marcacao: 'Encerrado' },
+  parado_recente:   { parado: true,  marcacao: 'Encerrado' },
+  barrado_pelo_pai: { parado: true,  marcacao: 'Encerrado' },
+  sem_anuncio:      { parado: true,  marcacao: 'Encerrado' },
 };
 
-export function marcacaoQueOMetaSugere(estado: string | null | undefined): string | null {
+/**
+ * @param estado  o que a Meta diz dos anúncios do card (`vw_producao_estado_ads`)
+ * @param vaiBem  a avaliação do card está num nível de APROVAÇÃO? Quem chama
+ *                decide isso contra `vw_crivo_niveis_vigentes`.
+ */
+export function marcacaoQueOMetaSugere(
+  estado: string | null | undefined,
+  vaiBem = false,
+): string | null {
   if (!estado) return null;
-  return MARCACAO_QUE_O_FATO_SUGERE[estado] ?? null;
+  const caso = MARCACAO_QUE_O_FATO_SUGERE[estado];
+  if (!caso) return null;
+  /* Parado e indo bem é a definição de pendência: não terminou, está esperando
+     alguém religar. Parado e sem aprovação acabou. */
+  if (caso.parado && vaiBem) return 'Pausado';
+  return caso.marcacao;
 }

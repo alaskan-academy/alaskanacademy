@@ -20,7 +20,7 @@ import { useMetricasDoAd, TiraDeMetricas, LegendaFontes } from '@/features/criat
 import { situacaoDe, rodaComoAnuncio, marcacaoQueOMetaSugere } from '@/features/ads/situacao';
 /* A régua saiu desta tela e foi para o banco (migração 20261009a). O que sobra
    aqui é o desenho; os números e a prosa vêm de `vw_crivo_vigente`. */
-import { TabelaDoCrivo } from '@/features/criativos/crivo';
+import { TabelaDoCrivo, useCrivo } from '@/features/criativos/crivo';
 import {
   aRevisar, corDaAvaliacao, origemDe, reguaDiscorda, type Sugestao,
 } from '@/features/criativos/avaliacao';
@@ -215,6 +215,10 @@ export function AvaliacaoView({ userId }: Props) {
      usá-la. Lista vazia faz a tela mostrar vazio, que é visível. */
   const [opAvaliacao, setOpAvaliacao] = useState<string[]>([]);
   const [opFormato, setOpFormato]     = useState<string[]>([]);
+  /* O que cada opção quer dizer, de `criativo_campos_opcoes.significa`. Vale
+     para marcação e avaliação juntas: os valores não colidem entre os dois
+     campos, e um mapa só evita escolher qual consultar em cada `title`. */
+  const [significado, setSignificado] = useState<Map<string, string>>(new Map());
   const [projetos, setProjetos]       = useState<{ id: string; nome: string }[]>([]);
   const [perfis, setPerfis]           = useState<Perfil[]>([]);
   const [funis, setFunis]             = useState<Funil[]>([]);
@@ -326,9 +330,15 @@ export function AvaliacaoView({ userId }: Props) {
   }, [dateRange]);
 
   const loadOpcoes = useCallback(async () => {
+    /* `significa` vem junto: o sentido de cada palavra mora na tabela do
+       vocabulário desde 20261010b, e não num comentário de componente.
+       "Pausado" e "Encerrado" descrevem o mesmo fato — o anúncio não está no
+       ar — e pedem ações opostas; sem a definição à mão, cada pessoa usa a que
+       supõe, e foi assim que 2.119 cards foram para "Encerrado" contra 39 em
+       "Pausado". */
     const [{ data: opS }, { data: opA }, { data: opF }, pj, { data: pf }, fs] = await Promise.all([
-      supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'status_veiculacao').order('ordem'),
-      supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'avaliacao').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('valor,significa').eq('campo', 'status_veiculacao').order('ordem'),
+      supabase.from('criativo_campos_opcoes').select('valor,significa').eq('campo', 'avaliacao').order('ordem'),
       supabase.from('criativo_campos_opcoes').select('valor').eq('campo', 'formato').order('ordem'),
       fetchProjetos(),
       supabase.from('perfis')
@@ -339,10 +349,31 @@ export function AvaliacaoView({ userId }: Props) {
     if (opS?.length) setOpStatus(opS.map(d => d.valor as string));
     if (opA?.length) setOpAvaliacao(opA.map(d => d.valor as string));
     if (opF?.length) setOpFormato(opF.map(d => d.valor as string));
+    setSignificado(new Map([
+      ...(opS ?? []).map(d => [d.valor as string, (d.significa as string | null) ?? '']),
+      ...(opA ?? []).map(d => [d.valor as string, (d.significa as string | null) ?? '']),
+    ] as [string, string][]));
     setProjetos(pj);
     setPerfis((pf ?? []) as Perfil[]);
     setFunis(fs as Funil[]);
   }, []);
+
+  /*
+    Os níveis que APROVAM, lidos da régua vigente.
+
+    Servem para uma coisa só nesta tela, e ela é a definição que ela deu em
+    09/10/2026: "Pausado é quando o anúncio está com boa performance mas não
+    está rodando, e devemos voltar a rodar". Saber se o card vai bem é o que
+    separa um parado que é PENDÊNCIA de um parado que ACABOU.
+
+    Vem da tabela e não de `['Validado','Escalado']` escrito aqui: um nível novo
+    no crivo amanhã já entra nesta regra sozinho.
+  */
+  const { niveis: niveisDoCrivo } = useCrivo();
+  const niveisQueAprovam = useMemo(
+    () => new Set(niveisDoCrivo.map(n => n.nivel)),
+    [niveisDoCrivo],
+  );
 
   const projetosDaEmpresa = useProjetosDaEmpresa();
 
@@ -908,8 +939,12 @@ export function AvaliacaoView({ userId }: Props) {
               E o valor só vira botão se ESTIVER nas opções vindas de
               `criativo_campos_opcoes`: renomear o nível no banco faz o botão
               desaparecer, em vez de gravar algo que não é opção.
+
+              `vaiBem` é o que faz um criativo aprovado que parou ser oferecido
+              como "Pausado" (pendência de retomar) em vez de "Encerrado".
             */
-            const sugerida = marcacaoQueOMetaSugere(c.estado_ads);
+            const vaiBem = !!c.avaliacao && niveisQueAprovam.has(c.avaliacao);
+            const sugerida = marcacaoQueOMetaSugere(c.estado_ads, vaiBem);
             const podeCorrigirMarcacao = !!sugerida
               && sugerida !== c.status_veiculacao
               && opStatus.includes(sugerida)
@@ -962,6 +997,10 @@ export function AvaliacaoView({ userId }: Props) {
                     value={c.status_veiculacao ?? ''}
                     onChange={e => handleChange(c, 'status_veiculacao', e.target.value || null)}
                     disabled={saving === c.id + 'status_veiculacao'}
+                    /* A definição vem do banco. Sem ela, "Pausado" e
+                       "Encerrado" parecem sinônimos — descrevem o mesmo fato e
+                       pedem ações opostas. */
+                    title={c.status_veiculacao ? significado.get(c.status_veiculacao) : undefined}
                     className={cn(
                       'w-full text-xs rounded-md border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring transition-colors appearance-none cursor-pointer',
                       c.status_veiculacao ? STATUS_COR[c.status_veiculacao] ?? 'border-border' : 'border-border text-muted-foreground',
@@ -1019,7 +1058,10 @@ export function AvaliacaoView({ userId }: Props) {
                       type="button"
                       onClick={() => void handleChange(c, 'status_veiculacao', sugerida)}
                       disabled={saving === c.id + 'status_veiculacao'}
-                      title="A Meta discorda da sua marcação. Clique para acompanhar o fato."
+                      /* A dica muda com o que está sendo oferecido: "Pausado"
+                         não é "o Meta discorda", é "este aqui ia bem e parou —
+                         é para voltar". A definição sai da tabela. */
+                      title={significado.get(sugerida!) ?? 'A Meta discorda da sua marcação.'}
                       className="mt-0.5 rounded border border-warning/40 px-1 text-[10px] text-warning transition-colors hover:bg-warning/10"
                     >
                       marcar {sugerida}
@@ -1032,6 +1074,7 @@ export function AvaliacaoView({ userId }: Props) {
                     value={c.avaliacao ?? ''}
                     onChange={e => handleChange(c, 'avaliacao', e.target.value || null)}
                     disabled={saving === c.id + 'avaliacao'}
+                    title={c.avaliacao ? significado.get(c.avaliacao) : undefined}
                     className={cn(
                       'w-full text-xs rounded-md border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring transition-colors appearance-none cursor-pointer',
                       c.avaliacao ? corDaAvaliacao(c.avaliacao) : 'border-border text-muted-foreground',
