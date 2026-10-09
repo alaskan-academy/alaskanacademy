@@ -70,6 +70,10 @@ const ALERTA = ultimaDefinicao(
   /create\s+or\s+replace\s+function\s+public\.fn_alerta_cadastro_a_arrumar/i,
   /comment\s+on\s+function/i);
 
+const DUP = ultimaDefinicao(
+  /create\s+or\s+replace\s+view\s+public\.vw_producoes_duplicadas/i,
+  /comment\s+on\s+view/i);
+
 function fontes(dir: string, acc: string[] = []): string[] {
   for (const nome of readdirSync(dir)) {
     const caminho = join(dir, nome);
@@ -193,11 +197,7 @@ describe('o alerta de cadastro conta o que dá para arrumar', () => {
 
       Medido: 69 grupos / 6 ativos pela chave antiga; 58 / 1 com tipo_teste.
     */
-    const dup = ultimaDefinicao(
-      /create\s+or\s+replace\s+view\s+public\.vw_producoes_duplicadas/i,
-      /comment\s+on\s+view/i);
-
-    expect(dup, 'tipo_teste saiu da chave de agrupamento das duplicatas')
+    expect(DUP, 'tipo_teste saiu da chave de agrupamento das duplicatas')
       .toMatch(/group\s+by[\s\S]{0,120}?tipo_teste/i);
 
     /*
@@ -206,13 +206,83 @@ describe('o alerta de cadastro conta o que dá para arrumar', () => {
       que alguém corrigiu a data num dos dois deixaria de ser visto.
       Detector que nunca acha nada não é detector.
     */
-    expect(dup, 'data_inicio entrou na chave e isso zera o detector')
+    expect(DUP, 'data_inicio entrou na chave e isso zera o detector')
       .not.toMatch(/group\s+by[\s\S]{0,120}?data_inicio/i);
 
     /* Em vez de decidir pela data, a view MOSTRA a distância: mesma data é
        cadastro em dobro, meses de distância é reteste. Quem olha julga. */
-    expect(dup, 'a view não expõe a distância entre as datas de início')
+    expect(DUP, 'a view não expõe a distância entre as datas de início')
       .toMatch(/dias_entre_as_datas/);
+  });
+
+  it('duplicata é ENQUANTO sobram dois cards vivos — arquivar resolve', () => {
+    /*
+      O último item do alerta era `AD 084 H03 V01` em "Guia dos Comportamentos",
+      e nos dados não havia nada para arrumar: o histórico do segundo card
+      mostra `postado -> arquivado` em 09/09/2026, feito por ela. Sobrara UM
+      card vivo. O detector seguia acusando porque agrupava sem olhar a fase —
+      **ele não reconhecia a própria arrumação que pedia.**
+
+      Medido em 10/10/2026: 58 grupos, 16 com dois vivos, e dos 42 que saem
+      **42 saem por arquivamento** — nenhum por outro motivo. Era uma pessoa
+      resolvendo do mesmo jeito 42 vezes sem o painel contar nenhuma.
+
+      Alerta que não responde à ação que cobra só tem duas saídas: apagar a
+      linha (destrutivo, jogaria fora o histórico) ou conviver com item que
+      nunca sai. É a mesma forma de `parado_recente` (20260924a) e do filtro de
+      projeto encerrado (20261010d).
+    */
+    expect(DUP, 'a view voltou a contar card arquivado como duplicata')
+      .toMatch(/having[\s\S]{0,200}?arquivado/i);
+
+    /*
+      No HAVING, não no `where` do CTE de baixo. Filtrar lá embaixo descartaria
+      o card arquivado antes de contar, e aí `arquivados` viveria em zero e
+      `natureza` deixaria de ver o irmão retirado — o fato se perderia em vez de
+      virar coluna.
+    */
+    expect(DUP, 'o card arquivado foi descartado antes de contar, e não só excluído da chave')
+      .not.toMatch(/where\s+p\.tipo\s*=\s*'criativo'::text\s+and[\s\S]{0,80}?arquivado/i);
+
+    /* O fato não se perde: ele ganha coluna. */
+    for (const coluna of ['vivos', 'arquivados']) {
+      expect(DUP, `a view deixou de expor \`${coluna}\``)
+        .toMatch(new RegExp(`as\\s+${coluna}\\b`, 'i'));
+    }
+
+    /*
+      E `excedentes` conta VIVOS, não cards. Com `cards - 1`, um grupo de 3
+      cards com 1 arquivado diria "2 para reconciliar" quando há 1 — e é
+      exatamente o que a definição anterior fazia.
+    */
+    expect(DUP, 'excedentes voltou a ser cards - 1, e passa a contar card já arquivado')
+      .toMatch(/vivos\s*-\s*1\s+as\s+excedentes/i);
+
+    /*
+      `is distinct from`, e não `<>`: fase nula tem de contar como VIVA. Com
+      `<>` o nulo viraria nulo, não contaria como vivo, e o grupo sumiria do
+      detector — ele ficaria cego justamente na linha estranha, que é a que
+      mais interessa olhar.
+
+      A asserção é NEGATIVA de propósito. A positiva sozinha é enganável: a
+      expressão aparece em dois lugares (o `vivos` do SELECT e o HAVING), e
+      trocar só um deles por `<>` deixaria a positiva passando com os dois
+      discordando entre si. Proibir a grafia frágil cobre os dois e qualquer
+      terceiro que apareça depois.
+    */
+    expect(DUP, 'fase nula deixou de contar como viva — o detector fica cego na linha estranha')
+      .toMatch(/fase\s+is\s+distinct\s+from\s+'arquivado'/i);
+    expect(DUP, 'apareceu um `fase <> arquivado`: com nulo ele não conta como vivo e o grupo desaparece')
+      .not.toMatch(/fase\s*(?:<>|!=)\s*'arquivado'/i);
+
+    /*
+      E a catraca do CLAUDE.md: `create or replace view` REDEFINE as
+      reloptions, então omitir o invoker APAGA o que estava lá. Foi assim que
+      `vw_alertas` e `vw_rev_tendencia` voltaram a ser legíveis por `anon` em
+      04/10.
+    */
+    expect(DUP, 'o replace da view saiu sem security_invoker na própria instrução')
+      .toMatch(/security_invoker\s*=\s*on/i);
   });
 
   it('o que fica de fora é dito, não escondido', () => {
