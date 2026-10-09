@@ -290,8 +290,12 @@ describe('aula e VSL não viram anúncio', () => {
          carimbada na hora — antes mesmo de a régua horária passar. */
       const { nome, sql } = ultimaQueDefine(
         /create\s+or\s+replace\s+function\s+public\.trg_avaliar_card_novo/i);
+      /* `is distinct from` ou `<>`: as duas formas conferem o tipo, mas só a
+         primeira trata `tipo` nulo. Com `<>`, NULL na comparação não é
+         verdadeiro, o `if` não dispara e o card sai carimbado — o mesmo
+         descuido deste arquivo, pela porta do NULL. */
       expect(sql, `${nome} — o gatilho do card novo não confere o tipo`)
-        .toMatch(/new\.tipo\s*<>\s*'criativo'/i);
+        .toMatch(/new\.tipo\s*(?:is\s+distinct\s+from|<>)\s*'criativo'/i);
     });
 
     it('a régua não herda o filtro de fn_criativos_metricas, porque ela não tem', () => {

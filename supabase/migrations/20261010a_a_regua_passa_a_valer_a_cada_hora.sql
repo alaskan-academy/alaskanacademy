@@ -64,7 +64,14 @@ begin
   if new.avaliacao_origem is not null then
     return new;
   end if;
-  if new.tipo <> 'criativo' then
+  /* `is distinct from`, e não `<>`.
+
+     Com `<>`, um card de `tipo` nulo daria NULL na comparação — que não é
+     verdadeiro —, o `if` não dispararia e o gatilho carimbaria "sem verba" num
+     card que não é criativo. É o mesmo descuido que o teste
+     `aula-e-vsl-nao-viram-anuncio` existe para impedir, só que pela porta do
+     NULL em vez da porta do tipo errado. */
+  if new.tipo is distinct from 'criativo' then
     return new;
   end if;
 
