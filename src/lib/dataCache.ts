@@ -32,6 +32,33 @@ export const fetchPerfis = () =>
   });
 
 /**
+ * As opções de um campo de criativo, do banco e de um lugar só.
+ *
+ * ── Por que isto precisa existir ───────────────────────────────────────────
+ *
+ * `criativo_campos_opcoes` é a fonte do vocabulário desde sempre, mas CINCO
+ * telas carregavam dela com um fallback literal de três valores
+ * — `['Sem dados', 'Validado', 'Não validado']` — em `AvaliacaoView`,
+ * `CriativoFormModal`, `CriativoDrawer`, `CalendarioView` e `PorProjetoView`.
+ *
+ * "Escalado" existe na tabela (ordem 3) e em 19 cards, e **não estava em
+ * nenhuma das cinco**. Enquanto o campo era só digitado, o preço era um selo
+ * sem cor. Agora que a régua ESCREVE o nível, um fallback incompleto some com
+ * a opção da lista justamente quando a máquina acabou de usá-la — terceira
+ * armadilha, cinco vezes.
+ *
+ * Sem fallback de propósito: lista vazia faz a tela mostrar estado vazio, que
+ * é visível. Uma lista errada não é.
+ */
+export const fetchOpcoesCampo = (campo: string) =>
+  cached(`opcoes:${campo}`, async () => {
+    const { data } = await supabase
+      .from('criativo_campos_opcoes')
+      .select('valor').eq('campo', campo).order('ordem');
+    return (data ?? []).map(d => d.valor as string);
+  });
+
+/**
  * TODOS os projetos, e não só os ativos.
  *
  * O `.eq('ativo', true)` devolvia 7 de 35 — e as telas que usam esta lista não

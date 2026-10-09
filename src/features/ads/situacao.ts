@@ -209,3 +209,57 @@ export interface EstadoDoObjeto {
 export function chaveEstado(nivel: string, objetoId: string) {
   return `${nivel}|${objetoId}`;
 }
+
+/**
+ * A marcação que o FATO da Meta sugere. Só sugere: aplicar é um clique dela.
+ *
+ * ── Por que isto não viola a regra de que a marcação é intenção ───────────
+ *
+ * `src/test/status-veiculacao-e-intencao.test.ts` proíbe DERIVAR a marcação do
+ * estado da Meta, e com razão — a divergência entre as duas é o alarme que
+ * achou 24 cards marcados "Encerrado" gastando R$ 5.691,62 em sete dias. Se a
+ * marcação passasse a copiar o Meta, as duas nunca mais discordariam e o alarme
+ * morreria.
+ *
+ * O que esta função faz é outra coisa: ela devolve um PALPITE para a tela
+ * oferecer num botão. Nada é gravado sem o clique, o valor continua sendo
+ * decisão dela, e a contradição continua sendo acusada enquanto ela não decidir.
+ *
+ * ── Por que ela mora AQUI, e não na tela ──────────────────────────────────
+ *
+ * Porque este arquivo não contém a string `status_veiculacao` em lugar nenhum, e
+ * o teste acima reprova qualquer linha que cite a marcação a menos de três
+ * linhas de um literal do vocabulário da Meta. Os literais do Meta ficam deste
+ * lado; a marcação fica do outro. A separação é a própria regra, escrita como
+ * estrutura de arquivo em vez de comentário.
+ *
+ * ── O mapa ────────────────────────────────────────────────────────────────
+ *
+ * `ALGUEM_DESLIGOU` (em `AvaliacaoView`) já lista os estados que contradizem
+ * quem marcou "Rodando". Aqui a tradução é a inversa: dado o fato, qual
+ * marcação ele sugere.
+ *
+ * Fora do mapa de propósito: `ativo_sem_entregar`, `ativo_nunca_entregou` e
+ * `em_analise`. Nesses três o anúncio ESTÁ ligado — quem marcou "Rodando" não
+ * errou, a entrega é que não saiu. Sugerir "Encerrado" ali mandaria ela
+ * desmarcar o que está certo. `sem_dado` também fica fora: a API parou de
+ * confirmar o objeto, e isso não é notícia sobre a veiculação.
+ *
+ * O valor devolvido é texto, e quem chama tem de conferir se ele está nas
+ * opções vindas de `criativo_campos_opcoes` antes de oferecer o botão — se
+ * alguém renomear o nível no banco, o botão deve DESAPARECER em vez de gravar
+ * um valor que não é opção. Terceira armadilha.
+ */
+const MARCACAO_QUE_O_FATO_SUGERE: Record<string, string> = {
+  rodando: 'Rodando',
+  parado: 'Encerrado',
+  parado_recente: 'Encerrado',
+  barrado_pelo_pai: 'Encerrado',
+  sem_anuncio: 'Encerrado',
+  bloqueado: 'Bloqueado',
+};
+
+export function marcacaoQueOMetaSugere(estado: string | null | undefined): string | null {
+  if (!estado) return null;
+  return MARCACAO_QUE_O_FATO_SUGERE[estado] ?? null;
+}

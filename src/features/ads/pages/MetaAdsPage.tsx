@@ -302,8 +302,19 @@ function AvisoAdMorrendo({ ads, onAbrirCard }: {
         <span className="text-sm font-medium text-warning">
           {ads.length === 1 ? '1 anúncio deixou' : `${ads.length} anúncios deixaram`} de se pagar
         </span>
+        {/* O número do empate saiu daqui.
+
+            Ele era a TERCEIRA cópia do mesmo valor — junto da constante da tela
+            de avaliação e do `roas_7 < 1.6` da view — e a única que nenhum teste
+            vigiava, porque estava em prosa. Em 09/10/2026 o empate caiu de 1,6
+            para 1,56 (o Simples foi remedido de 9% para 6,9359%), e esta frase
+            teria continuado dizendo 1,6 para sempre.
+
+            Agora quem define o corte é `vw_crivo_vigente`, lido pela própria
+            `vw_ad_morrendo` que alimenta esta lista. A frase descreve a regra
+            sem repetir o número: um valor a menos para envelhecer. */}
         <span className="text-xs text-muted-foreground">
-          {formatCurrency(total)} nos últimos 7 dias · ainda no ar, e abaixo do empate de 1,6
+          {formatCurrency(total)} nos últimos 7 dias · ainda no ar, e abaixo do empate
         </span>
       </div>
 

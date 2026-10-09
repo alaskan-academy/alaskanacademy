@@ -243,4 +243,71 @@ describe('aula e VSL não viram anúncio', () => {
       expect(respostaDoAnuncio(null, 0, VELHO)).toBe('nao_se_aplica');
     });
   });
+
+  /**
+   * A régua de avaliação automática (09/10/2026) é a terceira coisa que precisa
+   * saber que VSL não é anúncio — e é a primeira que ESCREVE.
+   *
+   * O risco é concreto e maior que os anteriores: `fn_criativos_metricas(p_ini,
+   * p_fim)` **não filtra `tipo` nem `fase`** — a assinatura é só o par de datas.
+   * Uma régua que leia dela sem filtrar por conta própria pega as **68 VSLs e a
+   * 1 aula** em `fase='postado'`, não encontra verba nenhuma (porque elas não
+   * gastam mídia, por construção do vínculo) e grava "sem verba" em todas.
+   *
+   * Isso não seria um número errado numa tela: seria a máquina **apagando o
+   * julgamento humano** que a decisão de 21/09/2026 preservou de propósito —
+   * "VSL continua sendo avaliada, só não entra na taxa de anúncio".
+   */
+  describe('a régua de avaliação automática não opina sobre VSL nem aula', () => {
+    /** A última definição de um objeto, sem comentários. */
+    function ultimaQueDefine(re: RegExp): { nome: string; sql: string } {
+      let achado: { nome: string; sql: string } | null = null;
+      for (const nome of readdirSync(MIGRACOES).filter(n => n.endsWith('.sql')).sort()) {
+        const bruto = readFileSync(join(MIGRACOES, nome), 'utf8');
+        if (re.test(bruto)) {
+          achado = {
+            nome,
+            sql: bruto.replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' '),
+          };
+        }
+      }
+      if (!achado) throw new Error(`nenhuma migração casa ${re} — o teste ficou cego`);
+      return achado;
+    }
+
+    it('a view da régua filtra tipo criativo e fase postado', () => {
+      const { nome, sql } = ultimaQueDefine(
+        /create\s+or\s+replace\s+view\s+public\.vw_criativo_avaliacao_sugerida/i);
+      expect(sql, `${nome} — a régua não restringe ao tipo criativo`)
+        .toMatch(/p\.tipo\s*=\s*'criativo'/i);
+      expect(sql, `${nome} — a régua não restringe à fase postado`)
+        .toMatch(/p\.fase\s*=\s*'postado'/i);
+    });
+
+    it('o gatilho do card novo também para na porta da VSL', () => {
+      /* O gatilho roda `before update of fase` em `producoes` e grava sem olhar
+         métrica nenhuma. Sem o filtro, uma VSL arrastada para "postado" sai
+         carimbada na hora — antes mesmo de a régua horária passar. */
+      const { nome, sql } = ultimaQueDefine(
+        /create\s+or\s+replace\s+function\s+public\.trg_avaliar_card_novo/i);
+      expect(sql, `${nome} — o gatilho do card novo não confere o tipo`)
+        .toMatch(/new\.tipo\s*<>\s*'criativo'/i);
+    });
+
+    it('a régua não herda o filtro de fn_criativos_metricas, porque ela não tem', () => {
+      /*
+        A razão de os dois casos acima existirem, provada em vez de afirmada: a
+        função de onde a régua lê os números não filtra nada. Se um dia ela
+        passar a filtrar, estes testes continuam válidos (defesa em profundidade)
+        — mas o comentário acima deixaria de descrever a realidade, e é isso que
+        este caso vigia.
+      */
+      const { sql } = ultimaQueDefine(
+        /create\s+or\s+replace\s+function\s+public\.fn_criativos_metricas/i);
+      const assinatura = sql.slice(
+        sql.search(/create\s+or\s+replace\s+function\s+public\.fn_criativos_metricas/i), 400);
+      expect(assinatura, 'fn_criativos_metricas passou a receber tipo ou fase — revisar a prosa dos casos acima')
+        .not.toMatch(/p_tipo|p_fase/i);
+    });
+  });
 });

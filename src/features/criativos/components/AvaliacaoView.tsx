@@ -1,7 +1,8 @@
 import { todasAsLinhas } from '@/lib/supabase';
 import { paraYmd } from '@/lib/datas';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Loader2, Search, CalendarIcon, GitBranch, Ruler, ChevronDown } from 'lucide-react';
+import { Loader2, Search, CalendarIcon, GitBranch, Check } from 'lucide-react';
+import { formatCurrency, formatNumber } from '@/lib/formatters';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { DateRange } from 'react-day-picker';
@@ -16,7 +17,13 @@ import { useToast } from '@/hooks/use-toast';
 import { MultiFilter } from '@/features/producao/components/MultiFilter';
 import { CriativoDrawer } from '@/features/producao/components/CriativoDrawer';
 import { useMetricasDoAd, TiraDeMetricas, LegendaFontes } from '@/features/criativos/metricasDoAd';
-import { situacaoDe, rodaComoAnuncio } from '@/features/ads/situacao';
+import { situacaoDe, rodaComoAnuncio, marcacaoQueOMetaSugere } from '@/features/ads/situacao';
+/* A régua saiu desta tela e foi para o banco (migração 20261009a). O que sobra
+   aqui é o desenho; os números e a prosa vêm de `vw_crivo_vigente`. */
+import { TabelaDoCrivo } from '@/features/criativos/crivo';
+import {
+  aRevisar, corDaAvaliacao, origemDe, reguaDiscorda, type Sugestao,
+} from '@/features/criativos/avaliacao';
 import { PedidoVariacaoModal } from '@/features/producao/components/PedidoVariacaoModal';
 import type { Perfil, Funil } from '@/features/producao/components/types';
 
@@ -66,6 +73,9 @@ interface CriativoPostado {
   formato: string | null;
   status_veiculacao: string | null;
   avaliacao: string | null;
+  /* Quem pôs o valor em `avaliacao`: nulo (a régua ainda não olhou), 'humano',
+     'automatico' ou 'fora_do_escopo'. Ver `@/features/criativos/avaliacao`. */
+  avaliacao_origem: string | null;
   responsavel_id: string | null;
   projeto_id: string | null;
   responsavel: { id: string; nome: string } | null;
@@ -87,13 +97,29 @@ interface Props {
   userId: string;
 }
 
-function isPendente(c: CriativoPostado): boolean {
-  const semAvaliacao = !c.avaliacao || c.avaliacao === 'Sem dados';
-  // Rodando sem avaliação → precisa ser avaliado
-  const rodandoSemDados = c.status_veiculacao === 'Rodando' && semAvaliacao;
-  // Sem status E sem avaliação → completamente em branco
-  const completamenteVazio = !c.status_veiculacao && !c.avaliacao;
-  return rodandoSemDados || completamenteVazio;
+/**
+ * Este card espera o olhar dela?
+ *
+ * ── O que isto substituiu, e por que precisava sair ───────────────────────
+ *
+ * Era `isPendente`: `!avaliacao || avaliacao === 'Sem dados'`, mais a exigência
+ * de a marcação ser 'Rodando' ou vazia. Dois defeitos, e o segundo só apareceu
+ * quando a régua passou a escrever:
+ *
+ * 1. Ele ADIVINHAVA pendência a partir do valor. "Sem dados" é veredito
+ *    legítimo — criativo que não gastou um ticket não tem o que ser julgado —, e
+ *    contá-lo como pendência faria a pílula crescer justamente quando a
+ *    automação estivesse funcionando. Dos 3.004 criativos postados, 2.669 caem
+ *    em "Sem dados" pela régua: a fila teria nascido com dois mil e seiscentos.
+ * 2. Ele misturava marcação com avaliação. `status_veiculacao` é a intenção dela
+ *    sobre a veiculação e não diz nada sobre a avaliação ter sido revisada.
+ *
+ * Agora a pergunta é de PROCEDÊNCIA, que é a única coisa que responde "alguém
+ * olhou isto?" sem adivinhar — e é filtrável no servidor, o que importa numa
+ * lista de três mil linhas.
+ */
+function precisaRevisar(c: CriativoPostado): boolean {
+  return aRevisar(c.avaliacao_origem);
 }
 
 const STATUS_COR: Record<string, string> = {
@@ -104,114 +130,6 @@ const STATUS_COR: Record<string, string> = {
   'Arquivado': 'bg-muted/40 text-muted-foreground/60 border-border/50',
 };
 
-/**
- * O CRIVO: os números que separam validado de escalado.
- *
- * Fica na tela porque é aqui que a decisão é tomada, e número que mora numa
- * conversa não sobrevive à terceira avaliação — some, e cada pessoa passa a
- * usar a régua que lembra.
- *
- * MEDIDO, não arbitrado. 782 ADs e R$ 242.143 de mídia entre 01/06 e 04/09 de
- * 2026, com receita e vendas da PAYT. Nunca do Meta: a janela de atribuição de
- * 7 dias credita venda de backend ao anúncio de topo e infla o ROAS de quem
- * está no começo do funil.
- *
- * DE ONDE SAI CADA NÚMERO
- *
- * 1,6 é o empate DE VERDADE: taxa da Payt 6,1% + reembolso 1,7% + Simples 9%
- * + 14% de imposto sobre a mídia + os R$ 25.000/mês de custo fixo. Sem o custo
- * fixo daria 1,37, e foi por isso que a primeira versão desta conta estava
- * errada — validava no empate, e aí escalar levava para o vermelho.
- *
- * 2,5 é a única régua que sobrevive à escala. Medido: quando o AD ganha verba,
- * o ROAS cai para ~63% do que era no teste (80% dos ADs caem). Os que passaram
- * em 2,5 renderam 1,64 depois — acima do empate. Os de 2,0 renderam 1,60, os
- * de 1,6 renderam 1,49: os dois abaixo. A 3,0 piora (1,45), que é ruído de
- * amostra pequena, não sinal.
- *
- * 6 e 10 vendas são sobre CONFIANÇA, não sobre lucro. Com 4 vendas a decisão
- * acerta 71% — quase cara-ou-coroa. Com 6, acerta 86%. E a dispersão do ROAS
- * só fecha em 10 vendas: o desvio cai de 1,54 para 0,32. ROAS 3,0 com 3 vendas
- * é sorte, e escalar sorte custa caro.
- *
- * QUANDO REFAZER: se a taxa da Payt, o Simples ou o custo fixo mudarem, o 1,6
- * muda junto. A data está na tela de propósito — régua sem data envelhece em
- * silêncio, que é a terceira armadilha do CLAUDE.md.
- */
-const CRIVO = {
-  medidoEm: '06/09/2026',
-  empate: '1,6',
-  linhas: [
-    { nivel: 'Validado', vendas: 6,  roas: '1,6', cor: 'text-emerald-400',
-      significa: 'se paga — mantém no ar e pede variação' },
-    { nivel: 'Escalado', vendas: 10, roas: '2,5', cor: 'text-primary',
-      significa: 'aguenta verba — pode aumentar o orçamento' },
-  ],
-};
-
-function TabelaDoCrivo() {
-  const [aberto, setAberto] = useState(false);
-  return (
-    <div className="bg-card border border-border rounded-lg overflow-hidden">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-        <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
-          <Ruler className="h-3.5 w-3.5" />
-          Crivo
-        </span>
-
-        {CRIVO.linhas.map(l => (
-          <span key={l.nivel} className="flex items-baseline gap-2 text-xs">
-            <span className={cn('font-medium', l.cor)}>{l.nivel}</span>
-            {/* Os dois números juntos e em tabular: é assim que a pessoa
-                compara com a linha que está avaliando, sem procurar. */}
-            <span className="tabular-nums text-foreground">
-              {l.vendas} vendas · ROAS {l.roas}
-            </span>
-            <span className="text-muted-foreground">{l.significa}</span>
-          </span>
-        ))}
-
-        <button
-          onClick={() => setAberto(v => !v)}
-          className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          de onde vem
-          <ChevronDown className={cn('h-3 w-3 transition-transform', aberto && 'rotate-180')} />
-        </button>
-      </div>
-
-      {aberto && (
-        <div className="border-t border-border px-4 py-3 space-y-2 text-[11px] leading-relaxed text-muted-foreground">
-          <p>
-            <span className="text-foreground">Vendas e ROAS da Payt</span>, nunca do Meta —
-            a janela de 7 dias do Meta credita venda de backend ao anúncio de topo.
-          </p>
-          <p>
-            <span className="text-foreground">ROAS {CRIVO.empate} é o empate real:</span>{' '}
-            taxa da Payt 6,1% + reembolso 1,7% + Simples 9% + 14% de imposto sobre a mídia
-            + R$ 25.000/mês de custo fixo. Sem o custo fixo daria 1,37, e aí validar seria
-            validar no zero.
-          </p>
-          <p>
-            <span className="text-foreground">2,5 para escalar</span> porque escalar derruba
-            o ROAS para ~63% do que era no teste — 80% dos ADs caem. Medido: quem passou em
-            2,5 rendeu 1,64 depois; quem passou em 2,0 rendeu 1,60 e em 1,6 rendeu 1,49,
-            os dois abaixo do empate.
-          </p>
-          <p>
-            <span className="text-foreground">6 e 10 vendas são sobre confiança:</span>{' '}
-            com 4 vendas a decisão acerta 71%, com 6 acerta 86%, e a dispersão do ROAS só
-            fecha em 10 (desvio cai de 1,54 para 0,32). ROAS alto com 3 vendas é sorte.
-          </p>
-          <p className="pt-1 text-muted-foreground/60">
-            Medido em {CRIVO.medidoEm} sobre 782 ADs e R$ 242.143 de mídia (01/06 a 04/09).
-            Se a taxa da Payt, o Simples ou o custo fixo mudarem, o {CRIVO.empate} muda junto.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /**
  * O que o Meta diz dos anúncios do card, e como isso aparece.
@@ -273,11 +191,6 @@ function contradiz(marcado: string | null, estado: string | null): boolean {
   return false;
 }
 
-const AVAL_COR: Record<string, string> = {
-  'Validado':     'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  'Não validado': 'bg-red-500/10 text-red-400 border-red-500/20',
-  'Sem dados':    'bg-muted/60 text-muted-foreground border-border',
-};
 
 export function AvaliacaoView({ userId }: Props) {
   /*
@@ -295,7 +208,12 @@ export function AvaliacaoView({ userId }: Props) {
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState<string | null>(null);
   const [opStatus, setOpStatus]       = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
-  const [opAvaliacao, setOpAvaliacao] = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
+  /* Sem fallback literal: a lista antiga tinha três valores e não tinha
+     "Escalado", que existe na tabela e em 19 cards. Enquanto o campo era só
+     digitado o preço era um selo sem cor; agora a régua ESCREVE o nível, e um
+     fallback incompleto some com a opção justo quando a máquina acabou de
+     usá-la. Lista vazia faz a tela mostrar vazio, que é visível. */
+  const [opAvaliacao, setOpAvaliacao] = useState<string[]>([]);
   const [opFormato, setOpFormato]     = useState<string[]>([]);
   const [projetos, setProjetos]       = useState<{ id: string; nome: string }[]>([]);
   const [perfis, setPerfis]           = useState<Perfil[]>([]);
@@ -327,7 +245,18 @@ export function AvaliacaoView({ userId }: Props) {
   const [podePedir, setPodePedir]       = useState(false);
   const [comPedido, setComPedido]       = useState<Set<string>>(new Set());
   const [pedindo, setPedindo]           = useState<{ id: string; nome: string; tipo: string } | null>(null);
-  const [somentePendentes, setSomentePendentes] = useState(false);
+  const [somenteARevisar, setSomenteARevisar] = useState(false);
+  /* O que a régua pensa de cada card, por `producao_id`. Separado de
+     `criativos` de propósito: a sugestão é opinião da máquina e o valor
+     gravado é o que vale — juntar os dois num objeto só faria alguém mostrar
+     um no lugar do outro. */
+  const [sugestoes, setSugestoes] = useState<Map<string, Sugestao>>(new Map());
+  /* Os cards que ELA aprovou e cujos anúncios estão morrendo nos últimos 7
+     dias. Vem de `vw_criativo_virou_contra`, que não escreve nada. */
+  const [virouContra, setVirouContra] = useState<
+    { producao_id: string; nome: string; avaliacao: string; gasto_7d: number;
+      pior_roas: number; melhor_roas_antes: number }[]
+  >([]);
   /* Só os cards em que a marcação dela contradiz a Meta. São 53 hoje, e o
      lado caro são os 24 marcados "Encerrado" que gastaram R$ 5.691,62 em
      sete dias. Sem este filtro eles ficam espalhados entre 2.837 linhas. */
@@ -350,6 +279,21 @@ export function AvaliacaoView({ userId }: Props) {
   }, []);
 
   useEffect(() => { void carregarPedidos(); }, [carregarPedidos]);
+
+  /* O aviso dos cards que ela validou e que viraram contra. Consulta própria e
+     sem filtro de período: a pergunta é "o que está sangrando AGORA", e um
+     filtro de mês esconderia justamente o card que começou a sangrar ontem. */
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const { data } = await supabase
+        .from('vw_criativo_virou_contra')
+        .select('producao_id,nome,avaliacao,gasto_7d,pior_roas,melhor_roas_antes')
+        .order('gasto_7d', { ascending: false });
+      if (vivo) setVirouContra((data ?? []) as typeof virouContra);
+    })();
+    return () => { vivo = false; };
+  }, []);
 
   // `toISOString()` em toda linha aqui — e a última dupla é a que doía: as
   // datas vêm do calendário, onde a escolhida pode carregar a hora atual. Às
@@ -409,7 +353,7 @@ export function AvaliacaoView({ userId }: Props) {
     const mkQuery = () => {
       let q = supabase
         .from('producoes')
-        .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,responsavel_id,projeto_id,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
+        .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,avaliacao_origem,responsavel_id,projeto_id,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
         .order('nome');
       q = q.eq('fase', 'postado');
       if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
@@ -460,6 +404,25 @@ export function AvaliacaoView({ userId }: Props) {
       }
     }
 
+    /* O veredito da régua, nos mesmos blocos e pelo mesmo motivo.
+
+       Ele NÃO é o valor da avaliação: é o que a régua pensa, que pode divergir
+       do que está gravado. Para card 'automatico' os dois coincidem; para card
+       'humano' a divergência é exatamente o que a tela precisa mostrar, sem
+       mexer em nada. */
+    const sugResults = await Promise.all(
+      Array.from({ length: Math.ceil(ids.length / CHUNK) }, (_, i) =>
+        supabase.from('avaliacao_sugerida')
+          .select('producao_id,sugestao,motivo,no_escopo,decidido_em')
+          .in('producao_id', ids.slice(i * CHUNK, (i + 1) * CHUNK)),
+      ),
+    );
+    const sugMap = new Map<string, Sugestao>();
+    for (const r of sugResults) {
+      for (const s of (r.data ?? []) as Sugestao[]) sugMap.set(s.producao_id, s);
+    }
+    setSugestoes(sugMap);
+
     const postMap: Record<string, string> = {};
     for (const h of hist) {
       if (!postMap[h.criativo_id]) postMap[h.criativo_id] = h.criado_em.slice(0, 10);
@@ -489,9 +452,16 @@ export function AvaliacaoView({ userId }: Props) {
   ) => {
     setSaving(c.id + campo);
     const valorAnterior = c[campo];
-    setCriativos(prev => prev.map(x => x.id === c.id ? { ...x, [campo]: valor } : x));
+    const origemAnterior = c.avaliacao_origem;
+    /* Mexer na avaliação é confirmá-la: o valor passa a ser dela, e a régua
+       para de poder sobrescrever. A marcação não carrega procedência porque
+       ela nunca foi derivada — sempre foi intenção. */
+    const vira = campo === 'avaliacao'
+      ? { avaliacao: valor, avaliacao_origem: 'humano' as const }
+      : { status_veiculacao: valor };
+    setCriativos(prev => prev.map(x => x.id === c.id ? { ...x, ...vira } : x));
     try {
-      const { error } = await supabase.from('producoes').update({ [campo]: valor }).eq('id', c.id);
+      const { error } = await supabase.from('producoes').update(vira).eq('id', c.id);
       if (error) throw error;
       await supabase.from('criativo_historico').insert({
         criativo_id:    c.id,
@@ -502,8 +472,47 @@ export function AvaliacaoView({ userId }: Props) {
         valor_novo:     valor ?? null,
       });
     } catch {
-      setCriativos(prev => prev.map(x => x.id === c.id ? { ...x, [campo]: valorAnterior } : x));
+      setCriativos(prev => prev.map(x => x.id === c.id
+        ? { ...x, [campo]: valorAnterior, avaliacao_origem: origemAnterior } : x));
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  /**
+   * "Está certo" — confirma a avaliação automática sem mudar o valor.
+   *
+   * Isto não é o mesmo que trocar o valor por ele mesmo: o que muda é a
+   * PROCEDÊNCIA, e é ela que tira o card da fila e impede a régua de reescrever
+   * na passada seguinte. Sem este botão, concordar com a máquina exigiria
+   * selecionar o mesmo valor no `select` — um gesto que não existe.
+   *
+   * O histórico registra `avaliacao_origem` como campo alterado, e não
+   * `avaliacao`: o valor não mudou, e inventar uma linha dizendo que mudou
+   * poluiria a prova de toque humano que `20261009b` usou para separar os 393
+   * julgamentos reais da carga.
+   */
+  const confirmar = async (c: CriativoPostado) => {
+    if (!c.avaliacao) return;
+    setSaving(c.id + 'avaliacao');
+    const origemAnterior = c.avaliacao_origem;
+    setCriativos(prev => prev.map(x => x.id === c.id ? { ...x, avaliacao_origem: 'humano' } : x));
+    try {
+      const { error } = await supabase.from('producoes')
+        .update({ avaliacao_origem: 'humano' }).eq('id', c.id);
+      if (error) throw error;
+      await supabase.from('criativo_historico').insert({
+        criativo_id:    c.id,
+        usuario_id:     userId,
+        tipo_alteracao: 'campo',
+        campo_alterado: 'avaliacao_origem',
+        valor_anterior: origemAnterior ?? null,
+        valor_novo:     'humano',
+      });
+    } catch {
+      setCriativos(prev => prev.map(x => x.id === c.id ? { ...x, avaliacao_origem: origemAnterior } : x));
+      toast({ title: 'Erro ao confirmar', variant: 'destructive' });
     } finally {
       setSaving(null);
     }
@@ -521,37 +530,53 @@ export function AvaliacaoView({ userId }: Props) {
       if (!c.data_ref) return false; // sem data de início nem de postagem: ocultar
       if (dateStart && c.data_ref < dateStart) return false;
       if (dateEnd   && c.data_ref > dateEnd)   return false;
-      if (somentePendentes && !isPendente(c)) return false;
+      if (somenteARevisar && !precisaRevisar(c)) return false;
       if (buscaLower && !c.nome.toLowerCase().includes(buscaLower)) return false;
       return true;
     });
-  }, [criativos, dateStart, dateEnd, somentePendentes, busca]);
+  }, [criativos, dateStart, dateEnd, somenteARevisar, busca]);
 
   const qtdContradicao = useMemo(
     () => baseCriativos.filter(c => contradiz(c.status_veiculacao, c.estado_ads)).length,
     [baseCriativos],
   );
 
-  const displayCriativos = useMemo(
-    () => somenteContradicao
+  const displayCriativos = useMemo(() => {
+    const lista = somenteContradicao
       ? baseCriativos.filter(c => contradiz(c.status_veiculacao, c.estado_ads))
-      : baseCriativos,
-    [baseCriativos, somenteContradicao],
-  );
+      : baseCriativos;
+
+    /* Na fila "a revisar", o DINHEIRO manda na ordem.
+
+       A ordem alfabética serve para procurar um AD pelo nome, que é o que a
+       lista completa faz. Mas revisar é outra tarefa: medido na base histórica,
+       os cards em que a régua se recusa a decidir carregam R$ 264 mil — 64% de
+       toda a verba — e em ordem de nome eles ficam espalhados entre três mil
+       linhas. Quem revisa de cima para baixo tem de encontrar primeiro o que
+       custa mais. */
+    if (!somenteARevisar) return lista;
+    return [...lista].sort((a, b) =>
+      (metricas.get(b.id)?.investimento ?? 0) - (metricas.get(a.id)?.investimento ?? 0));
+  }, [baseCriativos, somenteContradicao, somenteARevisar, metricas]);
 
   const total        = displayCriativos.length;
-  const pendentes    = displayCriativos.filter(isPendente).length;
+  const qtdARevisar  = displayCriativos.filter(precisaRevisar).length;
   const validados    = displayCriativos.filter(c => c.avaliacao === 'Validado').length;
+  const escalados    = displayCriativos.filter(c => c.avaliacao === 'Escalado').length;
   const naoValidados = displayCriativos.filter(c => c.avaliacao === 'Não validado').length;
+  /* Quantas vezes a régua discorda de um valor que ELA confirmou. Não é alarme
+     — inclui o sentido bom, em que ela reprovou e os números passaram a
+     aprovar —, e por isso vira chip e não bloco âmbar. */
+  const qtdDiscorda  = displayCriativos.filter(
+    c => reguaDiscorda(c.avaliacao, c.avaliacao_origem, sugestoes.get(c.id))).length;
 
   /*
     A TAXA mede anúncio; a LISTA mostra tudo que precisa ser avaliado.
 
     São duas coisas, e antes eram uma: `validados / total` usava como
-    denominador a fila inteira, que inclui os 66 VSLs e a 1 aula em fase
-    'postado'. E o crivo logo acima — a `TabelaDoCrivo`, "Validado = 6 vendas ·
-    ROAS 1,6" — é régua de mídia: ROAS é receita sobre verba, e 66 de 66 VSLs
-    têm zero de verba. Dezenove delas ainda assim entravam no numerador.
+    denominador a fila inteira, que inclui as VSLs e a aula em fase 'postado'.
+    E o crivo logo acima é régua de MÍDIA: ROAS é receita sobre verba, e VSL
+    não gasta verba. Dezenove delas ainda assim entravam no numerador.
 
     A fila continua com todas: VSL segue sendo avaliada, por decisão dela em
     21/09/2026 — o que muda é que o julgamento da VSL não se mistura mais com a
@@ -673,18 +698,22 @@ export function AvaliacaoView({ userId }: Props) {
             </Popover>
           )}
 
+          {/* Era "Só pendentes", e pendência era adivinhada do valor. Agora é
+              procedência: quem a régua escreveu e ninguém confirmou, mais quem
+              ela ainda não olhou. Ordena por verba quando ligado. */}
           <button
-            onClick={() => setSomentePendentes(v => !v)}
+            onClick={() => setSomenteARevisar(v => !v)}
+            title="Avaliação que a régua escreveu e ninguém confirmou ainda. Ligado, a lista vem em ordem de verba."
             className={cn(
               'h-8 px-3 rounded-md border text-xs transition-colors',
-              somentePendentes
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+              somenteARevisar
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
                 : 'border-border text-muted-foreground hover:text-foreground hover:bg-muted/50',
             )}
           >
-            Só pendentes
+            Só a revisar{qtdARevisar > 0 && ` (${qtdARevisar})`}
           </button>
-          {/* Ao lado de "Só pendentes" porque é a mesma classe de pergunta:
+          {/* Ao lado de "Só a revisar" porque é a mesma classe de pergunta:
               "o que eu preciso olhar agora?". O contador vai no rótulo — um
               filtro que pode devolver zero deve dizer isso ANTES do clique. */}
           <button
@@ -715,6 +744,49 @@ export function AvaliacaoView({ userId }: Props) {
 
       <TabelaDoCrivo />
 
+      {/*
+        O aviso dos cards que ELA aprovou e que viraram contra.
+
+        Âmbar e não vermelho: pelo CLAUDE.md o vermelho é a marca e o que se
+        PERDE, e aqui nada se perdeu ainda — está escorrendo. E ele diz
+        explicitamente que nada foi alterado, porque a primeira pergunta de
+        quem vê isto é "o sistema mexeu no que eu decidi?".
+
+        Vem de `vw_criativo_virou_contra`, que compara os últimos 7 dias contra
+        os 7 anteriores. A régua da tela julga a VIDA INTEIRA do anúncio, então
+        ela continua aprovando um card de ROAS acumulado bom enquanto a semana
+        desaba — este bloco existe exatamente para cobrir esse ponto cego.
+      */}
+      {virouContra.length > 0 && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
+          <p className="text-xs font-medium text-warning">
+            {virouContra.length === 1
+              ? '1 criativo que você aprovou deixou de se pagar'
+              : `${virouContra.length} criativos que você aprovou deixaram de se pagar`}
+            <span className="font-normal text-muted-foreground"> · nada foi alterado</span>
+          </p>
+          <ul className="mt-1.5 space-y-0.5">
+            {virouContra.slice(0, 5).map(v => (
+              <li key={v.producao_id} className="text-[11px] text-muted-foreground">
+                <span className="text-foreground">{v.nome}</span>
+                {' '}está “{v.avaliacao}” e nos últimos 7 dias gastou{' '}
+                <span className="tabular-nums text-foreground">{formatCurrency(v.gasto_7d)}</span>
+                {' '}com ROAS{' '}
+                <span className="tabular-nums text-warning">{formatNumber(v.pior_roas)}</span>
+                {v.melhor_roas_antes > 0 && (
+                  <> (era <span className="tabular-nums">{formatNumber(v.melhor_roas_antes)}</span>)</>
+                )}
+              </li>
+            ))}
+          </ul>
+          {virouContra.length > 5 && (
+            <p className="mt-1 text-[11px] text-muted-foreground/60">
+              e outros {virouContra.length - 5}.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Resumo pills */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted/50 text-muted-foreground border border-border">
@@ -722,9 +794,27 @@ export function AvaliacaoView({ userId }: Props) {
               mesmo engano que punha as duas na taxa. */}
           {total} {foraDaTaxa > 0 ? 'peças' : 'criativos'}
         </span>
-        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-          {pendentes} pendentes
+        {/* Azul e não âmbar: "a revisar" é fila, não problema. Âmbar e vermelho
+            ficam para o que custa dinheiro — o bloco acima e os contraditórios. */}
+        <span
+          className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20"
+          title="Avaliação automática que ninguém confirmou, mais os cards que a régua ainda não olhou."
+        >
+          {qtdARevisar} a revisar
         </span>
+        {qtdDiscorda > 0 && (
+          <span
+            className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted/50 text-muted-foreground border border-border"
+            title="Cards que você confirmou e em que a régua chegaria a outro veredito. Nada foi alterado."
+          >
+            {qtdDiscorda} com régua discordando
+          </span>
+        )}
+        {escalados > 0 && (
+          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+            {escalados} escalados
+          </span>
+        )}
         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
           {validados} validados
         </span>
@@ -781,7 +871,29 @@ export function AvaliacaoView({ userId }: Props) {
           </div>
 
           {displayCriativos.map(c => {
-            const pendente = isPendente(c);
+            const pendente = precisaRevisar(c);
+            const sug = sugestoes.get(c.id);
+            const discorda = reguaDiscorda(c.avaliacao, c.avaliacao_origem, sug);
+            const proc = origemDe(c.avaliacao_origem);
+            /*
+              A marcação que o fato SUGERE, calculada aqui e aplicada embaixo.
+
+              Duas linhas separadas, e não uma expressão dentro do `onClick`,
+              por causa de `status-veiculacao-e-intencao.test.ts`: ele reprova
+              qualquer literal do vocabulário da Meta a menos de três linhas de
+              uma menção a `status_veiculacao`. Os literais ficam todos em
+              `marcacaoQueOMetaSugere`, num arquivo que não cita a marcação —
+              a separação é a própria regra, escrita como estrutura.
+
+              E o valor só vira botão se ESTIVER nas opções vindas de
+              `criativo_campos_opcoes`: renomear o nível no banco faz o botão
+              desaparecer, em vez de gravar algo que não é opção.
+            */
+            const sugerida = marcacaoQueOMetaSugere(c.estado_ads);
+            const podeCorrigirMarcacao = !!sugerida
+              && sugerida !== c.status_veiculacao
+              && opStatus.includes(sugerida)
+              && contradiz(c.status_veiculacao, c.estado_ads);
             return (
               /*
                 A linha virou um envelope: a grade por dentro, a tira de números
@@ -869,6 +981,30 @@ export function AvaliacaoView({ userId }: Props) {
                         : c.estado_ads !== 'sem_anuncio' && ' · nunca gastou'}
                     </div>
                   )}
+                  {/*
+                    O atalho de concordar com o fato, num clique.
+
+                    A marcação continua sendo INTENÇÃO dela: nada aqui deriva
+                    nada, o botão só oferece. A contradição continua sendo
+                    acusada enquanto ela não decidir, e é ela que decide —
+                    foi essa divergência que achou 24 cards dados por
+                    encerrados gastando R$ 5.691,62 em sete dias.
+
+                    Usa o `handleChange` que já existe: UPDATE, histórico,
+                    rollback otimista e toast de erro, sem uma linha nova de
+                    escrita.
+                  */}
+                  {podeCorrigirMarcacao && (
+                    <button
+                      type="button"
+                      onClick={() => void handleChange(c, 'status_veiculacao', sugerida)}
+                      disabled={saving === c.id + 'status_veiculacao'}
+                      title="A Meta discorda da sua marcação. Clique para acompanhar o fato."
+                      className="mt-0.5 rounded border border-warning/40 px-1 text-[10px] text-warning transition-colors hover:bg-warning/10"
+                    >
+                      marcar {sugerida}
+                    </button>
+                  )}
                 </div>
 
                 <div className="relative">
@@ -878,7 +1014,7 @@ export function AvaliacaoView({ userId }: Props) {
                     disabled={saving === c.id + 'avaliacao'}
                     className={cn(
                       'w-full text-xs rounded-md border px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring transition-colors appearance-none cursor-pointer',
-                      c.avaliacao ? AVAL_COR[c.avaliacao] ?? 'border-border' : 'border-border text-muted-foreground',
+                      c.avaliacao ? corDaAvaliacao(c.avaliacao) : 'border-border text-muted-foreground',
                     )}
                   >
                     <option value="">—</option>
@@ -889,6 +1025,64 @@ export function AvaliacaoView({ userId }: Props) {
                       <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                     </div>
                   )}
+
+                  {/*
+                    A PROCEDÊNCIA, embaixo do valor — mesma estrutura da
+                    marcação, que mostra o fato embaixo dela.
+
+                    Sem isto o selo "Validado" de um card é indistinguível
+                    entre três coisas muito diferentes: julgamento dela, régua
+                    automática ainda não revisada, e herança da importação. Era
+                    exatamente essa confusão que deixava 133 cards marcados
+                    "Validado" sem nunca ter rodado anúncio.
+                  */}
+                  <div className="mt-0.5 flex items-center gap-1">
+                    <span
+                      className={cn('rounded border px-1 text-[10px] leading-4', proc.selo)}
+                      title={proc.explica}
+                    >
+                      {proc.rotulo}
+                    </span>
+
+                    {/* Confirmar: muda a PROCEDÊNCIA, não o valor. É o que tira
+                        o card da fila e impede a régua de reescrever. */}
+                    {pendente && c.avaliacao && (
+                      <button
+                        type="button"
+                        onClick={() => void confirmar(c)}
+                        disabled={saving === c.id + 'avaliacao'}
+                        title="Está certo — confirma esta avaliação e tira o card da fila"
+                        aria-label="Confirmar avaliação"
+                        className="grid h-4 w-4 place-items-center rounded border border-border text-muted-foreground transition-colors hover:border-emerald-500/40 hover:text-emerald-400"
+                      >
+                        <Check className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+
+                    {/* A régua discorda do que ela confirmou. Aviso, nunca
+                        troca: `fn_avaliar_criativos` tem guarda para não tocar
+                        valor humano, e a tela respeita a mesma regra. */}
+                    {discorda && (
+                      <span
+                        className="truncate text-[10px] text-muted-foreground"
+                        title={`A régua diria "${sug!.sugestao}" — ${sug!.motivo}. Nada foi alterado.`}
+                      >
+                        régua: {sug!.sugestao}
+                      </span>
+                    )}
+
+                    {/* E quando ela se recusou a decidir, o motivo fica à mão:
+                        são os cards em que Payt e Meta discordam, e eles
+                        carregam a maior parte da verba. */}
+                    {!discorda && pendente && sug && sug.sugestao === null && (
+                      <span
+                        className="truncate text-[10px] text-muted-foreground/70"
+                        title={sug.motivo}
+                      >
+                        fontes discordam
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {podePedir && (

@@ -150,4 +150,97 @@ describe('status_veiculacao é intenção, não fato', () => {
 
     expect(suspeitos.join(' | ')).toEqual('');
   });
+
+  /**
+   * Em 09/10/2026 a tela ganhou um botão `[marcar Encerrado]` na linha da
+   * contradição, e isso mexe perigosamente perto desta regra.
+   *
+   * O botão é legítimo: ele OFERECE o que o fato sugere, e gravar continua sendo
+   * um clique dela. O que não pode acontecer é a oferta virar automação — nem
+   * por uma função do banco, nem por um `useEffect` que aplica sozinho. A
+   * diferença entre as duas coisas é a diferença entre um atalho e a perda do
+   * alarme que achou R$ 5.691,62 em sete dias.
+   */
+  it('nenhuma migração escreve em producoes.status_veiculacao', () => {
+    /*
+      A marcação nunca foi derivada, e o banco é onde ela poderia passar a ser
+      sem ninguém ver: um gatilho ou uma função que "sincronizasse" a marcação
+      com o estado da Meta acabaria com a divergência em silêncio, e nenhuma
+      tela denunciaria — o campo continuaria preenchido, só nunca mais
+      discordaria de nada.
+    */
+    const dir = join('supabase', 'migrations');
+    const suspeitos: string[] = [];
+
+    for (const nome of readdirSync(dir).filter(n => n.endsWith('.sql')).sort()) {
+      /* A régua de avaliação estreou em 09/10/2026. Antes disso houve uma
+         migração legítima mexendo nos dois campos — `20260827zo`, que mesclou
+         cards duplicados da importação, quando os dois eram digitados e não
+         havia régua. Condenar a história retroativamente faria este caso nascer
+         vermelho, e teste que nasce vermelho alguém desliga. */
+      if (nome < '20261009') continue;
+      const sql = semComentarios(readFileSync(join(dir, nome), 'utf8'));
+      for (const bloco of sql.match(/update\s+(?:public\.)?producoes[\s\S]*?;/gi) ?? []) {
+        if (/\bset\b[\s\S]*?\bstatus_veiculacao\s*=/i.test(bloco)) {
+          suspeitos.push(`${nome} — migração escrevendo a marcação`);
+        }
+      }
+      /* E nenhum gatilho/função atribuindo em `new.status_veiculacao`. */
+      if (/\bnew\.status_veiculacao\s*:?=/i.test(sql)) {
+        suspeitos.push(`${nome} — gatilho atribuindo a marcação`);
+      }
+    }
+
+    expect(suspeitos.join(' | ')).toEqual('');
+  });
+
+  it('o atalho da marcação é um clique, e o mapa do Meta mora longe dela', () => {
+    /*
+      Duas pontas, e a segunda é estrutural.
+
+      A primeira: gravar a marcação só acontece dentro de um `onClick`. Um
+      `useEffect` que chamasse `handleChange(c, 'status_veiculacao', …)` seria
+      derivação com outro nome — a tela aplicaria o fato sozinha, e a
+      contradição desapareceria sem ninguém decidir nada.
+
+      A segunda: o mapa que traduz o fato em marcação sugerida vive em
+      `@/features/ads/situacao`, um arquivo que NÃO contém a string
+      `status_veiculacao`. Não é organização: é o que faz o primeiro caso deste
+      arquivo continuar valendo. Ele reprova literal do vocabulário da Meta a
+      menos de três linhas de uma menção à marcação, e manter os literais do
+      outro lado da fronteira é a regra escrita como estrutura de arquivo.
+    */
+    const tela = semComentarios(readFileSync(
+      join('src', 'features', 'criativos', 'components', 'AvaliacaoView.tsx'), 'utf8'));
+
+    expect(tela, 'a tela deixou de oferecer a correção da marcação')
+      .toMatch(/marcacaoQueOMetaSugere/);
+
+    /* Toda escrita da marcação está num handler de clique. */
+    const escritas = [...tela.matchAll(/handleChange\(\s*c\s*,\s*'status_veiculacao'/g)];
+    expect(escritas.length, 'ninguém mais grava a marcação — o teste ficou cego')
+      .toBeGreaterThan(0);
+    for (const m of escritas) {
+      const antes = tela.slice(Math.max(0, m.index! - 200), m.index!);
+      expect(antes, 'há escrita da marcação fora de um handler de clique')
+        .toMatch(/on(Click|Change)\s*=|onChange=\{/);
+    }
+
+    /*
+      E o CÓDIGO do arquivo do mapa não cita a marcação, de propósito.
+
+      Sem comentários, pela mesma razão que o primeiro caso deste arquivo: o
+      docblock de `VIRA_ANUNCIO` explica que a VSL "continua ganhando
+      `avaliacao` e `status_veiculacao` no formulário", e o de
+      `marcacaoQueOMetaSugere` explica a própria fronteira citando o nome dela.
+      Contar comentário faria o teste reclamar exatamente de quem documentou a
+      regra — e foi o que aconteceu na primeira versão deste caso.
+    */
+    const mapa = semComentarios(
+      readFileSync(join('src', 'features', 'ads', 'situacao.ts'), 'utf8'));
+    expect(mapa, 'o código de situacao.ts passou a citar status_veiculacao — a fronteira caiu')
+      .not.toContain('status_veiculacao');
+    expect(mapa, 'situacao.ts não tem mais o mapa da marcação sugerida')
+      .toMatch(/marcacaoQueOMetaSugere/);
+  });
 });

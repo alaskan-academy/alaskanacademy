@@ -66,7 +66,6 @@ export function PorProjetoView({ nivel, userId }: Props) {
     setPerfis(perf as Perfil[]);
     setFunis(fs as Funil[]);
     if (op && op.length > 0) setOpAvaliacao(op.map(d => d.valor as string));
-    else setOpAvaliacao(['Sem dados', 'Validado', 'Não validado']);
     if (opF && opF.length > 0) setOpFormato(opF.map(d => d.valor as string));
     if (opS && opS.length > 0) setOpStatus(opS.map(d => d.valor as string));
   }, []);

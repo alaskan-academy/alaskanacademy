@@ -69,10 +69,18 @@ export const STATUS_VEICULACAO_LABEL: Record<string, string> = {
   arquivado: 'Arquivado',
 };
 
+/**
+ * `escalado` faltava aqui desde que o nível existe — ele está em
+ * `criativo_campos_opcoes` (ordem 3) e em 19 cards, e este mapa tinha três
+ * entradas. Enquanto a avaliação era só digitada, o preço era um rótulo sem
+ * tradução; a partir de 09/10/2026 a régua ESCREVE "Escalado", e um mapa
+ * incompleto some com o rótulo justo quando a máquina acabou de usá-lo.
+ */
 export const AVALIACAO_LABEL: Record<string, string> = {
   sem_dados:    'Sem dados',
   validado:     'Validado',
   nao_validado: 'Não validado',
+  escalado:     'Escalado',
 };
 
 export const STATUS_PRODUCAO_LABEL: Record<string, string> = {

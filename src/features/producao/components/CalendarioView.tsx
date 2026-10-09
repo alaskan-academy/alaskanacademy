@@ -557,7 +557,6 @@ export function CalendarioView({ nivel, setorId, userId, somenteSetor, fixedFiel
     setPerfis(ps);
     setProjetos(pr);
     if (opA?.length) setOpAvaliacao(opA.map(d => d.valor as string));
-    else setOpAvaliacao(['Sem dados', 'Validado', 'Não validado']);
     if (opF?.length) setOpFormato(opF.map(d => d.valor as string));
     if (opS?.length) setOpStatus(opS.map(d => d.valor as string));
   }, []);

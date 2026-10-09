@@ -74,7 +74,7 @@ export function CriativoDrawer({ criativoId, onClose, onUpdate, nivel, userId, f
   const [opNivelConsciencia, setOpNivelConsciencia] = useState<string[]>(FALLBACK_NIVEIS_CONSCIENCIA);
   const [opFunilVideo, setOpFunilVideo]           = useState<string[]>(['TSL', 'VSL', 'QUIZ']);
   const [opStatusVeiculacao, setOpStatusVeiculacao] = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
-  const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
+  const [opAvaliacao, setOpAvaliacao]               = useState<string[]>([]);
   const [projetos, setProjetos]                   = useState<{ id: string; nome: string }[]>([]);
   const [editores, setEditores]                   = useState<{ id: string; nome: string }[]>([]);
   const [copys, setCopys]                         = useState<{ id: string; nome: string }[]>([]);

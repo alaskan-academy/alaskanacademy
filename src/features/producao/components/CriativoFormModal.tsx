@@ -68,7 +68,7 @@ export function CriativoFormModal({ open, onClose, onCreated, userId, funis: fun
   const [especialistas, setEspecialistas] = useState<{ id: string; nome: string }[]>([]);
   const [projetos, setProjetos] = useState<OfertaEditorOption[]>([]);
   const [opStatusVeiculacao, setOpStatusVeiculacao] = useState<string[]>(['Rodando', 'Pausado', 'Encerrado', 'Bloqueado', 'Arquivado']);
-  const [opAvaliacao, setOpAvaliacao]               = useState<string[]>(['Sem dados', 'Validado', 'Não validado']);
+  const [opAvaliacao, setOpAvaliacao]               = useState<string[]>([]);
   const [opFunilVideo, setOpFunilVideo] = useState<string[]>(FALLBACK_FUNIL_VIDEO);
   const [opFormato, setOpFormato] = useState<string[]>(FALLBACK_FORMATOS);
   const [opPlataforma, setOpPlataforma] = useState<string[]>(FALLBACK_PLATAFORMAS);
