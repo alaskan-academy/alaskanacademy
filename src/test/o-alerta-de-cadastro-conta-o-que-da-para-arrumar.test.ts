@@ -117,6 +117,30 @@ describe('o alerta de cadastro conta o que dá para arrumar', () => {
       .toMatch(/tipo\s*=\s*'criativo'/i);
   });
 
+  it('a janela é MÓVEL: nenhuma data escrita à mão', () => {
+    /*
+      A view trazia `data_inicio >= '2026-05-01'`. Esse 01/05 não era o início
+      do uso do painel — era a primeira métrica que o Meta mandou, ou seja a
+      data do IMPORT. Dois significados no mesmo número, e o número parado
+      enquanto a operação anda: terceira armadilha na forma de uma data.
+
+      Ela decidiu em 10/10/2026: "mais de dois meses atrás, desconsidere;
+      considere apenas os ADs após o uso do dash". Os dois critérios viram um
+      só — o painel começou a ser usado em 29/07/2026 (a primeira alteração
+      registrada em `criativo_historico`), e uma janela móvel de dois meses já
+      cai depois disso, hoje e sempre.
+
+      A carência de 7 dias continua do outro lado: criativo postado ontem ainda
+      não tinha de ter anúncio.
+    */
+    expect(VIEW, 'voltou uma data escrita à mão na view')
+      .not.toMatch(/'20\d{2}-\d{2}-\d{2}'/);
+    expect(VIEW, 'a janela de dois meses deixou de ser móvel')
+      .toMatch(/current_date\s*-\s*interval\s*'2 months'/i);
+    expect(VIEW, 'a carência de 7 dias sumiu — criativo de ontem passaria a ser cobrado')
+      .toMatch(/current_date\s*-\s*7/i);
+  });
+
   it('a VIEW não julga: ela não filtra projeto encerrado', () => {
     /*
       O contrário também tem de ser verdade. Se o filtro de projeto descer para
