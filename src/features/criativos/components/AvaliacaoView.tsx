@@ -282,18 +282,21 @@ export function AvaliacaoView({ userId }: Props) {
 
   /* O aviso dos cards que ela validou e que viraram contra. Consulta própria e
      sem filtro de período: a pergunta é "o que está sangrando AGORA", e um
-     filtro de mês esconderia justamente o card que começou a sangrar ontem. */
-  useEffect(() => {
-    let vivo = true;
-    void (async () => {
-      const { data } = await supabase
-        .from('vw_criativo_virou_contra')
-        .select('producao_id,nome,avaliacao,gasto_7d,pior_roas,melhor_roas_antes')
-        .order('gasto_7d', { ascending: false });
-      if (vivo) setVirouContra((data ?? []) as typeof virouContra);
-    })();
-    return () => { vivo = false; };
+     filtro de mês esconderia justamente o card que começou a sangrar ontem.
+
+     Em `useCallback` para o drawer poder recarregá-lo: quando ela corrige a
+     avaliação de um card listado aqui, ele tem de sair do aviso na hora. Um
+     aviso que continua acusando depois de resolvido é a forma mais rápida de
+     o olho parar de ver o aviso. */
+  const carregarVirouContra = useCallback(async () => {
+    const { data } = await supabase
+      .from('vw_criativo_virou_contra')
+      .select('producao_id,nome,avaliacao,gasto_7d,pior_roas,melhor_roas_antes')
+      .order('gasto_7d', { ascending: false });
+    setVirouContra((data ?? []) as typeof virouContra);
   }, []);
+
+  useEffect(() => { void carregarVirouContra(); }, [carregarVirouContra]);
 
   // `toISOString()` em toda linha aqui — e a última dupla é a que doía: as
   // datas vêm do calendário, onde a escolhida pode carregar a hora atual. Às
@@ -471,6 +474,10 @@ export function AvaliacaoView({ userId }: Props) {
         valor_anterior: valorAnterior ?? null,
         valor_novo:     valor ?? null,
       });
+      /* Trocar a avaliação pode tirar o card do aviso lá de cima — ele lista só
+         quem está em nível de aprovação. Recarregar aqui é o que faz o bloco
+         sumir no mesmo gesto em que o problema foi resolvido. */
+      if (campo === 'avaliacao') void carregarVirouContra();
     } catch {
       setCriativos(prev => prev.map(x => x.id === c.id
         ? { ...x, [campo]: valorAnterior, avaliacao_origem: origemAnterior } : x));
@@ -768,7 +775,20 @@ export function AvaliacaoView({ userId }: Props) {
           <ul className="mt-1.5 space-y-0.5">
             {virouContra.slice(0, 5).map(v => (
               <li key={v.producao_id} className="text-[11px] text-muted-foreground">
-                <span className="text-foreground">{v.nome}</span>
+                {/* Clicável, e abrindo o MESMO drawer da lista.
+
+                    O aviso diz qual card está sangrando; sem o caminho para
+                    ele, a pessoa tem de copiar o nome, voltar, limpar o filtro
+                    de período (o aviso não tem período, a lista tem) e buscar.
+                    Quatro passos entre ver o problema e poder agir nele — e o
+                    card pode nem estar na lista filtrada, porque o aviso olha
+                    os últimos 7 dias e a lista olha o mês escolhido. */}
+                <button
+                  onClick={() => setSelectedId(v.producao_id)}
+                  className="text-foreground transition-colors hover:text-primary hover:underline"
+                >
+                  {v.nome}
+                </button>
                 {' '}está “{v.avaliacao}” e nos últimos 7 dias gastou{' '}
                 <span className="tabular-nums text-foreground">{formatCurrency(v.gasto_7d)}</span>
                 {' '}com ROAS{' '}
@@ -1129,7 +1149,7 @@ export function AvaliacaoView({ userId }: Props) {
       <CriativoDrawer
         criativoId={selectedId}
         onClose={() => setSelectedId(null)}
-        onUpdate={() => { void load(); void carregarPedidos(); }}
+        onUpdate={() => { void load(); void carregarPedidos(); void carregarVirouContra(); }}
         nivel="socio"
         userId={userId}
         funis={funis}
