@@ -83,13 +83,29 @@ describe('quando Payt e Meta discordam, ninguém decide', () => {
       A assimetria é a regra, então o teste cobra que ela exista: as colunas das
       duas fontes aparecem, e a decisão é tomada sobre a da Payt.
     */
-    expect(regra.def, 'a régua não lê as vendas da Payt').toMatch(/\bb\.vendas\b/);
-    expect(regra.def, 'a régua não lê o ROAS da Payt').toMatch(/\bb\.roas\b/);
-    expect(regra.def, 'a régua não confere o Meta como guarda').toMatch(/vendas_meta/);
-    expect(regra.def, 'a régua não confere o ROAS do Meta').toMatch(/roas_meta/);
+    /*
+      Olhar o RAMO, não o apelido da CTE.
 
-    /* E `por_payt` é o lado que ganha quando os dois aprovam em níveis
-       diferentes só se for o menor — nunca por ser a Payt. Ver o caso abaixo. */
+      A primeira versão deste caso exigia `b.roas` — o apelido que a CTE tinha
+      naquele dia. Em 10/10/2026 a view ganhou o cálculo de chances, a CTE
+      passou a se chamar `ch`, e o teste quebrou sobre código correto. Teste que
+      falha quando um `as` muda de letra treina a pessoa a relaxá-lo.
+
+      A invariante é: o ramo da Payt usa as colunas da Payt e NÃO as do Meta, e
+      vice-versa. Trocar as duas seria o defeito de verdade — a régua decidindo
+      pela fonte inflada.
+    */
+    const ramoPayt = regra.def.slice(0, regra.def.indexOf('as por_payt'));
+    const ramoMeta = regra.def.slice(regra.def.indexOf('as por_payt'), regra.def.indexOf('as por_meta'));
+
+    expect(ramoPayt, 'o ramo da Payt não lê vendas').toMatch(/\.vendas\s*>=/);
+    expect(ramoPayt, 'o ramo da Payt não lê ROAS').toMatch(/\.roas\s*[<>]/);
+    expect(ramoPayt, 'o ramo da Payt está lendo colunas do Meta')
+      .not.toMatch(/vendas_meta\s*>=|roas_meta\s*[<>]/);
+
+    expect(ramoMeta, 'o ramo do Meta não lê as colunas do Meta').toMatch(/vendas_meta\s*>=/);
+    expect(ramoMeta, 'o ramo do Meta não compara o ROAS do Meta').toMatch(/roas_meta\s*[<>]/);
+
     expect(regra.def, 'a régua não calcula o veredito de cada fonte separadamente')
       .toMatch(/por_payt[\s\S]*por_meta/);
   });
@@ -111,18 +127,61 @@ describe('quando Payt e Meta discordam, ninguém decide', () => {
       .toMatch(/from\s+public\.vw_crivo_niveis_vigentes/i);
   });
 
-  it('"sem verba" é decidido por INVESTIMENTO, nunca por vendas', () => {
+  it('reprovar exige investimento, volume e ROAS juntos', () => {
     /*
-      Um card que gastou R$ 3.000 e não vendeu nada não é "sem dados": é
-      reprovado, e com clareza. Decidir a ausência de dados por vendas trocaria
-      a pior notícia do painel pela mais neutra — e eram 97 cards acima de
-      R$ 348 vendendo no vermelho, com R$ 300.480 de verba.
+      Definido por ela em 10/10/2026, olhando dois cards na tela: "tem que
+      analisar investimento, volume de venda e ROAS para esta decisão".
+
+      O ramo final usava só a ausência das outras duas — "tudo que não valida,
+      reprova" — e isso é mais duro do que ela definiu ("se zero vendas ou
+      abaixo de 1,6 cortamos"). Os dois cards que mostraram:
+
+        AD 092 H04 V01   R$ 141   4 vendas   ROAS 3,38   -> dizia "Não validado"
+        AD 083 H06 V02   R$ 137   2 vendas   ROAS 1,46   -> dizia "Não validado"
+
+      Os dois com três dias de vida, os dois marcados "Sem dados" por ela, e ela
+      certa nos dois. Medido: 23 cards lucrativos, R$ 22.780 de receita,
+      recebendo "Não validado".
     */
+
+    /* 1. INVESTIMENTO entra como "quantas chances a verba comprou": no empate
+          uma venda custa no máximo AOV/empate. Um card que não comprava nem o
+          menor corte da régua não é reprovado, é "sem dados". */
+    expect(regra.def, 'a régua não calcula quantas chances a verba comprou')
+      .toMatch(/chances/);
+    expect(regra.def, 'as chances não saem do ticket do projeto')
+      .toMatch(/aov/i);
+
+    /* 2. E o piso de chances é DERIVADO do menor corte da régua, não digitado:
+          mexer no nível move o piso junto. */
+    expect(regra.def, 'o piso de chances deixou de derivar do menor vendas_min')
+      .toMatch(/min\([a-z.]*vendas_min\)/i);
+
+    /* 3. ROAS entra comparado ao empate da tabela, que é a regra dela. */
+    expect(regra.def, 'a régua não compara o ROAS com o empate')
+      .toMatch(/roas\s*<\s*c\.empate|roas_meta\s*<\s*c\.empate/i);
+
+    /* 4. O piso de verba continua vindo da tabela, nunca de um número aqui. */
     expect(regra.def, 'a régua não usa o piso de verba da tabela do crivo')
-      .toMatch(/investimento\s*<=\s*c\.verba_min/i);
-    /* E o piso é da TABELA, não um número aqui. */
+      .toMatch(/verba_min/);
     expect(regra.def, 'apareceu um piso de verba escrito na view')
-      .not.toMatch(/investimento\s*<=\s*\d/);
+      .not.toMatch(/investimento\s*[<>]=?\s*\d/);
+  });
+
+  it('nenhum card é reprovado sem ter tido chance, nem estando acima do empate', () => {
+    /*
+      A prova da migração confere isto contra o banco. Aqui o que se cobra é
+      que a prova CONTINUE existindo: a régua muda por `insert` e por replace de
+      view, e uma prova apagada não acusa nada.
+    */
+    const migracao = migracoes.find(m =>
+      /reprovar_exige|chances_min/i.test(m.nome + m.sql));
+    expect(migracao, 'não achei a migração da regra de três dimensões').toBeTruthy();
+    const sql = semComentarios(migracao!.sql);
+    expect(sql, 'a migração não prova que ninguém é reprovado acima do empate')
+      .toMatch(/nivel_reprovado\s+and\s+s\.roas\s*>=\s*c\.empate/i);
+    expect(sql, 'a migração não prova que ninguém é reprovado sem ter tido chance')
+      .toMatch(/nivel_reprovado\s+and\s+not\s+s\.teve_chance/i);
   });
 
   it('nenhum número e nenhum nome de nível estão escritos na view', () => {

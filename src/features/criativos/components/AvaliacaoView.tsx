@@ -1122,15 +1122,37 @@ export function AvaliacaoView({ userId }: Props) {
                       </button>
                     )}
 
-                    {/* A régua discorda do que ela confirmou. Aviso, nunca
-                        troca: `fn_avaliar_criativos` tem guarda para não tocar
-                        valor humano, e a tela respeita a mesma regra. */}
+                    {/*
+                      A régua discorda do que ela confirmou. Aviso, nunca troca:
+                      `fn_avaliar_criativos` tem guarda para não tocar valor
+                      humano, e a tela respeita a mesma regra.
+
+                      ── Duas correções de 10/10/2026, vistas na tela ────────
+
+                      Era `régua: {sugestao}` numa coluna de 120px, e virava
+                      "régua: N..." — um aviso truncado no ponto exato em que
+                      ele ia dizer alguma coisa. Agora é um selo curto, e o
+                      veredito vai inteiro na dica.
+
+                      E a dica citava o `motivo` ("as duas fontes chegam ao
+                      mesmo veredito"), que explica a CONFIANÇA da régua e não
+                      a divergência com ela — lido ali, soava desconexo. O que
+                      responde "por que a régua discorda de mim?" são os
+                      números que ela usou. São os mesmos da tira de métricas
+                      logo abaixo, e tê-los aqui evita cruzar a linha com o
+                      olho para conferir.
+                    */}
                     {discorda && (
                       <span
-                        className="truncate text-[10px] text-muted-foreground"
-                        title={`A régua diria "${sug!.sugestao}" — ${sug!.motivo}. Nada foi alterado.`}
+                        className="shrink-0 rounded border border-border bg-secondary px-1 text-[10px] leading-4 text-muted-foreground"
+                        title={
+                          `A régua diria “${sug!.sugestao}”, e você marcou “${c.avaliacao}”. `
+                          + `Ela olhou: ${metricas.get(c.id)?.vendas ?? 0} vendas e ROAS `
+                          + `${formatNumber(metricas.get(c.id)?.roas ?? 0)} pela Payt. `
+                          + 'Nada foi alterado — a régua não sobrescreve o que você decidiu.'
+                        }
                       >
-                        régua: {sug!.sugestao}
+                        ⚠ régua
                       </span>
                     )}
 
