@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 import { supabase } from '@/lib/supabase';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
 import { toast } from '@/hooks/use-toast';
-import { cn } from '@/lib/utils';
+import { cn, semAcento } from '@/lib/utils';
 import { formatNumber } from '@/lib/formatters';
 import { Search, Video, Globe, ShoppingCart, FileText } from 'lucide-react';
 
@@ -46,10 +46,9 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   arquivado:       { label: 'Arquivado',  cls: 'bg-muted text-muted-foreground border-border' },
 };
 
-/** Mesma normalização da coluna `busca` da view: sem acento, minúsculas. */
-function semAcento(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
+// `semAcento` saiu daqui para `@/lib/utils` em 10/10/2026, quando a busca dos
+// arquivados em `FunisTab` ia criar uma segunda cópia dele no mesmo diretório.
+// Continua sendo a normalização da coluna `busca` da view.
 
 function duracao(seg: number | null): string {
   if (!seg) return '';

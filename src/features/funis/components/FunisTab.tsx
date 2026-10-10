@@ -3,12 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import { useProjetosDaEmpresa } from '@/hooks/use-projetos-da-empresa';
-import { cn } from '@/lib/utils';
+import { cn, semAcento } from '@/lib/utils';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
 import {
   ChevronDown, ChevronRight, ExternalLink, Plus, Pencil,
-  Globe, ShoppingBag, FlaskConical, Video, AlertTriangle, Archive,
+  Globe, ShoppingBag, FlaskConical, Video, AlertTriangle, Archive, Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { FunilModal } from './FunilModal';
 import { toast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -178,6 +179,7 @@ function TesteRows({ testes, onOpen, muted = false }: { testes: TesteFunil[]; on
 export function FunisTab({ funis, projetos, funilSubofertas, funilVsls, dominios, testes, onReload }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [verArquivados, setVerArquivados] = useState(false);
+  const [buscaArquivados, setBuscaArquivados] = useState('');
   const [dados, setDados] = useState<Record<string, DadosDoRev>>({});
   const [modalOpen, setModalOpen] = useState(false);
   const [editFunil, setEditFunil] = useState<Funil | null>(null);
@@ -283,6 +285,33 @@ export function FunisTab({ funis, projetos, funilSubofertas, funilVsls, dominios
    */
   const arquivados = funis.filter(f => getStatusDisplay(f, testes) === 'arquivado');
   const emUso = funis.filter(f => getStatusDisplay(f, testes) !== 'arquivado');
+
+  /**
+   * A busca dos arquivados.
+   *
+   * São 20 hoje, e a lista é a única forma de reencontrar um REV antigo — o
+   * histórico de vendas dele continua pendurado ali. Com 20 linhas de nomes
+   * que se repetem entre projetos ("Mini PV da Bio" aparece em três, "REV2" em
+   * quatro, "REV3" em três), achar um pelo olho exige ler a coluna do projeto
+   * linha a linha.
+   *
+   * Procura no NOME e no PROJETO, que é o que a linha mostra, e também na
+   * PÁGINA e no CHECKOUT, que ela não mostra: é por eles que se procura quando
+   * a lembrança é "aquele que rodava na saponariavivi" e não o número do REV.
+   * O Mapa (`MapaTab`) já aceita os mesmos campos, então quem aprendeu a
+   * buscar lá busca igual aqui.
+   */
+  const buscaArq = semAcento(buscaArquivados.trim());
+  const arquivadosVisiveis = buscaArq === '' ? arquivados : arquivados.filter(f => {
+    const proj = f.projeto_id ? projetoMap[f.projeto_id] : null;
+    const alvo = semAcento([
+      f.nome, proj?.nome ?? '', f.metodo ?? '', f.url_page ?? '', f.link_checkout ?? '',
+    ].join(' '));
+    // Cada palavra em qualquer campo, e não a frase inteira em um só: "rev2
+    // velas" acha o REV2 das Velas Lembrancinhas, que é como a pessoa pensa —
+    // ela lembra do REV e do projeto, não da ordem em que a tela os desenha.
+    return buscaArq.split(/\s+/).every(p => alvo.includes(p));
+  });
 
   type Group = { projeto: Projeto | null; funis: Funil[] };
   const groups: Group[] = [];
@@ -657,19 +686,54 @@ export function FunisTab({ funis, projetos, funilSubofertas, funilVsls, dominios
         <div className="pt-2 border-t border-border/60">
           <button
             type="button"
-            onClick={() => setVerArquivados(v => !v)}
+            // Fechar limpa a busca. Sem isto, reabrir mostraria "20 REVs
+            // arquivados" no título e três linhas embaixo, sem nada na tela
+            // explicando a diferença — e o filtro esquecido passa a parecer
+            // REV que sumiu.
+            onClick={() => {
+              setVerArquivados(v => {
+                if (v) setBuscaArquivados('');
+                return !v;
+              });
+            }}
             className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {verArquivados
               ? <ChevronDown className="h-3.5 w-3.5" />
               : <ChevronRight className="h-3.5 w-3.5" />}
             <Archive className="h-3.5 w-3.5" />
-            {arquivados.length} REV{arquivados.length !== 1 ? 's' : ''} arquivado{arquivados.length !== 1 ? 's' : ''}
+            {/* Com busca ativa o título diz os DOIS números e qual é qual.
+                Trocar o total por "3 REVs arquivados" faria o mesmo rótulo
+                dizer coisas diferentes conforme o que está digitado. */}
+            {buscaArq !== ''
+              ? `${arquivadosVisiveis.length} de ${arquivados.length} REVs arquivados`
+              : `${arquivados.length} REV${arquivados.length !== 1 ? 's' : ''} arquivado${arquivados.length !== 1 ? 's' : ''}`}
           </button>
 
           {verArquivados && (
             <div className="mt-2 space-y-1 pl-1">
-              {arquivados.map(funil => {
+              {/* A caixa de busca é a mesma de `DominiosTab`. Só aparece
+                  quando há o que filtrar: com três arquivados ela seria
+                  ruído em cima de uma lista que cabe no olho. */}
+              {arquivados.length > 5 && (
+                <div className="relative max-w-sm pb-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={buscaArquivados}
+                    onChange={e => setBuscaArquivados(e.target.value)}
+                    placeholder="Buscar por REV, projeto, página…"
+                    className="pl-8 h-9 text-sm"
+                  />
+                </div>
+              )}
+
+              {arquivadosVisiveis.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Nenhum REV arquivado casa com “{buscaArquivados.trim()}”.
+                </p>
+              )}
+
+              {arquivadosVisiveis.map(funil => {
                 const proj = funil.projeto_id ? projetoMap[funil.projeto_id] : null;
                 const d = dados[funil.id];
                 return (
