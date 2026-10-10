@@ -897,6 +897,40 @@ export default function AnalisesPage() {
                 </p>
               )}
 
+              {/* O aviso que faltou entre 07/10 e 10/10/2026: o conjunto
+                  `07/10 TESTE REV10` gastou R$ 305,98 e o card mostrou R$ 0,00
+                  de investimento com margem de 84,5%. Os outros três avisos
+                  desligam quando o investimento é zero, cada um com razão — e
+                  os três juntos silenciam no caso em que há mídia e o que
+                  quebrou foi o vínculo. Este olha a verba do PROJETO, que não
+                  depende de vínculo nenhum. */}
+              {(a.investimento_sem_rev_no_projeto ?? 0) > 0 && (
+                <p className="text-sm text-amber-400/90 flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    {formatCurrency(a.investimento_sem_rev_no_projeto ?? 0)} de verba deste
+                    projeto não está em REV nenhum no período. Se um teste novo acabou de
+                    subir, o custo dele ainda não aparece em card nenhum — e o REV que o
+                    recebe parece mais lucrativo do que é.
+                  </span>
+                </p>
+              )}
+
+              {(a.investimento_ambiguo ?? 0) > 0 && (
+                <p className="text-sm text-amber-400/90 flex items-start gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    {formatCurrency(a.investimento_ambiguo ?? 0)} em{' '}
+                    {a.conjuntos_ambiguos === 1
+                      ? 'um conjunto que manda'
+                      : `${formatNumber(a.conjuntos_ambiguos ?? 0)} conjuntos que mandam`}{' '}
+                    tráfego para mais de um REV, fora da conta. Somar nos dois contaria o
+                    mesmo real duas vezes; separe os conjuntos por REV para que esta verba
+                    entre.
+                  </span>
+                </p>
+              )}
+
               {a.vendas === 0 && (
                 <p className="text-sm text-amber-400/90 flex items-center gap-1.5">
                   <AlertTriangle className="h-3.5 w-3.5" />

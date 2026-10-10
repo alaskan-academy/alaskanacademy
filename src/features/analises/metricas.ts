@@ -98,6 +98,34 @@ export interface BlocoMetricas {
   vendas_de_anuncio: number;
   cobertura_geral_pct: number | null;
 
+  // ── O que ficou de fora da conta, dito e não escondido ────────────────────
+  //
+  // Os três são OPCIONAIS porque os retratos gravados em
+  // `analise_itens.metricas` antes de 10/10/2026 não os têm. Tratar ausente
+  // como zero mentiria: "não medi" e "medi e deu zero" são coisas diferentes,
+  // e é a mesma distinção que `variacao()` faz logo abaixo.
+  /**
+   * Conjuntos que mandaram tráfego para mais de um REV. A verba deles fica
+   * fora da conta dos dois: somar nos dois conta o mesmo real duas vezes, e
+   * ratear inventa número.
+   */
+  conjuntos_ambiguos?: number;
+  investimento_ambiguo?: number;
+  /**
+   * Verba das contas do projeto, no período, que não está em REV nenhum.
+   *
+   * É o sinal que faltava em 07/10/2026, quando o conjunto `07/10 TESTE REV10`
+   * gastou R$ 305,98 e o card do REV10 mostrou R$ 0,00 de investimento com
+   * margem de 84,5%. Os três avisos deste módulo desligam quando o
+   * investimento é zero — `distanciaDoMeta` devolve null,
+   * `baseAnteriorFragil` devolve false, os dois selos viram null —, cada um
+   * com razão para o caso "não há mídia rodando", e os três juntos silenciando
+   * no caso em que há mídia e o que quebrou foi o vínculo. Este número não
+   * depende do vínculo: ele olha a verba do projeto e pergunta onde ela foi
+   * parar. Zero quando está tudo ligado.
+   */
+  investimento_sem_rev_no_projeto?: number;
+
   // ── Conversões ─────────────────────────────────────────────────────────────
   conv_funil_pct: number | null;
   conv_checkout_pct: number | null;
