@@ -41,7 +41,7 @@ import { Loader2, CalendarClock, Check, AlertTriangle } from 'lucide-react';
 
 interface Acao {
   id: string;
-  bloco: 'ganho_rapido' | 'calendario' | 'mini_lancamento';
+  bloco: string;
   titulo: string;
   detalhe: string | null;
   inicio: string | null;
@@ -49,29 +49,23 @@ interface Acao {
   feito_em: string | null;
   secao: number | null;
   ordem: number;
+  parte_de: string | null;
   plano_secoes: { titulo: string } | null;
 }
 
-const BLOCOS = [
-  {
-    chave: 'ganho_rapido' as const,
-    titulo: 'Ganhos rápidos',
-    subtitulo:
-      'Ações de poucos dias que destravam caixa antes da Black Friday. Juntas, o plano estima R$ 10–15 mil/mês de lucro sem gastar mais em anúncio.',
-  },
-  {
-    chave: 'calendario' as const,
-    titulo: 'Natal e Black Friday',
-    subtitulo:
-      'Vender o Natal cedo para a artesã produzir até 15/12, e usar a Black Friday na base — o CPM da semana da BF é o mais caro do ano.',
-  },
-  {
-    chave: 'mini_lancamento' as const,
-    titulo: 'Mini lançamentos',
-    subtitulo:
-      'Um por mês, amarrado à data que a artesã vende. Aviso 7 dias antes, abertura com preço de lançamento por 72 h, último dia, e depois o produto vira bump ou entra no Completo.',
-  },
-];
+/*
+  Os blocos vêm do BANCO, não daqui. Eles já estiveram escritos em dois
+  lugares — num `check (bloco in (...))` e num array neste arquivo — e a
+  primeira ação de `recuperacao` bateu no check enquanto a tela seguia
+  mostrando três grupos. Lista fixa no código envelhece em silêncio, que é a
+  terceira armadilha do CLAUDE.md; bloco novo agora aparece sozinho.
+*/
+interface Bloco {
+  chave: string;
+  titulo: string;
+  subtitulo: string | null;
+  ordem: number;
+}
 
 const ROTULO_MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -122,6 +116,7 @@ export default function PrazosPage() {
   const { toast } = useToast();
 
   const [acoes, setAcoes]     = useState<Acao[]>([]);
+  const [blocos, setBlocos]   = useState<Bloco[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro]       = useState<string | null>(null);
   const [salvando, setSalvando] = useState<string | null>(null);
@@ -129,19 +124,24 @@ export default function PrazosPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
     setErro(null);
-    const { data, error } = await supabase
-      .from('plano_acoes')
-      .select('id, bloco, titulo, detalhe, inicio, prazo, feito_em, secao, ordem, plano_secoes(titulo)')
-      .order('ordem');
+
+    const [lista, grupos] = await Promise.all([
+      supabase
+        .from('plano_acoes')
+        .select('id, bloco, titulo, detalhe, inicio, prazo, feito_em, secao, ordem, parte_de, plano_secoes(titulo)')
+        .order('ordem'),
+      supabase.from('plano_blocos').select('chave, titulo, subtitulo, ordem').order('ordem'),
+    ]);
 
     // Erro visível em vez de lista vazia: "não tem ação" e "não consegui ler"
     // são coisas diferentes.
-    if (error) {
-      setErro(error.message);
+    if (lista.error) {
+      setErro(lista.error.message);
       setLoading(false);
       return;
     }
-    setAcoes((data ?? []) as unknown as Acao[]);
+    setAcoes((lista.data ?? []) as unknown as Acao[]);
+    setBlocos((grupos.data ?? []) as Bloco[]);
     setLoading(false);
   }, []);
 
@@ -174,23 +174,138 @@ export default function PrazosPage() {
 
   const porBloco = useMemo(() => {
     const venceu = (a: Acao) => !a.feito_em && a.prazo !== null && a.prazo < HOJE;
-    return BLOCOS.map(b => {
-      const itens = acoes
-        .filter(a => a.bloco === b.chave)
-        .sort((x, y) => {
-          // Vencidas primeiro; depois por data; feitas por último.
-          if (venceu(x) !== venceu(y)) return venceu(x) ? -1 : 1;
-          if (!!x.feito_em !== !!y.feito_em) return x.feito_em ? 1 : -1;
-          return (x.prazo ?? x.inicio ?? '').localeCompare(y.prazo ?? y.inicio ?? '');
-        });
+
+    /* Ação sem data vai para o fim: ela não é urgente, é só sem prazo — e
+       misturá-la com as datadas faria a fila mentir sobre o que corre. */
+    const chave = (a: Acao) => a.prazo ?? a.inicio ?? '9999';
+
+    const ordenar = (lista: Acao[]) => [...lista].sort((x, y) => {
+      if (venceu(x) !== venceu(y)) return venceu(x) ? -1 : 1;
+      if (!!x.feito_em !== !!y.feito_em) return x.feito_em ? 1 : -1;
+      return chave(x).localeCompare(chave(y));
+    });
+
+    return blocos.map(b => {
+      // Só os pais DESTE bloco entram na fila; as partes vão aninhadas dentro
+      // deles, venham do bloco que vierem.
+      const itens = ordenar(acoes.filter(a => a.bloco === b.chave && !a.parte_de))
+        .map(pai => ({
+          pai,
+          partes: acoes
+            .filter(f => f.parte_de === pai.id)
+            .sort((x, y) => x.ordem - y.ordem),
+        }));
+
+      /* O contador conta o que a tela DESENHA aqui, não o que a coluna
+         `bloco` diz. As três mudanças da recuperação têm bloco
+         `recuperacao` mas o pai delas é um ganho rápido, e aparecem lá.
+         Contando por `bloco`, "Recuperação e Voxuy" anunciava 8 e mostrava
+         4 — o cabeçalho mentindo sobre a própria lista. */
+      const desenhadas = itens.flatMap(i => [i.pai, ...i.partes]);
+
       return {
         ...b,
         itens,
-        feitas: itens.filter(a => a.feito_em).length,
-        vencidas: itens.filter(venceu).length,
+        total:    desenhadas.length,
+        feitas:   desenhadas.filter(a => a.feito_em).length,
+        vencidas: desenhadas.filter(venceu).length,
+        semData:  desenhadas.filter(a => !a.prazo && !a.inicio).length,
       };
     }).filter(b => b.itens.length > 0);
-  }, [acoes]);
+  }, [acoes, blocos]);
+
+  /** Uma linha da fila. Pai e parte usam a mesma; muda só o recuo. */
+  function Linha({ a, filha = false, partes }: { a: Acao; filha?: boolean; partes?: Acao[] }) {
+    const feita   = !!a.feito_em;
+    const vencida = !feita && a.prazo !== null && a.prazo < HOJE;
+    const semData = !a.prazo && !a.inicio;
+    const feitasDasPartes = partes?.filter(p => p.feito_em).length ?? 0;
+
+    return (
+      <div
+        className={cn(
+          'flex gap-3 rounded-lg border bg-card px-4 py-3 transition-colors',
+          vencida ? 'border-amber-500/40' : 'border-border',
+          feita && 'opacity-60',
+          filha && 'border-dashed bg-card/40',
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => alternar(a)}
+          disabled={salvando === a.id}
+          aria-pressed={feita}
+          aria-label={feita ? `Desmarcar ${a.titulo}` : `Marcar ${a.titulo} como feita`}
+          className={cn(
+            'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+            feita
+              ? 'border-emerald-500 bg-emerald-500 text-white'
+              : 'border-muted-foreground/40 hover:border-primary',
+            salvando === a.id && 'opacity-50',
+          )}
+        >
+          {salvando === a.id
+            ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
+            : feita && <Check className="h-3 w-3" />}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className={cn(
+              filha ? 'text-[13px] text-foreground/90' : 'text-sm text-foreground',
+              feita && 'line-through decoration-muted-foreground',
+            )}>
+              {a.titulo}
+            </span>
+
+            {/* "Sem data no plano" é estado próprio, não prazo em branco: o
+                documento descreve a ação sem dar prazo, e esconder isso faria
+                parecer campo esquecido em vez de compromisso sem data. */}
+            <span className={cn(
+              'flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
+              vencida   ? 'bg-amber-500/15 text-amber-400'
+              : semData ? 'bg-muted text-muted-foreground/70'
+                        : 'bg-secondary text-muted-foreground',
+            )}>
+              {vencida && <AlertTriangle className="h-2.5 w-2.5" />}
+              {semData ? 'sem data no plano' : janela(a)}
+            </span>
+
+            {/* Quantas partes já foram feitas. O pai NÃO é marcado por elas:
+                a tela mostra a contradição em vez de resolvê-la sozinha, que
+                seria espelho precisando de gatilho. */}
+            {partes && partes.length > 0 && (
+              <span className={cn(
+                'rounded px-1.5 py-0.5 text-[10px] tabular-nums',
+                feitasDasPartes === partes.length
+                  ? 'bg-emerald-500/15 text-emerald-400'
+                  : 'bg-muted text-muted-foreground',
+              )}>
+                {feitasDasPartes}/{partes.length} partes
+              </span>
+            )}
+
+            {a.secao !== null && (
+              <span
+                className="text-[11px] text-muted-foreground/70"
+                title={a.plano_secoes?.titulo ?? undefined}
+              >
+                seção {a.secao}
+              </span>
+            )}
+          </div>
+
+          {a.detalhe && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {a.detalhe}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const semDataTotal = acoes.filter(a => !a.prazo && !a.inicio).length;
 
   return (
     <DashboardLayout title="Prazos" hideFilters>
@@ -198,10 +313,14 @@ export default function PrazosPage() {
 
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          As <b className="text-foreground">{acoes.length} ações com data</b> do Plano de
-          crescimento Out/26 a Jul/27. Marcar grava a data de hoje; desmarcar apaga. O que
-          venceu sem ser feito sobe para o topo do bloco e vira aviso em{' '}
+          As <b className="text-foreground">{acoes.length} ações</b> do Plano de crescimento
+          Out/26 a Jul/27, lidas seção por seção. Marcar grava a data de hoje; desmarcar
+          apaga. O que venceu sem ser feito sobe para o topo do bloco e vira aviso em{' '}
           <b className="text-foreground">Metas</b>.
+          {semDataTotal > 0 && (
+            <> O plano descreve <b className="text-foreground">{semDataTotal}</b> delas sem
+            dar prazo — elas ficam marcadas como tal, no fim de cada bloco.</>
+          )}
         </p>
 
         {erro && (
@@ -218,7 +337,7 @@ export default function PrazosPage() {
         ) : porBloco.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <CalendarClock className="h-5 w-5" />
-            Nenhuma ação com data cadastrada ainda.
+            Nenhuma ação cadastrada ainda.
           </div>
         ) : (
           porBloco.map(b => (
@@ -226,88 +345,34 @@ export default function PrazosPage() {
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <h2 className="text-sm font-semibold text-foreground">{b.titulo}</h2>
                 <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
-                  {b.feitas}/{b.itens.length}
+                  {b.feitas}/{b.total}
                 </span>
                 {b.vencidas > 0 && (
                   <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
                     {b.vencidas} vencida{b.vencidas > 1 ? 's' : ''}
                   </span>
                 )}
+                {b.semData > 0 && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground/70">
+                    {b.semData} sem data
+                  </span>
+                )}
               </div>
-              <p className="mb-2.5 text-xs text-muted-foreground">{b.subtitulo}</p>
+              {b.subtitulo && (
+                <p className="mb-2.5 text-xs text-muted-foreground">{b.subtitulo}</p>
+              )}
 
               <div className="space-y-2">
-                {b.itens.map(a => {
-                  const feita   = !!a.feito_em;
-                  const vencida = !feita && a.prazo !== null && a.prazo < HOJE;
-                  const aberta  = a.prazo === null;
-
-                  return (
-                    <div
-                      key={a.id}
-                      className={cn(
-                        'flex gap-3 rounded-lg border bg-card px-4 py-3 transition-colors',
-                        vencida ? 'border-amber-500/40' : 'border-border',
-                        feita && 'opacity-60',
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => alternar(a)}
-                        disabled={salvando === a.id}
-                        aria-pressed={feita}
-                        aria-label={feita ? `Desmarcar ${a.titulo}` : `Marcar ${a.titulo} como feita`}
-                        className={cn(
-                          'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
-                          feita
-                            ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-muted-foreground/40 hover:border-primary',
-                          salvando === a.id && 'opacity-50',
-                        )}
-                      >
-                        {salvando === a.id
-                          ? <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                          : feita && <Check className="h-3 w-3" />}
-                      </button>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                          <span className={cn(
-                            'text-sm text-foreground',
-                            feita && 'line-through decoration-muted-foreground',
-                          )}>
-                            {a.titulo}
-                          </span>
-
-                          <span className={cn(
-                            'flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums',
-                            vencida  ? 'bg-amber-500/15 text-amber-400'
-                            : aberta ? 'bg-muted text-muted-foreground'
-                                     : 'bg-secondary text-muted-foreground',
-                          )}>
-                            {vencida && <AlertTriangle className="h-2.5 w-2.5" />}
-                            {janela(a)}
-                          </span>
-
-                          {a.secao !== null && (
-                            <span
-                              className="text-[11px] text-muted-foreground/70"
-                              title={a.plano_secoes?.titulo ?? undefined}
-                            >
-                              seção {a.secao}
-                            </span>
-                          )}
-                        </div>
-
-                        {a.detalhe && (
-                          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                            {a.detalhe}
-                          </p>
-                        )}
+                {b.itens.map(({ pai, partes }) => (
+                  <div key={pai.id} className="space-y-1.5">
+                    <Linha a={pai} partes={partes.length ? partes : undefined} />
+                    {partes.length > 0 && (
+                      <div className="ml-7 space-y-1.5 border-l border-border/60 pl-3">
+                        {partes.map(f => <Linha key={f.id} a={f} filha />)}
                       </div>
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
           ))

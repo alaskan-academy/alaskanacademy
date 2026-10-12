@@ -134,6 +134,58 @@ describe('o progresso de uma meta tem um dono só', () => {
     ).toMatch(/check\s*\(\s*automatica\s+or\s+porque_nao\s+is\s+not\s+null\s*\)/i);
   });
 
+  it('a lista de blocos vive no banco, não no código', () => {
+    /* Ela esteve em DOIS lugares: um `check (bloco in (...))` na tabela e um
+       array `BLOCOS` no PrazosPage. A primeira ação de `recuperacao` bateu no
+       check, e a tela teria seguido mostrando três grupos de oito. Lista fixa
+       no código envelhece em silêncio — armadilha 3 do CLAUDE.md. */
+    const migs = readdirSync(MIGRACOES).filter(n => n.endsWith('.sql'));
+    const criou = migs.some(n =>
+      /create\s+table\s+if\s+not\s+exists\s+public\.plano_blocos/i
+        .test(semComentarios(readFileSync(join(MIGRACOES, n), 'utf8'))));
+    expect(criou, 'plano_blocos não é criada em nenhuma migração').toBe(true);
+
+    const tsx = readFileSync(join(FONTE, 'pages', 'PrazosPage.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/[^\n]*$/gm, '');
+
+    expect(
+      tsx,
+      'PrazosPage voltou a ler os blocos de um array local. Eles vêm de ' +
+      'plano_blocos, senão bloco novo no banco não aparece na tela.',
+    ).toContain("from('plano_blocos')");
+
+    /* Os títulos dos blocos são o sintoma: se estiverem escritos aqui, a
+       lista voltou, com ou sem o nome `BLOCOS`. */
+    for (const titulo of ['Ganhos rápidos', 'Mini lançamentos', 'Natal e Black Friday']) {
+      expect(
+        tsx.includes(`'${titulo}'`) || tsx.includes(`"${titulo}"`),
+        `o título "${titulo}" está escrito no PrazosPage; ele pertence a plano_blocos`,
+      ).toBe(false);
+    }
+  });
+
+  it('receita fora do tráfego exige UTM, e o sem-UTM tem indicador próprio', () => {
+    /* O indicador media `not eh_trafego` e contava como canal próprio toda
+       venda de origem desconhecida — 2,4 pontos a mais, num alvo de 12%. O
+       documento separa "total identificado" de "sem UTM" em duas linhas. */
+    const medir = ultimaDefinicao('fn_metas_medir');
+    expect(medir, 'não achei fn_metas_medir nas migrações').not.toBe('');
+
+    const trecho = medir.match(/'receita_fora_trafego_pct'[\s\S]{0,400}/)?.[0] ?? '';
+    expect(
+      trecho,
+      'receita_fora_trafego_pct voltou a somar a venda sem utm_source. O filtro ' +
+      'precisa exigir `tem_utm`, senão origem desconhecida conta como canal próprio.',
+    ).toMatch(/not\s+eh_trafego\s+and\s+tem_utm/i);
+
+    expect(
+      medir,
+      'o sem-UTM precisa continuar medido em separado: é a régua do ganho rápido ' +
+      '"UTM em todos os links próprios", e somado ao identificado tem de dar o total.',
+    ).toContain('receita_sem_utm_pct');
+  });
+
   it('as funções novas de metas não ficam abertas ao anon', () => {
     const faltando: string[] = [];
 
