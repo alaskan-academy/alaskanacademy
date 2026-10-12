@@ -576,6 +576,14 @@ export default function OverviewPage() {
       qtdExp: expiradas.qtd, expVal: expiradas.valor,
       qtdRecuperadas: num(d.recuperadas?.qtd),
       valRecuperadas: num(d.recuperadas?.valor),
+      // Quem já era dono do produto e gerou outra cobrança. Não é perda, mas
+      // também não é recuperação — por isso desce separado, em vez de inflar
+      // a taxa que a meta de recuperação mede. Ver 20261012za.
+      qtdJaComprado: num(d.recuperadas?.ja_comprado_qtd),
+      valJaComprado: num(d.recuperadas?.ja_comprado_valor),
+      // O número de CASOS vem deduplicado por (pessoa, produto); este é o de
+      // cobranças geradas. Em setembro: 632 casos, 789 tentativas.
+      tentativasNaoAprov: num(d.tentativas_nao_aprovadas),
     });
 
     const a = (anterior?.data ?? null) as any;
@@ -1167,7 +1175,14 @@ export default function OverviewPage() {
                     const qtdTotal =
                       (kpis.qtdPend || 0) + (kpis.qtdCanc || 0) + (kpis.qtdExp || 0);
                     const recuperado = kpis.valRecuperadas || 0;
-                    const perdido = Math.max(total - recuperado, 0);
+                    // Duas coisas descem do total e elas NÃO são a mesma: quem
+                    // desistiu e voltou (recuperação, o que a meta mede) e quem já
+                    // era dono e gerou outra cobrança (nunca esteve em risco).
+                    // Juntá-las inflaria a taxa de recuperação com mérito que não
+                    // existe — eram 6 casos em setembro.
+                    const jaComprado = kpis.valJaComprado || 0;
+                    const perdido = Math.max(total - recuperado - jaComprado, 0);
+                    const tentativas = kpis.tentativasNaoAprov || qtdTotal;
                     const pctDoFat = pctReceita(perdido);
 
                     const linhas: [string, number, number][] = [
@@ -1189,7 +1204,11 @@ export default function OverviewPage() {
                         {recuperado > 0 && (
                           <p className="mt-2 rounded bg-success/10 px-2 py-1.5 text-xs leading-snug text-success">
                             {formatCurrency(recuperado)} de {formatCurrency(total)} viraram
-                            venda depois — mesma pessoa, mesmo produto, em até 7 dias
+                            venda depois — mesmo CPF, mesmo produto, em até 7 dias
+                            {jaComprado > 0 && (
+                              <> · outros {formatCurrency(jaComprado)} eram de quem já
+                              tinha o produto</>
+                            )}
                           </p>
                         )}
 
@@ -1199,7 +1218,12 @@ export default function OverviewPage() {
                             abaixo do valor, que é o que se lê primeiro. */}
                         <div className="mt-3 space-y-2 border-t border-border/60 pt-2.5">
                           <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                            {formatNumber(qtdTotal)} tentativas · {formatCurrency(total)}
+                            {/* Dizia "tentativas" sobre um número já deduplicado por
+                                (CPF, produto): eram casos. Os dois agora aparecem,
+                                e a diferença entre eles é quem insistiu. */}
+                            {formatNumber(qtdTotal)} carrinhos
+                            {tentativas > qtdTotal && <> · {formatNumber(tentativas)} tentativas</>}
+                            {" · "}{formatCurrency(total)}
                           </div>
                           {linhas.map(([rot, qtd, val]) => (
                             <div key={rot} className="flex items-baseline justify-between gap-2 text-xs">
