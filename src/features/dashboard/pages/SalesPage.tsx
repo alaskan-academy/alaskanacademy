@@ -236,7 +236,15 @@ type LinhaQuando = {
  * a mesma regra de quais vendas contam. O `resumo` dos agregados não serve:
  * ele exclui upsell e a lista não.
  */
-type ResumoDaLista = { quantidade: number; valor: number; base_periodo: number };
+/*
+  `pessoas` é de quantas PESSOAS são os pedidos filtrados, agrupando por CPF —
+  a mesma aluna que comprou com dois e-mails era contada duas vezes até
+  12/10/2026. Vem de `fn_pessoas_distintas`, que é SECURITY DEFINER porque
+  `clientes.cpf` tem o SELECT revogado: o documento nunca chega ao navegador,
+  só a contagem. Quem não tem CPF (867 clientes, quase todos carrinho
+  abandonado) conta como uma pessoa cada — o número pode sobrar, nunca faltar.
+*/
+type ResumoDaLista = { quantidade: number; valor: number; base_periodo: number; pessoas: number };
 
 /** O que `fn_vendas_lista` devolve. */
 type BrutoLista = { total: number; resumo: ResumoDaLista; linhas: Venda[] };
@@ -257,7 +265,7 @@ const RESUMO_VAZIO: ResumoVendas = {
   upsell_aprovadas: 0, upsell_faturamento: 0,
 };
 
-const RESUMO_LISTA_VAZIO: ResumoDaLista = { quantidade: 0, valor: 0, base_periodo: 0 };
+const RESUMO_LISTA_VAZIO: ResumoDaLista = { quantidade: 0, valor: 0, base_periodo: 0, pessoas: 0 };
 
 export default function SalesPage() {
   const { startDateStr, endDateStr, startISO, endISO, contaIds, empresaId } = useFilters();
@@ -338,6 +346,19 @@ export default function SalesPage() {
     linhas do PostgREST voltaria a agir em silêncio, que é justamente o defeito
     que esta revisão passou desfazendo. Então a filtragem, a contagem e a
     paginação ficam em `fn_vendas_lista`.
+
+    Até 12/10/2026 havia um SEGUNDO efeito logo abaixo deste, a consulta antiga
+    em `vendas` com o embed `clientes(nome,email,telefone)`, que a migração
+    para a RPC deveria ter levado junto e não levou. Os dois escreviam
+    `salesData` e `salesTotal`, e disparavam juntos a cada troca de período,
+    status, conta ou empresa — quem respondesse por último vencia. Só que o
+    antigo não dependia de `buscaAdiada` nem preenchia `resumoLista`: bastava
+    mexer no filtro depois de buscar para a busca parar de valer em silêncio,
+    com o resumo ainda falando do termo anterior. Era também uma consulta
+    inteira a mais em `vendas` a cada render. Nada se perdeu ao apagá-lo: a RPC
+    devolve o mesmo `clientes: {nome,email,telefone}` que a tabela lê, e aplica
+    `p_empresa IS NULL OR v.empresa_id = p_empresa` — o mesmo carimbo da venda,
+    e não da conta, que o comentário de lá guardava.
   */
   useEffect(() => {
     const loadSales = async () => {
@@ -361,36 +382,6 @@ export default function SalesPage() {
     };
     loadSales();
   }, [salesPage, startDateStr, endDateStr, contaIds, empresaId, statusFilter, buscaAdiada, startISO, endISO]);
-
-
-  useEffect(() => {
-    const loadSales = async () => {
-      setLoadingSales(true);
-      const endDateEnd = endISO;
-      const from = salesPage * PAGE_SIZE;
-      const to   = from + PAGE_SIZE - 1;
-
-      let q = supabase
-        .from("vendas")
-        .select("*, clientes(nome, email, telefone)", { count: "exact" })
-        .not("pedido_id", "like", "TEST%")
-        .not("pedido_id", "like", "LC-%")
-        .order("data_venda", { ascending: false })
-        .range(from, to);
-      if (startISO && endDateEnd) q = q.gte("data_venda", startISO).lte("data_venda", endDateEnd);
-      if (contaIds.length) q = q.in("ad_account_id", contaIds);
-      // O carimbo da venda, e não a conta: 60% das vendas não têm conta de
-      // anúncio, e por conta elas ficariam de fora de qualquer recorte.
-      if (empresaId) q = q.eq("empresa_id", empresaId);
-      if (statusFilter !== "todos") q = q.eq("status", statusFilter);
-
-      const { data, count } = await q;
-      setSalesData(data ?? []);
-      setSalesTotal(count ?? 0);
-      setLoadingSales(false);
-    };
-    loadSales();
-  }, [salesPage, startDateStr, endDateStr, contaIds, empresaId, statusFilter]);
 
   useEffect(() => {
     const load = async () => {
@@ -1031,6 +1022,32 @@ export default function SalesPage() {
               </span>
             )}
           </span>
+          {/*
+            De quantas pessoas são esses pedidos.
+
+            A lista é a tela onde a mesma aluna aparece em várias linhas, e era
+            a única que não dizia quantas pessoas havia ali. Agrupa por CPF —
+            93,6% da base desde a importação de 12/10/2026 —, e quem não tem
+            CPF vale por uma pessoa, então o número erra para mais, nunca para
+            menos. Só aparece quando há pedidos: "0 pessoas" ao lado de "0
+            vendas" é ruído.
+          */}
+          {resumoLista.pessoas > 0 && (
+            <span
+              className="text-muted-foreground"
+              title="Pessoas distintas nestes pedidos, agrupadas por CPF. Quem ainda não tem CPF cadastrado conta como uma pessoa."
+            >
+              Pessoas{" "}
+              <b className="ml-1 font-semibold tabular-nums text-foreground">
+                {formatNumber(resumoLista.pessoas)}
+              </b>
+              {resumoLista.quantidade > resumoLista.pessoas && (
+                <span className="ml-2 text-xs">
+                  {(resumoLista.quantidade / resumoLista.pessoas).toFixed(1).replace(".", ",")} pedidos cada
+                </span>
+              )}
+            </span>
+          )}
           <span className="text-muted-foreground">
             Valor{" "}
             <b className="ml-1 font-semibold tabular-nums text-foreground">
