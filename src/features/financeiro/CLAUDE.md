@@ -34,28 +34,72 @@ Automatiza o fechamento financeiro mensal, que antes levava ~4h/mês de trabalho
 - `regras_categoria` — padrões de texto → categoria (geradas do histórico + aprendidas)
 - `vendas_payt` — vendas recebidas via webhook
 - `metricas_diarias` — gasto/CPL/leads por dia/produto (UTMify)
-- `ferramentas_saas` — lista de ferramentas e assinaturas recorrentes
-- `notas_fiscais` — controle de NFs por ferramenta/mês
+- `categorias_centro` — **o catálogo**: categoria → centro de custo → tipo (`custo`, `receita`, `reserva`, `socio`). É daqui que sai o que é custo operacional e o que não é
 - `documentos_fiscais` — as NFs em si, com `empresa_id`: NF e conciliação são separadas por empresa para a contabilidade
 - `caixa_config` — saldo inicial da Reserva, um por empresa (é de uma conta bancária)
 
 ---
 
-## Categorias de custo (preservar exatamente — são as do usuário)
+## Categorias e centros de custo — saem da TABELA, nunca daqui
 
-```
-Anúncios (Facebook ADs) | Aplicativos e Ferramentas | IAs | WhatsApp
-Consultorias e Mentorias | Contabilidade | Cursos e Formações
-Departamento Pessoal | Doações | Edição de Vídeo | Eletrônicos
-Endereço Fiscal | Eventos | Impostos e Tributos | Jurídico
-Marketplace | Material de Escritório | Meios de Pagamento
-Ofertas | Outros | Pró-labore | Recarga e Chip
-Registros e Documentos | Reserva de Caixa | Retirada de Lucro
-Sócios | Treinamento e Educação | Expansão | Investimentos Futuros
-Coprodução | Produtos | Serviços | Receita Financeira
+A fonte da verdade é **`categorias_centro`** (categoria → centro de custo →
+tipo). Para ver a lista de agora:
+
+```sql
+select categoria, centro_custo, tipo from categorias_centro order by 1;
 ```
 
-**Centros de custo:** Anúncios | Cursos e Formações | Funcionários | Jurídico | Outros | Reserva de Caixa | Sócios | Softwares e Ferramentas
+E o que de fato está em uso, que é outra pergunta:
+
+```sql
+select categoria, count(*), round(sum(valor),2)
+  from transacoes where categoria is not null group by 1 order by 1;
+```
+
+### Por que a lista saiu deste arquivo
+
+Ela estava escrita aqui à mão, com 33 categorias, e era um **retrato de 2026-09
+da própria `categorias_centro`**. Conferido em 12/10/2026:
+
+| | neste arquivo | na realidade |
+|---|---|---|
+| categorias | 33 | **45** catalogadas, 36 em uso |
+| centros de custo | 8 | **12** em uso |
+
+Treze categorias nasceram no banco e nunca entraram aqui — entre elas
+`Editor de Vídeo` (41 lançamentos, **−R$ 75.639**, a segunda maior despesa da
+casa depois de anúncios), `Hospedagem/Infraestrutura` (−R$ 6.781), `Mídia`
+(−R$ 6.213), `Retirada do Caixa` (+R$ 102.294), `Aporte de Sócio`, `Tokens`,
+`Domínios`, `Contábil`, `Automação/Marketing`, `Swipe`, `Material de Aulas`,
+`Assinaturas/Verificações` e `Pagamento de Fatura`.
+
+E o documento ainda dizia `Edição de Vídeo` onde o banco diz `Editor de
+Vídeo` — o tipo de quase-acerto que faz alguém procurar pelo nome errado e
+concluir que a categoria não existe.
+
+Terceira armadilha do CLAUDE.md da raiz, em forma de documentação: **lista
+fixa que envelhece em silêncio.** Por isso ela não volta.
+
+### Onde a lista PRECISA existir no código
+
+`CAT_SOCIOS` e `CAT_RESERVA` em `constants.ts`, porque `ehCustoOperacional` e
+`ehReceita` são funções puras chamadas em laço sobre milhares de transações —
+buscar a tabela a cada chamada as tornaria assíncronas.
+
+Essas duas têm o teste que a regra exige:
+`src/test/categorias-socio-batem-com-o-banco.test.ts`, que lê as MIGRAÇÕES e
+falha quando o banco ganha uma categoria de sócio que o código não conhece.
+Foi criado depois que `Aporte de Sócio` nasceu no banco, ficou fora da lista, e
+R$ 2.000 de capitalização passaram a contar como faturamento.
+
+### Duas coisas para olhar quando sobrar tempo
+
+- **`Softwares` e `Softwares e Ferramentas`** convivem como centros de custo
+  distintos nos dados. Dois nomes para a mesma coisa é a primeira armadilha.
+- **Nove categorias catalogadas nunca foram usadas**: `Coprodução`,
+  `Departamento Pessoal`, `Doações`, `Eventos`, `Freelancer`,
+  `Investimentos Futuros`, `Marketplace`, `Material de Escritório`,
+  `Treinamento e Educação`.
 
 ---
 
