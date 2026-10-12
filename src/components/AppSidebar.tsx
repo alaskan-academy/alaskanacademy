@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, ShoppingCart,
-  Settings, ChevronLeft, ChevronRight, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart,
+  Settings, ChevronLeft, ChevronRight, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart, Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -66,6 +66,9 @@ const GRUPOS = [
       { path: '/resumo',     label: 'Resumo',     icon: LayoutDashboard, key: 'overview',   adminOnly: false, sectorOnly: null },
       { path: '/vendas',     label: 'Vendas',     icon: ShoppingCart,    key: 'vendas',     adminOnly: false, sectorOnly: null },
       { path: '/financeiro', label: 'Financeiro', icon: Wallet,          key: 'financeiro', adminOnly: false, sectorOnly: null },
+      // "Quanto queremos que entre" é a mesma pergunta de Resultado, então é
+      // aqui — escolha dela em 12/10. Só sócia: é o alvo do ano da empresa.
+      { path: '/metas',      label: 'Metas',      icon: Target,          key: 'metas',      adminOnly: true,  sectorOnly: null },
     ],
   },
   {

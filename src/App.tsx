@@ -20,6 +20,7 @@ const OverviewPage             = lazy(() => import("./features/dashboard/pages/O
 const MetaAdsPage              = lazy(() => import("./features/ads/pages/MetaAdsPage"));
 const TendenciasPage           = lazy(() => import("./features/dashboard/pages/TendenciasPage"));
 const SalesPage                = lazy(() => import("./features/dashboard/pages/SalesPage"));
+const MetasPage                = lazy(() => import("./features/metas/pages/MetasPage"));
 const UTMPage                  = lazy(() => import("./features/ads/pages/UTMPage"));
 const EditorsPage              = lazy(() => import("./features/editores/pages/EditorsPage"));
 const SettingsPage             = lazy(() => import("./features/admin/pages/SettingsPage"));
@@ -99,6 +100,10 @@ const App = () => (
                     */}
                     <Route path="/funil" element={<Navigate to="/meta-ads" replace />} />
                     <Route path="/vendas" element={<ProtectedRoute pageKey="vendas"><SalesPage /></ProtectedRoute>} />
+                    {/* Metas do ANO DE EMPRESA, que não têm relação com
+                        ad_accounts.roas_meta — aquilo é alvo de conta de
+                        anúncio e segue onde está. Decisão dela em 12/10. */}
+                    <Route path="/metas" element={<ProtectedRoute pageKey="metas"><MetasPage /></ProtectedRoute>} />
                     <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
                     <Route path="/tendencias" element={<ProtectedRoute pageKey="tendencias"><TendenciasPage /></ProtectedRoute>} />
                     {/* /clientes foi removida: a listagem por pessoa saiu do menu.
