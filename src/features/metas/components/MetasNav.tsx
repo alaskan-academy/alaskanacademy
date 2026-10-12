@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Target, Lightbulb } from 'lucide-react';
+import { Target, Lightbulb, CalendarClock } from 'lucide-react';
 
 /*
   Metas e Brainstorm são duas telas de uma área só, e a troca acontece AQUI —
@@ -10,8 +10,14 @@ import { Target, Lightbulb } from 'lucide-react';
   quem tem sub-página resolve com uma fila de pílulas no topo do conteúdo, como
   o Financeiro já faz. Aninhar na barra foi tentado e desfeito.
 */
+/*
+  A ordem é a das perguntas, não a do documento: "quanto falta" (Metas) vem
+  antes de "o que é para hoje" (Prazos), e as ideias ainda sem data ficam por
+  último.
+*/
 const ITEMS = [
   { path: '/metas',            label: 'Metas',      icon: Target },
+  { path: '/metas/prazos',     label: 'Prazos',     icon: CalendarClock },
   { path: '/metas/brainstorm', label: 'Brainstorm', icon: Lightbulb },
 ];
 

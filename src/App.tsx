@@ -21,6 +21,7 @@ const MetaAdsPage              = lazy(() => import("./features/ads/pages/MetaAds
 const TendenciasPage           = lazy(() => import("./features/dashboard/pages/TendenciasPage"));
 const SalesPage                = lazy(() => import("./features/dashboard/pages/SalesPage"));
 const MetasPage                = lazy(() => import("./features/metas/pages/MetasPage"));
+const PrazosPage               = lazy(() => import("./features/metas/pages/PrazosPage"));
 const BrainstormPage           = lazy(() => import("./features/metas/pages/BrainstormPage"));
 const UTMPage                  = lazy(() => import("./features/ads/pages/UTMPage"));
 const EditorsPage              = lazy(() => import("./features/editores/pages/EditorsPage"));
@@ -105,9 +106,13 @@ const App = () => (
                         ad_accounts.roas_meta — aquilo é alvo de conta de
                         anúncio e segue onde está. Decisão dela em 12/10. */}
                     <Route path="/metas" element={<ProtectedRoute pageKey="metas"><MetasPage /></ProtectedRoute>} />
-                    {/* Sub-página da MESMA área, e por isso não ganha entrada
+                    {/* Sub-páginas da MESMA área, e por isso não ganham entrada
                         própria na barra: a troca acontece no MetasNav, como no
-                        Financeiro. A sidebar fica plana. */}
+                        Financeiro. A sidebar fica plana.
+
+                        Prazos é a única das três que grava: é lá que as 30
+                        ações datadas do plano são marcadas como feitas. */}
+                    <Route path="/metas/prazos" element={<ProtectedRoute pageKey="metas"><PrazosPage /></ProtectedRoute>} />
                     <Route path="/metas/brainstorm" element={<ProtectedRoute pageKey="metas"><BrainstormPage /></ProtectedRoute>} />
                     <Route path="/utm" element={<ProtectedRoute pageKey="utm"><UTMPage /></ProtectedRoute>} />
                     <Route path="/tendencias" element={<ProtectedRoute pageKey="tendencias"><TendenciasPage /></ProtectedRoute>} />
