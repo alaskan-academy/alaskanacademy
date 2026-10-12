@@ -195,6 +195,52 @@ export interface Simples {
   pct: number | null;
   /** Quais meses formaram a alíquota — para a tela poder mostrar e alguém conferir. */
   baseMeses: string[];
+  /**
+   * Quanto já saiu do extrato para o imposto DESTE mês, tenha ou não fechado
+   * a conta. Existe porque o caso real não é "pago ou não pago": em 06/10
+   * saíram R$ 575,54 de um DAS de setembro que vale ~R$ 14.934, e ela
+   * resumiu assim — "este valor foi apenas uma parcela". Sem este campo a
+   * tela só conseguiria dizer "presumido" e esconderia que parte já saiu.
+   */
+  pagoParcial: number;
+  /** Dia 20 do mês seguinte, em `YYYY-MM-DD`. */
+  vencimento: string;
+  /** Já passou do vencimento e ainda não foi pago por inteiro. */
+  emAtraso: boolean;
+}
+
+/**
+ * Quando o DAS deste mês vence: **dia 20 do mês seguinte**.
+ *
+ * Regra dela, 12/10/2026: "Imposto é sempre pago no mês seguinte dia 20".
+ * A mesma conta está em `vw_aliquota_simples_mes.vencimento`
+ * (`20261012u`), e há teste exigindo que as duas não divirjam.
+ */
+export function vencimentoDoSimples(mes: string): string {
+  return `${mesSeguinte(mes)}-20`;
+}
+
+/**
+ * O piso legal do Simples: 1º degrau do Anexo I. Nenhum anexo começa abaixo
+ * disto, então alíquota implícita menor que isto não é alíquota — é
+ * pagamento incompleto.
+ *
+ * O mesmo número está em `configuracoes.simples_aliquota_minima_pct`, que é
+ * quem o lado SQL lê. Um teste compara os dois: se alguém mudar a tabela
+ * porque a lei mudou e esquecer daqui, ele reprova.
+ */
+export const ALIQUOTA_MINIMA_PCT = 4;
+
+export interface OpcoesDoResultado {
+  /** Hoje em `YYYY-MM-DD`. Explícito para a conta não depender do relógio. */
+  hoje?: string;
+  /** Piso abaixo do qual um pagamento é parcela. Ver `ALIQUOTA_MINIMA_PCT`. */
+  aliquotaMinimaPct?: number;
+}
+
+/** Hoje no fuso de São Paulo, que é o fuso em que o DAS vence. */
+function hojeEmSaoPaulo(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 }
 
 export const mesDe = (data: string): string => data.slice(0, 7);
@@ -319,10 +365,46 @@ export function simplesDoMes(
   caixa: Map<string, Caixa>,
   competencia: Map<string, Competencia>,
   historicoDeMeses: string[],
+  opcoes: OpcoesDoResultado = {},
 ): Simples {
-  /* O imposto DESTE mês sai no mês seguinte. Se já saiu, é fato e acabou. */
+  const hoje     = opcoes.hoje ?? hojeEmSaoPaulo();
+  const pisoPct  = opcoes.aliquotaMinimaPct ?? ALIQUOTA_MINIMA_PCT;
+  const vencimento = vencimentoDoSimples(mes);
+
+  /*
+    ── Por que não basta `pago > 0` ────────────────────────────────────────
+
+    Esta linha já disse `if (pago > 0) return fato`, e o preço apareceu em
+    12/10/2026: a tela mostrava setembro com **R$ 575,54** de Simples sobre
+    uma base de R$ 215.315,73 — uma alíquota de 0,27% — e marcava a fonte
+    como "extrato", afirmando como pago algo que não tinha sido. O resultado
+    de setembro aparecia R$ 14.358 maior do que é.
+
+    Ela explicou as duas peças que faltavam:
+
+      "setembro - imposto ainda não foi pago, por isso, falta pagar
+       este valor foi apenas uma parcela"
+      "Imposto é sempre pago no mês seguinte dia 20"
+
+    Daí as duas condições. A primeira sozinha não bastaria: a partir de
+    21/10 setembro passaria a "vencido" e os R$ 575,54 virariam o DAS
+    inteiro — o mesmo defeito, dez dias mais tarde e mais difícil de ver.
+
+    E não era um acidente de um dia: TODO mês, do dia 1 até o DAS cair, o
+    mês anterior mostrava lucro que não existe.
+  */
   const pago = caixa.get(mesSeguinte(mes))?.impostosPagos ?? 0;
-  if (pago > 0) return { valor: pago, presumido: false, pct: null, baseMeses: [] };
+  const baseDoMesAtual = competencia.get(mes)?.baseSimples ?? 0;
+
+  const venceu  = hoje > vencimento;
+  const parcela = baseDoMesAtual > 0 && (100 * pago) / baseDoMesAtual < pisoPct;
+
+  if (venceu && pago > 0 && !parcela) {
+    return {
+      valor: pago, presumido: false, pct: null, baseMeses: [],
+      pagoParcial: pago, vencimento, emAtraso: false,
+    };
+  }
 
   /* Senão, a alíquota vem dos dois meses mais recentes cujo imposto JÁ saiu —
      precisa dos dois lados do par, senão a razão não significa nada.
@@ -340,18 +422,33 @@ export function simplesDoMes(
     const p = caixa.get(mesSeguinte(m))?.impostosPagos ?? 0;
     const b = competencia.get(m)?.baseSimples ?? 0;
     if (p <= 0 || b <= 0) continue;
+    /* O mesmo filtro da linha de cima, aplicado aos meses que FORMAM a
+       alíquota. Sem ele, a parcela de setembro (0,27%) entraria na média a
+       partir de 21/10 e derrubaria a estimativa de outubro e novembro — o
+       defeito deixaria de ser de um mês e viraria de três. */
+    if (hoje <= vencimentoDoSimples(m)) continue;
+    if ((100 * p) / b < pisoPct) continue;
     base.unshift(m);
     somaPago += p;
     somaBase += b;
   }
 
+  /* Vencido e ainda sem o pagamento inteiro: o mês está em atraso, e a tela
+     precisa dizer isso em vez de só chamar de "previsto". */
+  const emAtraso = venceu;
+
   if (base.length === 0 || somaBase <= 0) {
-    return { valor: 0, presumido: true, pct: null, baseMeses: [] };
+    return {
+      valor: 0, presumido: true, pct: null, baseMeses: [],
+      pagoParcial: pago, vencimento, emAtraso,
+    };
   }
 
   const pct = somaPago / somaBase;
-  const baseDoMes = competencia.get(mes)?.baseSimples ?? 0;
-  return { valor: pct * baseDoMes, presumido: true, pct: pct * 100, baseMeses: base };
+  return {
+    valor: pct * baseDoMesAtual, presumido: true, pct: pct * 100, baseMeses: base,
+    pagoParcial: pago, vencimento, emAtraso,
+  };
 }
 
 export interface Resultado {
@@ -416,6 +513,7 @@ export function montarResultado(
   competencia: Map<string, Competencia>,
   caixa: Map<string, Caixa>,
   historicoDeMeses: string[],
+  opcoes: OpcoesDoResultado = {},
 ): Resultado {
   const c = competencia.get(mes)
     ?? { pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
@@ -423,7 +521,7 @@ export function montarResultado(
          baseSimples: 0, taxaPayt: 0, investMeta: 0, impostoMeta: 0 };
   const k = caixa.get(mes)
     ?? { impostosPagos: 0, anunciosPagos: 0, retiradasSocios: 0, custosPagos: 0, entrou: 0, saiu: 0 };
-  const simples = simplesDoMes(mes, caixa, competencia, historicoDeMeses);
+  const simples = simplesDoMes(mes, caixa, competencia, historicoDeMeses, opcoes);
 
   /* Parte da RECEITA, não do que o cliente pagou: os juros já são da
      adquirente antes de a empresa ver o dinheiro. */

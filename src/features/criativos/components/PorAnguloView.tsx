@@ -96,7 +96,11 @@ export function PorAnguloView({ userId }: { userId: string }) {
         let q = supabase
           .from('vw_criativo_por_angulo')
           .select('producao_id,nome,projeto,angulo,metodo_video,formato,fase,avaliacao,responsavel,estado,funil_alvo_id,funil_alvo,funil_alvo_produto')
-          .order('angulo')
+          /* Aqui o desempate importa ainda mais que nas outras duas telas:
+             `angulo` tem pouquíssimos valores distintos, então QUASE TUDO
+             empata, e paginar sem desempate embaralha as páginas entre si —
+             linha repetida numa, linha sumida na outra. */
+          .order('angulo').order('producao_id')
           .range(de, ate);
         if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
         return q;

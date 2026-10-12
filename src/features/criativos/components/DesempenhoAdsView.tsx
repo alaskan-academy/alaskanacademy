@@ -550,7 +550,10 @@ export function DesempenhoAdsView() {
     const [postados, { data: pf }, pj, { data: opF }, fs, vd] = await Promise.all([
       todasAsLinhas<PostadoRow>((de, ate) =>
         {
-          let q = supabase.from('producoes').select(SEL).eq('fase', 'postado').order('nome').range(de, ate);
+          // `.order('id')` desempata: `nome` repete em 47% dos postados, e sem
+          // desempate a paginação repete um card e some com outro.
+          let q = supabase.from('producoes').select(SEL).eq('fase', 'postado')
+            .order('nome').order('id').range(de, ate);
           if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);
           return q;
         }),

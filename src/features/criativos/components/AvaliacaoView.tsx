@@ -388,7 +388,17 @@ export function AvaliacaoView({ userId }: Props) {
       let q = supabase
         .from('producoes')
         .select('id,nome,tipo,fase,formato,data_inicio,status_veiculacao,avaliacao,avaliacao_origem,responsavel_id,projeto_id,responsavel:perfis!responsavel_id(id,nome),projeto:ofertas_editores!projeto_id(id,nome)')
-        .order('nome');
+        /* O `.order('id')` não é enfeite: sem ele a paginação PERDE e REPETE
+           cards. `nome` não é único — dos 3.073 postados, 1.442 (47%) estão
+           empatados, e "AD 001 H03 V01" existe 16 vezes. Quando a ordenação
+           empata, o Postgres não garante a mesma ordem entre a consulta da
+           página 1 e a da página 2: um card aparece nas duas e outro, que
+           estava na fronteira, não aparece em nenhuma.
+
+           O sintoma era um aviso de `key` duplicada no console e nada na
+           tela — a contagem continuava parecendo certa. Nesta tela se decide
+           o que foi validado. */
+        .order('nome').order('id');
       q = q.eq('fase', 'postado');
       if (!mostrarInativos) q = q.not('fase', 'in', '(arquivado,bloqueado)');
       if (projetosDaEmpresa) q = q.in('projeto_id', projetosDaEmpresa);

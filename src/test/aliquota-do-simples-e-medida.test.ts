@@ -30,6 +30,22 @@ const migracoes = (() => {
     .map(f => ({ nome: f, sql: readFileSync(join(dir, f), 'utf-8') }));
 })();
 
+/**
+ * Só o corpo da view da alíquota, sem o cabeçalho nem a prova.
+ *
+ * Existe porque casar com o arquivo inteiro dá passe falso: as provas no fim
+ * das migrações citam de propósito a regra que estão derrubando, e um
+ * `toMatch` no arquivo encontra o texto da prova em vez do código.
+ */
+function soAView(): string {
+  const arquivo = ultimaQueDefine('vw_aliquota_simples_mes');
+  const inicio = arquivo.search(/create or replace view public\.vw_aliquota_simples_mes/i);
+  const fim    = arquivo.indexOf('comment on view public.vw_aliquota_simples_mes', inicio);
+  const def    = arquivo.slice(inicio, fim > inicio ? fim : undefined);
+  expect(def.length, 'não consegui recortar a definição da view').toBeGreaterThan(200);
+  return def;
+}
+
 /** A migração mais recente que (re)define um objeto com este nome. */
 function ultimaQueDefine(objeto: string): string {
   let achado = '';
@@ -62,11 +78,45 @@ describe('a alíquota do Simples é medida', () => {
   it('mês cujo pagamento ainda não venceu NÃO entra na medida', () => {
     /* Sem isto, todo dia 1º a alíquota despencaria para perto de zero (o DAS
        vence dia 20) e voltaria depois. Uma alíquota que oscila com o
-       calendário é pior que o número fixo que ela substituiu. */
-    const sql = ultimaQueDefine('vw_aliquota_simples_mes');
-    expect(sql).toMatch(/pagamento_fechado/);
-    expect(sql, 'não há comparação com o mês corrente para saber se fechou')
-      .toMatch(/date_trunc\('month',\s*\(now\(\)/);
+       calendário é pior que o número fixo que ela substituiu.
+
+       ── Por que este teste olha só a DEFINIÇÃO da view ──────────────────
+       Até 12/10/2026 ele casava com o arquivo inteiro, e passou a dar passe
+       falso: a prova no fim de `20261012u` cita a regra ANTIGA de propósito
+       (para provar que a troca é um no-op), e o casamento acontecia ali em
+       vez de na view. Teste que lê a prova em vez do código testa a si
+       mesmo. */
+    const defDaView = soAView();
+    expect(defDaView).toMatch(/pagamento_fechado/);
+    expect(defDaView, 'não há comparação com hoje para saber se já venceu')
+      .toMatch(/now\(\)\s*at\s*time\s*zone/i);
+  });
+
+  it('o vencimento é dia 20 do mês seguinte, e é ele que fecha o mês', () => {
+    /* Regra dela, 12/10/2026: "Imposto é sempre pago no mês seguinte dia 20".
+       Antes a view esperava o mês do pagamento ACABAR, o que atrasava a
+       medida em dez dias à toa. `mes` é sempre dia 1, então dia 20 do mês
+       seguinte é +1 mês +19 dias. O mesmo cálculo está em
+       `vencimentoDoSimples`, no TypeScript, e há teste cruzando os dois em
+       `parcela-nao-fecha-o-mes-do-simples`. */
+    expect(soAView(), 'a view deixou de calcular o vencimento como dia 20')
+      .toMatch(/\+\s*interval\s*'1 month'\s*\)::date\s*\+\s*19/);
+  });
+
+  it('uma PARCELA não fecha o mês — o piso vem da tabela, não do código', () => {
+    /* Em 06/10 saíram R$ 575,54 de um DAS de setembro de ~R$ 14.934. Só a
+       regra do dia 20 faria essa parcela virar o imposto inteiro em 21/10, e
+       uma alíquota de 0,27% entraria na média de três meses.
+
+       O corte é o 1º degrau do Anexo I, e mora em `configuracoes` porque
+       parâmetro fiscal neste projeto sai de tabela (terceira armadilha). */
+    const def = soAView();
+    expect(def, 'a view não consulta o piso legal').toMatch(/simples_aliquota_minima_pct/);
+    expect(def, 'o piso tem de ser lido por fn_config, não escrito na view')
+      .toMatch(/fn_config\(\s*'simples_aliquota_minima_pct'/);
+
+    const semeia = migracoes.some(m => /insert into public\.configuracoes[\s\S]*simples_aliquota_minima_pct/i.test(m.sql));
+    expect(semeia, 'ninguém semeia simples_aliquota_minima_pct em configuracoes').toBe(true);
   });
 
   it('a janela é de 3 meses, não de um', () => {

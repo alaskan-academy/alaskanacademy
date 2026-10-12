@@ -433,9 +433,19 @@ export default function FinanceiroResultadoPage() {
                 <div className="flex gap-2 mt-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
                   <Info className="h-3.5 w-3.5 shrink-0 text-amber-400 mt-0.5" />
                   <p className="text-[11px] text-amber-200/90 leading-snug">
-                    O imposto deste mês é <strong>presumido</strong> — ainda não foi
-                    pago. Quando o pagamento entrar no extrato, esta linha passa a
-                    mostrar o valor real sozinha.
+                    O imposto deste mês é <strong>presumido</strong> — vence em{' '}
+                    <strong>{atual.simples.vencimento.split('-').reverse().join('/')}</strong>
+                    {atual.simples.emAtraso && <> e <strong>já venceu</strong></>}.
+                    {/* O que ela precisa ver não é "presumido": é quanto falta.
+                        Em 12/10 saíram R$ 575,54 de um DAS de setembro de
+                        ~R$ 14.934 — "este valor foi apenas uma parcela". */}
+                    {atual.simples.pagoParcial > 0 ? (
+                      <> Já saíram <strong>{formatCurrency(atual.simples.pagoParcial)}</strong> em
+                      parcela; <strong>falta {formatCurrency(
+                        Math.max(0, atual.simples.valor - atual.simples.pagoParcial))}</strong>.</>
+                    ) : (
+                      <> Nada saiu do extrato ainda.</>
+                    )}
                   </p>
                 </div>
               )}
