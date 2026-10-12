@@ -40,6 +40,14 @@ interface Linha {
   residuo: number | null;
   pct_residuo: number | null;
   mes_em_curso: boolean;
+  /* A view devolve uma linha por mês POR EMPRESA, e em "Ambas" setembro
+     aparece duas vezes. Sem estes campos a tabela mostrava dois "set/26"
+     com números de ordem de grandeza diferente e nada dizendo de quem era
+     cada um — e o React, com a chave repetida, avisava que podia estar
+     omitindo uma das duas. */
+  empresa_id: string | null;
+  empresa_nome: string | null;
+  empresa_slug: string | null;
 }
 
 function rotulo(iso: string): string {
@@ -68,7 +76,11 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
       .from('vw_conciliacao_meta')
       .select('*')
       .gte('mes', inicioIso)
-      .order('mes');
+      // A segunda ordenação importa: com duas empresas, só `mes` deixa a
+      // ordem das duas linhas do mesmo mês ao acaso do banco, e ela mudaria
+      // entre recargas sem nada ter mudado.
+      .order('mes')
+      .order('empresa_nome');
     if (empresaId) q = q.eq('empresa_id', empresaId);
     q
       .then(({ data, error }) => {
@@ -97,6 +109,12 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
   const somaMeta  = comparaveis.reduce((a, l) => a + (l.ads_meta ?? 0), 0);
   const somaBanco = comparaveis.reduce((a, l) => a + l.ads_banco, 0);
   const acrescimo = somaMeta > 0 ? ((somaBanco / somaMeta) - 1) * 100 : 0;
+
+  /* Quais empresas estão na tabela agora. Em "Ambas" o acréscimo do rodapé é
+     das duas somadas, e o número só significa alguma coisa se disser quais. */
+  const empresasNaTabela = [...new Set(
+    comparaveis.map(l => l.empresa_nome).filter((n): n is string => !!n),
+  )];
 
   if (carregando) {
     return <Moldura><p className="text-sm text-muted-foreground text-center py-8">Carregando…</p></Moldura>;
@@ -129,9 +147,22 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
           </thead>
           <tbody>
             {comparaveis.map(l => (
-              <tr key={l.mes} className="border-b border-border/50 last:border-0">
+              /* A chave é o par (mês, empresa), que é o que a view garante ser
+                 único. Só o mês repetia em "Ambas". */
+              <tr key={`${l.mes}|${l.empresa_id ?? 'sem'}`} className="border-b border-border/50 last:border-0">
                 <td className="py-1.5 pr-3 whitespace-nowrap">
                   <span className="text-foreground">{rotulo(l.mes)}</span>
+                  {/* Só quando o seletor está em "Ambas": com uma empresa
+                      escolhida o nome seria repetição em toda linha. */}
+                  {!empresaId && l.empresa_nome && (
+                    <span className="ml-1.5 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ background: `var(--empresa-${l.empresa_slug})` }}
+                      />
+                      {l.empresa_nome}
+                    </span>
+                  )}
                   {l.mes_em_curso && (
                     <span
                       className="ml-1.5 text-[11px] text-muted-foreground"
@@ -171,7 +202,16 @@ export function ConciliacaoMeta({ meses = 6 }: { meses?: number }) {
           A conta cobra <strong className="font-medium text-foreground">
             {acrescimo.toFixed(1)}%
           </strong>{' '}
-          a mais do que a Meta reporta como campanha no período — o percentual oscila mês a mês
+          a mais do que a Meta reporta como campanha no período
+          {/* Em "Ambas" este número é das duas empresas somadas, e o rótulo
+              tem de dizer isso: a Alaskan e a Aeliss têm acréscimos bem
+              diferentes, e a média esconde as duas. */}
+          {!empresaId && empresasNaTabela.length > 1 && (
+            <>, somando <strong className="font-medium text-foreground">
+              {empresasNaTabela.join(' e ')}
+            </strong></>
+          )}
+          {' '}— o percentual oscila mês a mês
           porque a Meta cobra por limite atingido, não por virada de mês. É imposto sobre a compra
           de mídia, que a API de insights não devolve. O dashboard está configurado com{' '}
           <span className="text-foreground">12,5%</span> em{' '}
