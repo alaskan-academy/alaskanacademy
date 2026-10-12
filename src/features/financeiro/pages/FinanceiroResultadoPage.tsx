@@ -31,9 +31,100 @@ import { Download, Info } from 'lucide-react';
 import { ehCustoOperacional, CAT_ANUNCIOS, CAT_IMPOSTOS } from '@/features/financeiro/constants';
 import { buscarTudo } from '@/features/financeiro/lib/buscar';
 import {
-  agruparCaixa, montarResultado, janelaDeMeses, mesSeguinte,
-  type Caixa, type Competencia, type LinhaTransacao, type Resultado,
+  janelaDeMeses, mesSeguinte,
+  type LinhaTransacao, type Resultado,
 } from '@/features/financeiro/lib/resultado';
+
+/*
+  ── A cascata vem do BANCO desde 12/10/2026 ───────────────────────────────
+
+  Esta tela montava a própria cascata: buscava `vw_faturamento_liquido` e
+  `transacoes`, agregava por mês e chamava `montarResultado`. O módulo de
+  Metas precisava do mesmo lucro e não tinha de onde tirá-lo, então a conta
+  virou `fn_resultado_mes` no banco.
+
+  Enquanto as duas existiram, discordaram: setembro dava +R$ 269,52 aqui e
+  −R$ 205,55 lá. A causa era a janela da alíquota do Simples — esta tela
+  usava DOIS meses fechados e `vw_aliquota_simples_mes` usa TRÊS, e a de três
+  é a que tem teste e motivo escrito ("mês a mês a medida oscila entre 6,00%
+  e 8,16%, e a oscilação é o DIA do pagamento").
+
+  Agora há uma definição só, e ela mora no banco. O que mudou nos números
+  desta tela foi exatamente isso, e só em meses presumidos: setembro sai de
+  R$ 14.458,99 de Simples para R$ 14.934,06, e o resultado de R$ 12.269,52
+  para R$ 11.794,45.
+
+  A busca de `transacoes` fica, mas só para o gráfico de custo por categoria
+  — que precisa das linhas cruas, e a função devolve o total agregado.
+*/
+
+/** Uma linha de `fn_resultado_mes`, achatada como o Postgres a devolve. */
+interface LinhaDoBanco {
+  mes: string;
+  pago_pelos_clientes: number; perda_reembolso: number; perda_chargeback: number;
+  perdas: number; coproducao: number; vendas_sem_dado_coproducao: number;
+  vendas: number; juros: number; receita: number;
+  taxa_payt: number; invest_meta: number; imposto_meta: number;
+  simples: number; simples_presumido: boolean; simples_pct: number | null;
+  simples_pago_parcial: number; simples_vencimento: string | null;
+  simples_em_atraso: boolean;
+  impostos_e_taxas: number; sobra_apos_impostos: number; custos_pagos: number;
+  resultado: number; margem: number; retiradas_socios: number;
+  sobrou_depois_das_retiradas: number;
+  caixa_entrou: number; caixa_saiu: number; anuncios_pagos: number;
+  sem_dados_de_anuncio: boolean;
+}
+
+const num = (v: unknown) => Number(v ?? 0);
+
+/** Mês sem nenhum movimento: a função não devolve linha, e a série precisa de uma. */
+const mesVazio = (mes: string) => ({ mes } as LinhaDoBanco);
+
+/**
+ * A linha do banco no formato que a tela já desenha.
+ *
+ * `baseMeses` vem vazio de propósito: a janela de três meses é da view, e
+ * ela não devolve quais meses entraram. A tela deixou de dizer "estimado a
+ * X%, que foi a alíquota real de jul e ago" e passa a dizer só a alíquota —
+ * prometer os meses sem saber quais foram seria inventar.
+ */
+function daLinhaDoBanco(l: LinhaDoBanco): Resultado {
+  return {
+    mes: String(l.mes).slice(0, 7),
+    pagoPelosClientes: num(l.pago_pelos_clientes),
+    perdaReembolso: num(l.perda_reembolso),
+    perdaChargeback: num(l.perda_chargeback),
+    perdas: num(l.perdas),
+    coproducao: num(l.coproducao),
+    vendasSemDadoCoproducao: num(l.vendas_sem_dado_coproducao),
+    vendas: num(l.vendas),
+    juros: num(l.juros),
+    receita: num(l.receita),
+    taxaPayt: num(l.taxa_payt),
+    investMeta: num(l.invest_meta),
+    impostoMeta: num(l.imposto_meta),
+    simples: {
+      valor: num(l.simples),
+      presumido: !!l.simples_presumido,
+      // `== null` e não `=== null`: o mês vazio chega com o campo ausente.
+      pct: l.simples_pct == null ? null : Number(l.simples_pct),
+      baseMeses: [],
+      pagoParcial: num(l.simples_pago_parcial),
+      vencimento: l.simples_vencimento ?? '',
+      emAtraso: !!l.simples_em_atraso,
+    },
+    custosPagos: num(l.custos_pagos),
+    resultado: num(l.resultado),
+    margem: num(l.margem),
+    impostosETaxas: num(l.impostos_e_taxas),
+    sobraAposImpostos: num(l.sobra_apos_impostos),
+    retiradasSocios: num(l.retiradas_socios),
+    sobrouDepoisDasRetiradas: num(l.sobrou_depois_das_retiradas),
+    caixaEntrou: num(l.caixa_entrou),
+    caixaSaiu: num(l.caixa_saiu),
+    semDadosDeAnuncio: !!l.sem_dados_de_anuncio,
+  };
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -76,19 +167,14 @@ export default function FinanceiroResultadoPage() {
        alem — senao um mes ja pago apareceria eternamente como previsto. */
     const fimExtrato = ultimoDia(mesSeguinte(mesAlvo));
 
-    const [fat, trans] = await Promise.all([
-      buscarTudo<{ data: string; faturamento_bruto: number; juros_parcelamento: number;
-                   receita_tributavel: number; base_simples: number; taxa_plataforma: number;
-                   perda_reembolso: number; perda_chargeback: number;
-                   coproducao: number; vendas_sem_dado_coproducao: number; vendas_aprovadas: number;
-                   investimento_meta: number; imposto_meta_ads: number }>(
-        (de, ate) => {
-          let q = supabase.from('vw_faturamento_liquido')
-            .select('data,faturamento_bruto,juros_parcelamento,receita_tributavel,base_simples,taxa_plataforma,perda_reembolso,perda_chargeback,coproducao,vendas_sem_dado_coproducao,vendas_aprovadas,investimento_meta,imposto_meta_ads')
-            .gte('data', inicio).lte('data', fim).order('data').range(de, ate);
-          if (empresaId) q = q.eq('empresa_id', empresaId);
-          return q;
-        }),
+    const [cascata, trans] = await Promise.all([
+      /* A cascata inteira numa chamada. O recorte por empresa vai como
+         parâmetro: a função já sabe somar as duas quando ele é nulo. */
+      supabase.rpc('fn_resultado_mes', { p_empresa: empresaId }),
+      /* As transações continuam vindo, mas só para o gráfico de custo por
+         categoria — ele precisa das linhas cruas, e a função devolve o
+         total. As exclusões abaixo são as MESMAS da cascata, senão o
+         gráfico diz uma coisa e o total diz outra na mesma tela. */
       buscarTudo<LinhaTransacao>((de, ate) => {
         let q = supabase.from('transacoes').select('data,valor,categoria')
           .gte('data', inicio).lte('data', fimExtrato)
@@ -97,74 +183,24 @@ export default function FinanceiroResultadoPage() {
         return q;
       }),
     ]);
-    if (fat.erro || trans.erro) {
+    if (cascata.error || trans.erro) {
       toast({ title: 'Erro ao carregar dados', variant: 'destructive' });
       setLoading(false);
       return;
     }
 
-    const competencia = new Map<string, Competencia>();
-    for (const r of fat.linhas) {
-      const k = String(r.data).slice(0, 7);
-      const c = competencia.get(k) ?? {
-        pagoPelosClientes: 0, perdaReembolso: 0, perdaChargeback: 0,
-        coproducao: 0, vendasSemDadoCoproducao: 0, vendas: 0,
-        juros: 0, receita: 0, baseSimples: 0,
-        taxaPayt: 0, investMeta: 0, impostoMeta: 0,
-      };
-      /* `faturamento_bruto` da view so conta `aprovada`, entao a venda que voltou
-         atras nao esta nele. Somando as perdas de volta, o topo da cascata passa
-         a ser TUDO que entrou, e cada perda desce uma vez so, com nome. */
-      c.perdaReembolso    += Number(r.perda_reembolso ?? 0);
-      c.perdaChargeback   += Number(r.perda_chargeback ?? 0);
-      c.coproducao        += Number(r.coproducao ?? 0);
-      c.vendasSemDadoCoproducao += Number(r.vendas_sem_dado_coproducao ?? 0);
-      c.vendas            += Number(r.vendas_aprovadas ?? 0);
-      /*
-        `faturamento_bruto` NAO e `valor_total`: e
-        `sum(coalesce(valor_sem_juros, valor_total))`, ou seja SEM os juros do
-        parcelamento. O comentario que estava aqui afirmava o contrario, e foi
-        ele que manteve o defeito vivo por um mes.
+    const doHistorico = janelaDeMeses(mesAlvo, MESES_HISTORICO);
+    const porMes = new Map(
+      ((cascata.data ?? []) as LinhaDoBanco[]).map(l => [String(l.mes).slice(0, 7), l] as const),
+    );
 
-        A migracao 20260905d se chama, em maiusculas, "FATURAMENTO E O QUE A
-        VENDA VALEU, NAO O QUE A CLIENTE PAGOU", e lista esta coluna entre as
-        que ela trocou DE PROPOSITO para sem juros. O rotulo da tela diz
-        exatamente o oposto: "Pago pelos clientes".
-
-        Medido em 06/10/2026, periodo 05/09 a 05/10: a tela mostrava
-        R$ 216.293,73 e a cliente desembolsou R$ 222.737,06. Faltavam os
-        R$ 6.443,33 de juros, 2,98%.
-
-        E a cascata denunciava sozinha: ela subtrai "Juros de parcelamento" tres
-        linhas abaixo para chegar na Receita, entao com o bruto sem juros em
-        cima eles desciam DUAS vezes e sobrava um buraco de R$ 6.443,33 contra a
-        linha "Receita" que a propria tela exibia.
-
-        A coproducao continua dentro, porque ela TAMBEM saiu do bolso da cliente
-        e sai na linha propria logo abaixo. As perdas voltam porque a view as
-        exclui do bruto ao filtrar por status.
-      */
-      c.pagoPelosClientes += Number(r.faturamento_bruto ?? 0)
-                           + Number(r.juros_parcelamento ?? 0)
-                           + Number(r.perda_reembolso ?? 0)
-                           + Number(r.perda_chargeback ?? 0);
-      c.juros             += Number(r.juros_parcelamento ?? 0);
-      c.receita           += Number(r.receita_tributavel ?? 0);
-      /* A base do Simples vem PRONTA da view — receita mais juros, derivado num
-         lugar só. Somar aqui criaria a segunda cópia da regra. Ver 20260917a. */
-      c.baseSimples       += Number(r.base_simples ?? 0);
-      c.taxaPayt += Number(r.taxa_plataforma ?? 0);
-      c.investMeta += Number(r.investimento_meta ?? 0);
-      c.impostoMeta += Number(r.imposto_meta_ads ?? 0);
-      competencia.set(k, c);
-    }
+    /* Mês sem linha no banco é mês sem movimento nenhum, e a série precisa
+       dele assim mesmo: sem a linha zerada o gráfico pula um mês em
+       silêncio e a sequência mente sobre o buraco. */
+    setLinhas(doHistorico.map(m => daLinhaDoBanco(porMes.get(m) ?? mesVazio(m))));
+    setAnunciosNoExtrato(num(porMes.get(mesAlvo)?.anuncios_pagos));
 
     const transacoes = trans.linhas;
-    const caixa: Map<string, Caixa> = agruparCaixa(transacoes);
-
-    const doHistorico = janelaDeMeses(mesAlvo, MESES_HISTORICO);
-    setLinhas(doHistorico.map(m => montarResultado(m, competencia, caixa, janela)));
-    setAnunciosNoExtrato(caixa.get(mesAlvo)?.anunciosPagos ?? 0);
 
     /* Custos por categoria — as MESMAS exclusões da cascata, senão o gráfico
        diz uma coisa e o total diz outra na mesma tela. Já aconteceu: a versão

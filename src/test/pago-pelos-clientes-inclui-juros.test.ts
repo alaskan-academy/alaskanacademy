@@ -69,15 +69,20 @@ const REGRAS: Record<string, { soma: RegExp; usa: RegExp; descricao: string }> =
   },
   'src/features/financeiro/pages/FinanceiroResultadoPage.tsx': {
     /*
-      `[^;]` e a parte que importa, e nao enfeite. Com `[\s\S]{0,200}?` a regex
-      atravessava o ponto e virgula e casava com a linha SEGUINTE,
-      `c.juros += Number(r.juros_parcelamento ?? 0)`, que fala dos mesmos juros
-      e esta a poucos caracteres de distancia. Com a isca plantada (a soma
-      removida de `pagoPelosClientes`) o teste passava verde.
+      Ate 12/10/2026 a soma acontecia AQUI, e a regra casava com
+      `c.pagoPelosClientes += ... Number(r.juros_parcelamento ?? 0)`. Naquela
+      tarde a cascata inteira mudou-se para `fn_resultado_mes`, porque o
+      modulo de Metas precisava do mesmo lucro e te-lo em dois lugares ja
+      tinha produzido dois numeros diferentes.
+
+      A obrigacao nao mudou de natureza, mudou de endereco: a tela agora
+      precisa LER o campo que ja vem somado, e quem soma e o SQL. O teste
+      logo abaixo cobra a outra metade, no banco — sem ele, bastaria a tela
+      ler um campo que o SQL montou errado.
     */
-    soma: /c\.pagoPelosClientes \+=[^;]{0,400}Number\(r\.juros_parcelamento \?\? 0\)[^;]{0,400};/,
+    soma: /pagoPelosClientes:\s*num\(l\.pago_pelos_clientes\)/,
     usa: /pagoPelosClientes/,
-    descricao: 'o Financeiro soma `juros_parcelamento` da view ao `faturamento_bruto`',
+    descricao: 'o Financeiro le `pago_pelos_clientes` pronto de fn_resultado_mes',
   },
 };
 
@@ -109,6 +114,34 @@ describe('pago pelos clientes inclui os juros', () => {
       expect(codigo, `${arquivo}: o rótulo deixou de ler o número que soma os juros`)
         .toMatch(regra.usa);
     }
+  });
+
+  it('no Financeiro, quem soma os juros é o SQL — e ele continua somando', () => {
+    /*
+      A outra metade da regra do Financeiro. A tela só lê
+      `pago_pelos_clientes`; se o SQL parar de somar os juros ali, o rótulo
+      "Pago pelos clientes" volta a mostrar menos do que a cliente
+      desembolsou — foi um buraco de R$ 6.443,33 em set/out de 2026, e ele
+      sobreviveu um mês porque o comentário dizia o contrário do código.
+
+      `faturamento_bruto` NÃO inclui juros: a migração 20260905d se chama, em
+      maiúsculas, "FATURAMENTO E O QUE A VENDA VALEU, NAO O QUE A CLIENTE
+      PAGOU". Por isso a soma precisa ser explícita.
+    */
+    const dir = join(process.cwd(), 'supabase', 'migrations');
+    const sql = readdirSync(dir).filter(n => n.endsWith('.sql')).sort()
+      .map(n => readFileSync(join(dir, n), 'utf8'))
+      .filter(s => /create\s+or\s+replace\s+function\s+public\.fn_resultado_mes/i.test(s))
+      .pop();
+
+    expect(sql, 'nenhuma migração define fn_resultado_mes').toBeTruthy();
+
+    expect(
+      semComentario(sql!),
+      'fn_resultado_mes deixou de somar `juros_parcelamento` em `pago_pelos_clientes`',
+    ).toMatch(
+      /sum\(coalesce\(f\.faturamento_bruto,\s*0\)\s*\+\s*coalesce\(f\.juros_parcelamento,\s*0\)[^)]*[\s\S]{0,200}?as pago_pelos_clientes/,
+    );
   });
 
   it('no Resumo, os dois lugares leem a grandeza com juros, não `fatBruto`', () => {
