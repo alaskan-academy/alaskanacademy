@@ -66,6 +66,11 @@ interface Indicador {
   e_meta: boolean;
   automatico: boolean;
   medido: number | null;
+  /* Só vem preenchido para indicador manual, de `metas_medicao`. Número
+     digitado envelhece, e sem a data ninguém sabe se o que está na tela é de
+     hoje ou de agosto. Ver 20261012zd. */
+  medido_em: string | null;
+  origem: string | null;
   alvo: number | null;
   prazo: string | null;
   caminho: number | null;
@@ -208,17 +213,36 @@ function LinhaIndicador({ i }: { i: Indicador }) {
         </span>
         <span className="flex items-baseline gap-2 tabular-nums">
           <b className="text-sm text-foreground">{formatar(i.medido, i.unidade)}</b>
+          {/* Quem mede à mão precisa dizer quando. Um número de dois meses
+              atrás com cara de número de hoje é pior que campo vazio. */}
+          {i.medido_em && (
+            <span
+              className="text-[10px] text-muted-foreground/70"
+              title={i.origem === 'area_membros'
+                ? 'carimbado da Área de Membros'
+                : 'medido à mão'}
+            >
+              medido em {i.medido_em.slice(8, 10)}/{i.medido_em.slice(5, 7)}
+            </span>
+          )}
           {i.e_meta && i.alvo !== null && i.prazo && (
             <span className="text-[11px] text-muted-foreground">
               → {formatar(i.alvo, i.unidade)} em {rotuloDoPrazo(i.prazo)}
             </span>
           )}
-          <span className={cn(
-            'rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
-            COR_SITUACAO[situacao],
-          )}>
-            {ROTULO_SITUACAO[situacao]}
-          </span>
+          {/* Situação é uma leitura sobre o ALVO — batida, no caminho,
+              atrasada. Indicador de apoio não tem alvo, então não pode estar
+              em nenhuma delas: o `?? 'sem_medicao'` punha o selo "SEM MEDIÇÃO"
+              ao lado do próprio número medido. A barra já saía por este mesmo
+              motivo; o selo é que tinha passado batido. */}
+          {i.e_meta && (
+            <span className={cn(
+              'rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide',
+              COR_SITUACAO[situacao],
+            )}>
+              {ROTULO_SITUACAO[situacao]}
+            </span>
+          )}
         </span>
       </div>
       {/* Indicador de apoio não tem alvo, e desenhar barra para ele daria a
