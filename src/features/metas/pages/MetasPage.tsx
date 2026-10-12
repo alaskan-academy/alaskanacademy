@@ -16,7 +16,7 @@ import { Loader2, Target, AlertTriangle, Check, Clock, CornerDownRight } from 'l
   A primeira versão era a tabela do documento com uma coluna "Agora" ao lado,
   e levou três críticas em sequência: pouco detalhe, confusa, e faltando
   metade do que o documento traz. A terceira foi a mais fácil de consertar
-  (as 80 ações viraram /metas/prazos); a segunda exigiu entender o que
+  (as ações datadas viraram /metas/prazos); a segunda exigiu entender o que
   confundia.
 
   Confundia que as listas do módulo — dez indicadores, oitenta ações, vinte e
@@ -232,12 +232,18 @@ function LinhaIndicador({ i }: { i: Indicador }) {
   );
 }
 
-/** O rodapé de um nó: quantas das 80 ações estão atrás dele. */
-function ContagemDeAcoes({ no }: { no: No }) {
+/**
+ * O rodapé de um nó: quantas ações do plano estão atrás dele.
+ *
+ * `total` vem contado da árvore e não escrito aqui: já esteve como "80" no
+ * texto, e no dia em que ela mandou remover uma ação a tela passou a mentir
+ * em dois lugares. Lista fixa no código, em miniatura.
+ */
+function ContagemDeAcoes({ no, total }: { no: No; total: number }) {
   if (no.acoes_total === 0) {
     return (
       <span className="text-[11px] text-muted-foreground/60">
-        Nenhuma das 80 ações do plano está ligada a esta frente.
+        Nenhuma das {total} ações do plano está ligada a esta frente.
       </span>
     );
   }
@@ -300,6 +306,11 @@ export default function MetasPage() {
   const raiz      = arvore.find(n => n.nivel === 0);
   const alavancas = arvore.filter(n => n.nivel === 1);
   const filhosDe  = (chave: string) => arvore.filter(n => n.parte_de === chave);
+
+  /* Contado, nunca escrito: as ligadas aos nós mais as que não acharam nó.
+     Esteve como "80" no texto, e bastou ela mandar remover uma ação para a
+     tela passar a mentir em dois lugares. */
+  const totalAcoes = arvore.reduce((a, n) => a + n.acoes_total, 0) + semMeta.length;
 
   return (
     <DashboardLayout title="Metas" hideFilters>
@@ -403,7 +414,7 @@ export default function MetasPage() {
                       <div className={cn(
                         alav.indicadores.length > 0 && 'mt-1.5 border-t border-border/50 pt-1.5',
                       )}>
-                        <ContagemDeAcoes no={alav} />
+                        <ContagemDeAcoes no={alav} total={totalAcoes} />
                       </div>
                     </div>
                   )}
@@ -439,7 +450,7 @@ export default function MetasPage() {
                         )}
 
                         <div className="mt-2 border-t border-border/50 pt-1.5">
-                          <ContagemDeAcoes no={sub} />
+                          <ContagemDeAcoes no={sub} total={totalAcoes} />
                         </div>
                       </div>
                     ))}
@@ -507,7 +518,7 @@ export default function MetasPage() {
 
             <p className="flex items-center gap-1.5 pt-1 text-[11px] text-muted-foreground/70">
               <Clock className="h-3 w-3" />
-              Plano de crescimento Out/26 a Jul/27, de 10/10/2026. As 80 ações estão em{' '}
+              Plano de crescimento Out/26 a Jul/27, de 10/10/2026. As {totalAcoes} ações estão em{' '}
               <Link to="/metas/prazos" className="text-primary hover:underline">Prazos</Link>.
             </p>
           </>
