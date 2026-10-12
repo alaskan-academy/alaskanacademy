@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
+import { MetasNav } from '../components/MetasNav';
 import { supabase } from '@/lib/supabase';
 import { useFilters } from '@/contexts/FilterContext';
 import { formatCurrency, formatNumber } from '@/lib/formatters';
@@ -150,6 +151,8 @@ export default function MetasPage() {
 
   return (
     <DashboardLayout title="Metas" hideFilters>
+      <MetasNav />
+
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Plano de crescimento <b className="text-foreground">Out/26 a Jul/27</b>. A coluna{' '}
