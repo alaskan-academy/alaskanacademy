@@ -51,6 +51,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
  * conta. Conferir so a TAXA teria deixado passar o defeito dos codigos de
  * checkout -- ver o comentario de `codigoParaCursos`.
  *
+ * ── O unico segredo que precisa ser posto a mao ──────────────────────────
+ *
+ * `MEMBROS_SERVICE_ROLE_KEY`, em Edge Functions > Secrets. So ele.
+ *
+ * A URL tem padrao no codigo porque nao e segredo -- esta no bundle do app da
+ * Area de Membros. E o segredo compartilhado com o cron mora no vault, de
+ * onde as DUAS pontas o leem: o `net.http_post` do cron e esta funcao, por
+ * `fn_segredo_membros_cron()`. Guardar uma copia dele aqui seria o mesmo
+ * valor em dois lugares, e eles divergem na primeira rotacao.
+ *
  * ── O que esta funcao NAO faz ─────────────────────────────────────────────
  *
  * Nao escreve NADA na Area de Membros. Toda leitura passa por `puxar`, que
@@ -63,10 +73,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const env = (n: string) => (Deno.env.get(n) ?? '').trim();
 
 /* Da Area de Membros. Nomes com prefixo MEMBROS_ para nunca se confundirem
-   com os do proprio painel, que o Supabase injeta sozinho. */
-const MEMBROS_URL    = env('MEMBROS_SUPABASE_URL');
-const MEMBROS_KEY    = env('MEMBROS_SERVICE_ROLE_KEY');
-const MEMBROS_SEGREDO = env('MEMBROS_SYNC_SECRET');
+   com os do proprio painel, que o Supabase injeta sozinho.
+
+   A URL NAO e segredo: esta no bundle do app da Area de Membros, no
+   `NEXT_PUBLIC_SUPABASE_URL`, e em toda requisicao de qualquer navegador.
+   Guardar no cofre o que ja esta na rua nao protege nada e cria mais um lugar
+   para alguem esquecer de preencher -- entao ela tem padrao, e o segredo
+   continua valendo como sobreposicao se o projeto mudar um dia.
+
+   A CHAVE e segredo de verdade, e e a unica coisa que precisa ser posta a
+   mao em Edge Functions > Secrets. */
+const MEMBROS_URL = env('MEMBROS_SUPABASE_URL') || 'https://fjcdcvywdiagzovqqcpc.supabase.co';
+const MEMBROS_KEY = env('MEMBROS_SERVICE_ROLE_KEY');
 
 /* Do painel, injetados pelo Supabase. */
 const URL_PAINEL  = env('SUPABASE_URL');
@@ -156,16 +174,29 @@ const iso = (d: Date) => d.toISOString();
 const chaveDoPar = (u: string, c: string) => `${u}|${c}`;
 
 Deno.serve(async (req) => {
+  const painel = createClient(URL_PAINEL, CHAVE_PAINEL);
+
   /* Mesmo contrato dos outros crons do painel: o segredo vem do Vault no
-     `net.http_post` e e conferido aqui. */
-  if (!MEMBROS_SEGREDO || req.headers.get('x-sync-secret') !== MEMBROS_SEGREDO) {
+     `net.http_post` e e conferido aqui.
+
+     A diferenca e que os outros guardam uma COPIA do segredo nos proprios
+     segredos da funcao, e esta pergunta ao cofre. Copia e a primeira
+     armadilha do CLAUDE.md disfarcada de configuracao: rotacionar o vault e
+     esquecer o env da 401 todo dia as 4h20, sem nada na tela, e a causa nao e
+     obvia nem para quem escreveu. Um lugar so. */
+  const { data: esperado, error: erroSegredo } = await painel.rpc('fn_segredo_membros_cron');
+
+  if (erroSegredo) {
+    return json({ ok: false, erro: `nao consegui ler o segredo do cofre: ${erroSegredo.message}` }, 500);
+  }
+  if (!esperado || req.headers.get('x-sync-secret') !== esperado) {
     return json({ ok: false, erro: 'segredo invalido' }, 401);
   }
 
-  if (!MEMBROS_URL || !MEMBROS_KEY) {
+  if (!MEMBROS_KEY) {
     return json({
       ok: false,
-      erro: 'faltam MEMBROS_SUPABASE_URL e/ou MEMBROS_SERVICE_ROLE_KEY nos segredos da funcao',
+      erro: 'falta MEMBROS_SERVICE_ROLE_KEY nos segredos da funcao',
     }, 500);
   }
 
@@ -312,7 +343,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    const painel = createClient(URL_PAINEL, CHAVE_PAINEL);
     const { error } = await painel
       .from('metas_medicao')
       .upsert(linhas, { onConflict: 'kpi,empresa_id,medido_em' });
