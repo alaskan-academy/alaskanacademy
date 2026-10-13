@@ -205,9 +205,17 @@ function LinhaIndicador({ i }: { i: Indicador }) {
               apoio
             </span>
           )}
+          {/* "Manual" quer dizer que o banco não calcula — não que alguém
+              digitou. Os três da Área de Membros vêm carimbados de lá, e
+              chamá-los de manuais sugeria um trabalho que ninguém faz. */}
           {!i.automatico && (
-            <span className="rounded bg-muted px-1 py-px text-[9px] uppercase tracking-wide">
-              manual
+            <span
+              className="rounded bg-muted px-1 py-px text-[9px] uppercase tracking-wide"
+              title={i.origem === 'area_membros'
+                ? 'medido no banco da Área de Membros, que é outro projeto'
+                : 'medido e digitado à mão'}
+            >
+              {i.origem === 'area_membros' ? 'área de membros' : 'manual'}
             </span>
           )}
         </span>
