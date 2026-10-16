@@ -75,7 +75,12 @@ interface Pedido {
 interface LinhaConsentimento {
   dia: string;
   visitantes_total: number;
-  visitantes_recusou: number;
+  /* Recusa SEM hora conhecida: o cookie do opt-out de /privacidade, e tudo
+     anterior ao banner. Datada pelo dia da VISITA, porque é o melhor que
+     existe. Separada de `banner_recusou`, que tem hora de verdade — somar
+     as duas numa coluna só foi o defeito que ela pegou, com a tela
+     mostrando "2 cliques de recusa" e "1 recusou". */
+  recusou_sem_data: number;
   banner_aceitou: number;
   banner_recusou: number;
   banner_parcial: number;
@@ -155,14 +160,24 @@ export default function RastreioPrivacidadePage() {
   const totais = useMemo(() => {
     const soma = (f: (l: LinhaConsentimento) => number) => consent.reduce((a, l) => a + (f(l) || 0), 0);
     const visitantes = soma((l) => l.visitantes_total);
-    const recusou = soma((l) => l.visitantes_recusou);
+    const bannerAceitou = soma((l) => l.banner_aceitou);
+    const bannerRecusou = soma((l) => l.banner_recusou);
+    const bannerParcial = soma((l) => l.banner_parcial);
+    const semData = soma((l) => l.recusou_sem_data);
+    /* As duas recusas somadas, cada uma já lançada no melhor dia que se
+       conhece: a do banner no dia do clique, a do cookie no dia da visita.
+       Antes a do banner era lançada no dia em que o VISITANTE nasceu, e o
+       mesmo fato aparecia em dois dias diferentes. */
+    const recusou = bannerRecusou + semData;
     return {
       visitantes,
       recusou,
+      recusouSemData: semData,
       pctRecusou: visitantes > 0 ? (100 * recusou) / visitantes : 0,
-      bannerAceitou: soma((l) => l.banner_aceitou),
-      bannerRecusou: soma((l) => l.banner_recusou),
-      bannerParcial: soma((l) => l.banner_parcial),
+      bannerAceitou,
+      bannerRecusou,
+      bannerParcial,
+      responderam: bannerAceitou + bannerRecusou + bannerParcial,
     };
   }, [consent]);
 
@@ -216,19 +231,28 @@ export default function RastreioPrivacidadePage() {
             <KPICard
               title="Recusaram a coleta"
               value={formatNumber(totais.recusou)}
-              subtitle={`${formatPercent(totais.pctRecusou)} — pelo opt-out de /privacidade`}
+              subtitle={
+                totais.recusouSemData > 0
+                  ? `${formatPercent(totais.pctRecusou)} dos visitantes · ${formatNumber(totais.recusouSemData)} pelo opt-out, sem hora`
+                  : `${formatPercent(totais.pctRecusou)} dos visitantes`
+              }
             />
             <KPICard
               title="Pedidos em aberto"
               value={formatNumber(abertos.length)}
               subtitle={vencidos.length > 0 ? `${vencidos.length} passou dos 15 dias` : "nenhum vencido"}
             />
+            {/* "Responderam", não "cliques": a vista conta PESSOAS, e quem
+                clica duas vezes não vira duas. E o recorte é o dia do
+                clique, o mesmo do cartão de recusa ao lado — antes eram
+                datas diferentes para o mesmo fato, e os dois números se
+                contradiziam na tela. */}
             <KPICard
-              title="Cliques no banner"
-              value={formatNumber(totais.bannerAceitou + totais.bannerRecusou + totais.bannerParcial)}
+              title="Responderam ao aviso"
+              value={formatNumber(totais.responderam)}
               subtitle={
-                totais.bannerAceitou + totais.bannerRecusou + totais.bannerParcial === 0
-                  ? "zero até o banner subir"
+                totais.responderam === 0
+                  ? "ninguém respondeu no período"
                   : `${formatNumber(totais.bannerAceitou)} aceitou · ${formatNumber(totais.bannerRecusou)} recusou`
               }
             />
