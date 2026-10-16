@@ -398,6 +398,13 @@ function DialogNovoPedido({
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
 
+  /* A data em que o E-MAIL chegou, não a de hoje. O prazo de 15 dias que
+     /privacidade publica conta de lá; usar a data da transcrição dava dias
+     que a pessoa não tem — se o e-mail ficou 5 dias na caixa, a tela diria
+     "15" quando restam 10. Começa em hoje porque é o caso comum. */
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [chegouEm, setChegouEm] = useState(hoje);
+
   const escolhido = direitos.find((d) => d.codigo === codigo);
 
   async function salvar() {
@@ -407,6 +414,7 @@ function DialogNovoPedido({
       p_tipo: tipo,
       p_pedido: codigo,
       p_observacao: observacao || null,
+      p_chegou_em: chegouEm || null,
     });
     setSalvando(false);
     if (error) {
@@ -476,6 +484,21 @@ function DialogNovoPedido({
                   : "Este se responde por e-mail: a fila guarda o prazo, e você marca atendido quando responder."}
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">Quando o e-mail chegou</label>
+            <input
+              type="date"
+              value={chegouEm}
+              max={hoje}
+              onChange={(e) => setChegouEm(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Os 15 dias que a política promete contam daqui, não de hoje. Se o e-mail ficou dias na caixa,
+              marcar hoje daria um prazo que a pessoa não tem.
+            </p>
           </div>
 
           <div>
