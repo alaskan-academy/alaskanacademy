@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Home, LayoutDashboard, TrendingUp, Activity, ShoppingCart,
-  Settings, ChevronLeft, ChevronRight, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart, Target,
+  Settings, ChevronLeft, ChevronRight, Link2, BarChart3, X, GraduationCap, Wallet, FlaskConical, KeyRound, Film, PenLine, Layers, Clapperboard, LineChart, Target, Radar,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebarState } from '@/contexts/SidebarContext';
@@ -79,6 +79,9 @@ const GRUPOS = [
       // análise — o prefixo só criava colisão com o módulo de Análises.
       { path: '/utm',        label: 'UTM',        icon: Link2,        key: 'utm',        adminOnly: false, sectorOnly: null },
       { path: '/tendencias', label: 'Tendências', icon: Activity,     key: 'tendencias', adminOnly: false, sectorOnly: null },
+      // adminOnly porque o schema `tracking` guarda e-mail, telefone, nome, IP
+      // e CPF — e a pagina mostra o caminho de pessoas, nao so agregados.
+      { path: '/rastreio',   label: 'Rastreio',   icon: Radar,        key: 'rastreio',   adminOnly: true,  sectorOnly: null },
       // Dado sobre a operação, e só sócio alcança: Desempenho e Por Projeto são
       // leitura, e a Avaliação que escreve é o julgamento de quem já veio ler.
       { path: '/criativos',  label: 'Criativos',  icon: Clapperboard, key: 'criativos',  adminOnly: true,  sectorOnly: null },
