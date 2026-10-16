@@ -91,7 +91,7 @@ const hora = (iso: string) =>
   new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 export default function RastreioEventosPage() {
-  const { startDateStr, endDateStr } = useFilters();
+  const { startDateStr, endDateStr, empresaId } = useFilters();
 
   const [linhas, setLinhas] = useState<LinhaEvento[]>([]);
   const [total, setTotal] = useState(0);
@@ -105,11 +105,30 @@ export default function RastreioEventosPage() {
   const carregar = useCallback(async () => {
     setLoading(true);
 
-    /* `criado_em` é `timestamptz`, então aqui o par certo é o de data com o
-       dia inteiro — `endDateStr` sozinho cortaria no começo do último dia.
-       Por isso o `lt` no dia seguinte em vez de `lte` no mesmo. */
-    const diaSeguinte = new Date(`${endDateStr}T00:00:00-03:00`);
-    diaSeguinte.setDate(diaSeguinte.getDate() + 1);
+    /* O cabeçalho mostra o seletor de empresa nesta tela, e ela o ignorava:
+       escolher Aeliss não mudava uma linha. `events_log` não tem
+       `empresa_id` de propósito — tráfego DERIVA do projeto, e a derivação
+       mora em `vw_pixel_produtos`. Então o recorte é por produto: pegamos os
+       códigos daquela empresa e filtramos por eles.
+
+       Um `in` de lista vazia devolveria tudo, que é o contrário do pedido;
+       por isso o `?? ['__nenhum__']`. E empresa sem produto mapeado mostra
+       zero eventos, que é a resposta certa. */
+    let codigosDaEmpresa: string[] | null = null;
+    if (empresaId) {
+      const { data: daEmpresa, error: erroMapa } = await supabase
+        .schema("tracking")
+        .from("vw_pixel_produtos")
+        .select("product_code")
+        .eq("empresa_id", empresaId);
+      if (erroMapa) {
+        console.error("rastreio/eventos:", erroMapa.message);
+        setErro(erroMapa.message);
+        setLoading(false);
+        return;
+      }
+      codigosDaEmpresa = (daEmpresa ?? []).map((l) => (l as { product_code: string }).product_code);
+    }
 
     let q = supabase
       .schema("tracking")
@@ -118,15 +137,31 @@ export default function RastreioEventosPage() {
         "id,criado_em,event_name,event_id,trck_user_id,produto_code,page_url,utm_source,utm_campaign,pais,estado,cidade,payload_meta,response_meta,expurgado_em",
         { count: "exact" },
       )
-      .gte("criado_em", `${startDateStr}T00:00:00-03:00`)
-      .lt("criado_em", diaSeguinte.toISOString())
       /* Desempate por `id` (uuid, chave primária): sem ele, duas leituras da
          mesma faixa podem repetir uma linha e perder outra. */
       .order("criado_em", { ascending: false })
       .order("id")
       .limit(TETO);
 
+    /* O preset "Todos" do cabeçalho manda as duas datas NULAS, e isto aqui
+       ficava fora de qualquer guarda: `new Date('nullT00:00:00-03:00')` é
+       Invalid Date e `.toISOString()` lança RangeError **antes** da
+       requisição. A exceção subia dentro do `carregar()` async que o
+       `useEffect` não aguarda nem captura, então `setLoading(false)` nunca
+       rodava: a tela ficava em "Carregando…" para sempre, sem erro, sem
+       botão de tentar de novo, sem pista do que houve.
+
+       `criado_em` é `timestamptz`, então o par certo é o de data com o dia
+       inteiro — `endDateStr` sozinho cortaria no começo do último dia. Por
+       isso o `lt` no dia seguinte em vez de `lte` no mesmo. */
+    if (startDateStr && endDateStr) {
+      const diaSeguinte = new Date(`${endDateStr}T00:00:00-03:00`);
+      diaSeguinte.setDate(diaSeguinte.getDate() + 1);
+      q = q.gte("criado_em", `${startDateStr}T00:00:00-03:00`).lt("criado_em", diaSeguinte.toISOString());
+    }
+
     if (filtro !== "todos") q = q.eq("event_name", filtro);
+    if (codigosDaEmpresa) q = q.in("produto_code", codigosDaEmpresa.length ? codigosDaEmpresa : ["__nenhum__"]);
 
     const { data, error, count } = await q;
 
@@ -140,7 +175,7 @@ export default function RastreioEventosPage() {
     setLinhas((data ?? []) as LinhaEvento[]);
     setTotal(count ?? 0);
     setLoading(false);
-  }, [startDateStr, endDateStr, filtro]);
+  }, [startDateStr, endDateStr, filtro, empresaId]);
 
   useEffect(() => {
     carregar();

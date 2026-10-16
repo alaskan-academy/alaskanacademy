@@ -50,9 +50,11 @@ interface LinhaSettings {
 }
 
 interface LinhaSemPixel {
-  product_code: string | null;
+  produto_code: string | null;
   produto_nome: string | null;
-  compras: number;
+  vendas: number;
+  valor: number | null;
+  ultima_venda: string | null;
 }
 
 interface Expurgo {
@@ -92,9 +94,24 @@ export default function RastreioConfiguracaoPage() {
         .select("product_code,envia_meta,projeto_id,pixel_label,pixel_id,pixel_ativo,empresa_nome")
         .order("product_code"),
       t.from("settings").select("capi_ativa,test_event_code,currency").limit(1),
-      /* Produto que vendeu e não está mapeado: a pergunta é sobre COMPRA, não
-         sobre cadastro, então sai de `purchases` e não de `pixel_produtos`. */
-      t.from("purchases").select("produto_code,produto_nome").eq("status", "paid"),
+      /* Produto que vendeu e não está mapeado — AGREGADO NO BANCO.
+
+         Esta tela nasceu lendo `purchases` inteira e contando no navegador,
+         e isso tinha dois defeitos. O teto de 1.000 linhas do PostgREST
+         corta devolvendo 200, então por volta do fim de dezembro o bloco
+         passaria a ser calculado sobre um recorte arbitrário do heap — e um
+         produto novo de pouco volume cairia fora, fazendo o cartão exibir o
+         visto verde "tudo mapeado" enquanto as vendas dele não chegam à
+         Meta. Falso silêncio no único alarme da tela.
+
+         E `purchases` é a fonte errada: ela só enche com o que passa por
+         ESTE webhook. A Alaskan Academy tem 134 vendas e zero linhas lá. A
+         vista `vw_produtos_sem_pixel` já existia respondendo exatamente
+         isto, lendo de `public.vendas`, com uma linha por produto e sem teto
+         possível — a migração 20261013d a corrigiu DE purchases PARA vendas
+         e escreveu o motivo. Três dias depois eu refiz no navegador a versão
+         que ela tinha abandonado. */
+      t.from("vw_produtos_sem_pixel").select("*").order("vendas", { ascending: false }),
       t.from("events_log").select("criado_em,expurgado_em").not("payload_meta", "is", null).order("criado_em").limit(1),
     ]);
 
@@ -106,28 +123,30 @@ export default function RastreioConfiguracaoPage() {
       return;
     }
 
-    const mapeados = new Set(((p.data ?? []) as LinhaPixel[]).map((l) => l.product_code));
-    const porCodigo = new Map<string, LinhaSemPixel>();
-    for (const l of (c.data ?? []) as { produto_code: string | null; produto_nome: string | null }[]) {
-      if (!l.produto_code || mapeados.has(l.produto_code)) continue;
-      const atual = porCodigo.get(l.produto_code) ?? {
-        product_code: l.produto_code,
-        produto_nome: l.produto_nome,
-        compras: 0,
-      };
-      atual.compras += 1;
-      porCodigo.set(l.produto_code, atual);
-    }
+    /* A vista já decide quem está sem pixel, e já se recorta às empresas que
+       têm algum pixel mapeado — sem isso ela mostraria os códigos da Alaskan
+       como alarme falso. Aqui não se filtra nem se conta mais nada. */
+    const semPixelAgora = (c.data ?? []) as LinhaSemPixel[];
 
-    const { count: expurgados } = await t
+    const { count: expurgados, error: erroExpurgados } = await t
       .from("events_log")
       .select("id", { count: "exact", head: true })
       .not("expurgado_em", "is", null);
 
+    /* Erro de contagem virava "Já expurgados: 0", que é o mesmo que a tela
+       mostra quando o cron está em dia — ou seja, a falha se disfarçava de
+       boa notícia justo no número que prova a retenção. */
+    if (erroExpurgados) {
+      console.error("rastreio/config:", erroExpurgados.message);
+      setErro(erroExpurgados.message);
+      setLoading(false);
+      return;
+    }
+
     setErro(null);
     setPixels((p.data ?? []) as LinhaPixel[]);
     setSettings(((s.data ?? [])[0] ?? null) as LinhaSettings | null);
-    setSemPixel([...porCodigo.values()].sort((a, b) => b.compras - a.compras));
+    setSemPixel(semPixelAgora);
     setExpurgo({
       mais_antigo_com_payload: ((e.data ?? [])[0] as { criado_em?: string } | undefined)?.criado_em ?? null,
       ja_expurgados: expurgados ?? 0,
@@ -222,11 +241,11 @@ export default function RastreioConfiguracaoPage() {
                 <table className="w-full text-sm">
                   <tbody>
                     {semPixel.map((l) => (
-                      <tr key={l.product_code} className="border-b border-border/50 last:border-0">
-                        <td className="py-2 font-mono text-xs text-destructive">{l.product_code}</td>
+                      <tr key={l.produto_code} className="border-b border-border/50 last:border-0">
+                        <td className="py-2 font-mono text-xs text-destructive">{l.produto_code}</td>
                         <td className="py-2 text-foreground">{l.produto_nome ?? "—"}</td>
                         <td className="py-2 text-right text-muted-foreground">
-                          {formatNumber(l.compras)} compra(s)
+                          {formatNumber(l.vendas)} venda(s)
                         </td>
                       </tr>
                     ))}

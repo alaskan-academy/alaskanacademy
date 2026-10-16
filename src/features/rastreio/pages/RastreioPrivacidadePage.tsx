@@ -120,11 +120,11 @@ export default function RastreioPrivacidadePage() {
        A FILA não se recorta: um pedido é de uma PESSOA, e a mesma pessoa
        pode ter comprado nas duas empresas — esconder metade dela porque o
        cabeçalho está numa seria atender pela metade. */
-    let q = t
-      .from("vw_lgpd_consentimento_dia")
-      .select("*")
-      .gte("dia", startDateStr)
-      .lte("dia", endDateStr);
+    /* "Todos" manda `startDateStr` nulo, e `.gte('dia', null)` vira
+       `dia=gte.null`, que o Postgres recusa com 400. Sem data, não se
+       filtra — ver a nota em `RastreioPage.tsx`. */
+    let q = t.from("vw_lgpd_consentimento_dia").select("*");
+    if (startDateStr && endDateStr) q = q.gte("dia", startDateStr).lte("dia", endDateStr);
     if (empresaId) q = q.eq("empresa_id", empresaId);
 
     const [d, f, c] = await Promise.all([
@@ -526,6 +526,14 @@ function DialogDecisao({
 
   const p = decisao?.pedido;
   const modo = decisao?.modo;
+
+  /* O diálogo não desmonta entre um pedido e outro, então `texto` sobrevivia:
+     o motivo de recusa escrito para um titular reaparecia preenchido no
+     pedido do titular seguinte, e bastava um clique em Recusar para gravá-lo
+     no registro errado. Zerar ao trocar de pedido OU de modo. */
+  useEffect(() => {
+    setTexto("");
+  }, [p?.id, modo]);
   const r = (p?.resultado ?? {}) as Record<string, number>;
   /* Pedido sem ação executável precisa da observação dizendo o que foi
      respondido — senão "atendido" não significa nada e a fila vira enfeite,

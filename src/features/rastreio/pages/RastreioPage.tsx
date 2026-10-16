@@ -80,6 +80,13 @@ interface LinhaEnvios {
   falharam: number;
   com_fbp: number;
   com_fbc: number;
+  /* A vista devolve isto desde que nasceu, e a tela ignorava. Sem ele,
+     "Aceitos pela Meta" zera sozinho 14 dias depois do evento: o expurgo
+     apaga `response_meta`, que é de onde "aceitos" sai, e a tela passa a
+     dizer 0 de 0 — que lido de boa-fé significa "a CAPI não mandou nada no
+     período", exatamente o alarme que esta tela existe para dar.
+     A vista irmã do casamento já é à prova de expurgo; esta não era. */
+  expurgados: number;
 }
 
 interface LinhaGeo {
@@ -136,8 +143,19 @@ export default function RastreioPage() {
     const porEmpresa = <Q extends { eq: (c: string, v: string) => Q }>(q: Q) =>
       empresaId ? q.eq("empresa_id", empresaId) : q;
 
+    /* "Todos" é um preset de verdade no cabeçalho, e ali `startDateStr` e
+       `endDateStr` vêm NULOS — `FilterContext.tsx:87` devolve
+       `{ start: null, end: null }`. Filtrar mesmo assim mandava
+       `dia=gte.null` ao PostgREST, que responde 400 `invalid input syntax
+       for type date: "null"`, e as quatro vistas caíam juntas: a tela
+       inteira virava o erro cru, sem nada dizendo que o problema era o
+       filtro de período.
+
+       `strictNullChecks` está desligado neste projeto, então o compilador
+       não acusou. Sem data, não se filtra — que é o que "Todos" quer
+       dizer. */
     const noPeriodo = <Q extends { gte: (c: string, v: string) => Q; lte: (c: string, v: string) => Q }>(q: Q) =>
-      q.gte("dia", startDateStr).lte("dia", endDateStr);
+      startDateStr && endDateStr ? q.gte("dia", startDateStr).lte("dia", endDateStr) : q;
 
     const [v, f, c, e, g] = await Promise.all([
       porEmpresa(noPeriodo(t.from("vw_rastreio_visitantes_dia").select("*"))),
@@ -195,6 +213,7 @@ export default function RastreioPage() {
   const enviados = soma(envios, (l) => l.enviados);
   const aceitos = soma(envios, (l) => l.aceitos);
   const falharam = soma(envios, (l) => l.falharam);
+  const expurgados = soma(envios, (l) => l.expurgados);
 
   const comprasCasadas = soma(casamento, (l) => l.compras);
   const receita = soma(casamento, (l) => Number(l.valor ?? 0));
@@ -311,7 +330,9 @@ export default function RastreioPage() {
               subtitle={
                 falharam > 0
                   ? `${formatNumber(falharam)} recusado(s) — ver alertas`
-                  : `de ${formatNumber(enviados)} enviados`
+                  : expurgados > 0
+                    ? `de ${formatNumber(enviados)} enviados · ${formatNumber(expurgados)} sem prova (14 dias)`
+                    : `de ${formatNumber(enviados)} enviados`
               }
               className="rounded-none border-0"
             />
@@ -440,12 +461,24 @@ export default function RastreioPage() {
                   </tbody>
                 </table>
               )}
-              {/* Gravado maior que enviado é NORMAL e tem três causas boas —
-                  dizer isso na tela evita a pergunta de toda semana. */}
+              {/* Gravado maior que enviado é NORMAL e tem causas boas —
+                  dizer isso na tela evita a pergunta de toda semana. A
+                  quarta causa entrou depois e com o tempo vira a dominante:
+                  passados 14 dias o expurgo apaga `response_meta`, e a
+                  linha perde a prova de ter sido aceita sem nunca ter
+                  deixado de ser. */}
               <p className="pt-3 text-[11px] text-muted-foreground">
                 Gravado maior que aceito não é erro: o PageView não vai pela API de propósito, produto sem
                 pixel não é enviado, e o navegador avisa quando o pixel dele não subiu. O que é defeito
                 aparece em vermelho, e tem alarme na Saúde do Sistema.
+                {expurgados > 0 && (
+                  <>
+                    {" "}
+                    Neste período, <strong className="text-foreground">{formatNumber(expurgados)}</strong>{" "}
+                    evento(s) já passaram dos 14 dias de retenção: eles foram enviados, mas o registro do
+                    envio foi apagado, então aparecem como não aceitos.
+                  </>
+                )}
               </p>
             </div>
 
