@@ -1,0 +1,40 @@
+-- O comentário do alerta da CAPI dizia o motivo errado
+--
+-- `fn_alerta_capi_muda` nasceu ontem com esta justificativa:
+--
+--   "security definer porque vw_alertas roda com os direitos de quem lê
+--    (security_invoker=on) e o schema tracking é fechado para authenticated"
+--
+-- **A segunda metade é falsa**, e foi medida hoje a pedido dela:
+--
+--   has_schema_privilege('authenticated','tracking','usage') → TRUE
+--   grants de tabela para authenticated em tracking            → 10 de 10
+--   políticas                                                  → 10, todas
+--     `SELECT ... TO authenticated USING (true)`
+--
+-- Quem está fechado é o `anon` (zero usage, zero grant) — e é esse o
+-- desenho: leitura pelo painel autenticado via RLS, escrita só pelo
+-- `service_role`, que passa por cima.
+--
+-- ===========================================================================
+-- E mesmo assim a função CONTINUA security definer — por outro motivo
+-- ===========================================================================
+--
+-- Com `authenticated` podendo ler, um `security invoker` funcionaria hoje.
+-- Mas o alerta existe para gritar quando a CAPI emudece, e um alerta que
+-- depende da política de RLS de outra tabela tem um modo de falha ruim: no
+-- dia em que alguém restringir `tracking.visitors` ou `purchases` a um
+-- papel mais estreito, a função passaria a devolver zero linhas — e **zero
+-- linhas, neste alerta, significa "está tudo bem"**. Ele emudeceria
+-- exatamente quando deveria gritar, sem erro nenhum.
+--
+-- `security definer` imuniza contra isso, e o preço é nenhum: a função
+-- devolve só contagens e frases, nenhum dado pessoal atravessa, e a
+-- permissão de execução é só de `authenticated` e `service_role`.
+--
+-- Trocar um comentário sozinho não costuma merecer migração. Este merece:
+-- o arquivo de ontem está aplicado e registrado com a frase errada, e quem
+-- for mexer nisso vai ler o comentário do objeto, não o histórico.
+
+comment on function public.fn_alerta_capi_muda() is
+  'Tres sinais de que a Conversions API do rastreamento parou: venda paga sem meta_event_id depois de 30 min (o envio e sincrono, entao isso nao deveria existir), envio recusado pelo Meta, e a chave geral desligada com venda acontecendo. Janela de 24h porque conversao perdida nao se recupera. É SECURITY DEFINER de proposito, e NAO porque o schema tracking seja fechado para authenticated — ele nao e (10 tabelas com SELECT para authenticated via RLS; quem e barrado e o anon). E definer para o alerta nao depender da RLS de outra tabela: se alguem restringir visitors ou purchases amanha, uma funcao invoker devolveria zero linhas, e zero linhas AQUI significa "esta tudo bem" — o alerta emudeceria justamente quando deveria gritar. Devolve so contagens; nenhum dado pessoal atravessa.';
