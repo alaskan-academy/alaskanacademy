@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Activity, List, SlidersHorizontal } from 'lucide-react';
+import { Activity, List, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 
 /**
  * A sub-navegação do Rastreio, em pílulas DENTRO da página.
@@ -15,6 +15,7 @@ const ITEMS = [
   { path: '/rastreio', label: 'Visão geral', icon: Activity, fim: true },
   { path: '/rastreio/eventos', label: 'Eventos', icon: List, fim: false },
   { path: '/rastreio/configuracao', label: 'Configuração', icon: SlidersHorizontal, fim: false },
+  { path: '/rastreio/privacidade', label: 'Privacidade', icon: ShieldCheck, fim: false },
 ];
 
 export function RastreioNav() {

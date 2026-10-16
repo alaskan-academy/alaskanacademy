@@ -27,6 +27,7 @@ const UTMPage                  = lazy(() => import("./features/ads/pages/UTMPage
 const RastreioPage             = lazy(() => import("./features/rastreio/pages/RastreioPage"));
 const RastreioEventosPage      = lazy(() => import("./features/rastreio/pages/RastreioEventosPage"));
 const RastreioConfiguracaoPage = lazy(() => import("./features/rastreio/pages/RastreioConfiguracaoPage"));
+const RastreioPrivacidadePage  = lazy(() => import("./features/rastreio/pages/RastreioPrivacidadePage"));
 const EditorsPage              = lazy(() => import("./features/editores/pages/EditorsPage"));
 const SettingsPage             = lazy(() => import("./features/admin/pages/SettingsPage"));
 const AdminPage                = lazy(() => import("./features/admin/pages/AdminPage"));
@@ -121,6 +122,7 @@ const App = () => (
                     <Route path="/rastreio" element={<ProtectedRoute pageKey="rastreio"><RastreioPage /></ProtectedRoute>} />
                     <Route path="/rastreio/eventos" element={<ProtectedRoute pageKey="rastreio"><RastreioEventosPage /></ProtectedRoute>} />
                     <Route path="/rastreio/configuracao" element={<ProtectedRoute pageKey="rastreio"><RastreioConfiguracaoPage /></ProtectedRoute>} />
+                    <Route path="/rastreio/privacidade" element={<ProtectedRoute pageKey="rastreio"><RastreioPrivacidadePage /></ProtectedRoute>} />
                     <Route path="/tendencias" element={<ProtectedRoute pageKey="tendencias"><TendenciasPage /></ProtectedRoute>} />
                     {/* /clientes foi removida: a listagem por pessoa saiu do menu.
                         O redirecionamento existe porque o caminho circulou em
