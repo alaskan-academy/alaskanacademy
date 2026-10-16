@@ -73,9 +73,30 @@ describe('view nova não fura a RLS', () => {
         Falso positivo aqui é caro: este teste existe para ser levado a sério
         depois de eu ter aberto três buracos de RLS num dia. Teste que acusa
         inocente é teste que alguém desliga.
+
+        ── O buraco que isto tinha até 16/10/2026 ───────────────────────────
+
+        O qualificador era `(?:public\.)?`, literal. Numa view de OUTRO schema
+        — `create view tracking.vw_x as …` — o `public\.` não casa, o grupo do
+        nome pega "tracking", o `(?![.\w])` vê o ponto e falha, e não há como
+        retroceder: qualquer prefixo menor deixa um `\w` logo adiante. A regex
+        inteira não casa e **a view sai da checagem em silêncio**.
+
+        O schema `tracking` nasceu em 13/10 com seis views. As seis estão
+        certas — conferido no banco, todas com `reloptions =
+        {security_invoker=on}` —, mas esse acerto não estava sendo guardado
+        por ninguém. E o CLAUDE.md da raiz avisa que `CREATE OR REPLACE VIEW`
+        REDEFINE as reloptions: omitir a cláusula APAGA a que estava lá.
+
+        A correção é trocar o `public` fixo por um schema qualquer. Ela NÃO
+        reabre o falso positivo do `format()`: em `create or replace view
+        public.%I as %s`, o schema casa "public.", o nome tenta casar `%I` e
+        falha porque `%` não é `[a-z_]`; aí retrocede, lê "public" como nome,
+        e o `(?![.\w])` barra no ponto. Nenhuma das duas saídas casa — que é
+        o que se quer.
       */
       for (const m of sql.matchAll(
-        /create\s+(?:or\s+replace\s+)?view\s+(?:public\.)?([a-z_][a-z0-9_]*)(?![.\w])([\s\S]*?)\bas\b/gi,
+        /create\s+(?:or\s+replace\s+)?view\s+(?:[a-z_][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)(?![.\w])([\s\S]*?)\bas\b/gi,
       )) {
         const [, view, entre] = m;
         if (/security_invoker/i.test(entre)) continue;
@@ -90,6 +111,31 @@ describe('view nova não fura a RLS', () => {
         `RLS das tabelas nega — e a chave anon está no bundle, no navegador de ` +
         `qualquer visitante.`,
     ).toEqual([]);
+  });
+
+  it('a regra enxerga view de QUALQUER schema, e continua cega ao format()', () => {
+    /* Um teste para o teste, e ele existe porque a regra acima passou um ano
+       cega para `tracking.*` sem ninguém notar — view fora do `public` sumia
+       da checagem em silêncio, que é o pior jeito de uma catraca falhar.
+
+       Os dois casos do `format()` ficam aqui junto porque são a razão de o
+       `(?![.\w])` existir: se alguém "simplificar" a regex um dia, este caso
+       é que vai gritar. */
+    const REGRA =
+      /create\s+(?:or\s+replace\s+)?view\s+(?:[a-z_][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)(?![.\w])([\s\S]*?)\bas\b/gi;
+    const pega = (sql: string) => [...sql.matchAll(REGRA)].map((m) => m[1]);
+
+    expect(pega('create view vw_a as select 1'), 'sem schema').toEqual(['vw_a']);
+    expect(pega('create or replace view public.vw_b as select 1'), 'public').toEqual(['vw_b']);
+    expect(pega('create or replace view tracking.vw_c as select 1'), 'outro schema').toEqual(['vw_c']);
+    expect(
+      pega("create view tracking.vw_d with (security_invoker = on) as select 1"),
+      'outro schema COM a cláusula — tem de ser visto, para a cláusula poder ser conferida',
+    ).toEqual(['vw_d']);
+
+    /* O `format()` da 20260925b: não pode casar por nenhum dos dois caminhos. */
+    expect(pega('create or replace view public.%I as %s'), 'format() dinâmico').toEqual([]);
+    expect(pega('create or replace view %I.%I as %s'), 'format() com schema').toEqual([]);
   });
 
   it('as três views daquele dia continuam declarando o invoker', () => {
