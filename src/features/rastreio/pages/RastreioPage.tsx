@@ -6,6 +6,7 @@ import { useFilters } from "@/contexts/FilterContext";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
+import { RastreioNav } from "../components/RastreioNav";
 
 /**
  * Visão geral do rastreamento server-side — a Fase 6.
@@ -241,6 +242,8 @@ export default function RastreioPage() {
 
   return (
     <DashboardLayout title="Rastreio" hideTitle>
+      <RastreioNav />
+
       {loading ? (
         <div className="flex h-64 items-center justify-center text-muted-foreground animate-pulse">
           Carregando o rastreio…
